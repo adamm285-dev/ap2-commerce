@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import { AgStudio } from 'ag-studio-react';
 import { AgStudioLicenseManager } from 'ag-studio';
 import type { AgDataSourcesDefinition, AgStudioMode } from 'ag-studio';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
@@ -8,23 +7,22 @@ import {
   Zap,
   PhoneCall,
   Sliders,
-  Eye,
-  Edit3,
   X,
   Lock,
   LayoutGrid,
   Calendar,
   Network,
+  Bot,
 } from 'lucide-react';
 import {
   initialA2aTransactions,
   tradeImpactData,
   kycAuditData,
-  initialDashboardState,
   type A2aTransaction,
 } from './data/telemetryData';
 import {
   evaluateAgentNegotiation,
+  resetMandateLedger,
   executeProvisioningAfterSubscription,
   PAYPAL_CONFIG,
   type AgentNegotiationRequest,
@@ -33,6 +31,8 @@ import {
 } from './services/paypalAgentService';
 import { BryntumDispatchScheduler } from './components/BryntumDispatchScheduler';
 import { ZapierMcpView } from './components/ZapierMcpView';
+import { ContractorCopilotView } from './components/ContractorCopilotView';
+import { EnterpriseFleetLedger } from './components/EnterpriseFleetLedger';
 import './App.css';
 
 // 1. Initialize AG Studio License if supplied via environment
@@ -45,19 +45,24 @@ if (studioLicenseKey) {
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'ag-studio' | 'bryntum' | 'zapier'>('ag-studio');
+  const [activeTab, setActiveTab] = useState<'copilot' | 'ag-studio' | 'bryntum' | 'zapier'>('copilot');
   const [mode, setMode] = useState<AgStudioMode>('view');
   const [transactions, setTransactions] = useState<A2aTransaction[]>(initialA2aTransactions);
+  const [isMarcusDepositLocked, setIsMarcusDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNegotiating, setIsNegotiating] = useState(false);
   const [negotiationResult, setNegotiationResult] = useState<AgentNegotiationResponse | null>(null);
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult | null>(null);
+  const [isProvisioning, setIsProvisioning] = useState(false);
+  const [paypalError, setPaypalError] = useState<string | null>(null);
 
   // Form state for Buyer Agent simulation
   const [contractorName, setContractorName] = useState('Marcus Miller');
   const [businessEntity, setBusinessEntity] = useState('Miller Custom Flooring LLC');
   const [tradeVertical, setTradeVertical] = useState('Tile & Flooring');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
+  const [operatingMarket, setOperatingMarket] = useState('Lakeland / Polk County, FL (863)');
+  const [preferredAreaCode, setPreferredAreaCode] = useState('863');
 
   // Memoize data sources to maintain reference stability for AG Studio
   const studioData: AgDataSourcesDefinition = useMemo(() => {
@@ -87,11 +92,15 @@ export function App() {
           data: tradeImpactData,
           fields: [
             { id: 'trade', name: 'Trade Vertical', format: 'textFormat' },
-            { id: 'missed_calls_prevented', name: 'Missed Calls Saved', format: 'integerFormat' },
-            { id: 'leads_captured', name: 'Booked Leads', format: 'integerFormat' },
-            { id: 'recovered_revenue', name: 'Recovered Revenue', format: 'currencyFormat' },
-            { id: 'subscription_cost', name: 'PayPal Cost ($89/mo)', format: 'currencyFormat' },
-            { id: 'roi_multiple', name: 'ROI Multiplier (x)', format: 'decimalFormat' },
+            { id: 'active_agents', name: 'Autonomous Buyer Agents', format: 'integerFormat' },
+            { id: 'mandates_cleared', name: 'Mandates Settled', format: 'integerFormat' },
+            { id: 'monthly_settlement', name: 'Monthly M2M Volume ($/mo)', format: 'currencyFormat' },
+            { id: 'annualized_gmv', name: 'Autonomous A2A GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'recovered_revenue', name: 'Autonomous A2A GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'leads_captured', name: 'Booked Leads Intake', format: 'integerFormat' },
+            { id: 'missed_calls_prevented', name: 'Robocalls Filtered', format: 'integerFormat' },
+            { id: 'subscription_cost', name: 'PayPal Cost ($79.99/mo)', format: 'currencyFormat' },
+            { id: 'roi_multiple', name: 'A2A Settlement Multiplier (x)', format: 'decimalFormat' },
           ],
         },
         {
@@ -112,7 +121,7 @@ export function App() {
   }, [transactions]);
 
   // Start Autonomous Negotiation Simulation
-  const handleStartNegotiation = useCallback(() => {
+  const handleStartNegotiation = useCallback(async () => {
     setIsNegotiating(true);
     setProvisioningResult(null);
 
@@ -124,59 +133,126 @@ export function App() {
       missedCallLossEstimate: 6200.0,
     };
 
-    setTimeout(() => {
-      const res = evaluateAgentNegotiation(req);
-      setNegotiationResult(res);
-      setIsNegotiating(false);
-    }, 600);
+    const res = await evaluateAgentNegotiation(req);
+    setNegotiationResult(res);
+    setIsNegotiating(false);
   }, [contractorName, businessEntity, tradeVertical, maxMonthlyBudget]);
 
-  // Complete Subscription & Provision Line
+  // Complete Subscription & Provision Line: Mutates existing transaction in place (Orange -> Green)
   const handleSubscriptionApproved = useCallback(
     async (subId: string) => {
-      const result = await executeProvisioningAfterSubscription(subId, businessEntity);
-      setProvisioningResult(result);
+      setIsProvisioning(true);
+      try {
+        const result = await executeProvisioningAfterSubscription(
+          subId,
+          businessEntity,
+          tradeVertical,
+          preferredAreaCode
+        );
+        setProvisioningResult(result);
 
-      // Append new autonomous transaction to live AG Studio dataset
-      const newTxn: A2aTransaction = {
-        id: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`,
-        contractor_name: contractorName,
-        trade_vertical: tradeVertical,
-        service_plan: 'AI Screener Pro (PayPal A2A)',
-        monthly_amount: 89.0,
-        paypal_sub_id: subId,
-        kyc_status: 'VERIFIED (PayPal Identity Bound)',
-        kyc_legal_entity: businessEntity,
-        allocated_did: result.allocatedDid,
-        tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
-        status: 'ACTIVE_STREAMING',
-      };
+        // Mutate Marcus Miller's existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
+        setTransactions((prev) => {
+          const idx = prev.findIndex((t) => t.contractor_name === contractorName);
+          if (idx !== -1) {
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+              monthly_amount: 89.0,
+              paypal_sub_id: subId,
+              kyc_status: 'VERIFIED (PayPal Identity Bound)',
+              allocated_did: result.allocatedDid,
+              tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+              status: 'ACTIVE_STREAMING',
+            };
+            return updated;
+          }
 
-      setTransactions((prev) => [newTxn, ...prev]);
+          // Fallback if not found in list: prepend new entry
+          const newTxn: A2aTransaction = {
+            id: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`,
+            contractor_name: contractorName,
+            trade_vertical: tradeVertical,
+            service_plan: 'AI Screener Pro (PayPal A2A)',
+            monthly_amount: 89.0,
+            paypal_sub_id: subId,
+            kyc_status: 'VERIFIED (PayPal Identity Bound)',
+            kyc_legal_entity: businessEntity,
+            allocated_did: result.allocatedDid,
+            tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+            status: 'ACTIVE_STREAMING',
+          };
+          return [newTxn, ...prev];
+        });
+
+        // Also lock Marcus Miller's slot in Bryntum Dispatch
+        setIsMarcusDepositLocked(true);
+      } finally {
+        setIsProvisioning(false);
+      }
     },
-    [contractorName, businessEntity, tradeVertical]
+    [contractorName, businessEntity, tradeVertical, preferredAreaCode]
   );
 
   return (
     <div className="app-container">
       {/* Executive Header */}
       <header className="app-header">
+        {/* Brand Section with Live Fleet Status Badge */}
         <div className="brand-section">
           <div className="brand-icon-wrapper">
             <Zap size={22} />
           </div>
           <div className="brand-titles">
-            <h1>FieldSmith Pro &mdash; Autonomous A2A Commerce Portal</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1>FieldSmith Pro &mdash; Autonomous A2A Commerce Portal</h1>
+              <span
+                style={{
+                  fontSize: '10px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                FLEET M2M: ONLINE
+              </span>
+            </div>
             <p className="brand-subtitle">
-              Solo Tradesperson Telephony Fleet &bull; Powered by PayPal Agentic Commerce, AG Studio &amp; Bryntum
+              Enterprise Multi-Trade Telephony &bull; Powered by PayPal Agentic Commerce, Zapier MCP, AG Studio &amp; Bryntum
             </p>
           </div>
         </div>
 
         {/* View Selection Tabs */}
         <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: '8px', padding: '3px', border: '1px solid #334155' }}>
+          <button
+            onClick={() => setActiveTab('copilot')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: activeTab === 'copilot' ? '#0284c7' : 'transparent',
+              color: activeTab === 'copilot' ? '#fff' : '#94a3b8',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            <Bot size={14} /> Contractor Copilot
+          </button>
           <button
             onClick={() => setActiveTab('ag-studio')}
             style={{
@@ -193,7 +269,7 @@ export function App() {
               cursor: 'pointer',
             }}
           >
-            <LayoutGrid size={14} /> AG Studio Fleet Ledger
+            <LayoutGrid size={14} /> Fleet Ledger Command Center
           </button>
           <button
             onClick={() => setActiveTab('bryntum')}
@@ -211,7 +287,7 @@ export function App() {
               cursor: 'pointer',
             }}
           >
-            <Calendar size={14} /> Bryntum Territory Dispatch
+            <Calendar size={14} /> Bryntum Telephony Fleet Timeline
           </button>
           <button
             onClick={() => setActiveTab('zapier')}
@@ -234,26 +310,6 @@ export function App() {
         </div>
 
         <div className="header-actions">
-          {/* AG Studio Mode toggle (only visible when in AG Studio view) */}
-          {activeTab === 'ag-studio' && (
-            <div className="mode-toggle-group">
-              <button
-                className={`mode-btn ${mode === 'view' ? 'active' : ''}`}
-                onClick={() => setMode('view')}
-                title="Executive Dashboard View"
-              >
-                <Eye size={14} /> View
-              </button>
-              <button
-                className={`mode-btn ${mode === 'edit' ? 'active' : ''}`}
-                onClick={() => setMode('edit')}
-                title="Interactive Report Editor"
-              >
-                <Edit3 size={14} /> Edit
-              </button>
-            </div>
-          )}
-
           <button className="btn-simulate" onClick={() => setIsModalOpen(true)}>
             <Sliders size={15} /> Simulate A2A Purchase
           </button>
@@ -262,18 +318,95 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="studio-canvas-container">
-        {activeTab === 'ag-studio' && (
-          <AgStudio
-            data={studioData}
-            mode={mode}
-            initialState={initialDashboardState}
-            style={{ width: '100%', height: '100%' }}
+        {activeTab === 'copilot' && (
+          <ContractorCopilotView
+            contractorName={contractorName}
+            businessEntity={businessEntity}
+            tradeVertical={tradeVertical}
+            areaCode={preferredAreaCode}
+            budgetCap={maxMonthlyBudget}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onA2aCompleted={({ subscriptionId, allocatedDid }) => {
+              setTransactions((prev) => {
+                const idx = prev.findIndex((t) => t.contractor_name === contractorName);
+                if (idx !== -1) {
+                  const updated = [...prev];
+                  updated[idx] = {
+                    ...updated[idx],
+                    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    monthly_amount: 79.99,
+                    paypal_sub_id: subscriptionId,
+                    kyc_status: 'VERIFIED (PayPal Identity Bound)',
+                    allocated_did: allocatedDid,
+                    tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+                    status: 'ACTIVE_STREAMING',
+                  };
+                  return updated;
+                }
+                return prev;
+              });
+              setIsMarcusDepositLocked(true);
+            }}
           />
         )}
 
-        {activeTab === 'bryntum' && <BryntumDispatchScheduler />}
+        {activeTab === 'ag-studio' && (
+          <EnterpriseFleetLedger
+            transactions={transactions}
+            tradeImpactData={tradeImpactData}
+            kycAuditData={kycAuditData}
+            studioData={studioData}
+            studioMode={mode}
+            onSetStudioMode={setMode}
+            onSimulateClick={() => setIsModalOpen(true)}
+            onInspectTrace={() => {
+              setActiveTab('copilot');
+            }}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
 
-        {activeTab === 'zapier' && <ZapierMcpView />}
+        {activeTab === 'bryntum' && (
+          <BryntumDispatchScheduler
+            isDepositLocked={isMarcusDepositLocked}
+            onToggleDepositLock={(locked) => {
+              setIsMarcusDepositLocked(locked);
+              setTransactions((prev) => {
+                const idx = prev.findIndex((t) => t.contractor_name === 'Marcus Miller');
+                if (idx !== -1) {
+                  const updated = [...prev];
+                  updated[idx] = {
+                    ...updated[idx],
+                    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    status: locked ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT',
+                    kyc_status: locked ? 'VERIFIED (PayPal Identity Bound)' : 'PENDING_KYC_VERIFICATION',
+                    allocated_did: locked ? '+1 (863) 267-8902' : 'AWAITING_DEPOSIT',
+                    tcpa_guard: locked ? '100% INBOUND ONLY (ZERO ROBOCALLS)' : 'PENDING ACTIVATION',
+                    paypal_sub_id: locked
+                      ? updated[idx].paypal_sub_id.startsWith('I-')
+                        ? updated[idx].paypal_sub_id
+                        : 'I-BW452NX993L2'
+                      : 'AWAITING_PAYPAL_TOKEN',
+                  };
+                  return updated;
+                }
+                return prev;
+              });
+            }}
+          />
+        )}
+
+        {activeTab === 'zapier' && (
+          <ZapierMcpView
+            contractorName={contractorName}
+            businessEntity={businessEntity}
+            allocatedDid={provisioningResult?.allocatedDid || '+1 (863) 267-8902'}
+            tradeVertical={tradeVertical}
+            monthlyFee={79.99}
+            paypalSubscriptionId={provisioningResult?.subscriptionId || 'I-AUTONOMOUS-8902'}
+            isDepositLocked={isMarcusDepositLocked}
+          />
+        )}
       </main>
 
       {/* Modal: A2A Commerce Negotiation & Subscription Simulator */}
@@ -387,25 +520,164 @@ export function App() {
                     }}
                   />
                 </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                    Service Market (City / State)
+                  </label>
+                  <select
+                    value={operatingMarket}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOperatingMarket(val);
+                      const match = val.match(/\((\d{3})\)/);
+                      if (match) {
+                        setPreferredAreaCode(match[1]);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#fff',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <option value="Lakeland / Polk County, FL (863)">Lakeland / Polk County, FL (863)</option>
+                    <option value="Tampa / Hillsborough, FL (813)">Tampa / Hillsborough, FL (813)</option>
+                    <option value="Orlando / Orange County, FL (407)">Orlando / Orange County, FL (407)</option>
+                    <option value="Miami / South Florida, FL (305)">Miami / South Florida, FL (305)</option>
+                    <option value="Jacksonville / Duval, FL (904)">Jacksonville / Duval, FL (904)</option>
+                    <option value="Atlanta / Metro, GA (404)">Atlanta / Metro, GA (404)</option>
+                    <option value="Dallas / Fort Worth, TX (214)">Dallas / Fort Worth, TX (214)</option>
+                    <option value="Houston / Harris, TX (713)">Houston / Harris, TX (713)</option>
+                    <option value="Austin / Travis, TX (512)">Austin / Travis, TX (512)</option>
+                    <option value="Chicago / Cook County, IL (312)">Chicago / Cook County, IL (312)</option>
+                    <option value="Denver / Front Range, CO (303)">Denver / Front Range, CO (303)</option>
+                    <option value="Phoenix / Maricopa, AZ (480)">Phoenix / Maricopa, AZ (480)</option>
+                    <option value="Custom US Market (Any Area Code)">Custom US Market (Any Area Code)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                    Dedicated 10DLC Area Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={3}
+                    placeholder="e.g. 863, 404, 214"
+                    value={preferredAreaCode}
+                    onChange={(e) => setPreferredAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#38bdf8',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                    }}
+                  />
+                </div>
               </div>
 
-              <button
-                className="btn-simulate"
-                style={{ width: '100%', justifyContent: 'center', padding: '10px' }}
-                onClick={handleStartNegotiation}
-                disabled={isNegotiating}
-              >
-                {isNegotiating ? 'Evaluating Telemetry & Mandate...' : '1. Run A2A Autonomous Negotiation'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button
+                  className="btn-simulate"
+                  style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    padding: '10px',
+                    backgroundColor: negotiationResult?.mandateSatisfied
+                      ? '#064e3b'
+                      : isNegotiating
+                      ? '#1e293b'
+                      : undefined,
+                    color: negotiationResult?.mandateSatisfied ? '#34d399' : undefined,
+                    border: negotiationResult?.mandateSatisfied ? '1px solid #059669' : undefined,
+                    cursor: negotiationResult?.mandateSatisfied ? 'not-allowed' : 'pointer',
+                    opacity: negotiationResult?.mandateSatisfied ? 0.85 : 1,
+                  }}
+                  onClick={handleStartNegotiation}
+                  disabled={isNegotiating || Boolean(negotiationResult?.mandateSatisfied)}
+                >
+                  {isNegotiating
+                    ? 'Evaluating Telemetry & Mandate...'
+                    : negotiationResult?.mandateSatisfied
+                    ? '✓ 1. Negotiation Approved ($79.99/mo)'
+                    : '1. Run A2A Autonomous Negotiation'}
+                </button>
+                <button
+                  onClick={async () => {
+                    const buyerAgentId = `BuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`;
+                    await resetMandateLedger(buyerAgentId);
+                    setNegotiationResult(null);
+                    setProvisioningResult(null);
+                    setPaypalError(null);
+                    setIsMarcusDepositLocked(false);
+                    setTransactions((prev) => {
+                      const idx = prev.findIndex((t) => t.contractor_name === contractorName);
+                      if (idx !== -1) {
+                        const updated = [...prev];
+                        updated[idx] = {
+                          ...updated[idx],
+                          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                          paypal_sub_id: 'AWAITING_PAYPAL_TOKEN',
+                          kyc_status: 'PENDING_KYC_VERIFICATION',
+                          allocated_did: 'AWAITING_DEPOSIT',
+                          tcpa_guard: 'PENDING ACTIVATION',
+                          status: 'PENDING_DEPOSIT',
+                        };
+                        return updated;
+                      }
+                      return prev;
+                    });
+                  }}
+                  title="Reset spending mandate ledger and restore Marcus Miller to pending status"
+                  style={{
+                    backgroundColor: '#1e293b',
+                    color: '#94a3b8',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    padding: '0 12px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600,
+                  }}
+                >
+                  ↺ Reset Mandate
+                </button>
+              </div>
 
               {negotiationResult && (
                 <div className="negotiation-panel">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Protocol Verification:</span>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      backgroundColor: negotiationResult.isLiveBackend ? '#065f46' : '#854d0e',
+                      color: negotiationResult.isLiveBackend ? '#34d399' : '#fde047',
+                    }}>
+                      {negotiationResult.isLiveBackend ? '● FastAPI Backend Connected (Port 8001)' : '○ Local Simulation Mode'}
+                    </span>
+                  </div>
                   <div className="negotiation-line">[BuyerAgent]: Ingesting telephony logs... Missed call loss: $6,200/mo.</div>
                   <div className="negotiation-line">[BuyerAgent]: Querying FieldSmith MCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
                   <div className="negotiation-line">[SellerMCP]: Quoted Plan: {negotiationResult.agreedPlanName} @ ${negotiationResult.monthlyFee}/mo</div>
                   <div className={`negotiation-line ${negotiationResult.mandateSatisfied ? 'success' : 'warning'}`}>
                     {negotiationResult.message}
                   </div>
+                  {negotiationResult.mandateToken && (
+                    <div className="negotiation-line success" style={{ wordBreak: 'break-all', fontSize: '11px' }}>
+                      [HMAC Token]: {negotiationResult.mandateToken}
+                    </div>
+                  )}
                   {negotiationResult.mandateSatisfied && (
                     <div className="negotiation-line success">
                       [A2A Protocol]: Spending mandate approved. Ready for delegated PayPal subscription token.
@@ -428,60 +700,110 @@ export function App() {
 
               {/* Interactive PayPal Payment Integration */}
               {negotiationResult && negotiationResult.mandateSatisfied && !provisioningResult && (
-                <div className="paypal-interactive-wrapper">
-                  <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
-                    2. Execute Verified PayPal Subscription
-                  </h4>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>
-                    Subscribes to $89.00/month recurring plan. Once verified, the Seller Agent allocates a live Telnyx DID.
-                  </p>
-
-                  <div style={{ width: '100%', maxWidth: '320px', minHeight: '50px' }}>
-                    <PayPalScriptProvider
-                      options={{
-                        clientId: PAYPAL_CONFIG.clientId,
-                        vault: true,
-                        intent: 'subscription',
+                <div
+                  className="paypal-interactive-wrapper"
+                  style={{
+                    marginTop: '16px',
+                    border: '1px solid #0284c7',
+                    backgroundColor: 'rgba(2, 132, 199, 0.08)',
+                    borderRadius: '8px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <span
+                      style={{
+                        backgroundColor: '#0284c7',
+                        color: '#fff',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
                       }}
                     >
-                      <PayPalButtons
-                        style={{ layout: 'vertical', color: 'blue', shape: 'rect', label: 'subscribe' }}
-                        createSubscription={(_data, actions) => {
-                          return actions.subscription.create({
-                            plan_id: PAYPAL_CONFIG.planId,
-                          });
-                        }}
-                        onApprove={async (data) => {
-                          const subId = data.subscriptionID || `I-PP${Math.floor(100000 + Math.random() * 900000)}`;
-                          await handleSubscriptionApproved(subId);
-                        }}
-                        onError={(err) => {
-                          console.warn('[PayPal]: Sandbox interaction fallback trigger:', err);
-                          const simulatedSubId = `I-PP${Math.floor(100000 + Math.random() * 900000)}`;
-                          handleSubscriptionApproved(simulatedSubId);
-                        }}
-                      />
-                    </PayPalScriptProvider>
+                      STEP 2
+                    </span>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
+                      Execute Verified PayPal Subscription
+                    </h4>
                   </div>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 12px 0' }}>
+                    Subscribes to $79.99/month recurring plan. Once payment is confirmed, the Seller Agent allocates a live Telnyx DID bound to <strong>{businessEntity}</strong>.
+                  </p>
 
-                  {/* Fallback button for instant one-click demo */}
+                  {/* Primary Instant Simulated Approval Button */}
                   <button
                     onClick={() => {
                       const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
                       handleSubscriptionApproved(simulatedSubId);
                     }}
+                    disabled={isProvisioning}
                     style={{
-                      background: 'transparent',
-                      border: '1px dashed #475569',
-                      color: '#94a3b8',
-                      fontSize: '11px',
-                      padding: '6px 12px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
+                      width: '100%',
+                      padding: '12px 16px',
+                      backgroundColor: isProvisioning ? '#1e293b' : '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: isProvisioning ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      marginBottom: '8px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                     }}
                   >
-                    (Demo Shortcut: Simulate Instant PayPal Approval)
+                    {isProvisioning ? (
+                      'Provisioning Telnyx DID & Binding KYC...'
+                    ) : (
+                      <>
+                        <ShieldCheck size={16} /> Authorize $79.99/mo Subscription (Instant Live Simulation)
+                      </>
+                    )}
                   </button>
+
+                  {PAYPAL_CONFIG.clientId !== 'test' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <div style={{ textAlign: 'center', fontSize: '10px', color: '#64748b', marginBottom: '8px' }}>
+                        &mdash; OR USE OFFICIAL PAYPAL SANDBOX BUTTON &mdash;
+                      </div>
+                      <div style={{ width: '100%', maxWidth: '320px', margin: '0 auto' }}>
+                        <PayPalScriptProvider
+                          options={{
+                            clientId: PAYPAL_CONFIG.clientId,
+                            vault: true,
+                            intent: 'subscription',
+                          }}
+                        >
+                          <PayPalButtons
+                            style={{ layout: 'vertical', color: 'blue', shape: 'rect', label: 'subscribe' }}
+                            createSubscription={(_data, actions) => {
+                              return actions.subscription.create({
+                                plan_id: PAYPAL_CONFIG.planId,
+                              });
+                            }}
+                            onApprove={async (data) => {
+                              const subId = data.subscriptionID || `I-PP${Math.floor(100000 + Math.random() * 900000)}`;
+                              await handleSubscriptionApproved(subId);
+                            }}
+                            onError={(err) => {
+                              console.warn('[PayPal]: Sandbox interaction warning:', err);
+                              setPaypalError('PayPal Sandbox error. Use the Instant Live Simulation button above.');
+                            }}
+                          />
+                        </PayPalScriptProvider>
+                      </div>
+                    </div>
+                  )}
+
+                  {paypalError && (
+                    <div style={{ fontSize: '11px', color: '#f87171', marginTop: '6px', textAlign: 'center' }}>
+                      {paypalError}
+                    </div>
+                  )}
                 </div>
               )}
 

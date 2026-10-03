@@ -278,3 +278,185 @@
   align-items: center;
   gap: 12px;
 }
+
+/* Bryntum Scheduler Reactive Event Transition Styling */
+.b-sch-event {
+  transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, transform 0.25s ease !important;
+  border-radius: 6px !important;
+}
+
+.b-sch-event.b-sch-color-green {
+  animation: deposit-locked-glow 0.8s ease-in-out;
+}
+
+@keyframes deposit-locked-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    transform: scale(0.98);
+  }
+  50% {
+    box-shadow: 0 0 18px 4px rgba(16, 185, 129, 0.85);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    transform: scale(1);
+  }
+}
+
+.b-sch-event.b-sch-color-orange {
+  transition: all 0.4s ease !important;
+}
+
+/* ==========================================================================
+   AG Studio Enterprise Dark Theme & Framing System
+   ========================================================================== */
+.ag-studio-frame {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  min-height: 720px;
+  background-color: #070d1a;
+  border-radius: 12px;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.ag-studio-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: linear-gradient(180deg, #131e32 0%, #0f172a 100%);
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+/* Override AG Studio root container and panels */
+.ag-studio {
+  background-color: #070d1a !important;
+  color: #f8fafc !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Panels and Sidebars */
+.ag-studio .ag-panel,
+.ag-studio .ag-panel-title-bar,
+.ag-studio .ag-panel-container {
+  background-color: #0b1222 !important;
+  border-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+.ag-studio .ag-panel-title {
+  color: #f8fafc !important;
+  font-weight: 600 !important;
+}
+
+.ag-studio .ag-canvas {
+  background-color: #070d1a !important;
+}
+
+.ag-studio .ag-widget {
+  background-color: #0f172a !important;
+  border: 1px solid #1e293b !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+.ag-studio .ag-widget-header {
+  background-color: transparent !important;
+  border-bottom: 1px solid #1e293b !important;
+  color: #f8fafc !important;
+}
+
+.ag-studio .ag-widget-title {
+  color: #f8fafc !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+}
+
+/* Inputs, Selects & Search boxes inside AG Studio */
+.ag-studio input[type="text"],
+.ag-studio input[type="search"],
+.ag-studio select,
+.ag-studio .ag-input-field-input,
+.ag-studio .ag-picker-field-display {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border: 1px solid #334155 !important;
+  border-radius: 6px !important;
+}
+
+.ag-studio input[type="text"]:focus,
+.ag-studio input[type="search"]:focus {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+}
+
+/* Buttons in Studio */
+.ag-studio .ag-standard-button {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 6px !important;
+  font-weight: 600 !important;
+}
+
+.ag-studio .ag-standard-button:hover {
+  background-color: #334155 !important;
+  color: #fff !important;
+  border-color: #475569 !important;
+}
+
+/* Tabs inside Studio */
+.ag-studio .ag-tabs-header {
+  background-color: #0b1222 !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
+.ag-studio .ag-tab {
+  color: #94a3b8 !important;
+}
+
+.ag-studio .ag-tab:hover {
+  color: #e2e8f0 !important;
+}
+
+.ag-studio .ag-tab.ag-tab-selected {
+  color: #38bdf8 !important;
+  border-bottom-color: #38bdf8 !important;
+}
+
+/* Grid inside widget */
+.ag-studio .ag-header {
+  background-color: #131e32 !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
+.ag-studio .ag-header-cell-text {
+  color: #94a3b8 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 11px !important;
+}
+
+.ag-studio .ag-row {
+  background-color: transparent !important;
+  color: #f8fafc !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
+.ag-studio .ag-row-odd {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+}
+
+.ag-studio .ag-row:hover {
+  background-color: rgba(30, 41, 59, 0.6) !important;
+}
+
+.ag-studio .ag-cell {
+  border-right: 1px solid rgba(30, 41, 59, 0.5) !important;
+}

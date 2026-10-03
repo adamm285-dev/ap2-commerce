@@ -144,6 +144,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/ZapierSyncResponse'
 
+  /health:
+    get:
+      summary: System Health & Provider Configuration Probe
+      description: Returns backend operational status and active API configuration states.
+      operationId: healthCheck
+      tags:
+        - System Health
+      responses:
+        '200':
+          description: API is healthy and operational.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  mock_mode:
+                    type: boolean
+                    example: true
+                  paypal_configured:
+                    type: boolean
+                    example: false
+                  telnyx_configured:
+                    type: boolean
+                    example: false
+                  zapier_configured:
+                    type: boolean
+                    example: false
+
+  /api/agent/spending-mandate/reset:
+    post:
+      summary: Reset Buyer Spending Mandate Ledger
+      description: Resets spent balances for simulation restarts and testing.
+      operationId: resetMandateLedger
+      tags:
+        - Autonomous Governance
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                buyerAgentId:
+                  type: string
+                  example: contractor-solo-buyer-01
+      responses:
+        '200':
+          description: Mandate ledger reset confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: reset
+                  agent_id:
+                    type: string
+                    example: contractor-solo-buyer-01
+                  remaining_budget:
+                    type: number
+                    example: 100.00
+
+  /api/paypal/create-order:
+    post:
+      summary: Create PayPal Checkout Order
+      description: Creates a standard PayPal checkout order for mobilization deposits or subscriptions.
+      operationId: createPayPalOrder
+      tags:
+        - PayPal Orders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayPalOrderCreateRequest'
+      responses:
+        '200':
+          description: Order created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPalOrderResponse'
+
+  /api/paypal/webhook:
+    post:
+      summary: Receive Inbound PayPal Webhooks
+      description: Receives asynchronous notifications from PayPal (e.g. subscription activations, order completions).
+      operationId: receivePayPalWebhook
+      tags:
+        - PayPal Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook received.
+
 components:
   securitySchemes:
     PayPalWebhookSignature:
@@ -324,45 +428,105 @@ components:
 
     ZapierSyncRequest:
       type: object
-      required:
-        - leadId
-        - customerName
-        - customerPhone
-        - propertyAddress
-        - depositAmount
-        - paypalTxnId
       properties:
+        workflowType:
+          type: string
+          enum: [a2a_onboarding, homeowner_lead]
+          default: a2a_onboarding
+          example: a2a_onboarding
         leadId:
           type: string
-          example: lead-sarah-jenkins
+          example: lead-a2a-onboarding
         customerName:
           type: string
-          example: Sarah Jenkins
+          example: Marcus Miller
         customerPhone:
           type: string
           example: '+18635550199'
         propertyAddress:
           type: string
-          example: '4822 Cleveland Heights Blvd, Lakeland, FL 33813'
+          example: 'Lakeland, FL'
         depositAmount:
           type: number
-          example: 250.00
+          example: 89.00
         paypalTxnId:
           type: string
-          example: I-BW452NX993L2
+          example: I-AUTONOMOUS-8902
+        contractorName:
+          type: string
+          example: Marcus Miller
+        businessEntity:
+          type: string
+          example: Miller Custom Flooring LLC
+        allocatedDid:
+          type: string
+          example: '+1 (863) 802-6000'
+        tradeVertical:
+          type: string
+          example: Tile & Custom Flooring
+        monthlySubscriptionFee:
+          type: number
+          example: 89.00
+        paypalSubscriptionId:
+          type: string
+          example: I-AUTONOMOUS-8902
+        contractorEmail:
+          type: string
+          example: marcus@millercustomfloors.com
 
     ZapierSyncResponse:
       type: object
       properties:
         jobberQuoteId:
           type: string
-          example: JOB-883921
+          example: JOB-ROUTING-A91B4C
         qboDraftInvoiceId:
           type: string
-          example: QBO-INV-1094
+          example: QBO-EXP-44021A
         googleCalendarEventId:
           type: string
-          example: gcal_event_66029381
+          example: gcal_briefing_6602938144
         status:
           type: string
           example: COMPLETED
+        workflowType:
+          type: string
+          example: a2a_onboarding
+
+    PayPalOrderCreateRequest:
+      type: object
+      required:
+        - amount
+        - description
+      properties:
+        amount:
+          type: number
+          example: 89.00
+        currency:
+          type: string
+          default: USD
+          example: USD
+        description:
+          type: string
+          example: FieldSmith Pro - Voice Screener Subscription
+        custom_id:
+          type: string
+          example: contractor-solo-buyer-01
+
+    PayPalOrderResponse:
+      type: object
+      properties:
+        order_id:
+          type: string
+          example: ORDER-MOCK-449102
+        status:
+          type: string
+          example: CREATED
+        approval_url:
+          type: string
+          nullable: true
+          example: https://www.sandbox.paypal.com/checkoutnow?token=ORDER-MOCK-449102
+        mock_mode:
+          type: boolean
+          example: true
+

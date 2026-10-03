@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "fieldsmith-pro-a2a-seller": {
+      "command": "python",
+      "args": [
+        "-m",
+        "backend.mcp_server"
+      ],
+      "cwd": "H:\\Downloads\\FloorsmtihCalling\\a2a_commerce_portal",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

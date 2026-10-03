@@ -4,7 +4,9 @@ import '@bryntum/scheduler/stockholm-dark.css';
 import '@bryntum/scheduler/fontawesome/css/fontawesome.css';
 import '@bryntum/scheduler/fontawesome/css/solid.css';
 import { Scheduler } from '@bryntum/scheduler';
-import { Calendar, Zap } from 'lucide-react';
+import { Zap, PhoneCall } from 'lucide-react';
+
+import { executeProvisioningAfterSubscription } from '../services/paypalAgentService';
 
 export interface ScheduleEvent {
   id: number | string;
@@ -18,112 +20,111 @@ export interface ScheduleEvent {
   paypalTxn: string;
 }
 
-export function BryntumDispatchScheduler() {
+export interface BryntumDispatchSchedulerProps {
+  isDepositLocked?: boolean;
+  onToggleDepositLock?: (locked: boolean) => void;
+}
+
+export function BryntumDispatchScheduler({
+  isDepositLocked = false,
+  onToggleDepositLock,
+}: BryntumDispatchSchedulerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const schedulerRef = useRef<Scheduler | null>(null);
   const [lastPaymentSync, setLastPaymentSync] = useState<string>('2026-10-02 02:14:22');
+  const [isCallingApi, setIsCallingApi] = useState(false);
+  const [apiStatus, setApiStatus] = useState<string>(
+    isDepositLocked
+      ? '● Live Line Active: +1 (863) 267-8902 via Telnyx (HTTP 201)'
+      : '○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization'
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Define Contractor Crews / Territory Zones
+    // Define Contractor Fleet Tenants with statutory KYC identities
     const resources = [
       {
         id: 'crew-1',
         name: 'Marcus Miller',
-        zone: 'Zone 1 - North Lakeland',
+        entity: 'Miller Custom Flooring LLC',
         trade: 'Tile & Custom Flooring',
-        status: 'DISPATCH_READY',
+        did: isDepositLocked ? '+1 (863) 267-8902' : 'AWAITING PAYMENT',
+        status: isDepositLocked ? 'ACTIVE_10DLC_BOUND' : 'PENDING_SUBSCRIPTION',
       },
       {
         id: 'crew-2',
         name: 'Dave Vance',
-        zone: 'Zone 2 - South Lakeland',
+        entity: 'Vance Rapid Drain & Plumbing Inc',
         trade: 'Emergency 24/7 Plumbing',
-        status: 'ON_JOB',
+        did: '+1 (863) 356-7801',
+        status: 'ACTIVE_10DLC_BOUND',
       },
       {
         id: 'crew-3',
         name: 'Elena Rostova',
-        zone: 'Zone 3 - Winter Haven',
+        entity: 'Apex Storm & Roofing Specialists',
         trade: 'Roofing & Storm Restoration',
-        status: 'ESTIMATES_ACTIVE',
+        did: '+1 (863) 356-7802',
+        status: 'ACTIVE_10DLC_BOUND',
       },
       {
         id: 'crew-4',
         name: 'Hank Schrader',
-        zone: 'Zone 4 - Bartow / South County',
+        entity: 'Schrader Heavy Duty Towing LLC',
         trade: 'Towing & Heavy Roadside',
-        status: 'STANDBY_ON_CALL',
+        did: '+1 (863) 356-7803',
+        status: 'ACTIVE_10DLC_BOUND',
       },
     ];
 
-    // Define 75-minute estimate slots and booked jobs locked by PayPal deposits
+    // Define 24/7 AI Voice Screener Line Shifts across the fleet
+    // Marcus Miller starts with an UNPROVISIONED line awaiting PayPal $79.99/mo subscription (Orange)
     const events: ScheduleEvent[] = [
       {
-        id: 1,
+        id: 'line-marcus-screener',
         resourceId: 'crew-1',
-        name: '650 sq ft LVP Estimate [LOCKED BY PAYPAL]',
-        startDate: '2026-10-02 09:00',
-        endDate: '2026-10-02 10:15',
-        eventColor: 'green',
-        iconCls: 'b-fa b-fa-check-circle',
-        depositStatus: 'PAID ($250.00)',
-        paypalTxn: 'I-BW452NX993L2',
+        name: isDepositLocked
+          ? 'AI Voice Screener Active • DID: +1 (863) 267-8902 [KYC BOUND]'
+          : 'AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)',
+        startDate: '2026-10-02 08:00',
+        endDate: '2026-10-02 18:00',
+        eventColor: isDepositLocked ? 'green' : 'orange',
+        iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
+        depositStatus: isDepositLocked ? 'ACTIVE ($79.99/MO)' : 'AWAITING PAYPAL ($79.99/MO)',
+        paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
       },
       {
-        id: 2,
-        resourceId: 'crew-1',
-        name: 'Master Bath Shower Pan Inspection',
-        startDate: '2026-10-02 11:00',
-        endDate: '2026-10-02 12:15',
-        eventColor: 'green',
-        iconCls: 'b-fa b-fa-check-circle',
-        depositStatus: 'PAID ($250.00)',
-        paypalTxn: 'I-BW452NX993L2',
-      },
-      {
-        id: 3,
+        id: 'line-dave-screener',
         resourceId: 'crew-2',
-        name: 'Emergency Mainline Drain Burst',
-        startDate: '2026-10-02 08:30',
-        endDate: '2026-10-02 10:30',
+        name: 'AI Voice Screener Active • DID: +1 (863) 356-7801 [KYC BOUND]',
+        startDate: '2026-10-02 08:00',
+        endDate: '2026-10-02 18:00',
         eventColor: 'green',
-        iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'PAID ($250.00)',
+        iconCls: 'b-fa b-fa-check-circle',
+        depositStatus: 'ACTIVE ($79.99/MO)',
         paypalTxn: 'I-PL782MK110Q9',
       },
       {
-        id: 4,
-        resourceId: 'crew-2',
-        name: 'Tankless Water Heater Consult [AWAITING DEPOSIT]',
-        startDate: '2026-10-02 13:00',
-        endDate: '2026-10-02 14:15',
-        eventColor: 'orange',
-        iconCls: 'b-fa b-fa-clock',
-        depositStatus: 'PENDING PAYPAL LINK',
-        paypalTxn: 'PENDING',
-      },
-      {
-        id: 5,
+        id: 'line-elena-screener',
         resourceId: 'crew-3',
-        name: 'Hail Damage Roof Inspection [LOCKED BY PAYPAL]',
-        startDate: '2026-10-02 10:00',
-        endDate: '2026-10-02 11:30',
+        name: 'AI Voice Screener Active • DID: +1 (863) 356-7802 [KYC BOUND]',
+        startDate: '2026-10-02 08:00',
+        endDate: '2026-10-02 18:00',
         eventColor: 'green',
-        iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'PAID ($250.00)',
+        iconCls: 'b-fa b-fa-check-circle',
+        depositStatus: 'ACTIVE ($79.99/MO)',
         paypalTxn: 'I-RF994ZZ331A8',
       },
       {
-        id: 6,
+        id: 'line-hank-screener',
         resourceId: 'crew-4',
-        name: 'Flatbed Highway Recovery (SR-570)',
-        startDate: '2026-10-02 07:30',
-        endDate: '2026-10-02 09:00',
+        name: 'AI Voice Screener Active • DID: +1 (863) 356-7803 [KYC BOUND]',
+        startDate: '2026-10-02 08:00',
+        endDate: '2026-10-02 18:00',
         eventColor: 'green',
-        iconCls: 'b-fa b-fa-truck',
-        depositStatus: 'PAID ($149.00)',
+        iconCls: 'b-fa b-fa-check-circle',
+        depositStatus: 'ACTIVE ($79.99/MO)',
         paypalTxn: 'I-TW551PP882B4',
       },
     ];
@@ -132,31 +133,57 @@ export function BryntumDispatchScheduler() {
     const scheduler = new Scheduler({
       appendTo: containerRef.current,
       startDate: new Date(2026, 9, 2, 7, 0),
-      endDate: new Date(2026, 9, 2, 18, 0),
+      endDate: new Date(2026, 9, 2, 19, 0),
       viewPreset: 'hourAndDay',
-      rowHeight: 64,
-      barMargin: 8,
+      rowHeight: 68,
+      barMargin: 10,
       eventStyle: 'filled',
       columns: [
-        { text: 'Contractor Crew', field: 'name', width: 170 },
-        { text: 'Territory Zone', field: 'zone', width: 170 },
-        { text: 'Primary Vertical', field: 'trade', width: 180 },
+        {
+          text: 'Contractor & Legal Entity',
+          field: 'name',
+          width: 210,
+          renderer({ record }: any) {
+            return `
+              <div style="line-height:1.3;">
+                <div style="font-weight:700;color:#f8fafc;font-size:12px;">${record.name}</div>
+                <div style="font-size:10px;color:#94a3b8;">${record.entity}</div>
+              </div>
+            `;
+          },
+        },
+        { text: 'Trade Vertical', field: 'trade', width: 170 },
+        {
+          text: 'Provisioned DID Phone',
+          field: 'did',
+          width: 170,
+          renderer({ record }: any) {
+            const isAssigned = !record.did.includes('AWAITING');
+            return `
+              <span style="font-size:11px;font-family:ui-monospace, monospace;font-weight:600;color:${
+                isAssigned ? '#34d399' : '#fbbf24'
+              };">
+                ${record.did}
+              </span>
+            `;
+          },
+        },
       ],
       resources,
       events,
       eventRenderer({ eventRecord }: { eventRecord: any }) {
-        const isPaid = eventRecord.depositStatus.includes('PAID');
+        const isActive = eventRecord.depositStatus.includes('ACTIVE');
         return `
-          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;height:100%;padding:4px 8px;font-size:11px;font-weight:600;">
-            <div style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              <i class="${eventRecord.iconCls}"></i>
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;height:100%;padding:4px 10px;font-size:11px;font-weight:600;">
+            <div style="display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              <i class="${eventRecord.iconCls}" style="font-size:12px;color:${isActive ? '#34d399' : '#fbbf24'};"></i>
               <span>${eventRecord.name}</span>
             </div>
-            <span style="font-size:10px;padding:2px 6px;border-radius:4px;background-color:${
-              isPaid ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'
-            };color:${isPaid ? '#34d399' : '#fbbf24'};border:1px solid ${
-              isPaid ? '#10b981' : '#f59e0b'
-            };flex-shrink:0;">
+            <span style="font-size:10px;padding:3px 8px;border-radius:4px;background-color:${
+              isActive ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'
+            };color:${isActive ? '#34d399' : '#fbbf24'};border:1px solid ${
+              isActive ? '#10b981' : '#f59e0b'
+            };flex-shrink:0;letter-spacing:0.02em;">
               ${eventRecord.depositStatus}
             </span>
           </div>
@@ -171,25 +198,116 @@ export function BryntumDispatchScheduler() {
     };
   }, []);
 
-  // Simulate incoming call that clears PayPal deposit and locks a new slot
-  const handleSimulateLock = () => {
+  // Synchronize slot state when parent props change
+  useEffect(() => {
+    if (!schedulerRef.current) return;
+    const targetEvent = schedulerRef.current.eventStore.getById('line-marcus-screener');
+    if (targetEvent) {
+      targetEvent.set({
+        name: isDepositLocked
+          ? 'AI Voice Screener Active • DID: +1 (863) 267-8902 [KYC BOUND]'
+          : 'AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)',
+        eventColor: isDepositLocked ? 'green' : 'orange',
+        iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
+        depositStatus: isDepositLocked ? 'ACTIVE ($79.99/MO)' : 'AWAITING PAYPAL ($79.99/MO)',
+        paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
+      });
+
+      // Also update Marcus Miller's DID in the resource store
+      const marcusResource = schedulerRef.current.resourceStore.getById('crew-1');
+      if (marcusResource) {
+        marcusResource.set({
+          did: isDepositLocked ? '+1 (863) 267-8902' : 'AWAITING PAYMENT',
+          status: isDepositLocked ? 'ACTIVE_10DLC_BOUND' : 'PENDING_SUBSCRIPTION',
+        });
+      }
+
+      setApiStatus(
+        isDepositLocked
+          ? '● Live Line Active: +1 (863) 267-8902 via Telnyx (HTTP 201)'
+          : '○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization'
+      );
+      setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
+    }
+  }, [isDepositLocked]);
+
+  // Simulate A2A PayPal Subscription: Calls FastAPI POST /api/agent/provision
+  // and dynamically mutates Marcus Miller's line bar from Orange -> Vibrant Green in place!
+  const handleSimulateActivation = async () => {
+    if (!schedulerRef.current) return;
+    setIsCallingApi(true);
+
+    try {
+      const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // 1. Send live POST /api/agent/provision to FastAPI backend
+      const result = await executeProvisioningAfterSubscription(
+        simulatedSubId,
+        'Miller Custom Flooring LLC',
+        'Tile & Flooring'
+      );
+
+      // 2. Dynamically mutate Marcus Miller's timeline card from Orange -> Green
+      const targetEvent = schedulerRef.current.eventStore.getById('line-marcus-screener');
+      if (targetEvent) {
+        targetEvent.set({
+          name: `AI Voice Screener Active • DID: ${result.allocatedDid} [KYC BOUND]`,
+          eventColor: 'green',
+          iconCls: 'b-fa b-fa-check-circle',
+          depositStatus: 'ACTIVE ($79.99/MO)',
+          paypalTxn: simulatedSubId,
+        });
+      }
+
+      // 3. Update the resource row DID column
+      const marcusResource = schedulerRef.current.resourceStore.getById('crew-1');
+      if (marcusResource) {
+        marcusResource.set({
+          did: result.allocatedDid,
+          status: 'ACTIVE_10DLC_BOUND',
+        });
+      }
+
+      setApiStatus(`● Live Line Active: ${result.allocatedDid} via Telnyx (HTTP 201)`);
+      setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
+
+      if (onToggleDepositLock) {
+        onToggleDepositLock(true);
+      }
+    } finally {
+      setIsCallingApi(false);
+    }
+  };
+
+  // Reset Marcus Miller's line back to Amber/Orange (Awaiting Subscription) for repeated demonstrations
+  const handleResetLine = () => {
     if (!schedulerRef.current) return;
 
-    const newId = Date.now();
-    const newSlot: ScheduleEvent = {
-      id: newId,
-      resourceId: 'crew-1',
-      name: 'South Lakeland Kitchen Tile Estimate [PAYPAL VERIFIED]',
-      startDate: '2026-10-02 14:00',
-      endDate: '2026-10-02 15:15',
-      eventColor: 'green',
-      iconCls: 'b-fa b-fa-check-circle',
-      depositStatus: 'PAID ($250.00)',
-      paypalTxn: `I-PP${Math.floor(100000 + Math.random() * 900000)}`,
-    };
+    const targetEvent = schedulerRef.current.eventStore.getById('line-marcus-screener');
+    if (targetEvent) {
+      targetEvent.set({
+        name: 'AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)',
+        eventColor: 'orange',
+        iconCls: 'b-fa b-fa-clock',
+        depositStatus: 'AWAITING PAYPAL ($79.99/MO)',
+        paypalTxn: 'UNPAID',
+      });
+    }
 
-    schedulerRef.current.eventStore.add(newSlot);
+    const marcusResource = schedulerRef.current.resourceStore.getById('crew-1');
+    if (marcusResource) {
+      marcusResource.set({
+        did: 'AWAITING PAYMENT',
+        status: 'PENDING_SUBSCRIPTION',
+      });
+    }
+
+    setApiStatus('○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization');
     setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
+
+    if (onToggleDepositLock) {
+      onToggleDepositLock(false);
+    }
   };
 
   return (
@@ -214,26 +332,53 @@ export function BryntumDispatchScheduler() {
               color: '#38bdf8',
             }}
           >
-            <Calendar size={18} />
+            <PhoneCall size={18} />
           </div>
           <div>
             <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc', margin: 0 }}>
-              Bryntum Smart Dispatch &amp; Territory Zoning Board
+              Bryntum Telephony Fleet &amp; Line Activation Timeline
             </h3>
             <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0 0' }}>
-              4 Territory Zones &bull; 75-Min Estimate Blocks &bull; Slots Locked Exclusively via Verified PayPal Deposits
+              Dedicated Inbound 10DLC Lines &bull; Statutory KYC Identity Bound &bull; Unlocked via PayPal A2A Commerce ($79.99/mo)
             </p>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* API Verification Badge */}
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '4px 10px',
+              borderRadius: '12px',
+              backgroundColor:
+                isDepositLocked || apiStatus.includes('HTTP 201')
+                  ? 'rgba(16, 185, 129, 0.2)'
+                  : 'rgba(245, 158, 11, 0.2)',
+              color:
+                isDepositLocked || apiStatus.includes('HTTP 201')
+                  ? '#34d399'
+                  : '#fbbf24',
+              border: `1px solid ${
+                isDepositLocked || apiStatus.includes('HTTP 201')
+                  ? '#10b981'
+                  : '#f59e0b'
+              }`,
+            }}
+          >
+            {apiStatus}
+          </span>
+
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-            Last PayPal Event Sync:{' '}
+            Last Sync:{' '}
             <span style={{ color: '#34d399', fontFamily: 'monospace' }}>{lastPaymentSync}</span>
           </div>
 
+          {/* Simulate PayPal A2A Subscription Button */}
           <button
-            onClick={handleSimulateLock}
+            onClick={handleSimulateActivation}
+            disabled={isCallingApi || isDepositLocked}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -241,14 +386,45 @@ export function BryntumDispatchScheduler() {
               padding: '6px 14px',
               borderRadius: '6px',
               border: 'none',
-              backgroundColor: '#0284c7',
-              color: '#fff',
+              backgroundColor: isDepositLocked
+                ? '#065f46'
+                : isCallingApi
+                ? '#1e293b'
+                : '#0284c7',
+              color: isDepositLocked ? '#34d399' : '#fff',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: isCallingApi || isDepositLocked ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            <Zap size={14} />
+            {isCallingApi
+              ? 'Calling /api/agent/provision...'
+              : isDepositLocked
+              ? '✓ Marcus Miller Line Active (+1 863-267-8902)'
+              : '⚡ Simulate $79.99/mo A2A Subscription & Provisioning'}
+          </button>
+
+          {/* Reset Line Button */}
+          <button
+            onClick={handleResetLine}
+            title="Reset Marcus Miller's line back to Amber/Orange (Awaiting Subscription)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #334155',
+              backgroundColor: '#1e293b',
+              color: '#94a3b8',
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
             }}
           >
-            <Zap size={14} /> Simulate Inbound Call + $250 Deposit Lock
+            ↺ Reset to Pending (Orange)
           </button>
         </div>
       </div>

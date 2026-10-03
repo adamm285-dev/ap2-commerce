@@ -9,6 +9,7 @@ import asyncio
 import argparse
 import json
 import logging
+from pathlib import Path
 from typing import Dict, Any
 from .seller_agent import seller_agent
 from ..models import RecurrenceType
@@ -39,18 +40,48 @@ class BuyerAgent:
         print(f"=======================================================\n")
 
         # Phase 1: Local Telemetry & Business Need Assessment
-        print("📊 [Phase 1: Opportunity Assessment]")
-        missed_calls = 8
-        estimated_lost_revenue = 4200.00
-        print(
-            f"   Detected {missed_calls} missed customer calls during jobsite tile demo."
+        print("📊 [Phase 1: Opportunity Assessment (Local Call Log Ingestion)]")
+        fixture_path = (
+            Path(__file__).resolve().parent.parent / "data" / "call_logs_fixture.json"
         )
-        print(
-            f"   Estimated uncaptured revenue: ${estimated_lost_revenue:,.2f}"
-        )
-        print(
-            f"   Conclusion: Autonomous voice screener required (Budget ROI: >40x)\n"
-        )
+        if fixture_path.exists():
+            with open(fixture_path, "r", encoding="utf-8") as f:
+                logs_data = json.load(f)
+            missed_calls = logs_data.get("missed_calls", 8)
+            estimated_lost_revenue = logs_data.get("estimated_lost_revenue", 6200.00)
+            recent_leads = logs_data.get("recent_missed_leads", [])
+            print(
+                f"   Contractor: {logs_data.get('contractor_name')} ({logs_data.get('business_entity')})"
+            )
+            print(
+                f"   Carrier Log: {logs_data.get('telephony_carrier')} — {logs_data.get('analyzed_period')}"
+            )
+            print(
+                f"   Total Calls Ingested: {logs_data.get('total_inbound_calls')} | Missed: {missed_calls} ({logs_data.get('missed_call_rate')})"
+            )
+            for lead in recent_leads[:2]:
+                print(
+                    f"     • [{lead['caller_name']}] \"{lead['voicemail_transcript'][:55]}...\" (Loss: ${lead['estimated_job_value']:,.2f})"
+                )
+            print(f"   Total Uncaptured Revenue: ${estimated_lost_revenue:,.2f}")
+            roi_mult = logs_data.get("buyer_agent_recommendation", {}).get(
+                "projected_net_roi_multiple", "69.6x"
+            )
+            print(
+                f"   Conclusion: Autonomous voice screener required (Budget ROI: {roi_mult})\n"
+            )
+        else:
+            missed_calls = 8
+            estimated_lost_revenue = 4200.00
+            print(
+                f"   Detected {missed_calls} missed customer calls during jobsite tile demo."
+            )
+            print(
+                f"   Estimated uncaptured revenue: ${estimated_lost_revenue:,.2f}"
+            )
+            print(
+                f"   Conclusion: Autonomous voice screener required (Budget ROI: >40x)\n"
+            )
 
         # Phase 2: Query Seller Agent MCP Catalog
         print("🔍 [Phase 2: Seller Agent MCP Catalog Inquiry]")
@@ -105,7 +136,7 @@ class BuyerAgent:
             f"   Payment Channel:                  PayPal Subscriptions (Plan: P-5ML4271244454362WXNWU5NQ)"
         )
         print(
-            f"   Billing Cycle:                    $89.00 / month (Auto-debit)\n"
+            f"   Billing Cycle:                    ${monthly_price:.2f} / month (Auto-debit)\n"
         )
 
         # Phase 5: KYC-Anchored Telecom Provisioning
@@ -125,6 +156,28 @@ class BuyerAgent:
         print(f"   Carrier Binding:  {carrier}")
         print(f"   Security State:   {routing_state} (100% Inbound Locked)\n")
 
+        # Phase 6: Downline Back-Office Synchronization via Zapier MCP
+        print("⚡ [Phase 6: Autonomous Zapier MCP Back-Office Sync]")
+        zapier_result = await seller_agent.dispatch_zapier_mcp(
+            workflow_type="a2a_onboarding",
+            contractor_name="Marcus Miller",
+            business_entity="Miller Custom Flooring LLC",
+            allocated_did=assigned_did,
+            trade_vertical="Tile & Custom Flooring",
+            monthly_subscription_fee=monthly_price,
+            paypal_subscription_id=synthetic_sub_id,
+            contractor_email=self.contractor_email,
+        )
+        print(
+            f"   QuickBooks Online: Recorded recurring software expense ({zapier_result.get('qboDraftInvoiceId')})"
+        )
+        print(
+            f"   Jobber CRM:        Registered allocated DID into routing ({zapier_result.get('jobberQuoteId')})"
+        )
+        print(
+            f"   Google Workspace:  Scheduled 6:30 AM executive briefing ({zapier_result.get('googleCalendarEventId')})\n"
+        )
+
         # Summary Ledger Record
         ledger_entry = {
             "buyer_agent_id": self.agent_id,
@@ -134,6 +187,12 @@ class BuyerAgent:
             "subscription_id": synthetic_sub_id,
             "assigned_did": assigned_did,
             "status": "ACTIVE_SUBSCRIPTION",
+            "zapier_mcp_sync": {
+                "qbo_expense_id": zapier_result.get("qboDraftInvoiceId"),
+                "jobber_routing_id": zapier_result.get("jobberQuoteId"),
+                "google_briefing_id": zapier_result.get("googleCalendarEventId"),
+                "status": zapier_result.get("status"),
+            },
         }
         self.audit_log.append(ledger_entry)
 

@@ -24,7 +24,7 @@ async def test_autonomous_a2a_cycle_approved():
     )
 
     assert result["status"] == "ACTIVE_SUBSCRIPTION"
-    assert result["monthly_amount"] == 89.00
+    assert result["monthly_amount"] == 79.99
     assert result["assigned_did"].startswith("+1863")
     assert result["subscription_id"].startswith("I-A2A-")
     assert len(result["mandate_proof"]) == 64
@@ -34,7 +34,7 @@ async def test_autonomous_a2a_cycle_approved():
 async def test_autonomous_a2a_cycle_rejected_on_insufficient_budget():
     buyer = BuyerAgent(
         agent_id="tight-budget-agent",
-        monthly_budget_cap=50.00,  # $50 cap < $89 cost
+        monthly_budget_cap=40.00,  # $40 cap < $49.99 minimum tier
         contractor_email="test@floorsmith.pro",
     )
     result = await buyer.run_autonomous_onboarding_cycle(

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Server network settings
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
-    server_port: int = Field(default=8000, alias="SERVER_PORT")
+    server_port: int = Field(default=8001, alias="SERVER_PORT")
 
     # Operating mode (true = full simulation without external API calls)
     mock_external_apis: bool = Field(default=True, alias="MOCK_EXTERNAL_APIS")
@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     # Zapier Model Context Protocol / NLA (Optional)
     zapier_nla_api_key: str = Field(default="", alias="ZAPIER_NLA_API_KEY")
+
+    # Back-Office Webhook / Catch-Hook Export Endpoint (Optional, e.g. Zapier / Make / Webhook.site)
+    webhook_export_url: str = Field(default="", alias="WEBHOOK_EXPORT_URL")
 
     # Cryptographic salt for signing buyer mandate proof tokens (HMAC-SHA256)
     a2a_mandate_secret: str = Field(

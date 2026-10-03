@@ -1,0 +1,471 @@
+"""
+Standalone Autonomous External Buyer Agent & MCP Client Harness.
+Simulates a 3rd-party autonomous agent (e.g. Claude Desktop, Grok, ChatGPT, Cursor)
+discovering and transacting with FieldSmith Pro's Seller Agent over Model Context Protocol (MCP).
+
+Supports two transports:
+1. HTTP: JSON-RPC 2.0 over HTTP (POST http://127.0.0.1:8001/mcp)
+2. stdio: Subprocess communication via stdin/stdout with `python -m backend.mcp_server`
+"""
+
+import sys
+import os
+import json
+import uuid
+import time
+import argparse
+import asyncio
+import logging
+from typing import Dict, Any, Optional, List
+import httpx
+
+logger = logging.getLogger("external_buyer_agent")
+
+
+class ExternalBuyerAgent:
+    """
+    Autonomous Buyer Agent that acts on behalf of a contractor to negotiate,
+    mandate-check, and purchase business telephony solutions headlessly over MCP.
+    """
+
+    def __init__(
+        self,
+        transport: str = "http",
+        server_url: str = "http://127.0.0.1:8001/mcp",
+        contractor_name: str = "Marcus Miller",
+        business_entity: str = "Miller Custom Flooring LLC",
+        contractor_email: str = "marcus@millercustomfloors.com",
+        trade_id: str = "flooring-tile",
+        budget_cap: float = 100.00,
+        area_code: str = "863",
+        webhook_url: Optional[str] = None,
+        verbose: bool = True,
+        reset_ledger: bool = True,
+        simulate_exhaustion: bool = False,
+    ):
+        self.transport = transport
+        self.server_url = server_url
+        self.contractor_name = contractor_name
+        self.business_entity = business_entity
+        self.contractor_email = contractor_email
+        self.trade_id = trade_id
+        self.budget_cap = budget_cap
+        self.area_code = area_code
+        self.webhook_url = webhook_url
+        self.verbose = verbose
+        self.reset_ledger = reset_ledger
+        self.simulate_exhaustion = simulate_exhaustion
+        self.request_id = 0
+        self.audit_log: List[Dict[str, Any]] = []
+
+    def _next_id(self) -> int:
+        self.request_id += 1
+        return self.request_id
+
+    def log(self, message: str):
+        if self.verbose:
+            print(message)
+
+    async def _send_rpc(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Dispatches a JSON-RPC 2.0 request over the configured transport."""
+        req_id = self._next_id()
+        payload = {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "method": method,
+            "params": params or {},
+        }
+
+        if self.transport == "http":
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(
+                    self.server_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                if res.status_code != 200:
+                    raise RuntimeError(f"HTTP error {res.status_code}: {res.text}")
+                return res.json()
+
+        elif self.transport == "stdio":
+            # For stdio, import and call process_mcp_request directly in-process or via stdin
+            from ..mcp_server import process_mcp_request
+            resp = await process_mcp_request(payload)
+            if resp is None:
+                return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+            return resp
+
+        else:
+            raise ValueError(f"Unsupported transport: {self.transport}")
+
+    async def _call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Invokes an MCP tool via tools/call and parses the returned JSON payload."""
+        t0 = time.perf_counter()
+        resp = await self._send_rpc(
+            method="tools/call",
+            params={
+                "name": tool_name,
+                "arguments": arguments,
+            },
+        )
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        if "error" in resp:
+            raise RuntimeError(f"Tool '{tool_name}' failed with error: {resp['error']}")
+
+        content_raw = resp.get("result", {}).get("content", [{}])[0].get("text", "{}")
+        try:
+            parsed = json.loads(content_raw)
+        except Exception:
+            parsed = {"raw": content_raw}
+
+        self.audit_log.append({
+            "tool": tool_name,
+            "arguments": arguments,
+            "latency_ms": round(elapsed_ms, 2),
+            "result": parsed,
+        })
+        return parsed
+
+    async def execute_autonomous_procurement(self) -> Dict[str, Any]:
+        """
+        Executes the full 7-step autonomous procurement lifecycle:
+        1. Initialize handshake
+        2. Tool discovery
+        3. Catalog inspection
+        4. Quote calculation
+        5. Spending mandate check & HMAC proof
+        6. Telecom line allocation
+        7. Back-office Jobber & QBO export
+        """
+        self.log("\n" + "=" * 65)
+        self.log(f"🤖 [EXTERNAL BUYER AGENT] Initiating Autonomous A2A Procurement")
+        self.log(f"   Transport:        {self.transport.upper()} ({self.server_url if self.transport == 'http' else 'In-Process stdio'})")
+        self.log(f"   Contractor:       {self.contractor_name} ({self.business_entity})")
+        self.log(f"   Target Vertical:  {self.trade_id}")
+        self.log(f"   Monthly Budget:   ${self.budget_cap:.2f}/mo (Mandate Cap)")
+        self.log("=" * 65 + "\n")
+
+        # Optional: Reset Ledger before execution
+        if self.reset_ledger:
+            try:
+                from ..services.mandate_evaluator import ledger
+                ledger.reset()
+            except Exception:
+                pass
+            if self.transport == "http":
+                try:
+                    async with httpx.AsyncClient(timeout=3.0) as client:
+                        reset_url = self.server_url.replace("/mcp", "/api/agent/spending-mandate/reset")
+                        await client.post(reset_url, json={})
+                except Exception:
+                    pass
+
+        # Step 1: Initialize Handshake
+        self.log("🤝 [Step 1: MCP Initialize Handshake]")
+        init_resp = await self._send_rpc(
+            method="initialize",
+            params={
+                "protocolVersion": "2024-11-05",
+                "clientInfo": {
+                    "name": "external-contractor-buyer-agent",
+                    "version": "1.0.0",
+                },
+            },
+        )
+        server_info = init_resp.get("result", {}).get("serverInfo", {})
+        server_name = server_info.get("name", "unknown")
+        proto_ver = init_resp.get("result", {}).get("protocolVersion", "")
+        self.log(f"   Connected to Server: {server_name} (MCP Protocol: {proto_ver})")
+        self.log("   Handshake verified successfully.\n")
+
+        # Send notifications/initialized
+        await self._send_rpc(method="notifications/initialized")
+
+        # Step 2: Tool Discovery
+        self.log("🔍 [Step 2: MCP Tool Discovery (tools/list)]")
+        tools_resp = await self._send_rpc(method="tools/list")
+        discovered_tools = tools_resp.get("result", {}).get("tools", [])
+        tool_names = [t.get("name") for t in discovered_tools]
+        self.log(f"   Discovered {len(discovered_tools)} MCP tools:")
+        for t in discovered_tools:
+            self.log(f"     • {t.get('name')}: {t.get('description')[:60]}...")
+        self.log("")
+
+        # Step 3: Service Catalog Discovery
+        self.log("📋 [Step 3: Querying Service Catalog (get_service_catalog)]")
+        catalog = await self._call_tool("get_service_catalog", {})
+        tiers = catalog.get("tiers", [])
+        selected_tier = next(
+            (t for t in tiers if t.get("trade_id") == self.trade_id),
+            tiers[0] if tiers else {"trade_id": self.trade_id, "monthly_price": 79.99, "title": "Trade AI Screener"},
+        )
+        monthly_price = float(selected_tier.get("monthly_price", 79.99))
+        tier_title = selected_tier.get("title", "Custom Trade Plan")
+        self.log(f"   Provider:        {catalog.get('provider', 'FieldSmith Pro')}")
+        self.log(f"   Selected Plan:   {tier_title}")
+        self.log(f"   Monthly Cost:    ${monthly_price:.2f}/mo (USD)")
+        self.log(f"   Features:        {', '.join(selected_tier.get('features', []))}\n")
+
+        # Step 4: Jobsite Scope & Quote Calculation
+        self.log("📐 [Step 4: Scoping & Labor Quote Calculation (calculate_quote)]")
+        quote = await self._call_tool(
+            "calculate_quote",
+            {
+                "trade_id": self.trade_id,
+                "square_footage": 600.0,
+                "material_type": "Porcelain Tile",
+                "postal_code": "33801",
+            },
+        )
+        self.log(f"   Estimated Labor: {quote.get('labor_estimate')}")
+        self.log(f"   Required Deposit: ${quote.get('required_deposit', 250):.2f}")
+        self.log(f"   Material Takeoff: {quote.get('waste_allowance_sq_ft')} sq ft (10% overage)\n")
+
+        # Step 5: Programmatic Spending Mandate Evaluation
+        self.log("⚖️  [Step 5: Enforcing Spending Mandate Policy (evaluate_spending_mandate)]")
+        buyer_agent_id = f"buyer-{self.contractor_name.split()[0].lower()}"
+        mandate = await self._call_tool(
+            "evaluate_spending_mandate",
+            {
+                "buyer_agent_id": buyer_agent_id,
+                "amount": monthly_price,
+                "recurrence": "monthly",
+                "category": "TELEPHONY_AI_SCREENER",
+                "monthly_budget_cap": self.budget_cap,
+            },
+        )
+        approved = mandate.get("approved", False)
+        proof_hash = mandate.get("mandateProofHash") or mandate.get("mandate_proof_hash", "")
+        rem_budget = mandate.get("monthlyCapRemaining") or mandate.get("monthly_cap_remaining", 0.0)
+
+        self.log(f"   Authorization:   {'APPROVED' if approved else 'REJECTED'}")
+        self.log(f"   Budget Policy:   ${monthly_price:.2f} <= ${self.budget_cap:.2f}/mo Cap")
+        self.log(f"   Remaining Cap:   ${rem_budget:.2f}")
+
+        # Dynamic Negotiation: Check for Counter-Offer if initial tier exceeds budget
+        if not approved:
+            has_counter = mandate.get("counterOfferAvailable") or mandate.get("counter_offer_available", False)
+            counter_amount = float(mandate.get("counterOfferAmount") or mandate.get("counter_offer_amount", 0.0))
+            counter_tier = mandate.get("counterOfferTier") or mandate.get("counter_offer_tier", "Alternative Tier")
+
+            if has_counter and counter_amount > 0 and counter_amount <= self.budget_cap:
+                self.log(f"\n🔄 [AUTONOMOUS NEGOTIATION] Counter-Offer Received: '{counter_tier}' @ ${counter_amount:.2f}/mo")
+                self.log(f"   Autonomous Decision: ${counter_amount:.2f} <= ${self.budget_cap:.2f} Cap -> ACCEPT COUNTER-OFFER")
+                self.log("   Re-evaluating mandate with negotiated rate...")
+
+                mandate = await self._call_tool(
+                    "evaluate_spending_mandate",
+                    {
+                        "buyer_agent_id": buyer_agent_id,
+                        "amount": counter_amount,
+                        "recurrence": "monthly",
+                        "category": "TELEPHONY_AI_SCREENER",
+                        "monthly_budget_cap": self.budget_cap,
+                    },
+                )
+                approved = mandate.get("approved", False)
+                proof_hash = mandate.get("mandateProofHash") or mandate.get("mandate_proof_hash", "")
+                rem_budget = mandate.get("monthlyCapRemaining") or mandate.get("monthly_cap_remaining", 0.0)
+                monthly_price = counter_amount
+                tier_title = f"{counter_tier} (Negotiated)"
+
+                self.log(f"   Counter-Offer Authorization: {'APPROVED' if approved else 'REJECTED'}")
+                self.log(f"   Negotiated Monthly Rate:     ${monthly_price:.2f}/mo")
+                self.log(f"   Remaining Cap:               ${rem_budget:.2f}")
+
+        if not approved:
+            reason = mandate.get("reason", "Budget cap exceeded or policy violation")
+            self.log(f"\n❌ [ABORT] Mandate Rejected: {reason}")
+            return {
+                "status": "REJECTED",
+                "reason": reason,
+                "audit_log": self.audit_log,
+            }
+
+        self.log(f"   HMAC-SHA256:     {proof_hash[:24]}... ({len(proof_hash)} chars)\n")
+
+        # Step 6: Telecom Line Allocation
+        self.log("📞 [Step 6: KYC Telecom Line Allocation (provision_telecom_line)]")
+        synthetic_sub_id = f"I-AUTONOMOUS-{uuid.uuid4().hex[:8].upper()}"
+        prov = await self._call_tool(
+            "provision_telecom_line",
+            {
+                "subscription_id": synthetic_sub_id,
+                "contractor_email": self.contractor_email,
+                "area_code": self.area_code,
+                "simulate_exhaustion": self.simulate_exhaustion,
+            },
+        )
+        assigned_did = prov.get("assignedDid") or prov.get("assigned_did", f"+1 ({self.area_code}) 267-8902")
+        carrier = prov.get("carrier", "Telnyx LLC")
+        routing_state = prov.get("routingState", "ACTIVE_10DLC_BOUND")
+
+        self.log(f"   Assigned DID:    {assigned_did}")
+        self.log(f"   Carrier Binding: {carrier} (10DLC Campaign CITNRYD)")
+        self.log(f"   Routing State:   {routing_state}")
+        self.log(f"   Protection:      100% Inbound Defensive (Zero Robocalls)\n")
+
+        # Step 7: Downline Back-Office Synchronization (Jobber & QBO)
+        self.log("⚡ [Step 7: Back-Office CRM & Accounting Export (dispatch_zapier_mcp)]")
+        zapier_res = await self._call_tool(
+            "dispatch_zapier_mcp",
+            {
+                "workflow_type": "a2a_onboarding",
+                "contractor_name": self.contractor_name,
+                "business_entity": self.business_entity,
+                "allocated_did": assigned_did,
+                "trade_vertical": tier_title,
+                "monthly_subscription_fee": monthly_price,
+                "paypal_subscription_id": synthetic_sub_id,
+                "contractor_email": self.contractor_email,
+                "mandate_proof_hash": proof_hash,
+                "webhook_url": self.webhook_url,
+            },
+        )
+
+        jobber_id = zapier_res.get("jobberQuoteId") or zapier_res.get("jobber_quote_id")
+        qbo_id = zapier_res.get("qboDraftInvoiceId") or zapier_res.get("qbo_draft_invoice_id")
+        gcal_id = zapier_res.get("googleCalendarEventId") or zapier_res.get("google_calendar_event_id")
+
+        self.log(f"   Jobber CRM:      {jobber_id} (GraphQL & REST Client Synced)")
+        self.log(f"   QuickBooks QBO:  {qbo_id} (Mapped to Account 6300: Software & SaaS)")
+        self.log(f"   Executive Brief: {gcal_id} (Daily 6:30 AM Briefing Scheduled)")
+        if self.webhook_url:
+            self.log(f"   Webhook Hook:    Dispatched to {self.webhook_url} (HTTP {zapier_res.get('webhookStatusCode')})")
+        self.log("")
+
+        # Summary
+        self.log("=" * 65)
+        self.log("🎉 [SUCCESS] Autonomous Machine-to-Machine Commerce Cycle Complete!")
+        self.log("   • Buyer Agent Mandate Hash: " + proof_hash)
+        self.log("   • PayPal Subscription ID:   " + synthetic_sub_id)
+        self.log("   • Provisioned DID:          " + assigned_did)
+        self.log("   • Jobber Routing Record:    " + str(jobber_id))
+        self.log("   • QuickBooks Expense Ref:   " + str(qbo_id))
+        self.log("=" * 65 + "\n")
+
+        return {
+            "status": "COMPLETED",
+            "contractor_name": self.contractor_name,
+            "business_entity": self.business_entity,
+            "selected_tier": tier_title,
+            "monthly_amount": monthly_price,
+            "mandate_proof_hash": proof_hash,
+            "paypal_subscription_id": synthetic_sub_id,
+            "assigned_did": assigned_did,
+            "carrier": carrier,
+            "jobber_routing_id": jobber_id,
+            "qbo_expense_id": qbo_id,
+            "google_calendar_event_id": gcal_id,
+            "audit_log": self.audit_log,
+        }
+
+
+async def main():
+    parser = argparse.ArgumentParser(
+        description="Autonomous External Buyer Agent & MCP Client Harness"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["http", "stdio"],
+        default="http",
+        help="Transport mode for MCP communication (default: http)",
+    )
+    parser.add_argument(
+        "--server-url",
+        default="http://127.0.0.1:8001/mcp",
+        help="HTTP URL to MCP Server (default: http://127.0.0.1:8001/mcp)",
+    )
+    parser.add_argument(
+        "--contractor-name",
+        default="Marcus Miller",
+        help="Contractor owner name (default: Marcus Miller)",
+    )
+    parser.add_argument(
+        "--business-entity",
+        default="Miller Custom Flooring LLC",
+        help="Contractor legal business entity",
+    )
+    parser.add_argument(
+        "--email",
+        default="marcus@millercustomfloors.com",
+        help="Contractor email address",
+    )
+    parser.add_argument(
+        "--trade",
+        default="flooring-tile",
+        help="Trade vertical identifier (default: flooring-tile)",
+    )
+    parser.add_argument(
+        "--budget",
+        "--budget-cap",
+        dest="budget",
+        type=float,
+        default=100.00,
+        help="Monthly spending mandate budget cap (default: 100.00)",
+    )
+    parser.add_argument(
+        "--reset-ledger",
+        action="store_true",
+        default=True,
+        help="Reset spending mandate ledger before execution (default: True)",
+    )
+    parser.add_argument(
+        "--no-reset-ledger",
+        dest="reset_ledger",
+        action="store_false",
+        help="Do not reset spending mandate ledger before execution",
+    )
+    parser.add_argument(
+        "--area-code",
+        default="863",
+        help="Local area code for telecom provisioning (default: 863)",
+    )
+    parser.add_argument(
+        "--simulate-exhaustion",
+        action="store_true",
+        default=False,
+        help="Simulate local exchange pool exhaustion to test contiguous LATA failover",
+    )
+    parser.add_argument(
+        "--webhook-url",
+        default=None,
+        help="Optional external webhook URL to test live payload dispatch",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON summary on completion",
+    )
+
+    args = parser.parse_args()
+
+    agent = ExternalBuyerAgent(
+        transport=args.transport,
+        server_url=args.server_url,
+        contractor_name=args.contractor_name,
+        business_entity=args.business_entity,
+        contractor_email=args.email,
+        trade_id=args.trade,
+        budget_cap=args.budget,
+        area_code=args.area_code,
+        webhook_url=args.webhook_url,
+        verbose=not args.json,
+        reset_ledger=args.reset_ledger,
+        simulate_exhaustion=args.simulate_exhaustion,
+    )
+
+    result = await agent.execute_autonomous_procurement()
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+
+    if result.get("status") == "COMPLETED":
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

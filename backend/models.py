@@ -3,7 +3,7 @@ Pydantic data models for FieldSmith Pro A2A Commerce & Multi-Agent Network.
 Maps directly to openapi.yaml schemas.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -74,6 +74,18 @@ class SpendingMandateResponse(BaseModel):
     monthly_cap_remaining: float = Field(alias="monthlyCapRemaining")
     mandate_proof_hash: str = Field(alias="mandateProofHash")
     reason: Optional[str] = None
+    counter_offer_available: Optional[bool] = Field(
+        default=False, alias="counterOfferAvailable"
+    )
+    counter_offer_tier: Optional[str] = Field(
+        default=None, alias="counterOfferTier"
+    )
+    counter_offer_amount: Optional[float] = Field(
+        default=None, alias="counterOfferAmount"
+    )
+    counter_offer_plan_id: Optional[str] = Field(
+        default=None, alias="counterOfferPlanId"
+    )
 
 
 # --- Telephony Provisioning Models ---
@@ -83,6 +95,9 @@ class ProvisionRequest(BaseModel):
     subscription_id: str = Field(alias="subscriptionId")
     contractor_email: str = Field(alias="contractorEmail")
     area_code: str = Field(default="863", alias="areaCode")
+    simulate_exhaustion: Optional[bool] = Field(
+        default=False, alias="simulateExhaustion"
+    )
 
 
 class ProvisionResponse(BaseModel):
@@ -93,6 +108,10 @@ class ProvisionResponse(BaseModel):
     carrier: str
     routing_state: str = Field(alias="routingState")
     subscription_id: str = Field(alias="subscriptionId")
+    failover_triggered: Optional[bool] = Field(
+        default=False, alias="failoverTriggered"
+    )
+    region: Optional[str] = None
 
 
 # --- Territory Dispatch Models ---
@@ -114,16 +133,29 @@ class DispatchLockResponse(BaseModel):
     territory_zone: str = Field(alias="territoryZone")
 
 
-# --- Zapier MCP Models ---
+# --- Zapier MCP & Back-Office Export Models ---
 class ZapierSyncRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    lead_id: str = Field(alias="leadId")
-    customer_name: str = Field(alias="customerName")
-    customer_phone: str = Field(alias="customerPhone")
-    property_address: str = Field(alias="propertyAddress")
-    deposit_amount: float = Field(alias="depositAmount")
-    paypal_txn_id: str = Field(alias="paypalTxnId")
+    workflow_type: Optional[str] = Field(default=None, alias="workflowType")
+    lead_id: Optional[str] = Field(default="lead-a2a-onboarding", alias="leadId")
+    customer_name: Optional[str] = Field(default="Marcus Miller", alias="customerName")
+    customer_phone: Optional[str] = Field(default="+1 (863) 267-8902", alias="customerPhone")
+    property_address: Optional[str] = Field(default="Lakeland, FL", alias="propertyAddress")
+    deposit_amount: Optional[float] = Field(default=79.99, alias="depositAmount")
+    paypal_txn_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalTxnId")
+
+    # A2A Contractor Onboarding specific attributes
+    contractor_name: Optional[str] = Field(default="Marcus Miller", alias="contractorName")
+    business_entity: Optional[str] = Field(default="Miller Custom Flooring LLC", alias="businessEntity")
+    allocated_did: Optional[str] = Field(default="+1 (863) 267-8902", alias="allocatedDid")
+    trade_vertical: Optional[str] = Field(default="Tile & Custom Flooring", alias="tradeVertical")
+    monthly_subscription_fee: Optional[float] = Field(default=79.99, alias="monthlySubscriptionFee")
+    paypal_subscription_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalSubscriptionId")
+    contractor_email: Optional[str] = Field(default="marcus@millercustomfloors.com", alias="contractorEmail")
+    mandate_proof_hash: Optional[str] = Field(default=None, alias="mandateProofHash")
+    webhook_url: Optional[str] = Field(default=None, alias="webhookUrl")
+    dry_run: Optional[bool] = Field(default=True, alias="dryRun")
 
 
 class ZapierSyncResponse(BaseModel):
@@ -133,6 +165,12 @@ class ZapierSyncResponse(BaseModel):
     qbo_draft_invoice_id: str = Field(alias="qboDraftInvoiceId")
     google_calendar_event_id: str = Field(alias="googleCalendarEventId")
     status: str
+    workflow_type: str = Field(default="a2a_onboarding", alias="workflowType")
+    jobber_payload: Optional[Dict[str, Any]] = Field(default=None, alias="jobberPayload")
+    qbo_payload: Optional[Dict[str, Any]] = Field(default=None, alias="qboPayload")
+    webhook_delivery_id: Optional[str] = Field(default=None, alias="webhookDeliveryId")
+    webhook_dispatched: Optional[bool] = Field(default=False, alias="webhookDispatched")
+    webhook_status_code: Optional[int] = Field(default=None, alias="webhookStatusCode")
 
 
 # --- PayPal Order Management Models ---

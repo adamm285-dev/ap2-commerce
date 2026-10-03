@@ -1,0 +1,14 @@
+# Antigravity & Gemini Code Assist Workspace Ignore
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+*.pyc
+__pycache__/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/

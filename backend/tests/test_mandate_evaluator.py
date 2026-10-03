@@ -50,21 +50,21 @@ def test_mandate_rejects_exceeded_budget():
 def test_mandate_approves_within_budget_and_signs_proof():
     req = SpendingMandateRequest(
         buyerAgentId="agent-solo-contractor",
-        amount=89.00,
+        amount=79.99,
         recurrence=RecurrenceType.MONTHLY,
         category="contractor-dispatch-ai",
         monthlyBudgetCap=100.00,
     )
     res = evaluate_spending_mandate(req)
     assert res.approved is True
-    assert res.authorized_amount == 89.00
-    assert res.monthly_cap_remaining == 11.00
+    assert res.authorized_amount == 79.99
+    assert round(res.monthly_cap_remaining, 2) == 20.01
     assert len(res.mandate_proof_hash) == 64  # SHA-256 hex string
 
     # Verify signature
     is_valid = verify_mandate_token(
         agent_id="agent-solo-contractor",
-        amount=89.00,
+        amount=79.99,
         recurrence="monthly",
         token=res.mandate_proof_hash,
         secret=settings.a2a_mandate_secret,
@@ -75,14 +75,14 @@ def test_mandate_approves_within_budget_and_signs_proof():
 def test_mandate_detects_tampered_amount():
     token = sign_mandate_token(
         agent_id="agent-solo",
-        amount=89.00,
+        amount=79.99,
         recurrence="monthly",
         secret=settings.a2a_mandate_secret,
     )
-    # Attempting to verify token against an altered amount of $189.00 must fail
+    # Attempting to verify token against an altered amount of $179.99 must fail
     is_valid = verify_mandate_token(
         agent_id="agent-solo",
-        amount=189.00,
+        amount=179.99,
         recurrence="monthly",
         token=token,
         secret=settings.a2a_mandate_secret,

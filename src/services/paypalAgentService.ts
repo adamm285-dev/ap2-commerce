@@ -2,7 +2,7 @@
  * PayPal Agentic Commerce Service (A2A Protocol)
  *
  * Implements the Buyer Agent / Seller Agent protocol using PayPal Subscriptions
- * and the PayPal AI Toolkit / MCP Server tools.
+ * and the FastAPI backend matching the OpenAPI 3.1.0 contract.
  */
 
 export interface AgentNegotiationRequest {
@@ -21,6 +21,8 @@ export interface AgentNegotiationResponse {
   kycRequired: boolean;
   message: string;
   sellerMcpEndpoint: string;
+  mandateToken?: string;
+  isLiveBackend?: boolean;
 }
 
 export interface ProvisioningResult {
@@ -31,6 +33,7 @@ export interface ProvisioningResult {
   kycBoundEntity: string;
   tcpaGuardActive: boolean;
   timestamp: string;
+  isLiveBackend?: boolean;
 }
 
 export const PAYPAL_CONFIG = {
@@ -43,13 +46,52 @@ export const PAYPAL_CONFIG = {
 /**
  * Autonomous Buyer Agent evaluates whether the seller's terms fall within
  * the contractor's explicit financial spending mandate (< $100/mo).
+ *
+ * Calls FastAPI backend at POST /api/agent/spending-mandate/evaluate
  */
-export function evaluateAgentNegotiation(
+export async function evaluateAgentNegotiation(
   request: AgentNegotiationRequest
-): AgentNegotiationResponse {
+): Promise<AgentNegotiationResponse> {
   const sellerMonthlyRate = 89.0;
-  const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
+  const buyerAgentId = `BuyerAgent-${request.contractorName.split(' ')[0]}-${request.tradeVertical.replace(/\s+/g, '')}`;
 
+  try {
+    const res = await fetch('/api/agent/spending-mandate/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        buyerAgentId: buyerAgentId,
+        amount: sellerMonthlyRate,
+        recurrence: 'monthly',
+        category: 'telephony-screener',
+        monthlyBudgetCap: request.maxMonthlyBudget,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const message = data.approved
+        ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Estimated ROI saves $${request.missedCallLossEstimate}/mo in lost revenue.`
+        : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds contractor cap ($${request.maxMonthlyBudget}).`;
+
+      return {
+        agreedPlanId: PAYPAL_CONFIG.planId,
+        agreedPlanName: `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`,
+        monthlyFee: sellerMonthlyRate,
+        mandateSatisfied: data.approved,
+        kycRequired: true,
+        message: data.reason || message,
+        sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
+        mandateToken: data.mandateProofHash,
+        isLiveBackend: true,
+      };
+    }
+  } catch (err) {
+    console.warn('[A2A Agent] Live backend not reachable, using local mandate simulation:', err);
+  }
+
+  // Graceful client-side fallback
+  const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
   return {
     agreedPlanId: PAYPAL_CONFIG.planId,
     agreedPlanName: `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`,
@@ -60,26 +102,85 @@ export function evaluateAgentNegotiation(
       ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Estimated ROI saves $${request.missedCallLossEstimate}/mo in lost contractor revenue.`
       : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds local contractor cap ($${request.maxMonthlyBudget}).`,
     sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
+    mandateToken: isBudgetAcceptable ? 'MANDATE-SIMULATED-LOCAL-TOKEN' : undefined,
+    isLiveBackend: false,
   };
+}
+
+/**
+ * Resets the spending mandate ledger on the backend.
+ */
+export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/agent/spending-mandate/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buyerAgentId ? { buyerAgentId } : {}),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[A2A Agent] Could not reset mandate ledger:', err);
+    return false;
+  }
 }
 
 /**
  * Seller Agent verifies PayPal Subscription token and provisions an unassailable
  * inbound-only Telnyx DID, permanently locking out autodialers to ensure FCC/TCPA compliance.
+ *
+ * Calls FastAPI backend at POST /api/agent/provision with client-side fallback.
  */
 export async function executeProvisioningAfterSubscription(
   subscriptionId: string,
-  contractorEntity: string
+  contractorEntity: string,
+  _tradeVertical: string = 'Tile & Flooring',
+  areaCode: string = '863'
 ): Promise<ProvisioningResult> {
-  // Simulated verification of subscription state against PayPal Subscriptions API
-  await new Promise((resolve) => setTimeout(resolve, 800));
+  const cleanAc = areaCode.replace(/\D/g, '') || '863';
+  try {
+    const res = await fetch('/api/agent/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscriptionId: subscriptionId,
+        contractorEmail: 'adam@floorsmithllc.com',
+        areaCode: cleanAc,
+      }),
+    });
 
-  const sampleDids = [
-    '+1 (863) 802-6000',
-    '+1 (863) 356-7801',
-    '+1 (863) 356-7802',
-    '+1 (863) 356-7803',
-  ];
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        subscriptionId: data.subscriptionId,
+        allocatedDid: data.assignedDid,
+        carrierRespOrg: data.carrier,
+        kycBoundEntity: contractorEntity,
+        tcpaGuardActive: true,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        isLiveBackend: true,
+      };
+    }
+  } catch (err) {
+    console.warn('[A2A Agent] Live backend not reachable, using local provisioning simulation:', err);
+  }
+
+  // Graceful client-side fallback matching requested area code
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const prefix = cleanAc === '863' ? '802' : '555';
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  const sampleDids =
+    cleanAc === '863'
+      ? [
+          '+1 (863) 267-8902',
+          '+1 (863) 356-7801',
+          '+1 (863) 356-7802',
+          '+1 (863) 356-7803',
+        ]
+      : [
+          `+1 (${cleanAc}) ${prefix}-${randomSuffix}`,
+          `+1 (${cleanAc}) ${prefix}-${randomSuffix + 1}`,
+        ];
   const allocatedDid = sampleDids[Math.floor(Math.random() * sampleDids.length)];
 
   return {
@@ -90,5 +191,62 @@ export async function executeProvisioningAfterSubscription(
     kycBoundEntity: contractorEntity,
     tcpaGuardActive: true,
     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    isLiveBackend: false,
+  };
+}
+
+export interface DispatchLockResult {
+  success: boolean;
+  slotLockedUntil: string;
+  crewAssigned: string;
+  territoryZone: string;
+  paypalTransactionId: string;
+  isLiveBackend?: boolean;
+}
+
+/**
+ * Atomically locks a 75-minute estimate window upon verified PayPal deposit capture.
+ * Calls FastAPI backend at POST /api/agent/dispatch/lock-slot with client-side fallback.
+ */
+export async function lockDispatchSlot(
+  leadId: string,
+  territoryZone: string,
+  slotStartIso: string,
+  paypalTransactionId: string
+): Promise<DispatchLockResult> {
+  try {
+    const res = await fetch('/api/agent/dispatch/lock-slot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        leadId,
+        territoryZone,
+        slotStartIso,
+        paypalTransactionId,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: data.success,
+        slotLockedUntil: data.slotLockedUntil,
+        crewAssigned: data.crewAssigned,
+        territoryZone: data.territoryZone,
+        paypalTransactionId,
+        isLiveBackend: true,
+      };
+    }
+  } catch (err) {
+    console.warn('[Dispatch Lock] Live API not reachable, using fallback:', err);
+  }
+
+  return {
+    success: true,
+    slotLockedUntil: slotStartIso,
+    crewAssigned: 'Zone 1 - North Lakeland',
+    territoryZone,
+    paypalTransactionId,
+    isLiveBackend: false,
   };
 }

@@ -11,15 +11,9 @@ import httpx
 from ..config import settings
 from ..models import ProvisionRequest, ProvisionResponse
 
-logger = logging.getLogger("telnyx_provisioner")
+from .telecom_router import allocate_dynamic_did
 
-# Local deterministic DID pool for sandbox/mock testing
-MOCK_DID_POOL = [
-    "+18638026000",
-    "+18635550144",
-    "+18635550188",
-    "+18635550199",
-]
+logger = logging.getLogger("telnyx_provisioner")
 
 
 class TelnyxProvisioner:
@@ -28,33 +22,43 @@ class TelnyxProvisioner:
         self.mock_mode = settings.mock_external_apis or not self.api_key
         self._allocated_inventory: Dict[str, Dict[str, Any]] = {}
 
-    async def provision_did(self, request: ProvisionRequest) -> ProvisionResponse:
+    async def provision_did(self, request: ProvisionRequest, simulate_exhaustion: bool = False) -> ProvisionResponse:
         """Provisions a dedicated 10DLC telephone DID anchored to verified PayPal identity."""
         if self.mock_mode:
-            # Deterministic allocation based on subscription ID hash
-            idx = abs(hash(request.subscription_id)) % len(MOCK_DID_POOL)
-            assigned_did = MOCK_DID_POOL[idx]
+            seed = f"{request.contractor_email}:{request.subscription_id}"
+            alloc = allocate_dynamic_did(
+                preferred_area_code=request.area_code,
+                simulate_exhaustion=simulate_exhaustion,
+                contractor_seed=seed,
+            )
+            assigned_did = alloc["did"]
+            region = alloc.get("region", "Standard 10DLC Pool")
+            failover = alloc.get("failover_triggered", False)
 
             record = {
                 "did": assigned_did,
                 "subscription_id": request.subscription_id,
                 "contractor_email": request.contractor_email,
                 "status": "ALLOCATED_AND_ACTIVE",
-                "carrier": "Telnyx LLC (Simulated Sandbox Pool)",
+                "carrier": f"Telnyx LLC ({region})",
                 "routing_state": "ACTIVE_10DLC_BOUND",
+                "failover_triggered": failover,
             }
             self._allocated_inventory[request.subscription_id] = record
 
             logger.info(
-                f"[Telnyx MOCK] Allocated DID {assigned_did} to {request.contractor_email} (Sub: {request.subscription_id})"
+                f"[Telnyx MOCK] Allocated DID {assigned_did} to {request.contractor_email} "
+                f"(Sub: {request.subscription_id}, Failover: {failover}, Region: {region})"
             )
 
             return ProvisionResponse(
                 status="ALLOCATED",
                 assigned_did=assigned_did,
-                carrier="Telnyx LLC",
+                carrier=f"Telnyx LLC ({region})",
                 routing_state="ACTIVE_10DLC_BOUND",
                 subscription_id=request.subscription_id,
+                failover_triggered=failover,
+                region=region,
             )
 
         # Live Telnyx API path

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "fieldsmith-pro-seller": {
+      "command": "python",
+      "args": ["-m", "backend.mcp_server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
+    },
+    "fieldsmith-pro-http": {
+      "url": "http://127.0.0.1:8001/mcp",
+      "transport": "http"
+    }
+  }
+}

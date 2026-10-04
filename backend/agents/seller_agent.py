@@ -46,12 +46,12 @@ SELLER_MCP_TOOLS = [
     },
     {
         "name": "inspect_subscription_tiers",
-        "description": "Inspects FieldSmith Pro commercial subscription tiers, monthly & annual pricing, screening minutes, overage rates, and negotiable trade options.",
+        "description": "Inspects FieldSmith Pro commercial SaaS subscription tiers ($49.99 Solo Starter, $79.99 FieldSmith Pro, $179.99 Fleet Dispatch), screening minutes, overage rates, and features.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "negotiate_tier_terms",
-        "description": "Evaluates buyer budget cap against desired subscription tier. If standard rate exceeds budget, autonomously negotiates tailored trade plan or pre-approved counter-offer with signed cryptographic mandate.",
+        "description": "Evaluates buyer budget cap against desired FieldSmith SaaS tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Solo Starter at $49.99/mo) with a signed AP2 Intent Mandate.",
         "input_schema": {
             "type": "object",
             "required": ["buyer_agent_id", "contractor_email", "tier_id", "monthly_budget_cap"],
@@ -66,7 +66,7 @@ SELLER_MCP_TOOLS = [
                 },
                 "tier_id": {
                     "type": "string",
-                    "description": "Desired subscription tier (e.g. 'flooring-tile', 'solo-starter')",
+                    "description": "Desired FieldSmith SaaS subscription tier ('solo-starter' at $49.99, 'fieldsmith-pro' or 'flooring-tile' at $79.99, 'pro-dispatch' at $179.99)",
                 },
                 "monthly_budget_cap": {
                     "type": "number",
@@ -236,91 +236,67 @@ class SellerAgent:
         }
 
     async def inspect_subscription_tiers(self) -> Dict[str, Any]:
-        """Tool implementation: Returns rich commercial subscription tiers, quotas, and pricing parameters."""
+        """Tool implementation: Returns FieldSmith Pro SaaS subscription tiers, quotas, and pricing parameters."""
         return {
             "provider": self.agent_name,
             "currency": "USD",
             "protocol_support": ["AP2", "KYA", "FIDO"],
+            "service_description": "FieldSmith Pro AI Telephony & Voice Dispatch Receptionist SaaS for Field Service Contractors",
             "subscription_plans": [
                 {
                     "tier_id": "solo-starter",
                     "trade_id": "solo-starter",
-                    "title": "Solo Starter Intake",
+                    "title": "FieldSmith Solo Starter ($49.99/mo)",
                     "monthly_price": 49.99,
                     "annual_price": "479.90",
                     "screening_minutes": 100,
                     "overage_rate_per_min": 0.25,
                     "is_negotiable": False,
                     "features": [
-                        "100 Screening Minutes",
-                        "Automated Voice Screener",
-                        "Dedicated 10DLC Number",
-                        "Dynamic Negotiation Tier",
+                        "100 AI Screening Minutes",
+                        "Automated Voice Screener & Receptionist",
+                        "Dedicated 10DLC Business Phone Number",
+                        "Instant SMS Lead Summary Forwarding",
                     ],
                 },
                 {
-                    "tier_id": "flooring-tile",
+                    "tier_id": "fieldsmith-pro",
                     "trade_id": "flooring-tile",
-                    "title": "Tile & Custom Flooring Specialized Screener",
+                    "title": "FieldSmith Pro Specialized Trade Screener ($79.99/mo)",
                     "monthly_price": 79.99,
                     "annual_price": "767.90",
                     "screening_minutes": 300,
                     "overage_rate_per_min": 0.20,
                     "is_negotiable": False,
-                    "features": [
-                        "300 Screening Minutes",
-                        "Sub-500ms Voice Screener",
-                        "Substrate & Tile Scoping",
-                        "Deposit Locking",
+                    "supported_verticals": [
+                        "Flooring & Custom Tile",
+                        "Roofing & Storm Restoration",
+                        "Emergency Plumbing",
+                        "HVAC & Electrical",
                     ],
-                },
-                {
-                    "tier_id": "roofing-storm",
-                    "trade_id": "roofing-storm",
-                    "title": "Roofing & Storm Restoration",
-                    "monthly_price": 79.99,
-                    "annual_price": "767.90",
-                    "screening_minutes": 300,
-                    "overage_rate_per_min": 0.20,
-                    "is_negotiable": False,
                     "features": [
-                        "300 Screening Minutes",
-                        "Hail Damage Triage",
-                        "Photo Intake Link",
-                        "Insurance Intake",
-                    ],
-                },
-                {
-                    "tier_id": "plumbing-emergency",
-                    "trade_id": "plumbing-emergency",
-                    "title": "Emergency Plumbing & Rooter",
-                    "monthly_price": 79.99,
-                    "annual_price": "767.90",
-                    "screening_minutes": 300,
-                    "overage_rate_per_min": 0.20,
-                    "is_negotiable": False,
-                    "features": [
-                        "300 Screening Minutes",
-                        "Burst Pipe Triage",
-                        "Instant GPS Mobilization",
-                        "24/7 Screening",
+                        "300 AI Screening Minutes",
+                        "Sub-500ms Gemini Live Receptionist",
+                        "Custom Trade Scoping (Substrate, Square Footage, Takeoff Sizing)",
+                        "SMS Jobsite Photo Intake & Deposit Locking",
+                        "1-Tap CRM & Jobber Webhook Export",
                     ],
                 },
                 {
                     "tier_id": "pro-dispatch",
                     "trade_id": "pro-dispatch",
-                    "title": "Pro Multi-Trade / High-Volume Dispatch",
+                    "title": "FieldSmith Fleet Multi-Crew Dispatch ($179.99/mo)",
                     "monthly_price": 179.99,
                     "annual_price": "1727.90",
                     "screening_minutes": 1000,
                     "overage_rate_per_min": 0.15,
                     "is_negotiable": False,
                     "features": [
-                        "1000 Screening Minutes",
-                        "Fleet Multi-Trade Routing",
-                        "Unlimited Telephony Intake",
+                        "1000 AI Screening Minutes",
+                        "Multi-Crew & Multi-Trade Fleet Routing",
+                        "Priority Telephony Intake Lines",
                         "Bryntum Dispatch Synchronization",
-                        "Full ERP Automation",
+                        "Full QuickBooks Online & Jobber ERP Automation",
                     ],
                 },
             ],
@@ -385,20 +361,39 @@ class SellerAgent:
         """
         tier_prices = {
             "solo-starter": 49.99,
+            "solo": 49.99,
+            "fieldsmith-pro": 79.99,
+            "pro": 79.99,
             "flooring-tile": 79.99,
             "roofing-storm": 79.99,
             "plumbing-emergency": 79.99,
             "pro-dispatch": 179.99,
+            "fleet": 179.99,
         }
         tier_minutes = {
             "solo-starter": 100,
+            "solo": 100,
+            "fieldsmith-pro": 300,
+            "pro": 300,
             "flooring-tile": 300,
             "roofing-storm": 300,
             "plumbing-emergency": 300,
             "pro-dispatch": 1000,
+            "fleet": 1000,
         }
-        standard_price = tier_prices.get(tier_id, 79.99)
-        minutes = tier_minutes.get(tier_id, 300)
+
+        if tier_id not in tier_prices:
+            return {
+                "status": "REJECTED",
+                "error": "UNKNOWN_TIER",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "reason": f"Unknown tier_id '{tier_id}'. Available FieldSmith tiers: 'solo-starter' ($49.99/mo), 'fieldsmith-pro' ($79.99/mo), 'pro-dispatch' ($179.99/mo).",
+            }
+
+        standard_price = tier_prices[tier_id]
+        minutes = tier_minutes[tier_id]
 
         if not contractor_email or "@" not in contractor_email:
             return {
@@ -472,10 +467,11 @@ class SellerAgent:
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": remaining_after_solo,
                 "reason": (
-                    f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                    f"Counter-offer: Down-tier to 'Solo Starter' at $49.99/mo (100 screening minutes), leaving ${remaining_after_solo:.2f} in your monthly budget. "
+                    f"Requested FieldSmith plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
+                    f"Counter-offer: Down-tier to 'FieldSmith Solo Starter' at $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line), "
+                    f"leaving ${remaining_after_solo:.2f} in your monthly software budget. "
                     f"A pre-signed mandateProofHash is included; call purchase_subscription with tier_id='solo-starter' "
-                    f"and agreed_monthly_rate=49.99 to bind instantly."
+                    f"and agreed_monthly_rate=49.99 to bind instantly to PayPal Vault."
                 ),
             }
 

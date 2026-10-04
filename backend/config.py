@@ -53,6 +53,12 @@ class Settings(BaseSettings):
         alias="A2A_MANDATE_SECRET",
     )
 
+    # Asymmetric Ed25519 Signing Keys (AP2 Protocol)
+    a2a_seller_private_key: str = Field(default="", alias="A2A_SELLER_PRIVATE_KEY")
+    a2a_private_key: str = Field(default="", alias="A2A_PRIVATE_KEY")
+    a2a_buyer_public_key: str = Field(default="", alias="A2A_BUYER_PUBLIC_KEY")
+
+
 
 settings = Settings()
 

@@ -473,6 +473,10 @@ class SellerAgent:
                 # The signed mandate's cap strictly overrides any unsigned monthly_budget_cap passed in arguments
                 monthly_budget_cap = signed_cap
 
+            payer_in_mandate = buyer_intent_mandate.get("payer", {}).get("email")
+            if payer_in_mandate and not contractor_email:
+                contractor_email = str(payer_in_mandate).strip().lower()
+
         if not contractor_email or "@" not in contractor_email:
             return {
                 "status": "REJECTED",
@@ -678,7 +682,7 @@ class SellerAgent:
             },
         )
         cap = auth.get("monthly_budget_cap", 100.0)
-        remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap)
+        remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
 
         # 4. Deterministic Subscription ID
         seed = f"{mandate_proof_hash or offer_id}:{tier_id}:{agreed_monthly_rate:.2f}"
@@ -825,24 +829,11 @@ class SellerAgent:
         # 1. Validate that the PayPal subscription exists and has been captured
         sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id.strip())
         if not sub:
-            if subscription_id.strip().startswith("I-AUTONOMOUS-") or subscription_id.strip().startswith("I-A2A-"):
-                sub = {
-                    "status": "ACTIVE",
-                    "subscription_id": subscription_id.strip(),
-                    "contractor_email": contractor_email,
-                    "contractor_name": "Marcus Miller",
-                    "business_entity": "Miller Custom Flooring LLC",
-                    "agreed_monthly_rate": 79.99,
-                    "tier_id": "fieldsmith-pro",
-                    "mandate_proof_hash": f"proof_{subscription_id.strip()}",
-                }
-                _COMPLETED_SUBSCRIPTIONS[subscription_id.strip()] = sub
-            else:
-                return {
-                    "status": "REJECTED",
-                    "error": "SUBSCRIPTION_NOT_FOUND",
-                    "reason": f"Subscription '{subscription_id}' does not exist or has not been activated in PayPal Vault. Call purchase_subscription first.",
-                }
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_NOT_FOUND",
+                "reason": f"Subscription '{subscription_id}' does not exist or has not been activated in PayPal Vault. Call purchase_subscription first.",
+            }
 
         # 2. Identity anti-theft: Ensure contractor_email matches the subscription owner
         owner_email = sub.get("contractor_email", "")

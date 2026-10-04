@@ -416,3 +416,129 @@ async def test_provision_telecom_line_subscription_validation():
     assert res_mismatch["error"] == "IDENTITY_MISMATCH_DETECTED"
 
 
+@pytest.mark.asyncio
+async def test_missing_expires_at_rejected():
+    """Verifies that a buyer intent mandate without expires_at is rejected."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    custom_mandate.pop("expires_at", None)
+    custom_mandate = sign_ap2_intent_mandate(custom_mandate)
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "MANDATE_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_missing_payer_email_rejected():
+    """Verifies that a buyer intent mandate without payer.email is rejected."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    custom_mandate["payer"] = {}
+    custom_mandate = sign_ap2_intent_mandate(custom_mandate)
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "MISSING_PAYER_EMAIL"
+
+
+@pytest.mark.asyncio
+async def test_provision_telecom_line_synthetic_id_rejected():
+    """Verifies that arbitrary I-A2A- or I-AUTONOMOUS- IDs cannot bypass provisioning validation."""
+    res_fake = await seller_agent.provision_telecom_line(
+        subscription_id="I-A2A-0000001",
+        contractor_email="attacker@example.com",
+    )
+    assert res_fake["status"] == "REJECTED"
+    assert res_fake["error"] == "SUBSCRIPTION_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_repo_seed_cannot_forge_mandate():
+    """Verifies that signing with the old hardcoded repo seed is rejected as UNTRUSTED_BUYER_KEY."""
+    import hashlib
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    old_seed = hashlib.sha256(b"fieldsmith_pro_buyer_ed25519_seed_2026").digest()
+    old_priv = ed25519.Ed25519PrivateKey.from_private_bytes(old_seed)
+
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=500.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fleet",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    # Sign using the old seed private key
+    forged = sign_ap2_intent_mandate(custom_mandate, private_key_hex=old_priv.private_bytes_raw().hex())
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fleet",
+        monthly_budget_cap=500.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=forged,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "UNTRUSTED_BUYER_KEY"
+
+
+@pytest.mark.asyncio
+async def test_consecutive_purchases_budget_accounting():
+    """
+    Verifies that multiple test purchases for the same contractor maintain
+    an accurate active monthly commitment without erroneously deducting down to 0.0.
+    """
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert p1["status"] == "ACTIVE"
+    assert p1["monthly_cap_remaining"] == 10.01
+
+    # Second test purchase in the same session
+    neg2 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    p2 = await seller_agent.purchase_subscription(
+        offer_id=neg2["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert p2["status"] == "ACTIVE"
+    assert p2["monthly_cap_remaining"] == 10.01
+
+
+

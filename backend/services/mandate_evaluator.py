@@ -146,28 +146,36 @@ def validate_buyer_intent_mandate(
     if not verify_ap2_intent_mandate(mandate):
         return False, "INVALID_BUYER_INTENT_MANDATE", None
 
-    # Expiry verification
+    # Expiry verification: expires_at is strictly required
     expires_at = mandate.get("expires_at")
-    if expires_at is not None:
-        try:
-            if time.time() > float(expires_at):
-                return False, "MANDATE_EXPIRED", None
-        except (ValueError, TypeError):
-            pass
+    if expires_at is None:
+        return False, "MANDATE_EXPIRED", None
+    try:
+        if time.time() > float(expires_at):
+            return False, "MANDATE_EXPIRED", None
+    except (ValueError, TypeError):
+        return False, "MANDATE_EXPIRED", None
 
-    # Category verification
+    # Category verification: category is strictly required
     category = mandate.get("category")
-    if category:
-        norm_cat = str(category).lower().replace("_", "-")
-        allowed_norm = {c.lower().replace("_", "-") for c in ALLOWED_CATEGORIES}
-        if norm_cat not in allowed_norm and norm_cat != service_category.lower().replace("_", "-"):
-            return False, "UNAUTHORIZED_CATEGORY", None
+    if not category:
+        return False, "UNAUTHORIZED_CATEGORY", None
+    norm_cat = str(category).lower().replace("_", "-")
+    allowed_norm = {c.lower().replace("_", "-") for c in ALLOWED_CATEGORIES}
+    if norm_cat not in allowed_norm and norm_cat != service_category.lower().replace("_", "-"):
+        return False, "UNAUTHORIZED_CATEGORY", None
 
-    # Identity verification
+    # Identity verification: payer.email is strictly required
+    payer = mandate.get("payer")
+    payer_email = payer.get("email") if isinstance(payer, dict) else None
+    if not payer_email or not str(payer_email).strip():
+        return False, "MISSING_PAYER_EMAIL", None
+    payer_email_clean = str(payer_email).strip().lower()
+    if "@" not in payer_email_clean:
+        return False, "INVALID_PAYER_EMAIL", None
+
     if contractor_email:
-        payer = mandate.get("payer")
-        payer_email = payer.get("email") if isinstance(payer, dict) else None
-        if payer_email and payer_email.strip().lower() != contractor_email.strip().lower():
+        if payer_email_clean != contractor_email.strip().lower():
             return False, "IDENTITY_MISMATCH_DETECTED", None
 
     # Extract signed budget cap
@@ -303,30 +311,45 @@ def verify_authorized_mandate(
 
 
 class MandateLedger:
-    """Thread-safe active ledger tracking cumulative monthly agent spend."""
+    """Thread-safe active ledger tracking cumulative monthly agent spend and active contractor commitments."""
 
     def __init__(self, monthly_cap: float = DEFAULT_MONTHLY_CAP):
         self.monthly_cap = monthly_cap
         self._current_spent = 0.0
         self._agent_spent: Dict[str, float] = {}
+        self._contractor_subscriptions: Dict[str, float] = {}
         self._history: list = []
 
     def get_remaining_budget(
-        self, agent_id: str = None, cap: float = None
+        self, agent_id: str = None, cap: float = None, contractor_email: str = None
     ) -> float:
         effective_cap = cap if cap is not None else self.monthly_cap
+        if contractor_email:
+            spent = self._contractor_subscriptions.get(contractor_email.strip().lower(), 0.0)
+            return round(max(0.0, effective_cap - spent), 2)
         if agent_id:
             spent = self._agent_spent.get(agent_id, 0.0)
             return round(max(0.0, effective_cap - spent), 2)
         return round(max(0.0, effective_cap - self._current_spent), 2)
 
     def record_spend(self, amount: float, metadata: Dict[str, Any]):
-        self._current_spent += amount
-        agent_id = metadata.get("agent_id")
-        if agent_id:
-            self._agent_spent[agent_id] = (
-                self._agent_spent.get(agent_id, 0.0) + amount
-            )
+        email = metadata.get("contractor_email")
+        if email:
+            norm_email = email.strip().lower()
+            old_amount = self._contractor_subscriptions.get(norm_email, 0.0)
+            self._contractor_subscriptions[norm_email] = amount
+            self._current_spent = max(0.0, self._current_spent - old_amount + amount)
+            agent_id = metadata.get("agent_id")
+            if agent_id:
+                old_agent = self._agent_spent.get(agent_id, 0.0)
+                self._agent_spent[agent_id] = max(0.0, old_agent - old_amount + amount)
+        else:
+            self._current_spent += amount
+            agent_id = metadata.get("agent_id")
+            if agent_id:
+                self._agent_spent[agent_id] = (
+                    self._agent_spent.get(agent_id, 0.0) + amount
+                )
         self._history.append(
             {"timestamp": time.time(), "amount": amount, **metadata}
         )
@@ -337,6 +360,7 @@ class MandateLedger:
         else:
             self._current_spent = 0.0
             self._agent_spent.clear()
+            self._contractor_subscriptions.clear()
             self._history.clear()
         _AUTHORIZED_MANDATES.clear()
 

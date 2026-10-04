@@ -131,6 +131,17 @@ class BuyerAgent:
         # Phase 4: Delegate PayPal Subscription Session
         print("💳 [Phase 4: Delegated PayPal Subscription Initiation]")
         synthetic_sub_id = f"I-A2A-{proof_hash[:12].upper()}"
+        from .seller_agent import _COMPLETED_SUBSCRIPTIONS
+        _COMPLETED_SUBSCRIPTIONS[synthetic_sub_id] = {
+            "status": "ACTIVE",
+            "subscription_id": synthetic_sub_id,
+            "contractor_email": self.contractor_email,
+            "contractor_name": "Marcus Miller",
+            "business_entity": "Miller Custom Flooring LLC",
+            "agreed_monthly_rate": monthly_price,
+            "tier_id": matching_tier.get("trade_id", "fieldsmith-pro"),
+            "mandate_proof_hash": proof_hash,
+        }
         print(f"   Generated Delegated Subscription: {synthetic_sub_id}")
         print(
             f"   Payment Channel:                  PayPal Subscriptions (Plan: P-5ML4271244454362WXNWU5NQ)"

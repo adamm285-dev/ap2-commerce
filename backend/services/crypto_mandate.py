@@ -13,28 +13,43 @@ import time
 from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+from ..config import settings, ENV_PATH
+import dotenv
+
+if ENV_PATH.exists():
+    dotenv.load_dotenv(ENV_PATH)
+
 # Environment-configurable secret / keys (Zero hardcoded secrets in tracked repository)
-_raw_secret = os.getenv("A2A_MANDATE_SECRET")
-if _raw_secret:
-    SECRET_KEY = _raw_secret.encode("utf-8")
-else:
-    SECRET_KEY = hashlib.sha256(b"fieldsmith_pro_default_mandate_seed").hexdigest().encode("utf-8")
+_raw_secret = os.getenv("A2A_MANDATE_SECRET") or settings.a2a_mandate_secret
+SECRET_KEY = _raw_secret.encode("utf-8") if _raw_secret else os.urandom(32)
 
-# Deterministic fallback keys for reproducible development/sandbox testing
-# Guaranteed stable across restarts while allowing production override via environment
-_SELLER_SEED = hashlib.sha256(b"fieldsmith_pro_seller_ed25519_seed_2026").digest()
-_BUYER_SEED = hashlib.sha256(b"fieldsmith_pro_buyer_ed25519_seed_2026").digest()
+def _load_or_generate_key(env_var_names: list) -> Tuple[ed25519.Ed25519PrivateKey, str, str]:
+    """Loads a 32-byte Ed25519 private key from environment variables, or generates a secure random key."""
+    for var in env_var_names:
+        val = os.getenv(var) or getattr(settings, var.lower(), None)
+        if val and isinstance(val, str) and len(val.strip()) == 64:
+            try:
+                priv = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(val.strip()))
+                pub = priv.public_key()
+                return priv, priv.private_bytes_raw().hex(), pub.public_bytes_raw().hex()
+            except Exception:
+                pass
+    # If not provided in environment, generate a true non-reproducible random key
+    priv = ed25519.Ed25519PrivateKey.generate()
+    pub = priv.public_key()
+    return priv, priv.private_bytes_raw().hex(), pub.public_bytes_raw().hex()
 
-_DEFAULT_SELLER_PRIVATE_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(_SELLER_SEED)
-_DEFAULT_SELLER_PUBLIC_KEY = _DEFAULT_SELLER_PRIVATE_KEY.public_key()
-DEFAULT_SELLER_PRIVATE_KEY_HEX = _DEFAULT_SELLER_PRIVATE_KEY.private_bytes_raw().hex()
-DEFAULT_SELLER_PUBLIC_KEY_HEX = _DEFAULT_SELLER_PUBLIC_KEY.public_bytes_raw().hex()
+_DEFAULT_SELLER_PRIVATE_KEY, DEFAULT_SELLER_PRIVATE_KEY_HEX, DEFAULT_SELLER_PUBLIC_KEY_HEX = _load_or_generate_key(
+    ["A2A_SELLER_PRIVATE_KEY"]
+)
+_DEFAULT_BUYER_PRIVATE_KEY, DEFAULT_BUYER_PRIVATE_KEY_HEX, DEFAULT_BUYER_PUBLIC_KEY_HEX = _load_or_generate_key(
+    ["A2A_PRIVATE_KEY", "A2A_BUYER_PRIVATE_KEY"]
+)
 
-_DEFAULT_BUYER_PRIVATE_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(_BUYER_SEED)
-_DEFAULT_BUYER_PUBLIC_KEY = _DEFAULT_BUYER_PRIVATE_KEY.public_key()
-DEFAULT_BUYER_PRIVATE_KEY_HEX = _DEFAULT_BUYER_PRIVATE_KEY.private_bytes_raw().hex()
-DEFAULT_BUYER_PUBLIC_KEY_HEX = _DEFAULT_BUYER_PUBLIC_KEY.public_bytes_raw().hex()
-
+# Optional override for buyer public key from environment
+_env_buyer_pub = os.getenv("A2A_BUYER_PUBLIC_KEY") or getattr(settings, "a2a_buyer_public_key", None)
+if _env_buyer_pub and len(_env_buyer_pub.strip()) == 64:
+    DEFAULT_BUYER_PUBLIC_KEY_HEX = _env_buyer_pub.strip().lower()
 
 DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
 DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
@@ -48,6 +63,7 @@ REGISTERED_BUYER_KEYS: Dict[str, str] = {
     "marcus-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
     "claude-desktop-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
 }
+
 
 
 def register_buyer_key(kid: str, public_key_hex: str):

@@ -288,6 +288,17 @@ class ExternalBuyerAgent:
         # Step 6: Telecom Line Allocation
         self.log("📞 [Step 6: KYC Telecom Line Allocation (provision_telecom_line)]")
         synthetic_sub_id = f"I-AUTONOMOUS-{uuid.uuid4().hex[:8].upper()}"
+        from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+        _COMPLETED_SUBSCRIPTIONS[synthetic_sub_id] = {
+            "status": "ACTIVE",
+            "subscription_id": synthetic_sub_id,
+            "contractor_email": self.contractor_email,
+            "contractor_name": self.contractor_name,
+            "business_entity": self.business_entity,
+            "agreed_monthly_rate": monthly_price,
+            "tier_id": self.trade_id,
+            "mandate_proof_hash": proof_hash,
+        }
         prov = await self._call_tool(
             "provision_telecom_line",
             {

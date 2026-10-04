@@ -155,6 +155,10 @@ SELLER_MCP_TOOLS = [
 ]
 
 
+# Cache of completed subscriptions for strict idempotency (stable create_time)
+_COMPLETED_SUBSCRIPTIONS: Dict[str, Dict[str, Any]] = {}
+
+
 class SellerAgent:
     def __init__(self, agent_name: str = "FieldSmith Pro Seller MCP"):
         self.agent_name = agent_name
@@ -225,7 +229,7 @@ class SellerAgent:
         }
 
     async def inspect_subscription_tiers(self) -> Dict[str, Any]:
-        """Tool implementation: Returns rich commercial subscription tiers, minutes, and negotiable trade options."""
+        """Tool implementation: Returns rich commercial subscription tiers, quotas, and pricing parameters."""
         return {
             "provider": self.agent_name,
             "currency": "USD",
@@ -236,7 +240,7 @@ class SellerAgent:
                     "trade_id": "solo-starter",
                     "title": "Solo Starter Intake",
                     "monthly_price": 49.99,
-                    "annual_price": 479.90,
+                    "annual_price": "479.90",
                     "screening_minutes": 100,
                     "overage_rate_per_min": 0.25,
                     "is_negotiable": False,
@@ -252,7 +256,7 @@ class SellerAgent:
                     "trade_id": "flooring-tile",
                     "title": "Tile & Custom Flooring Specialized Screener",
                     "monthly_price": 79.99,
-                    "annual_price": 767.90,
+                    "annual_price": "767.90",
                     "screening_minutes": 300,
                     "overage_rate_per_min": 0.20,
                     "is_negotiable": False,
@@ -268,10 +272,10 @@ class SellerAgent:
                     "trade_id": "roofing-storm",
                     "title": "Roofing & Storm Restoration",
                     "monthly_price": 79.99,
-                    "annual_price": 767.90,
+                    "annual_price": "767.90",
                     "screening_minutes": 300,
                     "overage_rate_per_min": 0.20,
-                    "is_negotiable": True,
+                    "is_negotiable": False,
                     "features": [
                         "300 Screening Minutes",
                         "Hail Damage Triage",
@@ -284,10 +288,10 @@ class SellerAgent:
                     "trade_id": "plumbing-emergency",
                     "title": "Emergency Plumbing & Rooter",
                     "monthly_price": 79.99,
-                    "annual_price": 767.90,
+                    "annual_price": "767.90",
                     "screening_minutes": 300,
                     "overage_rate_per_min": 0.20,
-                    "is_negotiable": True,
+                    "is_negotiable": False,
                     "features": [
                         "300 Screening Minutes",
                         "Burst Pipe Triage",
@@ -300,10 +304,10 @@ class SellerAgent:
                     "trade_id": "pro-dispatch",
                     "title": "Pro Multi-Trade / High-Volume Dispatch",
                     "monthly_price": 179.99,
-                    "annual_price": 1727.90,
+                    "annual_price": "1727.90",
                     "screening_minutes": 1000,
                     "overage_rate_per_min": 0.15,
-                    "is_negotiable": True,
+                    "is_negotiable": False,
                     "features": [
                         "1000 Screening Minutes",
                         "Fleet Multi-Trade Routing",
@@ -312,13 +316,6 @@ class SellerAgent:
                         "Full ERP Automation",
                     ],
                 },
-            ],
-            "tiers": [
-                {"trade_id": "solo-starter", "title": "Solo Starter Intake", "monthly_price": 49.99},
-                {"trade_id": "flooring-tile", "title": "Tile & Custom Flooring", "monthly_price": 79.99},
-                {"trade_id": "roofing-storm", "title": "Roofing & Storm Restoration", "monthly_price": 79.99},
-                {"trade_id": "plumbing-emergency", "title": "Emergency Plumbing & Rooter", "monthly_price": 79.99},
-                {"trade_id": "pro-dispatch", "title": "Pro Multi-Trade Dispatch", "monthly_price": 179.99},
             ],
         }
 
@@ -333,8 +330,7 @@ class SellerAgent:
     ) -> Dict[str, Any]:
         """
         Tool implementation: Evaluates buyer budget cap against desired tier.
-        Autonomously negotiates tailored trade pricing or pre-approved counter-offers
-        with verifiable AP2 cryptographic mandate proof hashes.
+        Autonomously negotiates down-tier counter-offers with verifiable AP2 cryptographic mandate proof hashes.
         """
         tier_prices = {
             "solo-starter": 49.99,
@@ -363,6 +359,7 @@ class SellerAgent:
                 monthly_budget_cap=monthly_budget_cap,
             )
             mandate_hash = mandate_res.get("mandateProofHash", "")
+            negotiation_id = f"neg_{hashlib.sha256(mandate_hash.encode()).hexdigest()[:12]}"
             register_authorized_mandate(
                 mandate_hash,
                 {
@@ -370,11 +367,14 @@ class SellerAgent:
                     "amount": standard_price,
                     "buyer_agent_id": buyer_agent_id,
                     "monthly_budget_cap": monthly_budget_cap,
+                    "negotiation_id": negotiation_id,
                 },
             )
             return {
                 "status": "APPROVED",
                 "approved": True,
+                "original_request_approved": True,
+                "negotiation_id": negotiation_id,
                 "tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
@@ -393,6 +393,7 @@ class SellerAgent:
                 recurrence=recurrence,
                 secret=settings.a2a_mandate_secret,
             )
+            negotiation_id = f"neg_{hashlib.sha256(solo_hash.encode()).hexdigest()[:12]}"
             register_authorized_mandate(
                 solo_hash,
                 {
@@ -400,6 +401,7 @@ class SellerAgent:
                     "amount": 49.99,
                     "buyer_agent_id": buyer_agent_id,
                     "monthly_budget_cap": monthly_budget_cap,
+                    "negotiation_id": negotiation_id,
                 },
             )
 
@@ -407,11 +409,12 @@ class SellerAgent:
             return {
                 "status": "COUNTER_OFFER",
                 "approved": False,
+                "original_request_approved": False,
+                "negotiation_id": negotiation_id,
                 "tier_id": tier_id,
                 "counter_offer_available": True,
                 "counter_offer_tier": "Solo Starter",
                 "counter_offer_tier_id": "solo-starter",
-                "counter_offer_plan_id": "solo-starter",
                 "counter_offer_amount": 49.99,
                 "counter_offer_mandate_hash": solo_hash,
                 "mandate_proof_hash": solo_hash,
@@ -429,13 +432,13 @@ class SellerAgent:
         return {
             "status": "REJECTED",
             "approved": False,
+            "original_request_approved": False,
             "tier_id": tier_id,
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
             "monthly_cap_remaining": round(monthly_budget_cap, 2),
             "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (Solo Starter at $49.99/mo).",
         }
-
 
     async def verify_spending_mandate(
         self,
@@ -465,13 +468,19 @@ class SellerAgent:
     ) -> Dict[str, Any]:
         """
         Tool implementation: Binds verified AP2 Intent Mandate to PayPal Recurring Vault.
-        Cryptographically verifies the mandate proof against tier and agreed rate.
+        Cryptographically verifies the mandate proof against tier, rate, and contractor identity.
+        Replayed requests return the identical, immutable subscription record (idempotency).
         """
-        # 1. Anti-Tamper Verification
+        # 1. Idempotency Check: return existing subscription if already finalized
+        if mandate_proof_hash in _COMPLETED_SUBSCRIPTIONS:
+            return _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash]
+
+        # 2. Anti-Tamper & Identity Verification
         valid, reason = verify_authorized_mandate(
             proof_hash=mandate_proof_hash,
             tier_id=tier_id,
             agreed_rate=agreed_monthly_rate,
+            contractor_email=contractor_email,
         )
         if not valid:
             logger.warning(f"[SECURITY] Mandate verification failed for {tier_id}: {reason}")
@@ -482,7 +491,7 @@ class SellerAgent:
                 "message": f"Purchase rejected: {reason}",
             }
 
-        # 2. Record spend in ledger on actual checkout completion
+        # 3. Record spend in ledger on actual checkout completion
         ledger.record_spend(
             agreed_monthly_rate,
             {
@@ -492,7 +501,7 @@ class SellerAgent:
             },
         )
 
-        # 3. Deterministic subscription ID based on mandate proof and terms
+        # 4. Deterministic Subscription ID
         seed = f"{mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
         stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
         sub_id = f"I-A2A-VAULT-{stable_int:07d}"
@@ -500,31 +509,86 @@ class SellerAgent:
         utc_now = datetime.datetime.now(datetime.timezone.utc)
         created_time = utc_now.isoformat()
         next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
+        negotiation_id = f"neg_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:12]}"
+        mandate_id = f"mandate_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:16]}"
+        payer_id = f"PAYER-{hashlib.sha256(contractor_email.encode()).hexdigest()[:12].upper()}"
+        vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
+        payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
+        paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
 
-        return {
+        ap2_mandate = {
+            "mandate_id": mandate_id,
+            "vct": "ap2.mandate.intent.1",
+            "issuer": contractor_email,
+            "payee": "PAYEE-FIELDSMITH-PRO-TELEPHONY",
+            "amount": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"},
+            "recurrence": "monthly",
+            "category": "TELEPHONY_AI_SCREENER",
+            "negotiation_id": negotiation_id,
+            "issued_at": int(utc_now.timestamp()),
+            "expires_at": int(utc_now.timestamp()) + 2592000,
+            "nonce": hashlib.sha256(f"{mandate_proof_hash}:nonce".encode()).hexdigest()[:16],
+            "signature_alg": "Ed25519",
+            "public_key": "4c4c8d7696f8c7b8979148d2d6313175c58a8a49c25a07c37de756e1ee94e63b",
+            "user_present": False,
+        }
+
+        billing_cycles = [
+            {
+                "sequence": 1,
+                "tenure_type": "REGULAR",
+                "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+                "total_cycles": 0,
+                "pricing_scheme": {
+                    "fixed_price": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"}
+                },
+            }
+        ]
+
+        hateoas_links = [
+            {
+                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
+                "rel": "self",
+                "method": "GET",
+            },
+            {
+                "href": f"https://www.sandbox.paypal.com/checkoutnow?token=BA-{sub_id}",
+                "rel": "approve",
+                "method": "GET",
+            },
+        ]
+
+        response = {
             "status": "ACTIVE",
             "subscription_id": sub_id,
+            "negotiation_id": negotiation_id,
             "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
             "product_id": "PROD-FIELDSMITH-A2A-TELEPHONY",
+            "payer_id": payer_id,
+            "vault_id": vault_id,
+            "payment_token": payment_token,
             "tier_id": tier_id,
             "agreed_monthly_rate": round(agreed_monthly_rate, 2),
             "billing_cycle": "monthly",
+            "billing_cycles": billing_cycles,
             "currency": "USD",
             "mandate_proof_hash": mandate_proof_hash,
             "contractor_email": contractor_email,
             "paypal_vault_status": "VAULT_BOUND",
             "paypal_environment": "sandbox",
+            "paypal_request_id": paypal_req_id,
             "create_time": created_time,
             "next_billing_time": next_billing,
-            "hateoas_links": [
-                {
-                    "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
-                    "rel": "self",
-                    "method": "GET",
-                }
-            ],
+            "hateoas_links": hateoas_links,
+            "ap2_intent_mandate": ap2_mandate,
             "message": f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate.",
         }
+
+        # Cache for strict idempotency
+        _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
+        _COMPLETED_SUBSCRIPTIONS[sub_id] = response
+        return response
+
 
 
     async def calculate_quote(

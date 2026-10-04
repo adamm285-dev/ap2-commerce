@@ -45,11 +45,13 @@ def verify_authorized_mandate(
     proof_hash: str,
     tier_id: str,
     agreed_rate: float,
+    contractor_email: Optional[str] = None,
     max_cap: Optional[float] = None,
 ) -> Tuple[bool, str]:
     """
     Validates that a purchase submission matches a cryptographically authorized mandate proof.
-    Prevents buyer agents or attackers from submitting a $49.99 proof for a $179.99 tier.
+    Prevents buyer agents or attackers from submitting a $49.99 proof for a $179.99 tier,
+    or claiming a mandate issued to a different contractor email.
     """
     if not proof_hash or not proof_hash.strip():
         return False, "EMPTY_MANDATE_HASH: A signed AP2 mandate proof hash is required."
@@ -61,6 +63,16 @@ def verify_authorized_mandate(
             return False, "MANDATE_EXPIRED: The authorized mandate proof has expired."
         allowed_tier = auth.get("tier_id")
         allowed_rate = auth.get("amount", 0.0)
+        bound_email = auth.get("contractor_email")
+
+        # Identity anti-theft verification
+        if bound_email and contractor_email:
+            if bound_email.strip().lower() != contractor_email.strip().lower():
+                return (
+                    False,
+                    f"IDENTITY_THEFT_DETECTED: Mandate is cryptographically bound to '{bound_email}', cannot be redeemed by '{contractor_email}'.",
+                )
+
         # Verify rate doesn't exceed authorized amount
         if round(agreed_rate, 2) > round(allowed_rate, 2):
             return (
@@ -69,7 +81,6 @@ def verify_authorized_mandate(
             )
         # If tier was restricted, verify tier
         if allowed_tier and allowed_tier not in ["*", "any", tier_id]:
-            # Allow compatible aliases (e.g. solo-starter matching plan_solo_starter)
             normalized_allowed = allowed_tier.replace("-", "").replace("_", "").lower()
             normalized_req = tier_id.replace("-", "").replace("_", "").lower()
             if normalized_allowed not in normalized_req and normalized_req not in normalized_allowed:

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "fieldsmith-pro-a2a-seller": {
-      "command": "python",
+      "command": "C:\\Python313\\python.exe",
       "args": [
         "-m",
         "backend.mcp_server"

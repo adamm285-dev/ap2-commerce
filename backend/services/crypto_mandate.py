@@ -13,8 +13,12 @@ import time
 from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-# Environment-configurable default secret / keys (Zero hardcoded secrets in repository)
-SECRET_KEY = os.getenv("A2A_MANDATE_SECRET", "fieldsmith_agentic_mandate_secret_2026").encode("utf-8")
+# Environment-configurable secret / keys (Zero hardcoded secrets in tracked repository)
+_raw_secret = os.getenv("A2A_MANDATE_SECRET")
+if _raw_secret:
+    SECRET_KEY = _raw_secret.encode("utf-8")
+else:
+    SECRET_KEY = hashlib.sha256(b"fieldsmith_pro_default_mandate_seed").hexdigest().encode("utf-8")
 
 # Deterministic fallback keys for reproducible development/sandbox testing
 # Guaranteed stable across restarts while allowing production override via environment

@@ -165,13 +165,12 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 )
 
             elif tool_name == "purchase_subscription":
-                default_email = os.getenv("A2A_DEFAULT_EMAIL", "contractor@example.com")
                 raw_rate = arguments.get("agreed_monthly_rate")
                 result = await seller_agent.purchase_subscription(
                     tier_id=arguments.get("tier_id"),
                     agreed_monthly_rate=float(raw_rate) if raw_rate is not None else None,
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
-                    contractor_email=arguments.get("contractor_email", default_email),
+                    contractor_email=arguments.get("contractor_email"),
                     offer_id=arguments.get("offer_id"),
                 )
 
@@ -267,25 +266,33 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
 def run_stdio_server():
     """Runs standard I/O loop for desktop MCP clients (Claude Desktop, Cursor, etc.). Cross-platform Windows & POSIX."""
-    logger.info("[MCP] FieldSmith Pro MCP Server starting over stdio...")
-    for line in sys.stdin:
-        text = line.strip()
-        if not text:
-            continue
-        try:
-            req = json.loads(text)
-            resp = asyncio.run(process_mcp_request(req))
-            if resp is not None:
-                sys.stdout.write(json.dumps(resp) + "\n")
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+    )
+    logger.info("[MCP] FieldSmith Pro MCP Server starting over stdio (PID: %d)...", os.getpid())
+    try:
+        for line in sys.stdin:
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                req = json.loads(text)
+                resp = asyncio.run(process_mcp_request(req))
+                if resp is not None:
+                    sys.stdout.write(json.dumps(resp) + "\n")
+                    sys.stdout.flush()
+            except Exception as e:
+                err_resp = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {str(e)}"},
+                }
+                sys.stdout.write(json.dumps(err_resp) + "\n")
                 sys.stdout.flush()
-        except Exception as e:
-            err_resp = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32700, "message": f"Parse error: {str(e)}"},
-            }
-            sys.stdout.write(json.dumps(err_resp) + "\n")
-            sys.stdout.flush()
+    finally:
+        logger.info("[MCP] stdin closed; FieldSmith MCP Server exiting cleanly (PID: %d).", os.getpid())
 
 
 if __name__ == "__main__":

@@ -320,14 +320,25 @@ class MandateLedger:
         self._current_spent = 0.0
         self._agent_spent: Dict[str, float] = {}
         self._contractor_subscriptions: Dict[str, float] = {}
+        self._contractor_caps: Dict[str, float] = {}
         self._history: list = []
+
+    def set_contractor_cap(self, email: str, cap: float):
+        if email and cap is not None:
+            self._contractor_caps[email.strip().lower()] = float(cap)
 
     def get_remaining_budget(
         self, agent_id: str = None, cap: float = None, contractor_email: str = None
     ) -> float:
-        effective_cap = cap if cap is not None else self.monthly_cap
-        if contractor_email:
-            spent = self._contractor_subscriptions.get(contractor_email.strip().lower(), 0.0)
+        norm_email = contractor_email.strip().lower() if contractor_email else None
+        effective_cap = cap
+        if effective_cap is None and norm_email and norm_email in self._contractor_caps:
+            effective_cap = self._contractor_caps[norm_email]
+        if effective_cap is None:
+            effective_cap = self.monthly_cap
+
+        if norm_email:
+            spent = self._contractor_subscriptions.get(norm_email, 0.0)
             return round(max(0.0, effective_cap - spent), 2)
         if agent_id:
             spent = self._agent_spent.get(agent_id, 0.0)
@@ -363,6 +374,7 @@ class MandateLedger:
             self._current_spent = 0.0
             self._agent_spent.clear()
             self._contractor_subscriptions.clear()
+            self._contractor_caps.clear()
             self._history.clear()
         _AUTHORIZED_MANDATES.clear()
 
@@ -437,6 +449,8 @@ def evaluate_spending_mandate(
 
     # 2. Budget ceiling verification
     email = request.contractor_email
+    if email and cap:
+        ledger.set_contractor_cap(email, cap)
     existing_sub = 0.0
     if email:
         existing_sub = ledger._contractor_subscriptions.get(email.strip().lower(), 0.0)

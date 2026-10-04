@@ -628,5 +628,163 @@ async def test_budget_exhausted_machine_readable_rejection():
     assert neg_low["counter_offer_available"] is False
 
 
+@pytest.mark.asyncio
+async def test_plan_change_replaces_old_subscription_and_maintains_cap():
+    """
+    Verifies the Plan Change model:
+    1. Marcus negotiates and purchases Solo Starter ($49.99/mo) under $60 cap.
+    2. Marcus renegotiates and purchases a second offer.
+    3. The old subscription is marked REPLACED, the new subscription returns
+       replaces_subscription_id pointing to the old one.
+    4. Total active contractor spend remains <= $60 cap ($49.99/mo) with exactly
+       one active subscription.
+    """
+    email = "marcus@millercustomfloors.com"
+
+    # Step 1: Initial negotiation & purchase
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email=email,
+    )
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email=email,
+    )
+    sub1_id = p1["subscription_id"]
+    assert p1["status"] == "ACTIVE"
+    assert p1["monthly_cap_remaining"] == 10.01
+
+    # Step 2: Renegotiation for replacement plan
+    neg2 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email=email,
+    )
+    assert neg2["status"] == "APPROVED"
+    assert neg2.get("replaces_subscription_id") == sub1_id
+
+    # Step 3: Purchase second offer (replaces first)
+    p2 = await seller_agent.purchase_subscription(
+        offer_id=neg2["offer_id"],
+        contractor_email=email,
+    )
+    sub2_id = p2["subscription_id"]
+    assert p2["status"] == "ACTIVE"
+    assert p2["replaces_subscription_id"] == sub1_id
+    assert p2["monthly_cap_remaining"] == 10.01
+
+    # Step 4: Verify that old subscription was marked REPLACED in-place
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    old_sub = _COMPLETED_SUBSCRIPTIONS[sub1_id]
+    assert old_sub["status"] == "REPLACED"
+    assert old_sub["replaced_by"] == sub2_id
+    assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] == sub2_id
+
+    # Step 5: Verify idempotency replay returns REPLACED status for old offer
+    p1_replay = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email=email,
+    )
+    assert p1_replay["status"] == "REPLACED"
+
+
+@pytest.mark.asyncio
+async def test_provision_rejects_superseded_subscription():
+    """
+    Verifies that calling provision_telecom_line with a replaced/superseded subscription
+    is rejected with SUBSCRIPTION_SUPERSEDED error.
+    """
+    email = "marcus@millercustomfloors.com"
+
+    # Buy plan 1
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email=email,
+    )
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email=email,
+    )
+    sub1_id = p1["subscription_id"]
+
+    # Buy plan 2 (replaces plan 1)
+    neg2 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email=email,
+    )
+    p2 = await seller_agent.purchase_subscription(
+        offer_id=neg2["offer_id"],
+        contractor_email=email,
+    )
+    sub2_id = p2["subscription_id"]
+
+    # Attempt to provision the replaced plan 1
+    prov_old = await seller_agent.provision_telecom_line(
+        subscription_id=sub1_id,
+        contractor_email=email,
+    )
+    assert prov_old["status"] == "REJECTED"
+    assert prov_old["error"] == "SUBSCRIPTION_SUPERSEDED"
+
+    # Provision the active plan 2
+    prov_active = await seller_agent.provision_telecom_line(
+        subscription_id=sub2_id,
+        contractor_email=email,
+    )
+    assert prov_active["status"] == "ALLOCATED"
+    assert prov_active["routingState"] == "ACTIVE_10DLC_BOUND"
+
+
+@pytest.mark.asyncio
+async def test_multiple_rapid_purchases_worst_case_in_process():
+    """
+    Verifies the worst-case scenario:
+    Three offers generated prior to purchases. When bought in sequence,
+    each replaces the previous one so active contractor spend is ALWAYS <= cap ($49.99 <= $60).
+    """
+    email = "marcus@millercustomfloors.com"
+
+    neg_a = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        monthly_budget_cap=60.00, contractor_email=email,
+    )
+    neg_b = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        monthly_budget_cap=60.00, contractor_email=email,
+    )
+    neg_c = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        monthly_budget_cap=60.00, contractor_email=email,
+    )
+
+    p_a = await seller_agent.purchase_subscription(offer_id=neg_a["offer_id"], contractor_email=email)
+    assert p_a["status"] == "ACTIVE"
+
+    p_b = await seller_agent.purchase_subscription(offer_id=neg_b["offer_id"], contractor_email=email)
+    assert p_b["status"] == "ACTIVE"
+    assert p_b["replaces_subscription_id"] == p_a["subscription_id"]
+
+    p_c = await seller_agent.purchase_subscription(offer_id=neg_c["offer_id"], contractor_email=email)
+    assert p_c["status"] == "ACTIVE"
+    assert p_c["replaces_subscription_id"] == p_b["subscription_id"]
+
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    assert _COMPLETED_SUBSCRIPTIONS[p_a["subscription_id"]]["status"] == "REPLACED"
+    assert _COMPLETED_SUBSCRIPTIONS[p_b["subscription_id"]]["status"] == "REPLACED"
+    assert _COMPLETED_SUBSCRIPTIONS[p_c["subscription_id"]]["status"] == "ACTIVE"
+    assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] == p_c["subscription_id"]
+
+    # Active recurring spend is strictly $49.99, within $60 cap
+    assert ledger.get_remaining_budget(contractor_email=email, cap=60.00) == 10.01
+
+
+
 
 

@@ -490,6 +490,16 @@ class SellerAgent:
             }
 
         email = contractor_email.strip().lower()
+        if email and monthly_budget_cap:
+            ledger.set_contractor_cap(email, monthly_budget_cap)
+
+        active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
+        if not active_sub_id and email:
+            for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
+                if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
+                    if s.get("status") == "ACTIVE":
+                        active_sub_id = s.get("subscription_id")
+                        break
 
         # 1. Direct Approval: Desired tier is within budget cap
         if monthly_budget_cap >= standard_price:
@@ -502,13 +512,6 @@ class SellerAgent:
                 contractor_email=email,
             )
             if not mandate_res.get("approved"):
-                active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
-                if not active_sub_id and email:
-                    for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
-                        if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
-                            active_sub_id = s.get("subscription_id")
-                            if active_sub_id:
-                                break
                 rejection = {
                     "status": "REJECTED",
                     "approved": False,
@@ -537,7 +540,7 @@ class SellerAgent:
                     "mandate_proof_hash": issued["hash"],
                 },
             }
-            return {
+            res_approved = {
                 "status": "APPROVED",
                 "approved": True,
                 "original_request_approved": True,
@@ -555,9 +558,16 @@ class SellerAgent:
                 "next_action": next_action,
                 "reason": f"Plan '{tier_id}' at ${standard_price:.2f}/mo approved within ${monthly_budget_cap:.2f}/mo cap.",
             }
+            if active_sub_id:
+                res_approved["replaces_subscription_id"] = active_sub_id
+            return res_approved
 
         # 2. Desired tier exceeds budget: Down-tier counter-offer to Solo Starter ($49.99)
-        if monthly_budget_cap >= 49.99:
+        remaining_now = ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email)
+        existing_sub = ledger._contractor_subscriptions.get(email, 0.0)
+        effective_available = round(remaining_now + existing_sub, 2)
+
+        if monthly_budget_cap >= 49.99 and effective_available >= 49.99:
             issued = self._issue_mandate(
                 buyer_agent_id, email, "solo-starter", 49.99,
                 recurrence, category, monthly_budget_cap,
@@ -576,7 +586,7 @@ class SellerAgent:
                     "mandate_proof_hash": solo_hash,
                 },
             }
-            return {
+            res_counter = {
                 "status": "COUNTER_OFFER",
                 "approved": False,
                 "original_request_approved": False,
@@ -602,16 +612,11 @@ class SellerAgent:
                     f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
                 ),
             }
+            if active_sub_id:
+                res_counter["replaces_subscription_id"] = active_sub_id
+            return res_counter
 
         # 3. Budget below minimum viable tier ($49.99)
-        active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
-        if not active_sub_id and email:
-            for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
-                if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
-                    active_sub_id = s.get("subscription_id")
-                    if active_sub_id:
-                        break
-
         rejection = {
             "status": "REJECTED",
             "approved": False,
@@ -620,7 +625,7 @@ class SellerAgent:
             "error": "BUDGET_EXHAUSTED",
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
-            "monthly_cap_remaining": round(monthly_budget_cap, 2),
+            "monthly_cap_remaining": round(ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email), 2),
             "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (FieldSmith Solo Starter at $49.99/mo).",
         }
         if active_sub_id:
@@ -697,8 +702,49 @@ class SellerAgent:
             bind_mandate_email(mandate_proof_hash, contractor_email)
         auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
 
-        # 3. Record spend in ledger on actual checkout completion
         buyer_id = auth.get("buyer_agent_id", "unknown")
+        norm_email = contractor_email.strip().lower() if contractor_email else None
+
+        # Plan Change Model: Check for active existing subscription for this contractor
+        old_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) if norm_email else None
+        old_sub = _COMPLETED_SUBSCRIPTIONS.get(old_sub_id) if old_sub_id else None
+        old_rate = 0.0
+        if old_sub and isinstance(old_sub, dict) and old_sub.get("status") == "ACTIVE":
+            old_rate = old_sub.get("agreed_monthly_rate", 0.0)
+            old_sub_id = old_sub.get("subscription_id", old_sub_id)
+        else:
+            old_sub_id = None
+            old_sub = None
+
+        # Resolve effective monthly budget cap
+        cap = auth.get("monthly_budget_cap")
+        if norm_email and norm_email in getattr(ledger, "_contractor_caps", {}):
+            cap = ledger._contractor_caps[norm_email]
+        if cap is None:
+            cap = 100.0
+
+        # Purchase-time budget enforcement
+        remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
+        effective_available = round(remaining_before + old_rate, 2)
+
+        if agreed_monthly_rate > effective_available or agreed_monthly_rate > cap:
+            logger.warning(
+                f"[SECURITY] Purchase budget breach: rate ${agreed_monthly_rate:.2f}/mo exceeds "
+                f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
+            )
+            return {
+                "status": "REJECTED",
+                "error": "BUDGET_EXHAUSTED",
+                "reason": (
+                    f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
+                    f"${effective_available:.2f} (budget cap: ${cap:.2f})."
+                ),
+                "monthly_budget_cap": round(cap, 2),
+                "monthly_cap_remaining": round(remaining_before, 2),
+                "active_subscription_id": old_sub_id,
+            }
+
+        # 3. Record spend in ledger on actual checkout completion
         ledger.record_spend(
             agreed_monthly_rate,
             {
@@ -709,7 +755,6 @@ class SellerAgent:
                 "offer_id": auth.get("offer_id"),
             },
         )
-        cap = auth.get("monthly_budget_cap", 100.0)
         remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
 
         # 4. Deterministic Subscription ID
@@ -725,6 +770,13 @@ class SellerAgent:
         vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
         payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
         paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
+
+        # Mark old subscription as REPLACED (Plan Change Model)
+        if old_sub_id and old_sub:
+            old_sub["status"] = "REPLACED"
+            old_sub["replaced_by"] = sub_id
+            old_sub["replaced_at"] = created_time
+            old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
 
         # Return the exact signed mandate issued at negotiation, unchanged
         ap2_mandate = auth.get("ap2_mandate")
@@ -816,6 +868,8 @@ class SellerAgent:
             "next_action": next_action,
             "message": f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate.",
         }
+        if old_sub_id:
+            response["replaces_subscription_id"] = old_sub_id
 
         # Cache for strict idempotency
         if mandate_proof_hash:
@@ -825,8 +879,8 @@ class SellerAgent:
         if offer_id:
             _COMPLETED_SUBSCRIPTIONS[offer_id] = response
         _COMPLETED_SUBSCRIPTIONS[sub_id] = response
-        if contractor_email:
-            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[contractor_email.strip().lower()] = sub_id
+        if norm_email:
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
         return response
 
 
@@ -867,7 +921,15 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' does not exist or has not been activated in PayPal Vault. Call purchase_subscription first.",
             }
 
-        # 2. Identity anti-theft: Ensure contractor_email matches the subscription owner
+        # 2. Validate that the subscription is ACTIVE (not REPLACED)
+        if sub.get("status") == "REPLACED":
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_SUPERSEDED",
+                "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
+            }
+
+        # 3. Identity anti-theft: Ensure contractor_email matches the subscription owner
         owner_email = sub.get("contractor_email", "")
         if owner_email and contractor_email.strip().lower() != owner_email.strip().lower():
             return {

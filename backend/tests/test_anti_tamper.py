@@ -130,3 +130,79 @@ def test_asymmetric_ed25519_non_repudiation():
     )
     assert valid is False
     assert reason == "SIGNATURE_MISMATCH"
+
+
+@pytest.mark.asyncio
+async def test_purchase_subscription_rejects_rate_tampering():
+    """Attempting to bind a $49.99 authorized proof for a $179.99 purchase must be rejected."""
+    from backend.agents.seller_agent import seller_agent
+    from backend.services.mandate_evaluator import register_authorized_mandate
+
+    token = "test_authorized_token_49_99"
+    register_authorized_mandate(
+        token,
+        {"tier_id": "solo-starter", "amount": 49.99, "buyer_agent_id": "buyer-test"},
+    )
+
+    # Attempt to purchase at $179.99 with $49.99 token
+    res = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=179.99,
+        mandate_proof_hash=token,
+        contractor_email="test@contractor.com",
+    )
+    assert res["status"] == "REJECTED"
+    assert "RATE_TAMPERING_DETECTED" in res["reason"]
+
+
+@pytest.mark.asyncio
+async def test_purchase_subscription_rejects_tier_mismatch():
+    """Attempting to bind a solo-starter proof for pro-dispatch must be rejected."""
+    from backend.agents.seller_agent import seller_agent
+    from backend.services.mandate_evaluator import register_authorized_mandate
+
+    token = "test_authorized_solo_starter_token"
+    register_authorized_mandate(
+        token,
+        {"tier_id": "solo-starter", "amount": 49.99, "buyer_agent_id": "buyer-test"},
+    )
+
+    # Attempt to purchase pro-dispatch with solo-starter token
+    res = await seller_agent.purchase_subscription(
+        tier_id="pro-dispatch",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="test@contractor.com",
+    )
+    assert res["status"] == "REJECTED"
+    assert "TIER_MISMATCH_DETECTED" in res["reason"]
+
+
+@pytest.mark.asyncio
+async def test_purchase_subscription_deterministic_id():
+    """Subscription IDs must be mathematically deterministic and stable across calls."""
+    from backend.agents.seller_agent import seller_agent
+    from backend.services.mandate_evaluator import register_authorized_mandate
+
+    token = "test_stable_token_12345"
+    register_authorized_mandate(
+        token,
+        {"tier_id": "solo-starter", "amount": 49.99, "buyer_agent_id": "buyer-test"},
+    )
+
+    res1 = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="marcus@millerflooring.com",
+    )
+    res2 = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="marcus@millerflooring.com",
+    )
+    assert res1["status"] == "ACTIVE"
+    assert res1["subscription_id"] == res2["subscription_id"]
+    assert res1["subscription_id"].startswith("I-A2A-VAULT-")
+    assert res1["paypal_environment"] == "sandbox"

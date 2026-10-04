@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@bryntum/scheduler": "npm:@bryntum/scheduler-trial@^7.3.7",
+    "@paypal/agent-toolkit": "^1.11.0",
     "@paypal/paypal-server-sdk": "^2.5.0",
     "@paypal/react-paypal-js": "^10.5.2",
     "ag-studio": "^3.0.0",

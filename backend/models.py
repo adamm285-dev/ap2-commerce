@@ -86,6 +86,19 @@ class SpendingMandateResponse(BaseModel):
     counter_offer_plan_id: Optional[str] = Field(
         default=None, alias="counterOfferPlanId"
     )
+    counter_offer_tier_id: Optional[str] = Field(
+        default=None, alias="counterOfferTierId"
+    )
+    counter_offer_mandate_hash: Optional[str] = Field(
+        default=None, alias="counterOfferMandateHash"
+    )
+    tier_id: Optional[str] = Field(default=None, alias="tierId")
+    ap2_intent_mandate: Optional[Dict[str, Any]] = Field(
+        default=None, alias="ap2IntentMandate"
+    )
+    signature_algorithm: Optional[str] = Field(
+        default="Ed25519", alias="signatureAlgorithm"
+    )
 
 
 # --- Telephony Provisioning Models ---

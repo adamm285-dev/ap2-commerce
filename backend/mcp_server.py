@@ -98,10 +98,12 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 },
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "FieldSmith Pro Seller Agent. Autonomous telephony screening and 10DLC provisioning "
-                    "for solo trade contractors (Flooring, Plumbing, Roofing, Towing, HVAC). "
-                    "Use 'get_service_catalog' to inspect pricing, 'evaluate_spending_mandate' to verify budget caps, "
-                    "and 'provision_telecom_line' to execute local carrier allocation upon PayPal authorization."
+                    "FieldSmith Pro Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine.\n"
+                    "Recommended buyer procurement workflow:\n"
+                    "1. inspect_subscription_tiers: Inspect commercial subscription plans, quotas (screening minutes), overage rates, and pricing tiers.\n"
+                    "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, and contractor's monthly_budget_cap. If asking price exceeds budget, returns pre-approved counter-offer with pre-signed AP2 cryptographic mandate proof.\n"
+                    "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, and mandate_proof_hash to PayPal Recurring Vault for automated billing.\n"
+                    "4. provision_telecom_line: (Optional) Allocate dedicated local 10DLC telephone DID upon verified subscription."
                 ),
             },
         }
@@ -140,7 +142,10 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
         logger.info(f"[MCP] Invoking tool '{tool_name}' with arguments: {arguments}")
 
         try:
-            if tool_name in ["get_service_catalog", "inspect_subscription_tiers"]:
+            if tool_name == "inspect_subscription_tiers":
+                result = await seller_agent.inspect_subscription_tiers()
+
+            elif tool_name == "get_service_catalog":
                 result = await seller_agent.get_service_catalog()
 
             elif tool_name == "negotiate_tier_terms":
@@ -148,6 +153,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
                     tier_id=arguments.get("tier_id", "flooring-tile"),
                     monthly_budget_cap=float(arguments.get("monthly_budget_cap", 60.00)),
+                    proposed_price=float(arguments["proposed_price"]) if "proposed_price" in arguments and arguments["proposed_price"] is not None else None,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
                 )
@@ -251,25 +257,16 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
     }
 
 
-async def run_stdio_server():
-    """Runs standard I/O loop for desktop MCP clients (Claude Desktop, Cursor, etc.)."""
+def run_stdio_server():
+    """Runs standard I/O loop for desktop MCP clients (Claude Desktop, Cursor, etc.). Cross-platform Windows & POSIX."""
     logger.info("[MCP] FieldSmith Pro MCP Server starting over stdio...")
-    loop = asyncio.get_event_loop()
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await loop.connect_read_pipe(lambda: protocol, sys.stdin)
-
-    while True:
-        line = await reader.readline()
-        if not line:
-            break
-        text = line.decode("utf-8").strip()
+    for line in sys.stdin:
+        text = line.strip()
         if not text:
             continue
-
         try:
             req = json.loads(text)
-            resp = await process_mcp_request(req)
+            resp = asyncio.run(process_mcp_request(req))
             if resp is not None:
                 sys.stdout.write(json.dumps(resp) + "\n")
                 sys.stdout.flush()
@@ -284,4 +281,4 @@ async def run_stdio_server():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_stdio_server())
+    run_stdio_server()

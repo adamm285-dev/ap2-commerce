@@ -33,9 +33,19 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_ledger():
     ledger.reset()
-    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    from backend.agents.seller_agent import (
+        _COMPLETED_SUBSCRIPTIONS,
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+        telnyx_provisioner,
+    )
     _COMPLETED_SUBSCRIPTIONS.clear()
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.clear()
+    telnyx_provisioner.reset()
+    yield
+    ledger.reset()
+    _COMPLETED_SUBSCRIPTIONS.clear()
+    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.clear()
+    telnyx_provisioner.reset()
 
 
 @pytest.mark.asyncio
@@ -529,15 +539,19 @@ async def test_consecutive_purchases_budget_accounting():
     assert p1["status"] == "ACTIVE"
     assert p1["monthly_cap_remaining"] == 10.01
 
-    # Second test purchase in the same session
+    # Second negotiation for the identical tier returns ALREADY_SUBSCRIBED
     neg2 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
         tier_id="solo-starter",
         monthly_budget_cap=60.00,
         contractor_email="marcus@millercustomfloors.com",
     )
+    assert neg2["status"] == "ALREADY_SUBSCRIBED"
+    assert neg2["subscription_id"] == p1["subscription_id"]
+
+    # Replay of the existing offer returns the active subscription idempotently
     p2 = await seller_agent.purchase_subscription(
-        offer_id=neg2["offer_id"],
+        offer_id=neg1["offer_id"],
         contractor_email="marcus@millercustomfloors.com",
     )
     assert p2["status"] == "ACTIVE"
@@ -629,19 +643,15 @@ async def test_budget_exhausted_machine_readable_rejection():
 
 
 @pytest.mark.asyncio
-async def test_plan_change_replaces_old_subscription_and_maintains_cap():
+async def test_negotiate_same_plan_returns_already_subscribed():
     """
-    Verifies the Plan Change model:
-    1. Marcus negotiates and purchases Solo Starter ($49.99/mo) under $60 cap.
-    2. Marcus renegotiates and purchases a second offer.
-    3. The old subscription is marked REPLACED, the new subscription returns
-       replaces_subscription_id pointing to the old one.
-    4. Total active contractor spend remains <= $60 cap ($49.99/mo) with exactly
-       one active subscription.
+    Verifies Guard 1: When a contractor is actively subscribed to a tier (e.g., Solo Starter),
+    negotiating for the identical tier returns ALREADY_SUBSCRIBED and the existing subscription_id,
+    preventing unnecessary cancellations and recreations.
     """
     email = "marcus@millercustomfloors.com"
 
-    # Step 1: Initial negotiation & purchase
+    # Step 1: Buy Solo Starter
     neg1 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="marcus-buyer",
         tier_id="solo-starter",
@@ -653,42 +663,129 @@ async def test_plan_change_replaces_old_subscription_and_maintains_cap():
         contractor_email=email,
     )
     sub1_id = p1["subscription_id"]
-    assert p1["status"] == "ACTIVE"
-    assert p1["monthly_cap_remaining"] == 10.01
 
-    # Step 2: Renegotiation for replacement plan
-    neg2 = await seller_agent.negotiate_tier_terms(
+    # Step 2: Renegotiate for the identical tier
+    neg_same = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="marcus-buyer",
         tier_id="solo-starter",
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
-    assert neg2["status"] == "APPROVED"
-    assert neg2.get("replaces_subscription_id") == sub1_id
+    assert neg_same["status"] == "ALREADY_SUBSCRIBED"
+    assert neg_same["error"] == "ALREADY_SUBSCRIBED"
+    assert neg_same["subscription_id"] == sub1_id
+    assert neg_same["active_subscription_id"] == sub1_id
+    assert neg_same.get("approved") is False
+    assert "already actively subscribed" in neg_same["reason"]
 
-    # Step 3: Purchase second offer (replaces first)
-    p2 = await seller_agent.purchase_subscription(
-        offer_id=neg2["offer_id"],
+
+@pytest.mark.asyncio
+async def test_negotiate_counter_offer_guard_no_better_offer():
+    """
+    Verifies Guard 2: When Lee is already actively subscribed to Solo Starter ($49.99)
+    with a $60 cap, requesting an upgrade to FieldSmith Pro ($79.99) cannot be afforded,
+    and rather than counter-offering the plan he already holds, the seller returns NO_BETTER_OFFER.
+    """
+    email = "lee@leeflooring.com"
+
+    # Step 1: Lee subscribes to Solo Starter
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="lee-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
         contractor_email=email,
     )
-    sub2_id = p2["subscription_id"]
-    assert p2["status"] == "ACTIVE"
-    assert p2["replaces_subscription_id"] == sub1_id
-    assert p2["monthly_cap_remaining"] == 10.01
-
-    # Step 4: Verify that old subscription was marked REPLACED in-place
-    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
-    old_sub = _COMPLETED_SUBSCRIPTIONS[sub1_id]
-    assert old_sub["status"] == "REPLACED"
-    assert old_sub["replaced_by"] == sub2_id
-    assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] == sub2_id
-
-    # Step 5: Verify idempotency replay returns REPLACED status for old offer
-    p1_replay = await seller_agent.purchase_subscription(
+    p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
         contractor_email=email,
     )
-    assert p1_replay["status"] == "REPLACED"
+    sub1_id = p1["subscription_id"]
+
+    # Step 2: Lee asks for Pro ($79.99) under $60 cap
+    neg_pro = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="lee-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email=email,
+    )
+    assert neg_pro["status"] == "NO_BETTER_OFFER"
+    assert neg_pro["error"] == "NO_BETTER_OFFER"
+    assert neg_pro["current_subscription_id"] == sub1_id
+    assert neg_pro["current_tier_id"] == "solo-starter"
+    assert neg_pro.get("counter_offer_available") is not True
+    assert "already subscribed to the highest viable plan" in neg_pro["reason"]
+
+
+@pytest.mark.asyncio
+async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
+    """
+    Verifies the complete Plan Change upgrade path (Dana's scenario):
+    1. Dana starts on Solo Starter ($49.99) under $200 cap and provisions phone number.
+    2. Dana upgrades to Fleet Dispatch ($179.99/mo).
+    3. The purchase marks Solo Starter REPLACED and sets replaces_subscription_id.
+    4. Provisioning the new Fleet Dispatch subscription RETAINS Dana's phone number
+       with status: "RETAINED" and retained_from_subscription pointing to the old sub.
+    5. Active contractor spend is $179.99/mo, with $20.01 headroom remaining.
+    """
+    email = "dana@customtile.com"
+
+    # Step 1: Initial Solo Starter subscription & provisioning
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="dana-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=200.00,
+        contractor_email=email,
+    )
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email=email,
+    )
+    sub1_id = p1["subscription_id"]
+
+    prov1 = await seller_agent.provision_telecom_line(
+        subscription_id=sub1_id,
+        contractor_email=email,
+        area_code="863",
+    )
+    assert prov1["status"] == "ALLOCATED"
+    original_did = prov1["assignedDid"]
+    assert original_did.startswith("+1863")
+
+    # Step 2: Dana negotiates upgrade to Fleet Dispatch ($179.99/mo)
+    neg_upgrade = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="dana-buyer",
+        tier_id="pro-dispatch",
+        monthly_budget_cap=200.00,
+        contractor_email=email,
+    )
+    assert neg_upgrade["status"] == "APPROVED"
+    assert neg_upgrade["replaces_subscription_id"] == sub1_id
+
+    # Step 3: Purchase upgrade
+    p_upgrade = await seller_agent.purchase_subscription(
+        offer_id=neg_upgrade["offer_id"],
+        contractor_email=email,
+    )
+    sub2_id = p_upgrade["subscription_id"]
+    assert p_upgrade["status"] == "ACTIVE"
+    assert p_upgrade["replaces_subscription_id"] == sub1_id
+    assert p_upgrade["monthly_cap_remaining"] == 20.01
+
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    assert _COMPLETED_SUBSCRIPTIONS[sub1_id]["status"] == "REPLACED"
+    assert _COMPLETED_SUBSCRIPTIONS[sub1_id]["replaced_by"] == sub2_id
+    assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] == sub2_id
+
+    # Step 4: Provision new subscription -> Retains original phone line!
+    prov2 = await seller_agent.provision_telecom_line(
+        subscription_id=sub2_id,
+        contractor_email=email,
+        area_code="863",
+    )
+    assert prov2["status"] == "RETAINED"
+    assert prov2["assignedDid"] == original_did
+    assert prov2["retained_from_subscription"] == sub1_id
+    assert prov2["routingState"] == "ACTIVE_10DLC_BOUND"
 
 
 @pytest.mark.asyncio
@@ -703,7 +800,7 @@ async def test_provision_rejects_superseded_subscription():
     neg1 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="marcus-buyer",
         tier_id="solo-starter",
-        monthly_budget_cap=60.00,
+        monthly_budget_cap=100.00,
         contractor_email=email,
     )
     p1 = await seller_agent.purchase_subscription(
@@ -712,11 +809,11 @@ async def test_provision_rejects_superseded_subscription():
     )
     sub1_id = p1["subscription_id"]
 
-    # Buy plan 2 (replaces plan 1)
+    # Buy plan 2 (upgrade to pro, replaces plan 1)
     neg2 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
-        monthly_budget_cap=60.00,
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=100.00,
         contractor_email=email,
     )
     p2 = await seller_agent.purchase_subscription(
@@ -738,7 +835,6 @@ async def test_provision_rejects_superseded_subscription():
         subscription_id=sub2_id,
         contractor_email=email,
     )
-    assert prov_active["status"] == "ALLOCATED"
     assert prov_active["routingState"] == "ACTIVE_10DLC_BOUND"
 
 
@@ -746,7 +842,7 @@ async def test_provision_rejects_superseded_subscription():
 async def test_multiple_rapid_purchases_worst_case_in_process():
     """
     Verifies the worst-case scenario:
-    Three offers generated prior to purchases. When bought in sequence,
+    Three offers generated prior to any purchase. When bought in sequence,
     each replaces the previous one so active contractor spend is ALWAYS <= cap ($49.99 <= $60).
     """
     email = "marcus@millercustomfloors.com"

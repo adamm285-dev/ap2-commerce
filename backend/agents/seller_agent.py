@@ -494,12 +494,51 @@ class SellerAgent:
             ledger.set_contractor_cap(email, monthly_budget_cap)
 
         active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
+        active_sub = _COMPLETED_SUBSCRIPTIONS.get(active_sub_id) if active_sub_id else None
+        if active_sub and active_sub.get("status") != "ACTIVE":
+            active_sub = None
+            active_sub_id = None
         if not active_sub_id and email:
             for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
                 if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
                     if s.get("status") == "ACTIVE":
                         active_sub_id = s.get("subscription_id")
+                        active_sub = s
                         break
+
+        def norm_plan(p: Optional[str]) -> str:
+            p = (p or "").lower().replace("-", "").replace("_", "")
+            if "solo" in p:
+                return "solo-starter"
+            if "pro" in p and "dispatch" not in p and "fleet" not in p:
+                return "fieldsmith-pro"
+            if "dispatch" in p or "fleet" in p:
+                return "pro-dispatch"
+            return p
+
+        req_norm = norm_plan(tier_id)
+        current_norm = norm_plan(active_sub.get("tier_id")) if active_sub else None
+
+        # Guard 1: Already subscribed to the requested tier
+        if active_sub and req_norm == current_norm:
+            logger.info(
+                f"[A2A_SELLER] Contractor {email} already subscribed to active plan {active_sub_id} ({active_sub.get('tier_id')})"
+            )
+            return {
+                "status": "ALREADY_SUBSCRIBED",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "error": "ALREADY_SUBSCRIBED",
+                "subscription_id": active_sub_id,
+                "active_subscription_id": active_sub_id,
+                "monthly_budget_cap": round(monthly_budget_cap, 2),
+                "agreed_monthly_rate": active_sub.get("agreed_monthly_rate"),
+                "reason": (
+                    f"Contractor '{email}' is already actively subscribed to '{tier_id}' "
+                    f"(Subscription: {active_sub_id}). No new offer or subscription required."
+                ),
+            }
 
         # 1. Direct Approval: Desired tier is within budget cap
         if monthly_budget_cap >= standard_price:
@@ -568,6 +607,28 @@ class SellerAgent:
         effective_available = round(remaining_now + existing_sub, 2)
 
         if monthly_budget_cap >= 49.99 and effective_available >= 49.99:
+            # Guard 2: If contractor is already on Solo Starter, they already hold the best plan within budget
+            if active_sub and current_norm == "solo-starter":
+                logger.info(
+                    f"[A2A_SELLER] Contractor {email} requested {tier_id} (${standard_price:.2f}), cap ${monthly_budget_cap:.2f}, "
+                    f"already on best viable plan {active_sub_id} (solo-starter)"
+                )
+                return {
+                    "status": "NO_BETTER_OFFER",
+                    "approved": False,
+                    "original_request_approved": False,
+                    "tier_id": tier_id,
+                    "error": "NO_BETTER_OFFER",
+                    "current_subscription_id": active_sub_id,
+                    "active_subscription_id": active_sub_id,
+                    "current_tier_id": active_sub.get("tier_id"),
+                    "monthly_budget_cap": round(monthly_budget_cap, 2),
+                    "reason": (
+                        f"Requested tier '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
+                        f"Contractor is already subscribed to the highest viable plan within budget ('{active_sub.get('tier_id')}' at ${active_sub.get('agreed_monthly_rate', 49.99):.2f}/mo, Subscription: {active_sub_id}). "
+                        f"No better offer available under current budget cap."
+                    ),
+                }
             issued = self._issue_mandate(
                 buyer_agent_id, email, "solo-starter", 49.99,
                 recurrence, category, monthly_budget_cap,
@@ -944,15 +1005,37 @@ class SellerAgent:
             areaCode=area_code,
             simulateExhaustion=simulate_exhaustion,
         )
-        res = await telnyx_provisioner.provision_did(req, simulate_exhaustion=simulate_exhaustion)
+
+        # Check if this contractor has an existing DID to retain (from replaced sub or contractor history)
+        replaces_sub_id = sub.get("replaces_subscription_id")
+        retained_did = None
+        if replaces_sub_id:
+            old_sub = _COMPLETED_SUBSCRIPTIONS.get(replaces_sub_id)
+            if old_sub:
+                retained_did = old_sub.get("allocated_did") or old_sub.get("assigned_did")
+        if not retained_did and contractor_email:
+            retained_did = telnyx_provisioner.get_contractor_did(contractor_email)
+
+        if retained_did:
+            res = telnyx_provisioner.retain_did(req, retained_did, replaces_subscription_id=replaces_sub_id)
+        else:
+            res = await telnyx_provisioner.provision_did(req, simulate_exhaustion=simulate_exhaustion)
         res_dict = res.model_dump(by_alias=True)
 
         # Accurately resolve assigned DID from Telnyx response
         allocated_did = res.assigned_did or res_dict.get("assignedDid") or res_dict.get("assigned_did")
+        sub["allocated_did"] = allocated_did
+        sub["assigned_did"] = allocated_did
+        _COMPLETED_SUBSCRIPTIONS[subscription_id]["allocated_did"] = allocated_did
+        _COMPLETED_SUBSCRIPTIONS[subscription_id]["assigned_did"] = allocated_did
+        res_dict["status"] = res.status
         res_dict["assignedDid"] = allocated_did
         res_dict["assigned_did"] = allocated_did
         res_dict["allocatedDid"] = allocated_did
         res_dict["allocated_did"] = allocated_did
+        if replaces_sub_id:
+            res_dict["retained_from_subscription"] = replaces_sub_id
+            res_dict["retainedFromSubscription"] = replaces_sub_id
 
         # Dynamically populate downline parameters from the verified subscription
         tier_id = sub.get("tier_id", "solo-starter")

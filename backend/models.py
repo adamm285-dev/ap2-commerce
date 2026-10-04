@@ -132,6 +132,9 @@ class ProvisionResponse(BaseModel):
         default=False, alias="failoverTriggered"
     )
     region: Optional[str] = None
+    retained_from_subscription: Optional[str] = Field(
+        default=None, alias="retainedFromSubscription"
+    )
 
 
 # --- Territory Dispatch Models ---

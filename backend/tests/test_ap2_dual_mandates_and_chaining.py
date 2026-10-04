@@ -18,6 +18,7 @@ from backend.services.mandate_evaluator import (
     AP2_CART_OFFER_TTL_SEC,
 )
 from backend.services.crypto_mandate import (
+    sign_ap2_intent_mandate,
     verify_ap2_intent_mandate,
     verify_ap2_cart_mandate,
     DEFAULT_SELLER_KID,
@@ -272,4 +273,146 @@ async def test_buyer_signed_intent_mandate_identity_mismatch():
     )
     assert neg["status"] == "REJECTED"
     assert neg["error"] == "IDENTITY_MISMATCH_DETECTED"
+
+
+@pytest.mark.asyncio
+async def test_untrusted_buyer_key_rejected():
+    """Verifies that an intent mandate signed by an unregistered/untrusted key is rejected."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="hacker-buyer-01",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    custom_mandate["kid"] = "untrusted-rogue-key"
+    custom_mandate = sign_ap2_intent_mandate(custom_mandate)
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="hacker-buyer-01",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "UNTRUSTED_BUYER_KEY"
+
+
+@pytest.mark.asyncio
+async def test_expired_buyer_mandate_rejected():
+    """Verifies that an expired buyer intent mandate is rejected with MANDATE_EXPIRED."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    custom_mandate["expires_at"] = time.time() - 3600  # Expired 1 hour ago
+    custom_mandate = sign_ap2_intent_mandate(custom_mandate)
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "MANDATE_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_category_buyer_mandate_rejected():
+    """Verifies that a buyer intent mandate for an unauthorized merchant category is rejected."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="GAMING_VIRTUAL_CURRENCY",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    custom_mandate = sign_ap2_intent_mandate(custom_mandate)
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "UNAUTHORIZED_CATEGORY"
+
+
+@pytest.mark.asyncio
+async def test_signed_cap_overrides_unsigned_param():
+    """
+    Verifies that the signed budget cap inside the buyer mandate strictly overrides
+    any caller-supplied unsigned monthly_budget_cap parameter (Test B security fix).
+    """
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,  # Signed cap: $60.00/mo
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+
+    # Caller tries to pass an inflated unsigned monthly_budget_cap of $200.00
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=200.00,  # Unsigned parameter claims $200
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    # Because signed cap was $60.00, FieldSmith Pro ($79.99) is over budget,
+    # so seller agent issues a COUNTER_OFFER for Solo Starter at $49.99/mo!
+    assert neg["status"] == "COUNTER_OFFER"
+    assert neg["counter_offer_tier_id"] == "solo-starter"
+    assert neg["next_action"]["parameters"]["tier_id"] == "solo-starter"
+    assert neg["counter_offer_amount"] == 49.99
+    assert neg["monthly_budget_cap"] == 60.00  # Enforced signed cap!
+
+
+@pytest.mark.asyncio
+async def test_provision_telecom_line_subscription_validation():
+    """
+    Verifies that provision_telecom_line checks subscription existence and identity binding.
+    """
+    # 1. Non-existent subscription ID is rejected
+    res_unknown = await seller_agent.provision_telecom_line(
+        subscription_id="SUB-NONEXISTENT-9999",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert res_unknown["status"] == "REJECTED"
+    assert res_unknown["error"] == "SUBSCRIPTION_NOT_FOUND"
+
+    # 2. Existing subscription with mismatched contractor email is rejected
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    purchase = await seller_agent.purchase_subscription(
+        offer_id=neg["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert purchase["status"] == "ACTIVE"
+    sub_id = purchase["subscription_id"]
+
+    res_mismatch = await seller_agent.provision_telecom_line(
+        subscription_id=sub_id,
+        contractor_email="attacker@evil.com",
+    )
+    assert res_mismatch["status"] == "REJECTED"
+    assert res_mismatch["error"] == "IDENTITY_MISMATCH_DETECTED"
+
 

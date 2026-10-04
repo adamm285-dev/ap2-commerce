@@ -147,7 +147,7 @@ class BuyerAgent:
             area_code="863",
         )
 
-        assigned_did = provision_result.get("assignedDid")
+        assigned_did = provision_result.get("assignedDid") or provision_result.get("assigned_did")
         carrier = provision_result.get("carrier")
         routing_state = provision_result.get("routingState")
 

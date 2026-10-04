@@ -163,28 +163,60 @@ class JobberExporter:
   }
 }"""
 
-        instructions = (
-            f"Autonomous Telephony Gateway Active.\n"
-            f"• Dedicated Business DID: {allocated_did}\n"
-            f"• Trade Vertical: {trade_vertical} (Sub-500ms Gemini Live Intake)\n"
-            f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
-            f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"
-            f"• TCPA Invariant: 100% Inbound Defensive (Zero robocalls)\n"
-            f"• Routing Target: Direct synchronization to {business_entity} schedule."
-        )
+        if monthly_fee <= 50.00:
+            plan_name = f"FieldSmith Solo Starter AI Voice Screener ({trade_vertical})"
+            job_title = f"FieldSmith Solo Starter — {trade_vertical}"
+            plan_desc = "24/7 autonomous phone reception, 100-minute screener cap, dedicated 10DLC telephone line, essential SMS notification."
+            instructions = (
+                f"Autonomous Telephony Gateway Active (Solo Starter Tier).\n"
+                f"• Dedicated Business DID: {allocated_did}\n"
+                f"• Plan: FieldSmith Solo Starter (100 AI Screening Minutes / Month)\n"
+                f"• Trade Vertical: {trade_vertical}\n"
+                f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
+                f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"
+                f"• TCPA Invariant: 100% Inbound Defensive (Zero robocalls)\n"
+                f"• Merchant Record: FieldSmith Merchant CRM Account for {business_entity}."
+            )
+        elif monthly_fee > 100.00:
+            plan_name = f"FieldSmith Pro Fleet Dispatch AI Screener ({trade_vertical})"
+            job_title = f"FieldSmith Fleet Dispatch — {trade_vertical}"
+            plan_desc = "24/7 unlimited multi-crew conversational intake, ERP sync, Bryntum dispatch automation."
+            instructions = (
+                f"Autonomous Telephony Gateway Active (Fleet Dispatch Tier).\n"
+                f"• Dedicated Business DID: {allocated_did}\n"
+                f"• Plan: FieldSmith Fleet Dispatch (1,000 AI Screening Minutes / Month)\n"
+                f"• Trade Vertical: {trade_vertical}\n"
+                f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
+                f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"
+                f"• TCPA Invariant: 100% Inbound Defensive (Zero robocalls)\n"
+                f"• Merchant Record: FieldSmith Merchant CRM Account for {business_entity}."
+            )
+        else:
+            plan_name = f"FieldSmith Pro AI Telephony & Dispatch Screener ({trade_vertical})"
+            job_title = f"FieldSmith Pro Autonomous AI Screener — {trade_vertical}"
+            plan_desc = "24/7 Sub-500ms conversational intake, square footage scoping, and instant dispatching."
+            instructions = (
+                f"Autonomous Telephony Gateway Active.\n"
+                f"• Dedicated Business DID: {allocated_did}\n"
+                f"• Trade Vertical: {trade_vertical} (Sub-500ms Gemini Live Intake)\n"
+                f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
+                f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"
+                f"• TCPA Invariant: 100% Inbound Defensive (Zero robocalls)\n"
+                f"• Routing Target: Direct synchronization to {business_entity} schedule."
+            )
 
         variables = {
             "input": {
                 "clientId": client_id,
-                "title": f"FieldSmith Pro Autonomous AI Screener — {trade_vertical}",
+                "title": job_title,
                 "instructions": instructions,
                 "jobType": "RECURRING",
                 "lineItems": [
                     {
-                        "name": f"FieldSmith Pro AI Telephony & Dispatch Screener ({trade_vertical})",
+                        "name": plan_name,
                         "unitPrice": monthly_fee,
                         "quantity": 1,
-                        "description": "24/7 Sub-500ms conversational intake, square footage scoping, and instant dispatching.",
+                        "description": plan_desc,
                     }
                 ],
             }

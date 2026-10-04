@@ -10,7 +10,7 @@ import logging
 import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from ..mcp_server import process_mcp_request
 
 logger = logging.getLogger("contractor_copilot")
@@ -328,7 +328,7 @@ class ContractorCopilot:
         protocol_trace: List[Dict[str, Any]] = []
 
         # Step 1: Programmatic Spending Mandate Verification
-        t1 = datetime.utcnow().isoformat() + "Z"
+        t1 = datetime.now(timezone.utc).isoformat()
         mandate_req = {
             "jsonrpc": "2.0",
             "id": 101,
@@ -392,8 +392,19 @@ class ContractorCopilot:
         })
 
         # Step 2: PayPal Delegated Subscription Token
-        t2 = datetime.utcnow().isoformat() + "Z"
+        t2 = datetime.now(timezone.utc).isoformat()
         sub_id = f"I-AUTONOMOUS-{uuid.uuid4().hex[:8].upper()}"
+        from .seller_agent import _COMPLETED_SUBSCRIPTIONS
+        _COMPLETED_SUBSCRIPTIONS[sub_id] = {
+            "status": "ACTIVE",
+            "subscription_id": sub_id,
+            "contractor_email": self.contractor_email,
+            "contractor_name": self.contractor_name,
+            "business_entity": self.business_entity,
+            "agreed_monthly_rate": monthly_price,
+            "tier_id": getattr(self, "tier_id", getattr(self, "trade_vertical", "fieldsmith-pro")),
+            "mandate_proof_hash": proof_hash,
+        }
         protocol_trace.append({
             "step": 2,
             "timestamp": t2,
@@ -406,7 +417,7 @@ class ContractorCopilot:
         })
 
         # Step 3: Local DID Telecom Line Provisioning
-        t3 = datetime.utcnow().isoformat() + "Z"
+        t3 = datetime.now(timezone.utc).isoformat()
         prov_req = {
             "jsonrpc": "2.0",
             "id": 102,
@@ -439,7 +450,7 @@ class ContractorCopilot:
         })
 
         # Step 4: Downline Zapier MCP Dispatch (Jobber + QBO)
-        t4 = datetime.utcnow().isoformat() + "Z"
+        t4 = datetime.now(timezone.utc).isoformat()
         zap_req = {
             "jsonrpc": "2.0",
             "id": 103,

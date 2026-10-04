@@ -41,9 +41,22 @@ class QboExporter:
         date_str = txn_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         doc_number = f"FS-A2A-{paypal_subscription_id[-6:] if len(paypal_subscription_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
 
+        if monthly_fee <= 50.00:
+            plan_line_desc = f"FieldSmith Solo Starter AI Voice Screener ({trade_vertical}) — Autonomous Recurring Subscription"
+            memo_plan = f"Plan: Solo Starter (${monthly_fee:.2f}/mo)"
+        elif monthly_fee > 100.00:
+            plan_line_desc = f"FieldSmith Pro Fleet Dispatch AI Screener ({trade_vertical}) — Autonomous Recurring Subscription"
+            memo_plan = f"Plan: Fleet Dispatch (${monthly_fee:.2f}/mo)"
+        else:
+            plan_line_desc = (
+                f"FieldSmith Pro AI Telephony & Dispatch Screener "
+                f"({trade_vertical}) — Autonomous Recurring Subscription"
+            )
+            memo_plan = f"Monthly: ${monthly_fee:.2f} USD"
+
         private_memo = (
             f"FieldSmith Pro Autonomous A2A Commerce Protocol.\n"
-            f"PayPal Sub: {paypal_subscription_id} | Monthly: ${monthly_fee:.2f} USD\n"
+            f"PayPal Sub: {paypal_subscription_id} | {memo_plan}\n"
             f"Dedicated DID: {allocated_did} | Vertical: {trade_vertical}\n"
             f"Mandate Proof Hash: {mandate_proof_hash}\n"
             f"Carrier FCC Attestation: STIR/SHAKEN Class A (Telnyx LLC)\n"
@@ -77,10 +90,7 @@ class QboExporter:
                         "LineNum": 1,
                         "Amount": float(f"{monthly_fee:.2f}"),
                         "DetailType": "AccountBasedExpenseLineDetail",
-                        "Description": (
-                            f"FieldSmith Pro AI Telephony & Dispatch Screener "
-                            f"({trade_vertical}) — Autonomous Recurring Subscription"
-                        ),
+                        "Description": plan_line_desc,
                         "AccountBasedExpenseLineDetail": {
                             "AccountRef": {
                                 "value": self.default_expense_account_id,

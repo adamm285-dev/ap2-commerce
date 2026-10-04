@@ -39,6 +39,31 @@ DEFAULT_BUYER_PUBLIC_KEY_HEX = _DEFAULT_BUYER_PUBLIC_KEY.public_bytes_raw().hex(
 DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
 DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
 
+# Known / registered buyer agent public keys (kid -> public_key_hex)
+# Prevents arbitrary third parties from forging mandates for known contractors
+REGISTERED_BUYER_KEYS: Dict[str, str] = {
+    DEFAULT_BUYER_KID: DEFAULT_BUYER_PUBLIC_KEY_HEX,
+    "marcus-buyer-ed25519-v1": DEFAULT_BUYER_PUBLIC_KEY_HEX,
+    "buyer-agent-01": DEFAULT_BUYER_PUBLIC_KEY_HEX,
+    "marcus-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
+    "claude-desktop-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
+}
+
+
+def register_buyer_key(kid: str, public_key_hex: str):
+    """Registers or trusts a buyer agent's Ed25519 public key."""
+    REGISTERED_BUYER_KEYS[kid] = public_key_hex.strip().lower()
+
+
+def is_trusted_buyer_key(kid: Optional[str], public_key_hex: Optional[str]) -> bool:
+    """Checks if the (kid, public_key_hex) pair matches a registered buyer key."""
+    if not kid or not public_key_hex:
+        return False
+    expected = REGISTERED_BUYER_KEYS.get(kid)
+    if not expected:
+        return False
+    return expected.strip().lower() == public_key_hex.strip().lower()
+
 
 def generate_ed25519_keypair() -> Tuple[str, str]:
     """Generates a raw 32-byte hex-encoded (private_key, public_key) pair for an autonomous agent."""

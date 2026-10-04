@@ -22,6 +22,7 @@ from .crypto_mandate import (
     verify_ap2_cart_mandate,
     DEFAULT_SELLER_KID,
     DEFAULT_BUYER_KID,
+    is_trusted_buyer_key,
 )
 
 AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
@@ -117,6 +118,79 @@ def build_ap2_intent_mandate(
         "user_present": False,
     }
     return sign_ap2_intent_mandate(mandate)
+
+
+def validate_buyer_intent_mandate(
+    mandate: Dict[str, Any],
+    contractor_email: Optional[str] = None,
+    service_category: str = "TELEPHONY_AI_SCREENER",
+) -> Tuple[bool, str, Optional[float]]:
+    """
+    Cryptographically and policy-wise validates a buyer-signed AP2 Intent Mandate.
+    Enforces:
+    1. Registered buyer key (kid -> public_key)
+    2. Ed25519 signature verification
+    3. Expiration check (expires_at)
+    4. Permitted spending category
+    5. Contractor email identity binding
+    Returns (is_valid, error_code, signed_budget_cap).
+    """
+    if not isinstance(mandate, dict):
+        return False, "INVALID_MANDATE_FORMAT", None
+
+    kid = mandate.get("kid")
+    pub_hex = mandate.get("public_key")
+    if not is_trusted_buyer_key(kid, pub_hex):
+        return False, "UNTRUSTED_BUYER_KEY", None
+
+    if not verify_ap2_intent_mandate(mandate):
+        return False, "INVALID_BUYER_INTENT_MANDATE", None
+
+    # Expiry verification
+    expires_at = mandate.get("expires_at")
+    if expires_at is not None:
+        try:
+            if time.time() > float(expires_at):
+                return False, "MANDATE_EXPIRED", None
+        except (ValueError, TypeError):
+            pass
+
+    # Category verification
+    category = mandate.get("category")
+    if category:
+        norm_cat = str(category).lower().replace("_", "-")
+        allowed_norm = {c.lower().replace("_", "-") for c in ALLOWED_CATEGORIES}
+        if norm_cat not in allowed_norm and norm_cat != service_category.lower().replace("_", "-"):
+            return False, "UNAUTHORIZED_CATEGORY", None
+
+    # Identity verification
+    if contractor_email:
+        payer = mandate.get("payer")
+        payer_email = payer.get("email") if isinstance(payer, dict) else None
+        if payer_email and payer_email.strip().lower() != contractor_email.strip().lower():
+            return False, "IDENTITY_MISMATCH_DETECTED", None
+
+    # Extract signed budget cap
+    signed_cap = None
+    amt = mandate.get("amount")
+    if isinstance(amt, dict):
+        try:
+            signed_cap = float(amt.get("value"))
+        except (ValueError, TypeError):
+            pass
+    elif isinstance(amt, (int, float)):
+        signed_cap = float(amt)
+
+    if signed_cap is None:
+        for k in ["monthly_cap_usd", "max_amount", "budget_cap", "monthly_budget_cap"]:
+            if k in mandate:
+                try:
+                    signed_cap = float(mandate[k])
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    return True, "VERIFIED", signed_cap
 
 
 def build_ap2_cart_mandate(

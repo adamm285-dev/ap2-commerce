@@ -94,6 +94,37 @@ def generate_dynamic_mandate_proof(
     }
 
 
+def _ap2_signing_bytes(mandate: Dict[str, Any]) -> bytes:
+    """Canonical bytes of an AP2 Intent Mandate, excluding the signature itself."""
+    body = {k: v for k, v in mandate.items() if k != "signature"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def sign_ap2_intent_mandate(
+    mandate: Dict[str, Any], private_key_hex: Optional[str] = None
+) -> Dict[str, Any]:
+    """Returns a copy of the AP2 Intent Mandate with Ed25519 `public_key` and `signature` attached."""
+    priv_hex = private_key_hex or os.getenv("A2A_PRIVATE_KEY") or DEFAULT_BUYER_PRIVATE_KEY_HEX
+    priv_key = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(priv_hex))
+    signed = {
+        **mandate,
+        "signature_alg": "Ed25519",
+        "public_key": priv_key.public_key().public_bytes_raw().hex(),
+    }
+    signed["signature"] = priv_key.sign(_ap2_signing_bytes(signed)).hex()
+    return signed
+
+
+def verify_ap2_intent_mandate(mandate: Dict[str, Any]) -> bool:
+    """Verifies the Ed25519 signature of an AP2 Intent Mandate against its embedded public key."""
+    try:
+        verifier = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(mandate["public_key"]))
+        verifier.verify(bytes.fromhex(mandate["signature"]), _ap2_signing_bytes(mandate))
+        return True
+    except Exception:
+        return False
+
+
 def verify_mandate_proof(
     payload: Dict[str, Any],
     signature: str,

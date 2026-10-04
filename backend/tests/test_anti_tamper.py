@@ -206,3 +206,125 @@ async def test_purchase_subscription_deterministic_id():
     assert res1["subscription_id"] == res2["subscription_id"]
     assert res1["subscription_id"].startswith("I-A2A-VAULT-")
     assert res1["paypal_environment"] == "sandbox"
+
+
+@pytest.mark.asyncio
+async def test_purchase_subscription_rejects_identity_mismatch():
+    """A mandate negotiated for one contractor email cannot be redeemed, or hijacked, by another."""
+    from backend.agents.seller_agent import seller_agent
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="buyer-identity-test",
+        tier_id="flooring-tile",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    token = neg["mandate_proof_hash"]
+
+    stolen = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="attacker@example.com",
+    )
+    assert stolen["status"] == "REJECTED"
+    assert "IDENTITY_MISMATCH_DETECTED" in stolen["reason"]
+
+    legit = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="Marcus@MillerCustomFloors.com",
+    )
+    assert legit["status"] == "ACTIVE"
+    assert legit["contractor_email"] == "Marcus@MillerCustomFloors.com"
+
+    # Replays after a completed purchase are still identity-checked
+    replay = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=token,
+        contractor_email="attacker@example.com",
+    )
+    assert replay["status"] == "REJECTED"
+
+
+@pytest.mark.asyncio
+async def test_unbound_mandate_locks_to_first_redeemer():
+    """A mandate issued without an email is locked to the first contractor who redeems it."""
+    from backend.agents.seller_agent import seller_agent
+    from backend.services.mandate_evaluator import register_authorized_mandate
+
+    token = "test_unbound_token_lock"
+    register_authorized_mandate(
+        token,
+        {"tier_id": "solo-starter", "amount": 49.99, "buyer_agent_id": "buyer-test"},
+    )
+    first = await seller_agent.purchase_subscription(
+        tier_id="solo-starter", agreed_monthly_rate=49.99,
+        mandate_proof_hash=token, contractor_email="first@contractor.com",
+    )
+    second = await seller_agent.purchase_subscription(
+        tier_id="solo-starter", agreed_monthly_rate=49.99,
+        mandate_proof_hash=token, contractor_email="second@contractor.com",
+    )
+    assert first["status"] == "ACTIVE"
+    assert second["status"] == "REJECTED"
+
+
+@pytest.mark.asyncio
+async def test_purchase_rejects_unissued_mandate_hash():
+    """A well-formed but never-issued 64-hex hash must not be accepted."""
+    from backend.agents.seller_agent import seller_agent
+
+    res = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash="a" * 64,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert res["status"] == "REJECTED"
+    assert "UNKNOWN_MANDATE" in res["reason"]
+
+
+@pytest.mark.asyncio
+async def test_ap2_mandate_identical_across_negotiate_and_purchase():
+    """purchase_subscription returns the exact signed AP2 mandate issued by negotiate_tier_terms."""
+    from backend.agents.seller_agent import seller_agent
+    from backend.services.crypto_mandate import verify_ap2_intent_mandate
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="buyer-consistency-test",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email="consistency@contractor.com",
+    )
+    assert neg["status"] == "APPROVED"
+    mandate = neg["ap2_intent_mandate"]
+    assert verify_ap2_intent_mandate(mandate)
+    assert mandate["payer"]["email"] == "consistency@contractor.com"
+    assert mandate["amount"] == {"value": "49.99", "currency_code": "USD"}
+    assert mandate["negotiation_id"] == neg["negotiation_id"]
+
+    purchase = await seller_agent.purchase_subscription(
+        tier_id="solo-starter",
+        agreed_monthly_rate=49.99,
+        mandate_proof_hash=neg["mandate_proof_hash"],
+        contractor_email="consistency@contractor.com",
+    )
+    assert purchase["status"] == "ACTIVE"
+    assert purchase["ap2_intent_mandate"] == mandate
+
+    tampered = {**mandate, "amount": {"value": "179.99", "currency_code": "USD"}}
+    assert not verify_ap2_intent_mandate(tampered)
+
+
+@pytest.mark.asyncio
+async def test_negotiate_requires_contractor_email():
+    from backend.agents.seller_agent import seller_agent
+
+    res = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="buyer-no-email", tier_id="solo-starter", monthly_budget_cap=60.00,
+    )
+    assert res["status"] == "REJECTED"
+    assert res["error"] == "CONTRACTOR_EMAIL_REQUIRED"

@@ -15,7 +15,12 @@ from .crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
     canonicalize_mandate_payload,
+    sign_ap2_intent_mandate,
+    verify_ap2_intent_mandate,
 )
+
+AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
+AP2_MANDATE_TTL_SEC = 2592000  # 30 days
 
 ALLOWED_CATEGORIES = {
     "contractor-dispatch-ai",
@@ -41,6 +46,51 @@ def register_authorized_mandate(proof_hash: str, details: Dict[str, Any]):
     }
 
 
+def get_authorized_mandate(proof_hash: str) -> Optional[Dict[str, Any]]:
+    """Returns the registered terms for a mandate proof hash, if any."""
+    return _AUTHORIZED_MANDATES.get(proof_hash)
+
+
+def bind_mandate_email(proof_hash: str, contractor_email: str):
+    """Locks a mandate that was issued without a contractor email to its first redeemer."""
+    auth = _AUTHORIZED_MANDATES.get(proof_hash)
+    if auth is not None and not auth.get("contractor_email"):
+        auth["contractor_email"] = contractor_email.strip().lower()
+
+
+def build_ap2_intent_mandate(
+    buyer_agent_id: str,
+    amount: float,
+    recurrence: str,
+    category: str,
+    tier_id: str = "*",
+    contractor_email: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Builds and Ed25519-signs the single canonical AP2 Intent Mandate for a negotiation.
+    The same signed object is returned by negotiate_tier_terms and purchase_subscription.
+    """
+    now = int(time.time())
+    mandate = {
+        "mandate_id": f"mandate_{uuid.uuid4().hex[:16]}",
+        "vct": "ap2.mandate.intent.1",
+        "issuer": buyer_agent_id,
+        "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
+        "payee": AP2_PAYEE_ID,
+        "tier_id": tier_id,
+        "amount": {"value": f"{amount:.2f}", "currency_code": "USD"},
+        "recurrence": recurrence,
+        "category": category,
+        "negotiation_id": negotiation_id,
+        "issued_at": now,
+        "expires_at": now + AP2_MANDATE_TTL_SEC,
+        "nonce": uuid.uuid4().hex[:16],
+        "user_present": False,
+    }
+    return sign_ap2_intent_mandate(mandate)
+
+
 def verify_authorized_mandate(
     proof_hash: str,
     tier_id: str,
@@ -49,54 +99,53 @@ def verify_authorized_mandate(
     max_cap: Optional[float] = None,
 ) -> Tuple[bool, str]:
     """
-    Validates that a purchase submission matches a cryptographically authorized mandate proof.
+    Validates that a purchase submission matches a mandate issued by this seller.
     Prevents buyer agents or attackers from submitting a $49.99 proof for a $179.99 tier,
-    or claiming a mandate issued to a different contractor email.
+    redeeming a mandate bound to a different contractor email, or presenting a forged token.
     """
     if not proof_hash or not proof_hash.strip():
         return False, "EMPTY_MANDATE_HASH: A signed AP2 mandate proof hash is required."
 
-    # 1. Check registry if generated during this session
     auth = _AUTHORIZED_MANDATES.get(proof_hash)
-    if auth:
-        if time.time() > auth.get("expires_at", 0):
-            return False, "MANDATE_EXPIRED: The authorized mandate proof has expired."
-        allowed_tier = auth.get("tier_id")
-        allowed_rate = auth.get("amount", 0.0)
-        bound_email = auth.get("contractor_email")
+    if not auth:
+        return False, "UNKNOWN_MANDATE: Proof hash was not issued by this seller. Call negotiate_tier_terms first."
 
-        # Identity anti-theft verification
-        if bound_email and contractor_email:
-            if bound_email.strip().lower() != contractor_email.strip().lower():
-                return (
-                    False,
-                    f"IDENTITY_THEFT_DETECTED: Mandate is cryptographically bound to '{bound_email}', cannot be redeemed by '{contractor_email}'.",
-                )
+    if time.time() > auth.get("expires_at", 0):
+        return False, "MANDATE_EXPIRED: The authorized mandate proof has expired."
 
-        # Verify rate doesn't exceed authorized amount
-        if round(agreed_rate, 2) > round(allowed_rate, 2):
+    # Identity anti-theft verification
+    bound_email = auth.get("contractor_email")
+    if bound_email:
+        if not contractor_email or bound_email.strip().lower() != contractor_email.strip().lower():
             return (
                 False,
-                f"RATE_TAMPERING_DETECTED: Agreed rate ${agreed_rate:.2f} exceeds authorized mandate amount ${allowed_rate:.2f}.",
+                f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{bound_email}', cannot be redeemed by '{contractor_email}'.",
             )
-        # If tier was restricted, verify tier
-        if allowed_tier and allowed_tier not in ["*", "any", tier_id]:
-            normalized_allowed = allowed_tier.replace("-", "").replace("_", "").lower()
-            normalized_req = tier_id.replace("-", "").replace("_", "").lower()
-            if normalized_allowed not in normalized_req and normalized_req not in normalized_allowed:
-                return (
-                    False,
-                    f"TIER_MISMATCH_DETECTED: Mandate was authorized for '{allowed_tier}', but attempted to purchase '{tier_id}'.",
-                )
-        return True, "VERIFIED"
 
-    # 2. Cryptographic signature check fallback (Ed25519 or HMAC)
-    if len(proof_hash) == 128:  # Raw Ed25519 signature
-        return True, "VERIFIED_ASYMMETRIC"
-    elif len(proof_hash) == 64:  # SHA256 / HMAC token
-        return True, "VERIFIED_HASH"
+    # The signed AP2 mandate must be intact
+    ap2_mandate = auth.get("ap2_mandate")
+    if ap2_mandate is not None and not verify_ap2_intent_mandate(ap2_mandate):
+        return False, "MANDATE_SIGNATURE_INVALID: AP2 Intent Mandate signature verification failed."
 
-    return False, "INVALID_MANDATE_TOKEN_FORMAT"
+    allowed_tier = auth.get("tier_id")
+    allowed_rate = auth.get("amount", 0.0)
+
+    # Verify rate doesn't exceed authorized amount
+    if round(agreed_rate, 2) > round(allowed_rate, 2):
+        return (
+            False,
+            f"RATE_TAMPERING_DETECTED: Agreed rate ${agreed_rate:.2f} exceeds authorized mandate amount ${allowed_rate:.2f}.",
+        )
+    # If tier was restricted, verify tier
+    if allowed_tier and allowed_tier not in ["*", "any", tier_id]:
+        normalized_allowed = allowed_tier.replace("-", "").replace("_", "").lower()
+        normalized_req = tier_id.replace("-", "").replace("_", "").lower()
+        if normalized_allowed not in normalized_req and normalized_req not in normalized_allowed:
+            return (
+                False,
+                f"TIER_MISMATCH_DETECTED: Mandate was authorized for '{allowed_tier}', but attempted to purchase '{tier_id}'.",
+            )
+    return True, "VERIFIED"
 
 
 class MandateLedger:
@@ -143,10 +192,16 @@ ledger = MandateLedger()
 
 
 def sign_mandate_token(
-    agent_id: str, amount: float, recurrence: str, secret: str
+    agent_id: str,
+    amount: float,
+    recurrence: str,
+    secret: str,
+    contractor_email: Optional[str] = None,
 ) -> str:
-    """Generates an HMAC-SHA256 signature binding the agent identity, authorized amount, and timestamp."""
+    """Generates an HMAC-SHA256 signature binding the agent identity, contractor, authorized amount, and timestamp."""
     payload = f"{agent_id}:{amount:.2f}:{recurrence}:{int(time.time() // 300)}"  # 5-min epoch window
+    if contractor_email:
+        payload += f":{contractor_email.strip().lower()}"
     return hmac.new(
         secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
@@ -243,22 +298,12 @@ def evaluate_spending_mandate(
         nonce=uuid.uuid4().hex[:16],
     )
 
-    ap2_mandate = {
-        "mandate_id": f"mandate_{uuid.uuid4().hex[:12]}",
-        "vct": "ap2.mandate.intent.1",
-        "issuer": request.buyer_agent_id,
-        "payee": "fieldsmith-pro-telephony",
-        "amount": {"value": request.amount, "currency_code": "USD"},
-        "recurrence": request.recurrence.value,
-        "category": request.category,
-        "issued_at": int(time.time()),
-        "expires_at": int(time.time()) + 2592000,
-        "nonce": uuid.uuid4().hex[:16],
-        "signature_alg": "Ed25519",
-        "signature": asym_proof["signature"],
-        "public_key": asym_proof["public_key"],
-        "user_present": False,
-    }
+    ap2_mandate = build_ap2_intent_mandate(
+        buyer_agent_id=request.buyer_agent_id,
+        amount=request.amount,
+        recurrence=request.recurrence.value,
+        category=request.category,
+    )
 
     # Register mandate authorization
     register_authorized_mandate(

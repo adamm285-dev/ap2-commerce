@@ -101,8 +101,8 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     "FieldSmith Pro Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine.\n"
                     "Recommended buyer procurement workflow:\n"
                     "1. inspect_subscription_tiers: Inspect commercial subscription plans, quotas (screening minutes), overage rates, and pricing tiers.\n"
-                    "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, and contractor's monthly_budget_cap. If asking price exceeds budget, returns pre-approved counter-offer with pre-signed AP2 cryptographic mandate proof.\n"
-                    "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, and mandate_proof_hash to PayPal Recurring Vault for automated billing.\n"
+                    "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, contractor_email, and contractor's monthly_budget_cap. If asking price exceeds budget, returns pre-approved counter-offer with a signed AP2 Intent Mandate bound to contractor_email.\n"
+                    "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and the same contractor_email to PayPal Recurring Vault for automated billing.\n"
                     "4. provision_telecom_line: (Optional) Allocate dedicated local 10DLC telephone DID upon verified subscription."
                 ),
             },
@@ -153,6 +153,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
                     tier_id=arguments.get("tier_id", "flooring-tile"),
                     monthly_budget_cap=float(arguments.get("monthly_budget_cap", 60.00)),
+                    contractor_email=arguments.get("contractor_email"),
                     proposed_price=float(arguments["proposed_price"]) if "proposed_price" in arguments and arguments["proposed_price"] is not None else None,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "TELEPHONY_AI_SCREENER"),

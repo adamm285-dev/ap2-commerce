@@ -23,6 +23,9 @@ from ..services.mandate_evaluator import (
     evaluate_spending_mandate,
     verify_authorized_mandate,
     register_authorized_mandate,
+    get_authorized_mandate,
+    bind_mandate_email,
+    build_ap2_intent_mandate,
     sign_mandate_token,
     ledger,
 )
@@ -51,11 +54,15 @@ SELLER_MCP_TOOLS = [
         "description": "Evaluates buyer budget cap against desired subscription tier. If standard rate exceeds budget, autonomously negotiates tailored trade plan or pre-approved counter-offer with signed cryptographic mandate.",
         "input_schema": {
             "type": "object",
-            "required": ["buyer_agent_id", "tier_id", "monthly_budget_cap"],
+            "required": ["buyer_agent_id", "contractor_email", "tier_id", "monthly_budget_cap"],
             "properties": {
                 "buyer_agent_id": {
                     "type": "string",
                     "description": "Unique identifier of the Buyer Agent",
+                },
+                "contractor_email": {
+                    "type": "string",
+                    "description": "Contractor PayPal billing email. The issued mandate is bound to this email and can only be redeemed by it.",
                 },
                 "tier_id": {
                     "type": "string",
@@ -114,8 +121,8 @@ SELLER_MCP_TOOLS = [
             "properties": {
                 "tier_id": {"type": "string", "description": "Subscription tier ID (e.g. 'solo-starter', 'flooring-tile')"},
                 "agreed_monthly_rate": {"type": "number", "description": "Agreed monthly subscription rate"},
-                "mandate_proof_hash": {"type": "string", "description": "Signed AP2 Intent Mandate signature or token"},
-                "contractor_email": {"type": "string", "description": "Contractor notification and PayPal billing email"},
+                "mandate_proof_hash": {"type": "string", "description": "mandate_proof_hash returned by negotiate_tier_terms"},
+                "contractor_email": {"type": "string", "description": "Contractor PayPal billing email; must match the email the mandate was negotiated for"},
             },
         },
     },
@@ -319,11 +326,55 @@ class SellerAgent:
             ],
         }
 
+    def _issue_mandate(
+        self,
+        buyer_agent_id: str,
+        contractor_email: str,
+        tier_id: str,
+        amount: float,
+        recurrence: str,
+        category: str,
+        monthly_budget_cap: float,
+    ) -> Dict[str, Any]:
+        """Issues one email-bound proof hash and its signed AP2 Intent Mandate, and registers both."""
+        email = contractor_email.strip().lower()
+        proof_hash = sign_mandate_token(
+            agent_id=buyer_agent_id,
+            amount=amount,
+            recurrence=recurrence,
+            secret=settings.a2a_mandate_secret,
+            contractor_email=email,
+        )
+        negotiation_id = f"neg_{hashlib.sha256(proof_hash.encode()).hexdigest()[:12]}"
+        ap2_mandate = build_ap2_intent_mandate(
+            buyer_agent_id=buyer_agent_id,
+            amount=amount,
+            recurrence=recurrence,
+            category=category,
+            tier_id=tier_id,
+            contractor_email=email,
+            negotiation_id=negotiation_id,
+        )
+        register_authorized_mandate(
+            proof_hash,
+            {
+                "tier_id": tier_id,
+                "amount": amount,
+                "buyer_agent_id": buyer_agent_id,
+                "contractor_email": email,
+                "monthly_budget_cap": monthly_budget_cap,
+                "negotiation_id": negotiation_id,
+                "ap2_mandate": ap2_mandate,
+            },
+        )
+        return {"hash": proof_hash, "negotiation_id": negotiation_id, "ap2_mandate": ap2_mandate}
+
     async def negotiate_tier_terms(
         self,
         buyer_agent_id: str,
         tier_id: str,
         monthly_budget_cap: float,
+        contractor_email: Optional[str] = None,
         proposed_price: Optional[float] = None,
         recurrence: str = "monthly",
         category: str = "TELEPHONY_AI_SCREENER",
@@ -349,6 +400,16 @@ class SellerAgent:
         standard_price = tier_prices.get(tier_id, 79.99)
         minutes = tier_minutes.get(tier_id, 300)
 
+        if not contractor_email or "@" not in contractor_email:
+            return {
+                "status": "REJECTED",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "error": "CONTRACTOR_EMAIL_REQUIRED",
+                "reason": "contractor_email is required; the issued AP2 mandate is bound to it.",
+            }
+
         # 1. Direct Approval: Desired tier is within budget cap
         if monthly_budget_cap >= standard_price:
             mandate_res = await self.verify_spending_mandate(
@@ -358,59 +419,48 @@ class SellerAgent:
                 category=category,
                 monthly_budget_cap=monthly_budget_cap,
             )
-            mandate_hash = mandate_res.get("mandateProofHash", "")
-            negotiation_id = f"neg_{hashlib.sha256(mandate_hash.encode()).hexdigest()[:12]}"
-            register_authorized_mandate(
-                mandate_hash,
-                {
+            if not mandate_res.get("approved"):
+                return {
+                    "status": "REJECTED",
+                    "approved": False,
+                    "original_request_approved": False,
                     "tier_id": tier_id,
-                    "amount": standard_price,
-                    "buyer_agent_id": buyer_agent_id,
-                    "monthly_budget_cap": monthly_budget_cap,
-                    "negotiation_id": negotiation_id,
-                },
+                    "monthly_budget_cap": round(monthly_budget_cap, 2),
+                    "reason": mandate_res.get("reason"),
+                }
+            issued = self._issue_mandate(
+                buyer_agent_id, contractor_email, tier_id, standard_price,
+                recurrence, category, monthly_budget_cap,
             )
             return {
                 "status": "APPROVED",
                 "approved": True,
                 "original_request_approved": True,
-                "negotiation_id": negotiation_id,
+                "negotiation_id": issued["negotiation_id"],
                 "tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": round(monthly_budget_cap - standard_price, 2),
                 "screening_minutes": minutes,
-                "mandate_proof_hash": mandate_hash,
-                "ap2_intent_mandate": mandate_res.get("ap2IntentMandate"),
+                "mandate_proof_hash": issued["hash"],
+                "ap2_intent_mandate": issued["ap2_mandate"],
                 "reason": f"Plan '{tier_id}' at ${standard_price:.2f}/mo approved within ${monthly_budget_cap:.2f}/mo cap.",
             }
 
         # 2. Desired tier exceeds budget: Down-tier counter-offer to Solo Starter ($49.99)
         if monthly_budget_cap >= 49.99:
-            solo_hash = sign_mandate_token(
-                agent_id=buyer_agent_id,
-                amount=49.99,
-                recurrence=recurrence,
-                secret=settings.a2a_mandate_secret,
+            issued = self._issue_mandate(
+                buyer_agent_id, contractor_email, "solo-starter", 49.99,
+                recurrence, category, monthly_budget_cap,
             )
-            negotiation_id = f"neg_{hashlib.sha256(solo_hash.encode()).hexdigest()[:12]}"
-            register_authorized_mandate(
-                solo_hash,
-                {
-                    "tier_id": "solo-starter",
-                    "amount": 49.99,
-                    "buyer_agent_id": buyer_agent_id,
-                    "monthly_budget_cap": monthly_budget_cap,
-                    "negotiation_id": negotiation_id,
-                },
-            )
+            solo_hash = issued["hash"]
 
             remaining_after_solo = round(monthly_budget_cap - 49.99, 2)
             return {
                 "status": "COUNTER_OFFER",
                 "approved": False,
                 "original_request_approved": False,
-                "negotiation_id": negotiation_id,
+                "negotiation_id": issued["negotiation_id"],
                 "tier_id": tier_id,
                 "counter_offer_available": True,
                 "counter_offer_tier": "Solo Starter",
@@ -418,6 +468,7 @@ class SellerAgent:
                 "counter_offer_amount": 49.99,
                 "counter_offer_mandate_hash": solo_hash,
                 "mandate_proof_hash": solo_hash,
+                "ap2_intent_mandate": issued["ap2_mandate"],
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": remaining_after_solo,
                 "reason": (
@@ -471,11 +522,7 @@ class SellerAgent:
         Cryptographically verifies the mandate proof against tier, rate, and contractor identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
-        # 1. Idempotency Check: return existing subscription if already finalized
-        if mandate_proof_hash in _COMPLETED_SUBSCRIPTIONS:
-            return _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash]
-
-        # 2. Anti-Tamper & Identity Verification
+        # 1. Anti-Tamper & Identity Verification (always runs, even for replays)
         valid, reason = verify_authorized_mandate(
             proof_hash=mandate_proof_hash,
             tier_id=tier_id,
@@ -490,6 +537,14 @@ class SellerAgent:
                 "reason": reason,
                 "message": f"Purchase rejected: {reason}",
             }
+
+        # 2. Idempotency Check: a verified replay returns the existing subscription
+        if mandate_proof_hash in _COMPLETED_SUBSCRIPTIONS:
+            return _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash]
+
+        # Mandates issued without an email are locked to their first redeemer
+        bind_mandate_email(mandate_proof_hash, contractor_email)
+        auth = get_authorized_mandate(mandate_proof_hash) or {}
 
         # 3. Record spend in ledger on actual checkout completion
         ledger.record_spend(
@@ -509,29 +564,24 @@ class SellerAgent:
         utc_now = datetime.datetime.now(datetime.timezone.utc)
         created_time = utc_now.isoformat()
         next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
-        negotiation_id = f"neg_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:12]}"
-        mandate_id = f"mandate_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:16]}"
-        payer_id = f"PAYER-{hashlib.sha256(contractor_email.encode()).hexdigest()[:12].upper()}"
+        negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:12]}"
+        payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}"
         vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
         payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
         paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
 
-        ap2_mandate = {
-            "mandate_id": mandate_id,
-            "vct": "ap2.mandate.intent.1",
-            "issuer": contractor_email,
-            "payee": "PAYEE-FIELDSMITH-PRO-TELEPHONY",
-            "amount": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"},
-            "recurrence": "monthly",
-            "category": "TELEPHONY_AI_SCREENER",
-            "negotiation_id": negotiation_id,
-            "issued_at": int(utc_now.timestamp()),
-            "expires_at": int(utc_now.timestamp()) + 2592000,
-            "nonce": hashlib.sha256(f"{mandate_proof_hash}:nonce".encode()).hexdigest()[:16],
-            "signature_alg": "Ed25519",
-            "public_key": "4c4c8d7696f8c7b8979148d2d6313175c58a8a49c25a07c37de756e1ee94e63b",
-            "user_present": False,
-        }
+        # Return the exact signed mandate issued at negotiation, unchanged
+        ap2_mandate = auth.get("ap2_mandate")
+        if ap2_mandate is None:
+            ap2_mandate = build_ap2_intent_mandate(
+                buyer_agent_id=auth.get("buyer_agent_id", "unknown"),
+                amount=agreed_monthly_rate,
+                recurrence="monthly",
+                category="TELEPHONY_AI_SCREENER",
+                tier_id=tier_id,
+                contractor_email=contractor_email,
+                negotiation_id=negotiation_id,
+            )
 
         billing_cycles = [
             {

@@ -187,6 +187,7 @@ SELLER_MCP_TOOLS = [
 
 # Cache of completed subscriptions for strict idempotency (stable create_time)
 _COMPLETED_SUBSCRIPTIONS: Dict[str, Dict[str, Any]] = {}
+_ACTIVE_CONTRACTOR_SUBSCRIPTIONS: Dict[str, str] = {}
 
 
 class SellerAgent:
@@ -339,16 +340,17 @@ class SellerAgent:
     ) -> Dict[str, Any]:
         """Issues one email-bound proof hash, signed AP2 Intent Mandate (or adopts verified buyer-signed mandate), and signed AP2 Cart Mandate."""
         email = contractor_email.strip().lower()
+        clean_tier = tier_id.replace("-", "_").lower()
+        offer_id = f"off_{clean_tier}_{int(amount)}_{uuid.uuid4().hex[:8]}"
         proof_hash = sign_mandate_token(
             agent_id=buyer_agent_id,
             amount=amount,
             recurrence=recurrence,
             secret=settings.a2a_mandate_secret,
             contractor_email=email,
+            offer_id=offer_id,
         )
         negotiation_id = f"neg_{hashlib.sha256(proof_hash.encode()).hexdigest()[:12]}"
-        clean_tier = tier_id.replace("-", "_").lower()
-        offer_id = f"off_{clean_tier}_{int(amount)}_{uuid.uuid4().hex[:8]}"
 
         if buyer_intent_mandate and verify_ap2_intent_mandate(buyer_intent_mandate):
             ap2_mandate = dict(buyer_intent_mandate)
@@ -497,16 +499,28 @@ class SellerAgent:
                 recurrence=recurrence,
                 category=category,
                 monthly_budget_cap=monthly_budget_cap,
+                contractor_email=email,
             )
             if not mandate_res.get("approved"):
-                return {
+                active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
+                if not active_sub_id and email:
+                    for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
+                        if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
+                            active_sub_id = s.get("subscription_id")
+                            if active_sub_id:
+                                break
+                rejection = {
                     "status": "REJECTED",
                     "approved": False,
                     "original_request_approved": False,
                     "tier_id": tier_id,
+                    "error": "BUDGET_EXHAUSTED",
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
                     "reason": mandate_res.get("reason"),
                 }
+                if active_sub_id:
+                    rejection["active_subscription_id"] = active_sub_id
+                return rejection
             issued = self._issue_mandate(
                 buyer_agent_id, email, tier_id, standard_price,
                 recurrence, category, monthly_budget_cap,
@@ -590,16 +604,28 @@ class SellerAgent:
             }
 
         # 3. Budget below minimum viable tier ($49.99)
-        return {
+        active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
+        if not active_sub_id and email:
+            for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
+                if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
+                    active_sub_id = s.get("subscription_id")
+                    if active_sub_id:
+                        break
+
+        rejection = {
             "status": "REJECTED",
             "approved": False,
             "original_request_approved": False,
             "tier_id": tier_id,
+            "error": "BUDGET_EXHAUSTED",
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
             "monthly_cap_remaining": round(monthly_budget_cap, 2),
             "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (FieldSmith Solo Starter at $49.99/mo).",
         }
+        if active_sub_id:
+            rejection["active_subscription_id"] = active_sub_id
+        return rejection
 
     async def verify_spending_mandate(
         self,
@@ -608,6 +634,7 @@ class SellerAgent:
         recurrence: str,
         category: str,
         monthly_budget_cap: float,
+        contractor_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Tool implementation: Enforces buyer spending limits."""
         req = SpendingMandateRequest(
@@ -616,6 +643,7 @@ class SellerAgent:
             recurrence=RecurrenceType(recurrence),
             category=category,
             monthlyBudgetCap=monthly_budget_cap,
+            contractorEmail=contractor_email,
         )
         res = evaluate_spending_mandate(req)
         return res.model_dump(by_alias=True)
@@ -660,14 +688,14 @@ class SellerAgent:
             }
 
         # 2. Idempotency Check: a verified replay returns the existing subscription
-        cache_key = mandate_proof_hash or offer_id
+        cache_key = offer_id or mandate_proof_hash
         if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
             return _COMPLETED_SUBSCRIPTIONS[cache_key]
 
         # Mandates issued without an email are locked to their first redeemer
         if mandate_proof_hash and contractor_email:
             bind_mandate_email(mandate_proof_hash, contractor_email)
-        auth = get_authorized_mandate(mandate_proof_hash or offer_id) or {}
+        auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
 
         # 3. Record spend in ledger on actual checkout completion
         buyer_id = auth.get("buyer_agent_id", "unknown")
@@ -685,7 +713,7 @@ class SellerAgent:
         remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
 
         # 4. Deterministic Subscription ID
-        seed = f"{mandate_proof_hash or offer_id}:{tier_id}:{agreed_monthly_rate:.2f}"
+        seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
         stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
         sub_id = f"I-A2A-VAULT-{stable_int:07d}"
 
@@ -794,7 +822,11 @@ class SellerAgent:
             _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
         if auth.get("offer_id"):
             _COMPLETED_SUBSCRIPTIONS[auth["offer_id"]] = response
+        if offer_id:
+            _COMPLETED_SUBSCRIPTIONS[offer_id] = response
         _COMPLETED_SUBSCRIPTIONS[sub_id] = response
+        if contractor_email:
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[contractor_email.strip().lower()] = sub_id
         return response
 
 

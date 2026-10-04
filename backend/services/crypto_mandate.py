@@ -13,8 +13,11 @@ import time
 from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+import logging
 from ..config import settings, ENV_PATH
 import dotenv
+
+logger = logging.getLogger("a2a_crypto")
 
 if ENV_PATH.exists():
     dotenv.load_dotenv(ENV_PATH)
@@ -35,6 +38,10 @@ def _load_or_generate_key(env_var_names: list) -> Tuple[ed25519.Ed25519PrivateKe
             except Exception:
                 pass
     # If not provided in environment, generate a true non-reproducible random key
+    logger.warning(
+        f"[CRYPTO_WARNING] Private key {env_var_names} not configured in .env! "
+        "Generated ephemeral random Ed25519 key. This will rotate on server restart!"
+    )
     priv = ed25519.Ed25519PrivateKey.generate()
     pub = priv.public_key()
     return priv, priv.private_bytes_raw().hex(), pub.public_bytes_raw().hex()

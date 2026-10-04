@@ -33,6 +33,9 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_ledger():
     ledger.reset()
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    _COMPLETED_SUBSCRIPTIONS.clear()
+    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.clear()
 
 
 @pytest.mark.asyncio
@@ -539,6 +542,91 @@ async def test_consecutive_purchases_budget_accounting():
     )
     assert p2["status"] == "ACTIVE"
     assert p2["monthly_cap_remaining"] == 10.01
+
+
+@pytest.mark.asyncio
+async def test_rapid_consecutive_offers_retain_isolated_mandates():
+    """
+    Verifies that when two offers are negotiated rapidly within the same 5-minute window
+    for the same buyer agent and contractor email, each offer retains a unique HMAC proof hash
+    and independent offer_id. Purchasing offer 1 returns offer 1's exact offer_id and cart mandate,
+    guaranteeing that offer 2 did not overwrite offer 1 in the authorized mandate registry.
+    """
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    neg2 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+
+    # Offers must have distinct offer_ids and distinct proof hashes
+    assert neg1["offer_id"] != neg2["offer_id"]
+    assert neg1["mandate_proof_hash"] != neg2["mandate_proof_hash"]
+
+    # Purchase offer 1
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert p1["status"] == "ACTIVE"
+    assert p1["offer_id"] == neg1["offer_id"]
+    assert p1["mandate_proof_hash"] == neg1["mandate_proof_hash"]
+    assert p1["ap2_cart_mandate"]["offer_id"] == neg1["offer_id"]
+    assert p1["ap2_cart_mandate"]["cart_id"] == neg1["ap2_cart_mandate"]["cart_id"]
+    assert p1["offer_id"] != neg2["offer_id"]
+
+    # Purchase offer 2 independently
+    p2 = await seller_agent.purchase_subscription(
+        offer_id=neg2["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert p2["status"] == "ACTIVE"
+    assert p2["offer_id"] == neg2["offer_id"]
+    assert p2["mandate_proof_hash"] == neg2["mandate_proof_hash"]
+    assert p2["ap2_cart_mandate"]["offer_id"] == neg2["offer_id"]
+
+
+@pytest.mark.asyncio
+async def test_budget_exhausted_machine_readable_rejection():
+    """
+    Verifies that when a negotiation is rejected due to budget exhaustion
+    (e.g., remaining budget $10.01 is below the minimum viable $49.99 tier),
+    the seller agent returns machine-readable error: "BUDGET_EXHAUSTED"
+    and identifies the active_subscription_id consuming the budget.
+    """
+    # 1. Marcus purchases Solo Starter at $49.99 under a $60 cap
+    neg1 = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="solo-starter",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    p1 = await seller_agent.purchase_subscription(
+        offer_id=neg1["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    active_sub_id = p1["subscription_id"]
+    assert active_sub_id.startswith("I-A2A-VAULT-")
+
+    # 2. Marcus attempts to negotiate with remaining $10.01 budget cap
+    neg_low = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="marcus-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=10.01,
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert neg_low["status"] == "REJECTED"
+    assert neg_low["approved"] is False
+    assert neg_low["error"] == "BUDGET_EXHAUSTED"
+    assert neg_low["active_subscription_id"] == active_sub_id
+    assert neg_low["counter_offer_available"] is False
+
 
 
 

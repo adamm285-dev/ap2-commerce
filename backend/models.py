@@ -64,6 +64,9 @@ class SpendingMandateRequest(BaseModel):
     monthly_budget_cap: Optional[float] = Field(
         default=100.00, alias="monthlyBudgetCap"
     )
+    contractor_email: Optional[str] = Field(
+        default=None, alias="contractorEmail"
+    )
 
 
 class SpendingMandateResponse(BaseModel):
@@ -98,6 +101,10 @@ class SpendingMandateResponse(BaseModel):
     )
     signature_algorithm: Optional[str] = Field(
         default="Ed25519", alias="signatureAlgorithm"
+    )
+    error: Optional[str] = Field(default=None, alias="error")
+    active_subscription_id: Optional[str] = Field(
+        default=None, alias="activeSubscriptionId"
     )
 
 

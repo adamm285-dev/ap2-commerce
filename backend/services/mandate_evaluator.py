@@ -254,11 +254,13 @@ def verify_authorized_mandate(
     redeeming a mandate bound to a different contractor email, or presenting a forged token.
     Supports lookup via proof_hash or offer_id.
     """
-    lookup_key = proof_hash.strip() if proof_hash and proof_hash.strip() else (offer_id.strip() if offer_id and offer_id.strip() else None)
+    lookup_key = (offer_id.strip() if offer_id and offer_id.strip() else None) or (proof_hash.strip() if proof_hash and proof_hash.strip() else None)
     if not lookup_key:
         return False, "EMPTY_MANDATE_HASH: A signed AP2 mandate proof hash or offer_id is required."
 
     auth = _AUTHORIZED_MANDATES.get(lookup_key)
+    if not auth and proof_hash:
+        auth = _AUTHORIZED_MANDATES.get(proof_hash.strip())
     if not auth and offer_id:
         auth = _AUTHORIZED_MANDATES.get(offer_id.strip())
     if not auth:
@@ -375,21 +377,37 @@ def sign_mandate_token(
     recurrence: str,
     secret: str,
     contractor_email: Optional[str] = None,
+    offer_id: Optional[str] = None,
 ) -> str:
-    """Generates an HMAC-SHA256 signature binding the agent identity, contractor, authorized amount, and timestamp."""
+    """Generates an HMAC-SHA256 signature binding the agent identity, contractor, authorized amount, timestamp, and optional offer_id."""
     payload = f"{agent_id}:{amount:.2f}:{recurrence}:{int(time.time() // 300)}"  # 5-min epoch window
     if contractor_email:
         payload += f":{contractor_email.strip().lower()}"
+    if offer_id:
+        payload += f":{offer_id.strip()}"
     return hmac.new(
         secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 
 def verify_mandate_token(
-    agent_id: str, amount: float, recurrence: str, token: str, secret: str
+    agent_id: str,
+    amount: float,
+    recurrence: str,
+    token: str,
+    secret: str,
+    contractor_email: Optional[str] = None,
+    offer_id: Optional[str] = None,
 ) -> bool:
     """Verifies that the mandate token matches the expected HMAC signature."""
-    expected = sign_mandate_token(agent_id, amount, recurrence, secret)
+    expected = sign_mandate_token(
+        agent_id=agent_id,
+        amount=amount,
+        recurrence=recurrence,
+        secret=secret,
+        contractor_email=contractor_email,
+        offer_id=offer_id,
+    )
     return hmac.compare_digest(expected, token)
 
 
@@ -418,16 +436,24 @@ def evaluate_spending_mandate(
         )
 
     # 2. Budget ceiling verification
-    remaining = ledger.get_remaining_budget(agent_id=agent_id, cap=cap)
-    if request.amount > remaining:
+    email = request.contractor_email
+    existing_sub = 0.0
+    if email:
+        existing_sub = ledger._contractor_subscriptions.get(email.strip().lower(), 0.0)
+
+    remaining = ledger.get_remaining_budget(agent_id=agent_id, cap=cap, contractor_email=email)
+    effective_available = remaining + existing_sub
+
+    if request.amount > cap or request.amount > effective_available:
         # Check if dynamic counter-offer tier is viable within contractor's budget
-        if remaining >= 49.99:
+        if effective_available >= 49.99 and cap >= 49.99:
             # Generate pre-signed counter-offer token for Solo Starter at $49.99
             counter_hash = sign_mandate_token(
                 agent_id=request.buyer_agent_id,
                 amount=49.99,
                 recurrence=request.recurrence.value,
                 secret=settings.a2a_mandate_secret,
+                contractor_email=email,
             )
             register_authorized_mandate(
                 counter_hash,
@@ -435,6 +461,7 @@ def evaluate_spending_mandate(
                     "tier_id": "solo-starter",
                     "amount": 49.99,
                     "buyer_agent_id": request.buyer_agent_id,
+                    "contractor_email": email.strip().lower() if email else None,
                     "monthly_budget_cap": cap,
                 },
             )
@@ -457,6 +484,7 @@ def evaluate_spending_mandate(
             monthly_cap_remaining=remaining,
             mandate_proof_hash="",
             reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}",
+            error="BUDGET_EXHAUSTED",
         )
 
     # 3. Approved: generate cryptographic proof & AP2 Intent Mandate

@@ -52,6 +52,7 @@ from .mcp_server import (
     get_recent_wire_frames,
 )
 from .agents.contractor_copilot import ContractorCopilot
+from .agents.seller_agent import seller_agent
 from .harness.external_buyer_agent import ExternalBuyerAgent
 from .api.m2m_audit import router as m2m_router
 
@@ -424,7 +425,26 @@ async def evaluate_mandate_endpoint(request: SpendingMandateRequest):
     tags=["Autonomous Governance"],
 )
 async def reset_mandate_endpoint(request: Request):
-    """Resets the spending mandate ledger for simulations and testing."""
+    """Resets the spending mandate ledger for simulations and testing (requires admin authentication)."""
+    auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
+    admin_param = request.query_params.get("admin_key")
+
+    provided_token = None
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            provided_token = auth_header[7:].strip()
+        else:
+            provided_token = auth_header.strip()
+    elif admin_param:
+        provided_token = admin_param.strip()
+
+    expected_key = getattr(settings, "admin_api_key", "dev-admin-secret-key")
+    if not provided_token or provided_token != expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authorization required to reset mandate ledger. Provide X-Admin-Key header or admin_key query param.",
+        )
+
     agent_id = None
     try:
         body = await request.json()
@@ -453,11 +473,25 @@ async def reset_mandate_endpoint(request: Request):
 )
 async def provision_line_endpoint(request: ProvisionRequest):
     """Provisions a dedicated 10DLC telephone DID anchored to verified PayPal subscriber identity."""
-    try:
-        return await telnyx_provisioner.provision_did(request)
-    except Exception as e:
-        logger.error(f"Error provisioning DID: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    res = await seller_agent.provision_telecom_line(
+        subscription_id=request.subscription_id,
+        contractor_email=request.contractor_email,
+        area_code=request.area_code or "863",
+        simulate_exhaustion=request.simulate_exhaustion or False,
+    )
+    if res.get("status") == "REJECTED":
+        err = res.get("error", "PROVISIONING_FAILED")
+        reason = res.get("reason", "Provisioning rejected.")
+        status_code = status.HTTP_400_BAD_REQUEST
+        if err == "IDENTITY_MISMATCH_DETECTED":
+            status_code = status.HTTP_403_FORBIDDEN
+        elif err == "SUBSCRIPTION_NOT_FOUND":
+            status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail={"status": "REJECTED", "error": err, "reason": reason},
+        )
+    return ProvisionResponse(**res)
 
 
 @app.post(
@@ -538,10 +572,28 @@ async def create_paypal_order(request: PayPalOrderCreateRequest):
 
 @app.post("/api/paypal/webhook", tags=["PayPal Webhooks"])
 async def paypal_webhook_receiver(request: Request):
-    """Receives and processes PayPal subscription and order webhooks."""
-    body = await request.json()
+    """Receives and processes PayPal subscription and order webhooks with signature verification."""
+    body_bytes = await request.body()
+    body_str = body_bytes.decode("utf-8") if body_bytes else "{}"
+    try:
+        body = json.loads(body_str)
+    except Exception:
+        body = {}
+
     event_type = body.get("event_type", "UNKNOWN")
     logger.info(f"[PayPal Webhook] Received event: {event_type}")
+
+    # Verify PayPal webhook transmission signature
+    verification = await paypal_service.verify_webhook_signature(
+        headers=dict(request.headers),
+        raw_body=body_str,
+    )
+    if verification.get("verification_status") == "FAILURE":
+        logger.warning(f"[SECURITY] PayPal webhook signature verification failed for event {event_type}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid PayPal webhook signature.",
+        )
 
     # Process activation event
     if event_type in [
@@ -551,10 +603,14 @@ async def paypal_webhook_receiver(request: Request):
         resource = body.get("resource", {})
         sub_id = resource.get("id", "UNKNOWN_SUB")
         logger.info(
-            f"[PayPal Webhook] Verified payment event for {sub_id}. Triggering KYC DID allocation."
+            f"[PayPal Webhook] Verified payment event for {sub_id} ({verification.get('verification_status')}). Triggering KYC DID allocation."
         )
 
-    return {"status": "received", "event_type": event_type}
+    return {
+        "status": "received",
+        "event_type": event_type,
+        "verification_status": verification.get("verification_status", "SUCCESS"),
+    }
 
 
 class RunBuyerAgentRequest(BaseModel):
@@ -568,7 +624,7 @@ class RunBuyerAgentRequest(BaseModel):
     areaCode: Optional[str] = Field(default="863", alias="area_code")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
     webhookUrl: Optional[str] = Field(default=None, alias="webhook_url")
-    resetLedger: Optional[bool] = Field(default=True, alias="reset_ledger")
+    resetLedger: Optional[bool] = Field(default=False, alias="reset_ledger")
 
 
 @app.post("/api/harness/run-buyer-agent", tags=["External Buyer Harness"])

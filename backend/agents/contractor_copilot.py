@@ -163,7 +163,7 @@ class ContractorCopilot:
                 f"🛡️ **A2A Protocol Cryptographic Audit Trail Verified:**\n\n"
                 f"• **Step 1: Mandate Evaluation (RFC-7807)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog. Sealed via 64-char HMAC-SHA256 signature (`X-FieldSmith-Signature`).\n"
                 f"• **Step 2: PayPal Subscriptions Rails**: Authenticated recurring billing agreement (`I-AUTONOMOUS-8902`) with PayPal Vault merchant-initiated tokenization for zero off-session human intervention.\n"
-                f"• **Step 3: Telnyx 10DLC Binding**: Dedicated local DID `+1 ({self.area_code}) 267-8902` provisioned with STIR/SHAKEN Level A attestation, 100% inbound lockdown, and statutory TCPA autodialer immunity.\n"
+                f"• **Step 3: Telnyx 10DLC Binding**: Dedicated local 10DLC DID provisioned with STIR/SHAKEN Level A attestation, 100% inbound lockdown, and strict inbound screening defense.\n"
                 f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to Jobber GraphQL v2 (`JOB-ROUTING-8812`) and QuickBooks Online API v3 expense in Account 6300 (`QBO-EXP-9921`).\n\n"
                 f"You can review the live JSON-RPC 2.0 frames in the right panel or click **Back-Office Payloads** in the top bar for raw artifacts."
             )

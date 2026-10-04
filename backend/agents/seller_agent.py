@@ -264,7 +264,7 @@ class SellerAgent:
         return {
             "provider": self.agent_name,
             "currency": "USD",
-            "protocol_support": ["AP2", "KYA", "FIDO"],
+            "protocol_support": ["AP2", "MCP"],
             "service_description": "FieldSmith Pro AI Telephony & Voice Dispatch Receptionist SaaS for Field Service Contractors",
             "subscription_plans": [
                 {
@@ -818,19 +818,35 @@ class SellerAgent:
         )
         remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
 
-        # 4. Deterministic Subscription ID
-        seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
-        stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
-        sub_id = f"I-A2A-VAULT-{stable_int:07d}"
-
-        utc_now = datetime.datetime.now(datetime.timezone.utc)
-        created_time = utc_now.isoformat()
-        next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
+        # 4. Invoke PayPal Gateway (calls real PayPal Sandbox in live mode; deterministic in mock mode)
+        paypal_result = await paypal_service.create_subscription(
+            tier_id=tier_id,
+            agreed_monthly_rate=agreed_monthly_rate,
+            contractor_email=contractor_email or "marcus@millercustomfloors.com",
+            contractor_name="Marcus Miller",
+            offer_id=offer_id,
+            mandate_proof_hash=mandate_proof_hash,
+        )
+        sub_id = paypal_result["subscription_id"]
+        created_time = paypal_result.get("created_time") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+        next_billing = paypal_result.get("next_billing_time") or (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
         negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
-        payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-A2A-BUYER"
-        vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
-        payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
-        paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
+        payer_id = paypal_result.get("payer_id") or (f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-A2A-BUYER")
+        vault_id = paypal_result.get("vault_id") or f"vault_tok_{sub_id.lower().replace('-', '_')}"
+        payment_token = paypal_result.get("payment_token") or f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
+        paypal_req_id = paypal_result.get("paypal_request_id") or f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
+        hateoas_links = paypal_result.get("hateoas_links") or [
+            {
+                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
+                "rel": "self",
+                "method": "GET",
+            },
+            {
+                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}/cancel",
+                "rel": "cancel",
+                "method": "POST",
+            },
+        ]
 
         # Mark old subscription as REPLACED (Plan Change Model)
         if old_sub_id and old_sub:
@@ -862,20 +878,6 @@ class SellerAgent:
                     "fixed_price": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"}
                 },
             }
-        ]
-
-        # Machine-initiated vaulted subscription links: omit human browser 'approve' link
-        hateoas_links = [
-            {
-                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
-                "rel": "self",
-                "method": "GET",
-            },
-            {
-                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}/cancel",
-                "rel": "cancel",
-                "method": "POST",
-            },
         ]
 
         next_action = {
@@ -975,6 +977,21 @@ class SellerAgent:
         """Tool implementation: Executes KYC-verified DID allocation with automated LATA failover."""
         # 1. Validate that the PayPal subscription exists and has been captured
         sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id.strip())
+        if not sub:
+            try:
+                remote_sub = await paypal_service.verify_subscription(subscription_id.strip())
+                if remote_sub and remote_sub.get("status") == "ACTIVE" and not remote_sub.get("mock_mode"):
+                    sub = {
+                        "subscription_id": subscription_id.strip(),
+                        "status": "ACTIVE",
+                        "contractor_email": remote_sub.get("subscriber", {}).get("email_address", contractor_email),
+                        "tier_id": "fieldsmith-pro",
+                        "agreed_monthly_rate": 79.99,
+                    }
+                    _COMPLETED_SUBSCRIPTIONS[subscription_id.strip()] = sub
+            except Exception as e:
+                logger.warning(f"Could not verify remote PayPal subscription {subscription_id}: {e}")
+
         if not sub:
             return {
                 "status": "REJECTED",

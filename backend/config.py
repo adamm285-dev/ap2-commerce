@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     a2a_private_key: str = Field(default="", alias="A2A_PRIVATE_KEY")
     a2a_buyer_public_key: str = Field(default="", alias="A2A_BUYER_PUBLIC_KEY")
 
+    # Admin API Key for administrative endpoints (mandate reset, ledger management)
+    admin_api_key: str = Field(default="dev-admin-secret-key", alias="ADMIN_API_KEY")
+
+    # PayPal Recurring Billing Plan IDs (optional overrides for live sandbox plans)
+    paypal_plan_id_solo: str = Field(default="P-FLSMITH-SOLO-STARTER", alias="PAYPAL_PLAN_ID_SOLO")
+    paypal_plan_id_pro: str = Field(default="P-FLSMITH-PRO", alias="PAYPAL_PLAN_ID_PRO")
+    paypal_plan_id_dispatch: str = Field(default="P-FLSMITH-DISPATCH", alias="PAYPAL_PLAN_ID_DISPATCH")
 
 
 settings = Settings()

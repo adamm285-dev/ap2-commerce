@@ -95,17 +95,17 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 
 * **Frontend:** React 19, TypeScript, Vite 8, Lucide React icons, dark slate theme.
 * **Component Frameworks:** AG Studio v3.0.0 (`ag-studio-react`, `ag-studio`), Bryntum Scheduler 7.3.7 (`@bryntum/scheduler`).
-* **Payments & Identity:** `@paypal/react-paypal-js`, PayPal Server REST APIs, PayPal Vault tokens, and cryptographic HMAC-SHA256 mandate validation.
+* **Payments & Identity:** `@paypal/react-paypal-js`, PayPal Sandbox REST APIs (v1 Subscriptions & v2 Checkout), PayPal Vault tokens, and cryptographic HMAC-SHA256 / Ed25519 AP2 mandate validation.
 * **Backend API:** FastAPI (Python 3.13), Uvicorn, Pydantic v2 schemas matching `openapi.yaml`.
 * **Autonomous Agents:** Standalone External Buyer Agent CLI harness (`backend.harness.external_buyer_agent`) and Seller Agent exposing Model Context Protocol (MCP) tool schemas (`backend.mcp_server`).
-* **Telecom Infrastructure:** Telnyx 10DLC REST API simulation with strict inbound-only TCPA compliance locks and contiguous LATA routing.
+* **Telecom Infrastructure:** Telnyx 10DLC REST API simulation with strict inbound-only compliance locks and contiguous LATA routing (swappable to live carrier via `TELNYX_API_KEY`).
 * **Workflow Automation & ERP:** Jobber GraphQL/REST exporter, QuickBooks Online API v3 exporter, and Zapier MCP Dispatcher with signed webhook hooks.
 
 ---
 
 ## 7. Challenges We Overcame
 
-1. **Eliminating "Smoke and Mirrors" in Agent Demos:** Hackathon judges frequently encounter static mock responses. We eliminated this by binding all downstream artifacts (Jobber client IDs, Telnyx area codes, QBO expense memos) dynamically to input parameters, adding an interactive byte-level Anti-Tamper Verifier in the UI, and streaming raw JSON-RPC 2.0 frames over live SSE.
+1. **Transparent Protocol Verification Over Static Slides:** Rather than static slide mockups, our architecture runs fully deterministic AP2 dual-mandate and MCP bargaining workflows. In development and judge evaluation modes, calls route through PayPal Sandbox and simulated Telnyx/Zapier adapters with full real-API parity, backed by an interactive byte-level Anti-Tamper Verifier in the UI and raw JSON-RPC 2.0 frames streamed over live SSE.
 2. **Autonomous Counter-Offer Negotiation:** When buyer budgets don't meet standard asking rates ($60 cap vs $79.99/mo plan), standard bots fail with a 400 error. We engineered an autonomous multi-tier bargaining protocol where the seller dynamically offers a scaled-down tier ($49.99/mo Solo Intake) which the buyer evaluates and approves autonomously.
 3. **Reactivity Across Disparate UI Frameworks:** Bridging the AG Studio React grid, the Bryntum canvas engine, and the Zapier execution trace into one seamless, reactive experience. When a payment event occurs, Marcus Miller's card dynamically mutates from amber to green without refreshing or duplicating data.
 4. **Preventing Telecom Bot Abuse:** Anonymous AI agents dialers risk massive TCPA fines ($500-$1,500/call). We solved this by legally anchoring line allocation to the verified PayPal subscriber KYC identity, locking the line strictly to inbound screening.

@@ -57,10 +57,20 @@ def test_evaluate_spending_mandate_endpoint():
     assert len(data["mandateProofHash"]) == 64
 
 
+def test_reset_mandate_ledger_unauthorized_fails():
+    res = client.post(
+        "/api/agent/spending-mandate/reset",
+        json={"buyerAgentId": "test-buyer-agent"},
+    )
+    assert res.status_code == 401
+    assert "Admin authorization required" in res.json()["detail"]
+
+
 def test_reset_mandate_ledger_endpoint():
     res = client.post(
         "/api/agent/spending-mandate/reset",
         json={"buyerAgentId": "test-buyer-agent"},
+        headers={"X-Admin-Key": "dev-admin-secret-key"},
     )
     assert res.status_code == 200
     data = res.json()
@@ -68,7 +78,47 @@ def test_reset_mandate_ledger_endpoint():
     assert data["remaining_budget"] == 100.00
 
 
+def test_provision_line_unauthorized_subscription_fails():
+    payload = {
+        "subscriptionId": "I-FAKE-UNREGISTERED-9999",
+        "contractorEmail": "test@floorsmith.pro",
+        "areaCode": "863",
+    }
+    res = client.post("/api/agent/provision", json=payload)
+    assert res.status_code == 404
+    assert res.json()["detail"]["error"] == "SUBSCRIPTION_NOT_FOUND"
+
+
+def test_provision_line_identity_mismatch_fails():
+    from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
+    _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
+        "subscription_id": "I-TEST-SUB-9941",
+        "status": "ACTIVE",
+        "contractor_email": "test@floorsmith.pro",
+        "tier_id": "solo-starter",
+        "agreed_monthly_rate": 49.99,
+    }
+    payload = {
+        "subscriptionId": "I-TEST-SUB-9941",
+        "contractorEmail": "attacker@evil.com",
+        "areaCode": "863",
+    }
+    res = client.post("/api/agent/provision", json=payload)
+    assert res.status_code == 403
+    assert res.json()["detail"]["error"] == "IDENTITY_MISMATCH_DETECTED"
+
+
 def test_provision_line_endpoint():
+    from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
+    _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
+        "subscription_id": "I-TEST-SUB-9941",
+        "status": "ACTIVE",
+        "contractor_email": "test@floorsmith.pro",
+        "tier_id": "solo-starter",
+        "agreed_monthly_rate": 49.99,
+    }
     payload = {
         "subscriptionId": "I-TEST-SUB-9941",
         "contractorEmail": "test@floorsmith.pro",
@@ -84,10 +134,21 @@ def test_provision_line_endpoint():
 
 def test_provision_line_endpoint_multi_area_codes():
     """Verifies that any US area code (Atlanta, Dallas, Chicago, Denver) provisions dedicated numbers matching that market."""
+    from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
     for ac in ["404", "214", "312", "303"]:
+        sub_id = f"I-TEST-SUB-{ac}"
+        email = f"contractor_{ac}@example.com"
+        _COMPLETED_SUBSCRIPTIONS[sub_id] = {
+            "subscription_id": sub_id,
+            "status": "ACTIVE",
+            "contractor_email": email,
+            "tier_id": "fieldsmith-pro",
+            "agreed_monthly_rate": 79.99,
+        }
         payload = {
-            "subscriptionId": f"I-TEST-SUB-{ac}",
-            "contractorEmail": f"contractor_{ac}@example.com",
+            "subscriptionId": sub_id,
+            "contractorEmail": email,
             "areaCode": ac,
         }
         res = client.post("/api/agent/provision", json=payload)
@@ -96,6 +157,37 @@ def test_provision_line_endpoint_multi_area_codes():
         assert data["status"] == "ALLOCATED"
         assert data["assignedDid"].startswith(f"+1{ac}")
         assert data["routingState"] == "ACTIVE_10DLC_BOUND"
+
+
+def test_paypal_webhook_verified():
+    payload = {
+        "id": "WH-9911-TEST",
+        "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
+        "resource": {"id": "I-A2A-VAULT-001234"},
+    }
+    res = client.post(
+        "/api/paypal/webhook",
+        json=payload,
+        headers={"PAYPAL-TRANSMISSION-SIG": "valid_mock_signature_test"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "received"
+    assert res.json()["verification_status"] == "SUCCESS"
+
+
+def test_paypal_webhook_invalid_signature_rejected():
+    payload = {
+        "id": "WH-9911-TEST",
+        "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
+        "resource": {"id": "I-A2A-VAULT-001234"},
+    }
+    res = client.post(
+        "/api/paypal/webhook",
+        json=payload,
+        headers={"PAYPAL-TRANSMISSION-SIG": ""},
+    )
+    assert res.status_code == 400
+    assert "Invalid PayPal webhook signature" in res.json()["detail"]
 
 
 def test_lock_dispatch_slot():

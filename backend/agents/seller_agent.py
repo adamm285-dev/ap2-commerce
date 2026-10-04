@@ -33,6 +33,20 @@ from ..services.mandate_evaluator import (
     ledger,
 )
 from ..services.paypal_service import paypal_service
+from ..services.plan_catalog import (
+    PLANS,
+    TIER_ALIASES,
+    QUOTA_UNIT,
+    QUOTA_UNIT_DEFINITION,
+    INCLUDED_ON_ALL_PLANS,
+    SUPPORTED_TRADES,
+    ACTIVATION,
+    TRUST_SIGNALS,
+    resolve_plan,
+    get_plan,
+    plan_summary,
+    public_plan,
+)
 from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 from ..services.crypto_mandate import verify_mandate_proof, verify_ap2_intent_mandate
@@ -44,12 +58,12 @@ logger = logging.getLogger("seller_agent")
 SELLER_MCP_TOOLS = [
     {
         "name": "get_service_catalog",
-        "description": "Returns platform technical specifications, 10DLC telephony infrastructure, and backoffice integration capabilities.",
+        "description": "Returns the FieldSmith plan catalog with buyer context: plans and quotas, capabilities included on every plan, supported trades with their intake focus, activation requirements, and guarantee and policy links.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "inspect_subscription_tiers",
-        "description": "Inspects FieldSmith Pro commercial SaaS subscription tiers ($49.99 Solo Starter, $79.99 FieldSmith Pro, $179.99 Fleet Dispatch), screening minutes, overage rates, and features.",
+        "description": "Inspects FieldSmith Pro commercial SaaS subscription tiers ($49.99 Solo Starter, $79.99 FieldSmith Pro, $179.99 Fleet Dispatch), screened-call quotas, and features.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -263,132 +277,39 @@ class SellerAgent:
         return SELLER_MCP_TOOLS
 
     async def get_service_catalog(self) -> Dict[str, Any]:
-        """Tool implementation: Returns available trade solutions."""
+        """Tool implementation: Returns the plan catalog with buyer context for intent matching."""
         return {
             "provider": self.agent_name,
             "currency": "USD",
-            "tiers": [
-                {
-                    "trade_id": "solo-starter",
-                    "title": "Solo Starter Intake",
-                    "monthly_price": 49.99,
-                    "features": [
-                        "100 Screening Minutes",
-                        "Automated Voice Screener",
-                        "Dedicated 10DLC Number",
-                        "Dynamic Negotiation Tier",
-                    ],
-                },
-                {
-                    "trade_id": "flooring-tile",
-                    "title": "Tile & Custom Flooring",
-                    "monthly_price": 79.99,
-                    "features": [
-                        "Sub-500ms Voice Screener",
-                        "Substrate Scoping",
-                        "Deposit Locking",
-                    ],
-                },
-                {
-                    "trade_id": "roofing-storm",
-                    "title": "Roofing & Storm Restoration",
-                    "monthly_price": 79.99,
-                    "features": [
-                        "Hail Damage Triage",
-                        "Photo Intake Link",
-                        "Insurance Intake",
-                    ],
-                },
-                {
-                    "trade_id": "plumbing-emergency",
-                    "title": "Emergency Plumbing & Rooter",
-                    "monthly_price": 79.99,
-                    "features": [
-                        "Burst Pipe Triage",
-                        "Instant GPS Mobilization",
-                        "24/7 Screening",
-                    ],
-                },
-                {
-                    "trade_id": "pro-dispatch",
-                    "title": "Pro Multi-Trade / High-Volume Dispatch",
-                    "monthly_price": 179.99,
-                    "features": [
-                        "Fleet Multi-Trade Routing",
-                        "Unlimited Telephony Intake",
-                        "Bryntum Dispatch Synchronization",
-                        "Full ERP Automation",
-                    ],
-                },
-            ],
+            "quota_unit": QUOTA_UNIT,
+            "quota_unit_definition": QUOTA_UNIT_DEFINITION,
+            "plans": [public_plan(plan) for plan in PLANS],
+            "included_on_all_plans": INCLUDED_ON_ALL_PLANS,
+            "supported_trades": SUPPORTED_TRADES,
+            "trades_note": "Every trade is supported on every plan. Pick a plan by call volume and crew size, not by trade.",
+            "tier_id_aliases": TIER_ALIASES,
+            "activation": ACTIVATION,
+            "trust_signals": TRUST_SIGNALS,
         }
 
     async def inspect_subscription_tiers(self) -> Dict[str, Any]:
         """Tool implementation: Returns FieldSmith Pro SaaS subscription tiers, quotas, and pricing parameters."""
+        subscription_plans = []
+        for plan in PLANS:
+            entry = public_plan(plan)
+            entry["is_negotiable"] = False
+            entry["tier_id_aliases"] = [alias for alias, target in TIER_ALIASES.items() if target == plan["tier_id"]]
+            subscription_plans.append(entry)
         return {
             "provider": self.agent_name,
             "currency": "USD",
             "protocol_support": ["AP2", "MCP"],
             "service_description": "FieldSmith Pro AI Telephony & Voice Dispatch Receptionist SaaS for Field Service Contractors",
-            "subscription_plans": [
-                {
-                    "tier_id": "solo-starter",
-                    "trade_id": "solo-starter",
-                    "title": "FieldSmith Solo Starter ($49.99/mo)",
-                    "monthly_price": 49.99,
-                    "annual_price": "479.90",
-                    "screening_minutes": 100,
-                    "overage_rate_per_min": 0.25,
-                    "is_negotiable": False,
-                    "features": [
-                        "100 AI Screening Minutes",
-                        "Automated Voice Screener & Receptionist",
-                        "Dedicated 10DLC Business Phone Number",
-                        "Instant SMS Lead Summary Forwarding",
-                    ],
-                },
-                {
-                    "tier_id": "fieldsmith-pro",
-                    "trade_id": "fieldsmith-pro",
-                    "trade_id_aliases": ["flooring-tile", "roofing-storm", "plumbing-emergency"],
-                    "title": "FieldSmith Pro Specialized Trade Screener ($79.99/mo)",
-                    "monthly_price": 79.99,
-                    "annual_price": "767.90",
-                    "screening_minutes": 300,
-                    "overage_rate_per_min": 0.20,
-                    "is_negotiable": False,
-                    "supported_verticals": [
-                        "Flooring & Custom Tile",
-                        "Roofing & Storm Restoration",
-                        "Emergency Plumbing",
-                        "HVAC & Electrical",
-                    ],
-                    "features": [
-                        "300 AI Screening Minutes",
-                        "Sub-500ms Gemini Live Receptionist",
-                        "Custom Trade Scoping (Substrate, Square Footage, Takeoff Sizing)",
-                        "SMS Jobsite Photo Intake & Deposit Locking",
-                        "1-Tap CRM & Jobber Webhook Export",
-                    ],
-                },
-                {
-                    "tier_id": "pro-dispatch",
-                    "trade_id": "pro-dispatch",
-                    "title": "FieldSmith Fleet Multi-Crew Dispatch ($179.99/mo)",
-                    "monthly_price": 179.99,
-                    "annual_price": "1727.90",
-                    "screening_minutes": 1000,
-                    "overage_rate_per_min": 0.15,
-                    "is_negotiable": False,
-                    "features": [
-                        "1000 AI Screening Minutes",
-                        "Multi-Crew & Multi-Trade Fleet Routing",
-                        "Priority Telephony Intake Lines",
-                        "Bryntum Dispatch Synchronization",
-                        "Full QuickBooks Online & Jobber ERP Automation",
-                    ],
-                },
-            ],
+            "quota_unit": QUOTA_UNIT,
+            "quota_unit_definition": QUOTA_UNIT_DEFINITION,
+            "billing_period": "monthly",
+            "subscription_plans": subscription_plans,
+            "included_on_all_plans": INCLUDED_ON_ALL_PLANS,
         }
 
     def _issue_mandate(
@@ -479,41 +400,20 @@ class SellerAgent:
         Autonomously negotiates down-tier counter-offers with verifiable AP2 cryptographic mandate proof hashes.
         Accepts optional buyer_intent_mandate signed by the buyer agent; falls back to seller-attested intent mandate.
         """
-        tier_prices = {
-            "solo-starter": 49.99,
-            "solo": 49.99,
-            "fieldsmith-pro": 79.99,
-            "pro": 79.99,
-            "flooring-tile": 79.99,
-            "roofing-storm": 79.99,
-            "plumbing-emergency": 79.99,
-            "pro-dispatch": 179.99,
-            "fleet": 179.99,
-        }
-        tier_minutes = {
-            "solo-starter": 100,
-            "solo": 100,
-            "fieldsmith-pro": 300,
-            "pro": 300,
-            "flooring-tile": 300,
-            "roofing-storm": 300,
-            "plumbing-emergency": 300,
-            "pro-dispatch": 1000,
-            "fleet": 1000,
-        }
-
-        if tier_id not in tier_prices:
+        plan = resolve_plan(tier_id)
+        if plan is None:
+            available = ", ".join(f"'{p['tier_id']}' (${p['monthly_price']:.2f}/mo)" for p in PLANS)
             return {
                 "status": "REJECTED",
                 "error": "UNKNOWN_TIER",
                 "approved": False,
                 "original_request_approved": False,
                 "tier_id": tier_id,
-                "reason": f"Unknown tier_id '{tier_id}'. Available FieldSmith tiers: 'solo-starter' ($49.99/mo), 'fieldsmith-pro' ($79.99/mo), 'pro-dispatch' ($179.99/mo).",
+                "reason": f"Unknown tier_id '{tier_id}'. Available FieldSmith tiers: {available}.",
             }
 
-        standard_price = tier_prices[tier_id]
-        minutes = tier_minutes[tier_id]
+        standard_price = plan["monthly_price"]
+        screened_calls = plan["screened_calls_per_month"]
 
         if not contractor_email and buyer_intent_mandate and isinstance(buyer_intent_mandate, dict):
             payer = buyer_intent_mandate.get("payer")
@@ -653,7 +553,7 @@ class SellerAgent:
                 "agreed_monthly_rate": standard_price,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": round(monthly_budget_cap - standard_price, 2),
-                "screening_minutes": minutes,
+                "screened_calls_per_month": screened_calls,
                 "mandate_proof_hash": issued["hash"],
                 "ap2_intent_mandate": issued["ap2_mandate"],
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
@@ -732,7 +632,7 @@ class SellerAgent:
                 "next_action": next_action,
                 "reason": (
                     f"Requested FieldSmith plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                    f"Counter-offer available: Down-tier to 'FieldSmith Solo Starter' at $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line), "
+                    f"Counter-offer available: Down-tier to '{get_plan('solo-starter')['title']}' at {plan_summary('solo-starter')}, "
                     f"leaving ${remaining_after_solo:.2f} in your monthly software budget. "
                     f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
                 ),

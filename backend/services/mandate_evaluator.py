@@ -12,6 +12,7 @@ import datetime
 from typing import Dict, Any, Tuple, Optional
 from ..config import settings
 from ..models import SpendingMandateRequest, SpendingMandateResponse, RecurrenceType
+from .plan_catalog import quota_label
 from .crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
@@ -530,7 +531,7 @@ def evaluate_spending_mandate(
                 authorized_amount=0.0,
                 monthly_cap_remaining=remaining,
                 mandate_proof_hash=counter_hash,
-                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: Solo Starter (100 mins) at $49.99/mo.",
+                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: Solo Starter ({quota_label('solo-starter')}) at $49.99/mo.",
                 counter_offer_available=True,
                 counter_offer_tier="Solo Starter",
                 counter_offer_tier_id="solo-starter",

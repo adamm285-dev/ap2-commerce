@@ -195,13 +195,19 @@ class ExternalBuyerAgent:
         # Step 3: Service Catalog Discovery
         self.log("📋 [Step 3: Querying Service Catalog (get_service_catalog)]")
         catalog = await self._call_tool("get_service_catalog", {})
-        tiers = catalog.get("tiers", [])
+        plan_id = catalog.get("tier_id_aliases", {}).get(self.trade_id, self.trade_id)
         selected_tier = next(
-            (t for t in tiers if t.get("trade_id") == self.trade_id),
-            tiers[0] if tiers else {"trade_id": self.trade_id, "monthly_price": 79.99, "title": "Trade AI Screener"},
+            (p for p in catalog.get("plans", []) if p.get("tier_id") == plan_id),
+            {"tier_id": plan_id, "monthly_price": 79.99, "title": "Trade AI Screener"},
+        )
+        trade = next(
+            (t for t in catalog.get("supported_trades", []) if t.get("trade_id") == self.trade_id),
+            None,
         )
         monthly_price = float(selected_tier.get("monthly_price", 79.99))
         tier_title = selected_tier.get("title", "Custom Trade Plan")
+        if trade:
+            tier_title = f"{tier_title} ({trade['title']})"
         self.log(f"   Provider:        {catalog.get('provider', 'FieldSmith Pro')}")
         self.log(f"   Selected Plan:   {tier_title}")
         self.log(f"   Monthly Cost:    ${monthly_price:.2f}/mo (USD)")

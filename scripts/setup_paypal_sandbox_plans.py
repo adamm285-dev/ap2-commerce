@@ -179,7 +179,7 @@ async def main():
             solo_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="FieldSmith Solo Starter",
-                description="Dedicated 10DLC phone line with 100 screening mins & spam trap.",
+                description="Dedicated 10DLC phone line with 125 AI screened calls/mo & spam shield.",
                 monthly_price=49.99,
             )
             print(f"  {GREEN}✓ Solo Starter ($49.99/mo):{RESET} {BOLD}{solo_id}{RESET}")
@@ -187,7 +187,7 @@ async def main():
             pro_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="FieldSmith Pro",
-                description="Dedicated line with 300 screening mins, CRM integration & full multi-trade voice.",
+                description="Dedicated line with 450 AI screened calls/mo, multi-crew dispatch & priority support.",
                 monthly_price=79.99,
             )
             print(f"  {GREEN}✓ FieldSmith Pro ($79.99/mo):{RESET} {BOLD}{pro_id}{RESET}")
@@ -195,7 +195,7 @@ async def main():
             dispatch_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="FieldSmith Pro Dispatch",
-                description="Dedicated line with 1000 screening mins, live whisper transfer & crew dispatch.",
+                description="Dedicated line with 1,200 AI screened calls/mo, unlimited crew members & routing.",
                 monthly_price=179.99,
             )
             print(f"  {GREEN}✓ Pro Dispatch ($179.99/mo):{RESET} {BOLD}{dispatch_id}{RESET}")

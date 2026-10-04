@@ -8,6 +8,7 @@ Conforms to Jobber API v2 specifications.
 from typing import Dict, Any, List, Optional
 import uuid
 from datetime import datetime, timezone
+from ..plan_catalog import quota_label
 
 
 class JobberExporter:
@@ -166,11 +167,11 @@ class JobberExporter:
         if monthly_fee <= 50.00:
             plan_name = f"FieldSmith Solo Starter AI Voice Screener ({trade_vertical})"
             job_title = f"FieldSmith Solo Starter — {trade_vertical}"
-            plan_desc = "24/7 autonomous phone reception, 100-minute screener cap, dedicated 10DLC telephone line, essential SMS notification."
+            plan_desc = f"24/7 autonomous phone reception, {quota_label('solo-starter')}, dedicated 10DLC telephone line, essential SMS notification."
             instructions = (
                 f"Autonomous Telephony Gateway Active (Solo Starter Tier).\n"
                 f"• Dedicated Business DID: {allocated_did}\n"
-                f"• Plan: FieldSmith Solo Starter (100 AI Screening Minutes / Month)\n"
+                f"• Plan: FieldSmith Solo Starter ({quota_label('solo-starter')})\n"
                 f"• Trade Vertical: {trade_vertical}\n"
                 f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
                 f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"
@@ -180,11 +181,11 @@ class JobberExporter:
         elif monthly_fee > 100.00:
             plan_name = f"FieldSmith Pro Fleet Dispatch AI Screener ({trade_vertical})"
             job_title = f"FieldSmith Fleet Dispatch — {trade_vertical}"
-            plan_desc = "24/7 unlimited multi-crew conversational intake, ERP sync, Bryntum dispatch automation."
+            plan_desc = f"24/7 multi-crew conversational intake ({quota_label('pro-dispatch')}), unlimited crew members, ERP sync, Bryntum dispatch automation."
             instructions = (
                 f"Autonomous Telephony Gateway Active (Fleet Dispatch Tier).\n"
                 f"• Dedicated Business DID: {allocated_did}\n"
-                f"• Plan: FieldSmith Fleet Dispatch (1,000 AI Screening Minutes / Month)\n"
+                f"• Plan: FieldSmith Fleet Dispatch ({quota_label('pro-dispatch')})\n"
                 f"• Trade Vertical: {trade_vertical}\n"
                 f"• Billing Engine: PayPal Subscriptions ({paypal_subscription_id})\n"
                 f"• Recurring Rate: ${monthly_fee:.2f}/mo (Auto-debit)\n"

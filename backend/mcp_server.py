@@ -13,6 +13,7 @@ import asyncio
 import datetime
 from typing import Dict, Any, Optional, List, Set
 from .agents.seller_agent import seller_agent, SELLER_MCP_TOOLS
+from .services.plan_catalog import plan_summary
 
 logger = logging.getLogger("fieldsmith_mcp_server")
 
@@ -101,11 +102,12 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     "FieldSmith Pro Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine.\n"
                     "FieldSmith is a SaaS telephony AI voice receptionist and screening platform for trade contractors (Flooring, Roofing, Plumbing, Remodeling, etc.).\n"
                     "FieldSmith Monthly Subscription Plans:\n"
-                    "- 'solo-starter': $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line)\n"
-                    "- 'fieldsmith-pro' (or 'flooring-tile'): $79.99/mo (300 AI screening minutes, specialized trade takeoff scoping)\n"
-                    "- 'pro-dispatch': $179.99/mo (1,000 AI screening minutes, multi-crew dispatch, ERP automation)\n"
+                    f"- 'solo-starter': {plan_summary('solo-starter')}\n"
+                    f"- 'fieldsmith-pro' (or 'flooring-tile'): {plan_summary('fieldsmith-pro')}\n"
+                    f"- 'pro-dispatch': {plan_summary('pro-dispatch')}\n"
+                    "Every trade (flooring, roofing, plumbing/HVAC, towing, general contracting) is supported on every plan.\n"
                     "Recommended buyer procurement workflow:\n"
-                    "1. inspect_subscription_tiers: Inspect FieldSmith SaaS subscription plans, quotas (screening minutes), and pricing tiers ($49.99 / $79.99 / $179.99).\n"
+                    "1. inspect_subscription_tiers: Inspect FieldSmith SaaS subscription plans, quotas (screened calls per month), and pricing tiers ($49.99 / $79.99 / $179.99).\n"
                     "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, contractor_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n"
                     "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and contractor_email to PayPal Recurring Vault for automated billing.\n"
                     "4. provision_telecom_line: (Optional) Allocate dedicated local 10DLC telephone DID upon verified subscription."

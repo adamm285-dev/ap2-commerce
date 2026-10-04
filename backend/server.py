@@ -35,6 +35,7 @@ from .models import (
 )
 from .services.mandate_evaluator import evaluate_spending_mandate, ledger
 from .services.paypal_service import paypal_service
+from .services.plan_catalog import PLANS, QUOTA_UNIT, quota_label
 from .services.telnyx_provisioner import telnyx_provisioner
 from .services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 from .services.crypto_mandate import (
@@ -97,7 +98,7 @@ TRADE_CATALOG = [
         title="Solo Starter Intake (Negotiated / Low-Volume)",
         monthlySubscription=49.99,
         depositRange="$99.00 - $149.00",
-        description="Autonomous intake, essential SMS follow-up, 100-minute screener cap, and verified deposit locking.",
+        description=f"Autonomous intake, essential SMS follow-up, {quota_label('solo-starter')}, and verified deposit locking.",
     ),
     TradeService(
         id="flooring-tile",
@@ -132,7 +133,7 @@ TRADE_CATALOG = [
         title="Pro Multi-Trade / High-Volume Dispatch",
         monthlySubscription=179.99,
         depositRange="$250.00 - $750.00",
-        description="Fleet-wide multi-trade routing, unlimited telephony intake, Bryntum dispatch synchronization, and ERP automation.",
+        description=f"Fleet-wide multi-trade routing, {quota_label('pro-dispatch')}, unlimited crew members, and ERP automation.",
     ),
 ]
 
@@ -182,25 +183,15 @@ async def agent_discovery_card():
             "seller_kid": DEFAULT_SELLER_KID,
             "seller_public_key": DEFAULT_SELLER_PUBLIC_KEY_HEX,
         },
+        "quota_unit": QUOTA_UNIT,
         "plans": [
             {
-                "tier_id": "solo-starter",
-                "title": "FieldSmith Solo Starter",
-                "monthly_price": 49.99,
-                "screening_minutes": 100,
-            },
-            {
-                "tier_id": "fieldsmith-pro",
-                "title": "FieldSmith Pro Specialized Trade Screener",
-                "monthly_price": 79.99,
-                "screening_minutes": 300,
-            },
-            {
-                "tier_id": "pro-dispatch",
-                "title": "FieldSmith Fleet Multi-Crew Dispatch",
-                "monthly_price": 179.99,
-                "screening_minutes": 1000,
-            },
+                "tier_id": plan["tier_id"],
+                "title": plan["title"],
+                "monthly_price": plan["monthly_price"],
+                "screened_calls_per_month": plan["screened_calls_per_month"],
+            }
+            for plan in PLANS
         ],
         "capabilities": {
             "inspect_subscription_tiers": True,

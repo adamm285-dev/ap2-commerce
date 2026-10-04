@@ -86,8 +86,9 @@ class BuyerAgent:
         # Phase 2: Query Seller Agent MCP Catalog
         print("🔍 [Phase 2: Seller Agent MCP Catalog Inquiry]")
         catalog = await seller_agent.get_service_catalog()
+        target_tier_id = catalog.get("tier_id_aliases", {}).get(target_trade, target_trade)
         matching_tier = next(
-            (t for t in catalog.get("tiers", []) if t["trade_id"] == target_trade),
+            (p for p in catalog.get("plans", []) if p["tier_id"] == target_tier_id),
             None,
         )
         if not matching_tier:

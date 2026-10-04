@@ -332,7 +332,7 @@ export function App() {
                 if (idx !== -1) {
                   const updated = [...prev];
                   const agreedRate = maxMonthlyBudget < 79.99 ? 49.99 : 79.99;
-                  const planTitle = agreedRate === 49.99 ? 'FieldSmith Solo Starter (100 Mins)' : 'FieldSmith Pro (300 Mins)';
+                  const planTitle = agreedRate === 49.99 ? 'FieldSmith Solo Starter (125 Calls/mo)' : 'FieldSmith Pro (450 Calls/mo)';
                   updated[idx] = {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),

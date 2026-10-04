@@ -123,9 +123,10 @@ class ContractorCopilot:
                 raw_text = catalog_resp["result"]["content"][0]["text"]
                 catalog = json.loads(raw_text)
 
+            flooring_tier_id = catalog.get("tier_id_aliases", {}).get("flooring-tile", "fieldsmith-pro")
             tier = next(
-                (t for t in catalog.get("tiers", []) if "tile" in t["trade_id"] or "flooring" in t["trade_id"]),
-                {"title": "Tile & Custom Flooring", "monthly_price": 79.99},
+                (p for p in catalog.get("plans", []) if p["tier_id"] == flooring_tier_id),
+                {"title": "FieldSmith Pro", "monthly_price": 79.99},
             )
             price = tier["monthly_price"]
 

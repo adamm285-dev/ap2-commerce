@@ -14,6 +14,7 @@ Executes the complete multi-agent trade loop through the FastAPI REST server:
 from fastapi.testclient import TestClient
 from ..server import app
 from ..services.telnyx_provisioner import telnyx_provisioner
+from ..config import settings
 
 client = TestClient(app)
 
@@ -156,7 +157,7 @@ def test_complete_autonomous_a2a_lifecycle():
     res_reset = client.post(
         "/api/agent/spending-mandate/reset",
         json={"buyerAgentId": "contractor-solo-buyer-marcus"},
-        headers={"X-Admin-Key": "dev-admin-secret-key"},
+        headers={"X-Admin-Key": settings.admin_api_key},
     )
     assert res_reset.status_code == 200
     assert res_reset.json()["status"] == "reset"

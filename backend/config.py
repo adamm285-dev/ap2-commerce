@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # Cryptographic salt for signing buyer mandate proof tokens (HMAC-SHA256)
     a2a_mandate_secret: str = Field(
-        default="dev_a2a_mandate_signing_secret_do_not_use_in_prod",
+        default="",
         alias="A2A_MANDATE_SECRET",
     )
 
@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     a2a_buyer_public_key: str = Field(default="", alias="A2A_BUYER_PUBLIC_KEY")
 
     # Admin API Key for administrative endpoints (mandate reset, ledger management)
-    admin_api_key: str = Field(default="dev-admin-secret-key", alias="ADMIN_API_KEY")
+    admin_api_key: str = Field(default="", alias="ADMIN_API_KEY")
 
     # PayPal Recurring Billing Plan IDs (optional overrides for live sandbox plans)
     paypal_plan_id_solo: str = Field(default="P-FLSMITH-SOLO-STARTER", alias="PAYPAL_PLAN_ID_SOLO")
@@ -72,3 +72,11 @@ settings = Settings()
 # Automatically force mock mode if required keys are missing
 if not settings.paypal_client_id or not settings.paypal_client_secret:
     settings.mock_external_apis = True
+
+# Fail fast at startup if critical mandate signing secret is missing
+if not settings.a2a_mandate_secret or not settings.a2a_mandate_secret.strip():
+    raise RuntimeError(
+        "CRITICAL SECURITY CONFIGURATION ERROR: A2A_MANDATE_SECRET is missing. "
+        "A secure random secret must be configured in .env."
+    )
+

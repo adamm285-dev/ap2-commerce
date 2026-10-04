@@ -367,6 +367,52 @@ class MandateLedger:
             {"timestamp": time.time(), "amount": amount, **metadata}
         )
 
+    def release_spend(
+        self,
+        amount: float,
+        contractor_email: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ):
+        """Releases spend commitment when a subscription is cancelled, suspended, or payment fails."""
+        if contractor_email:
+            norm_email = contractor_email.strip().lower()
+            current = self._contractor_subscriptions.get(norm_email, 0.0)
+            new_spent = max(0.0, current - amount)
+            if new_spent > 0:
+                self._contractor_subscriptions[norm_email] = new_spent
+            else:
+                self._contractor_subscriptions.pop(norm_email, None)
+            self._current_spent = max(0.0, self._current_spent - amount)
+        elif amount:
+            self._current_spent = max(0.0, self._current_spent - amount)
+
+    def sync_contractor_commitment(
+        self,
+        contractor_email: str,
+        active_monthly_rate: float,
+        agent_id: Optional[str] = None,
+    ):
+        """
+        Synchronizes the contractor's committed spend directly from their subscription state:
+        commitment = the rate of the contractor's one ACTIVE subscription.
+        If active_monthly_rate is 0.0 (or no active subscription), committed spend is 0.0.
+        """
+        if not contractor_email:
+            return
+        norm_email = contractor_email.strip().lower()
+        old_amount = self._contractor_subscriptions.get(norm_email, 0.0)
+        new_amount = round(max(0.0, float(active_monthly_rate or 0.0)), 2)
+
+        if new_amount > 0:
+            self._contractor_subscriptions[norm_email] = new_amount
+        else:
+            self._contractor_subscriptions.pop(norm_email, None)
+
+        self._current_spent = round(max(0.0, self._current_spent - old_amount + new_amount), 2)
+        if agent_id:
+            old_agent = self._agent_spent.get(agent_id, 0.0)
+            self._agent_spent[agent_id] = round(max(0.0, old_agent - old_amount + new_amount), 2)
+
     def reset(self, agent_id: str = None):
         if agent_id:
             self._agent_spent.pop(agent_id, None)

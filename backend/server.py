@@ -11,7 +11,7 @@ import json
 import uuid
 import datetime
 import asyncio
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 from pydantic import BaseModel, Field, ConfigDict
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -62,6 +62,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
 )
 logger = logging.getLogger("a2a_server")
+
+_PROCESSED_WEBHOOK_IDS: Set[str] = set()
+
+
+def clear_processed_webhooks():
+    _PROCESSED_WEBHOOK_IDS.clear()
 
 app = FastAPI(
     title="FieldSmith Pro A2A Agentic Commerce API",
@@ -438,11 +444,16 @@ async def reset_mandate_endpoint(request: Request):
     elif admin_param:
         provided_token = admin_param.strip()
 
-    expected_key = getattr(settings, "admin_api_key", "dev-admin-secret-key")
-    if not provided_token or provided_token != expected_key:
+    expected_key = (getattr(settings, "admin_api_key", None) or "").strip()
+    if not expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ADMIN_API_KEY is not configured on the server. Configure a strong ADMIN_API_KEY in .env.",
+        )
+    if not provided_token or provided_token == "dev-admin-secret-key" or provided_token != expected_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authorization required to reset mandate ledger. Provide X-Admin-Key header or admin_key query param.",
+            detail="Admin authorization required to reset mandate ledger. Provide valid X-Admin-Key header or admin_key query param.",
         )
 
     agent_id = None
@@ -458,6 +469,8 @@ async def reset_mandate_endpoint(request: Request):
         agent_id = qp_agent
 
     ledger.reset(agent_id=agent_id)
+    if not agent_id:
+        _PROCESSED_WEBHOOK_IDS.clear()
     return {
         "status": "reset",
         "agent_id": agent_id or "all",
@@ -483,13 +496,21 @@ async def provision_line_endpoint(request: ProvisionRequest):
         err = res.get("error", "PROVISIONING_FAILED")
         reason = res.get("reason", "Provisioning rejected.")
         status_code = status.HTTP_400_BAD_REQUEST
-        if err == "IDENTITY_MISMATCH_DETECTED":
+        if err in [
+            "IDENTITY_MISMATCH_DETECTED",
+            "SUBSCRIPTION_CANCELLED",
+            "SUBSCRIPTION_SUSPENDED",
+            "SUBSCRIPTION_PAYMENT_FAILED",
+            "SUBSCRIPTION_SUPERSEDED",
+        ]:
             status_code = status.HTTP_403_FORBIDDEN
         elif err == "SUBSCRIPTION_NOT_FOUND":
             status_code = status.HTTP_404_NOT_FOUND
+        elif err == "PAYMENT_APPROVAL_PENDING":
+            status_code = status.HTTP_402_PAYMENT_REQUIRED
         raise HTTPException(
             status_code=status_code,
-            detail={"status": "REJECTED", "error": err, "reason": reason},
+            detail={"status": "REJECTED", "error": err, "reason": reason, "approval_url": res.get("approval_url")},
         )
     return ProvisionResponse(**res)
 
@@ -595,6 +616,20 @@ async def paypal_webhook_receiver(request: Request):
             detail="Invalid PayPal webhook signature.",
         )
 
+    # De-duplicate verified webhook events by unique PayPal event ID (replay protection)
+    event_id = body.get("id")
+    if event_id and event_id in _PROCESSED_WEBHOOK_IDS:
+        logger.info(f"[PayPal Webhook] Duplicate verified event {event_id} ({event_type}) received; skipping duplicate execution.")
+        return {
+            "status": "already_processed",
+            "event_id": event_id,
+            "event_type": event_type,
+            "verification_status": "SUCCESS",
+            "duplicate": True,
+        }
+    if event_id:
+        _PROCESSED_WEBHOOK_IDS.add(event_id)
+
     # Process activation event
     if event_type in [
         "BILLING.SUBSCRIPTION.ACTIVATED",
@@ -603,8 +638,111 @@ async def paypal_webhook_receiver(request: Request):
         resource = body.get("resource", {})
         sub_id = resource.get("id", "UNKNOWN_SUB")
         logger.info(
-            f"[PayPal Webhook] Verified payment event for {sub_id} ({verification.get('verification_status')}). Triggering KYC DID allocation."
+            f"[PayPal Webhook] Verified payment event for {sub_id} ({verification.get('verification_status')}). Activating subscription in registry."
         )
+        from .agents.seller_agent import (
+            _COMPLETED_SUBSCRIPTIONS,
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+            reconcile_contractor_ledger,
+        )
+        if sub_id in _COMPLETED_SUBSCRIPTIONS:
+            sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
+            sub_record["status"] = "ACTIVE"
+            sub_record["paypal_vault_status"] = "VAULT_BOUND"
+            sub_record["vault_billing_authorized"] = True
+            sub_record["vault_customer_present"] = False
+            sub_record["next_action"] = {
+                "type": "tool_call",
+                "tool": "provision_telecom_line",
+                "parameters": {
+                    "subscription_id": sub_id,
+                    "contractor_email": sub_record.get("contractor_email"),
+                    "area_code": "863",
+                },
+            }
+            email = sub_record.get("contractor_email")
+            if email:
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email.strip().lower()] = sub_id
+
+            # If this subscription replaced an earlier plan, finalize retirement of old subscription
+            replaces_id = sub_record.get("replaces_subscription_id")
+            if replaces_id and replaces_id in _COMPLETED_SUBSCRIPTIONS:
+                old_sub = _COMPLETED_SUBSCRIPTIONS[replaces_id]
+                old_sub["status"] = "REPLACED"
+                old_sub["replaced_by"] = sub_id
+                old_sub.pop("pending_replacement", None)
+                old_sub["vault_billing_authorized"] = False
+
+            # Also update any aliases that map to the same subscription record
+            for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+                if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+                    v["status"] = "ACTIVE"
+                    v["paypal_vault_status"] = "VAULT_BOUND"
+                    v["vault_billing_authorized"] = True
+                    v["vault_customer_present"] = False
+                    v["next_action"] = sub_record["next_action"]
+
+            # Reconcile contractor ledger strictly from active subscription state:
+            # commitment = rate of the contractor's one ACTIVE subscription
+            if email:
+                reconcile_contractor_ledger(email)
+
+    elif event_type in [
+        "BILLING.SUBSCRIPTION.CANCELLED",
+        "BILLING.SUBSCRIPTION.SUSPENDED",
+        "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+    ]:
+        resource = body.get("resource", {})
+        sub_id = resource.get("id", "UNKNOWN_SUB")
+        status_map = {
+            "BILLING.SUBSCRIPTION.CANCELLED": "CANCELLED",
+            "BILLING.SUBSCRIPTION.SUSPENDED": "SUSPENDED",
+            "BILLING.SUBSCRIPTION.PAYMENT.FAILED": "PAYMENT_FAILED",
+        }
+        new_status = status_map.get(event_type, "CANCELLED")
+        logger.info(
+            f"[PayPal Webhook] Received {event_type} for {sub_id}. Updating status to {new_status}."
+        )
+        from .agents.seller_agent import (
+            _COMPLETED_SUBSCRIPTIONS,
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+            reconcile_contractor_ledger,
+        )
+
+        email = None
+        if sub_id in _COMPLETED_SUBSCRIPTIONS:
+            sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
+            sub_record["status"] = new_status
+            sub_record["vault_billing_authorized"] = False
+            sub_record["paypal_vault_status"] = f"VAULT_{new_status}"
+            email = sub_record.get("contractor_email")
+
+            if email:
+                norm_email = email.strip().lower()
+                if _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
+
+            # Clear pending_replacement on any other subscription waiting for this sub
+            for s in _COMPLETED_SUBSCRIPTIONS.values():
+                if isinstance(s, dict) and s.get("pending_replacement") == sub_id:
+                    s.pop("pending_replacement", None)
+                    s.pop("pending_replacement_tier", None)
+                    s.pop("pending_replacement_at", None)
+
+            # Update aliases that point to the same record
+            for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+                if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+                    v["status"] = new_status
+                    v["vault_billing_authorized"] = False
+                    v["paypal_vault_status"] = f"VAULT_{new_status}"
+        else:
+            email = resource.get("subscriber", {}).get("email_address")
+
+        # Reconcile contractor ledger strictly from subscription state:
+        # commitment = rate of the contractor's one ACTIVE subscription.
+        # Replaced, cancelled, or suspended subscriptions contribute 0.0 to commitment.
+        if email:
+            reconcile_contractor_ledger(email)
 
     return {
         "status": "received",

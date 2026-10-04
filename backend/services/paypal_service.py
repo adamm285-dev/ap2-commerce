@@ -8,6 +8,7 @@ live PayPal Sandbox REST APIs when PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are
 import uuid
 import logging
 import hashlib
+import hmac
 import datetime
 import json
 from typing import Optional, Dict, Any, List
@@ -253,9 +254,17 @@ class PayPalService:
             data = res.json()
             sub_id = data.get("id")
             links = data.get("links", [])
+            approval_url = None
+            for link in links:
+                if link.get("rel") == "approve":
+                    approval_url = link.get("href")
+                    break
+
+            live_status = data.get("status", "APPROVAL_PENDING")
             return {
                 "subscription_id": sub_id,
-                "status": data.get("status", "ACTIVE"),
+                "status": live_status,
+                "approval_url": approval_url,
                 "plan_id": target_plan_id,
                 "payer_id": f"PAYER-{data.get('subscriber', {}).get('payer_id', 'SANDBOX')}",
                 "vault_id": f"vault_tok_{sub_id.lower().replace('-', '_')}",
@@ -267,6 +276,20 @@ class PayPalService:
                 "mock_mode": False,
             }
 
+    @staticmethod
+    def generate_mock_webhook_signature(raw_body: str) -> str:
+        """Generates an authentic HMAC-SHA256 signature for test webhook transmissions."""
+        secret = getattr(settings, "a2a_mandate_secret", "")
+        if not secret or not secret.strip():
+            raise RuntimeError(
+                "A2A_MANDATE_SECRET is not configured. Cannot generate mock webhook signature."
+            )
+        return hmac.new(
+            secret.encode("utf-8"),
+            (raw_body or "").encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
     async def verify_webhook_signature(
         self,
         headers: Dict[str, str],
@@ -275,7 +298,7 @@ class PayPalService:
     ) -> Dict[str, Any]:
         """
         Verifies a PayPal webhook transmission signature.
-        In Mock Mode: Validates that test signature or simulated headers are present.
+        In Mock Mode: Strictly validates HMAC-SHA256 signature calculated over raw_body; rejects fixed magic strings.
         In Live Mode: Calls PayPal Sandbox POST /v1/notifications/verify-webhook-signature.
         """
         h_lower = {k.lower(): v for k, v in headers.items()}
@@ -286,15 +309,18 @@ class PayPalService:
         trans_time = h_lower.get("paypal-transmission-time")
 
         if self.mock_mode:
-            if sig is not None:
-                if len(sig.strip()) > 0:
-                    logger.info("[PayPal Webhook MOCK] Verified transmission signature.")
-                    return {"verification_status": "SUCCESS", "mock_mode": True}
-                else:
-                    logger.warning("[PayPal Webhook MOCK] Empty transmission signature rejected.")
-                    return {"verification_status": "FAILURE", "mock_mode": True}
-            logger.info("[PayPal Webhook MOCK] Webhook processed in simulated dev mode.")
-            return {"verification_status": "MOCK_VERIFIED", "mock_mode": True}
+            if not sig or not sig.strip():
+                logger.warning("[PayPal Webhook MOCK] Missing or empty transmission signature.")
+                return {"verification_status": "FAILURE", "mock_mode": True, "error": "MISSING_SIGNATURE"}
+
+            expected_hmac = self.generate_mock_webhook_signature(raw_body or "")
+            sig_clean = sig.strip()
+            if sig_clean.lower() == expected_hmac.lower():
+                logger.info(f"[PayPal Webhook MOCK] Verified HMAC transmission signature ({sig_clean[:16]}...).")
+                return {"verification_status": "SUCCESS", "mock_mode": True}
+
+            logger.warning(f"[PayPal Webhook MOCK] Forged or invalid transmission signature rejected: {sig_clean[:32]}")
+            return {"verification_status": "FAILURE", "mock_mode": True, "error": "INVALID_SIGNATURE"}
 
         token = await self.get_access_token()
         if not token:

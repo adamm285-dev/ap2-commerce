@@ -24,7 +24,9 @@ if ENV_PATH.exists():
 
 # Environment-configurable secret / keys (Zero hardcoded secrets in tracked repository)
 _raw_secret = os.getenv("A2A_MANDATE_SECRET") or settings.a2a_mandate_secret
-SECRET_KEY = _raw_secret.encode("utf-8") if _raw_secret else os.urandom(32)
+if not _raw_secret or not _raw_secret.strip():
+    raise RuntimeError("CRITICAL SECURITY ERROR: A2A_MANDATE_SECRET environment variable is missing.")
+SECRET_KEY = _raw_secret.encode("utf-8")
 
 def _load_or_generate_key(env_var_names: list) -> Tuple[ed25519.Ed25519PrivateKey, str, str]:
     """Loads a 32-byte Ed25519 private key from environment variables, or generates a secure random key."""

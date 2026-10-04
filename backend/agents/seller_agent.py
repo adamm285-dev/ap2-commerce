@@ -185,9 +185,73 @@ SELLER_MCP_TOOLS = [
 ]
 
 
-# Cache of completed subscriptions for strict idempotency (stable create_time)
 _COMPLETED_SUBSCRIPTIONS: Dict[str, Dict[str, Any]] = {}
 _ACTIVE_CONTRACTOR_SUBSCRIPTIONS: Dict[str, str] = {}
+
+
+def reconcile_contractor_ledger(contractor_email: str) -> float:
+    """
+    Reconciles the contractor's ledger commitment strictly from subscription state:
+    commitment = the rate of the contractor's one ACTIVE subscription.
+    Pending, replaced, cancelled, and suspended plans contribute 0.0 to commitment.
+    Returns the active monthly commitment.
+    """
+    if not contractor_email:
+        return 0.0
+    norm_email = contractor_email.strip().lower()
+
+    # Find the contractor's active subscription
+    active_sub = None
+    active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email)
+    if active_sub_id and active_sub_id in _COMPLETED_SUBSCRIPTIONS:
+        candidate = _COMPLETED_SUBSCRIPTIONS[active_sub_id]
+        if isinstance(candidate, dict) and candidate.get("status") == "ACTIVE":
+            active_sub = candidate
+
+    # Fallback search if pointer was missing or pointing to inactive record
+    if not active_sub:
+        for v in _COMPLETED_SUBSCRIPTIONS.values():
+            if isinstance(v, dict) and v.get("status") == "ACTIVE":
+                cand_email = (v.get("contractor_email") or "").strip().lower()
+                if cand_email == norm_email:
+                    active_sub = v
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = v.get("subscription_id")
+                    break
+
+    if active_sub:
+        active_rate = float(active_sub.get("agreed_monthly_rate") or 0.0)
+        buyer_id = active_sub.get("buyer_agent_id")
+    else:
+        active_rate = 0.0
+        buyer_id = None
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
+
+    ledger.sync_contractor_commitment(
+        contractor_email=norm_email,
+        active_monthly_rate=active_rate,
+        agent_id=buyer_id,
+    )
+    return active_rate
+
+
+def resolve_tier_from_paypal_plan(plan_id: Optional[str]) -> tuple[str, float]:
+    """Maps a PayPal billing plan_id to its canonical tier_id and agreed monthly rate."""
+    if not plan_id:
+        return ("fieldsmith-pro", 79.99)
+    p = plan_id.lower()
+    if plan_id == getattr(settings, "paypal_plan_id_solo", "P-FLSMITH-SOLO-STARTER"):
+        return ("solo-starter", 49.99)
+    elif plan_id == getattr(settings, "paypal_plan_id_dispatch", "P-FLSMITH-DISPATCH"):
+        return ("pro-dispatch", 179.99)
+    elif plan_id == getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO"):
+        return ("fieldsmith-pro", 79.99)
+    if "solo" in p or "starter" in p:
+        return ("solo-starter", 49.99)
+    elif "dispatch" in p:
+        return ("pro-dispatch", 179.99)
+    elif "pro" in p:
+        return ("fieldsmith-pro", 79.99)
+    return ("fieldsmith-pro", 79.99)
 
 
 class SellerAgent:
@@ -601,9 +665,9 @@ class SellerAgent:
                 res_approved["replaces_subscription_id"] = active_sub_id
             return res_approved
 
-        # 2. Desired tier exceeds budget: Down-tier counter-offer to Solo Starter ($49.99)
         remaining_now = ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email)
-        existing_sub = ledger._contractor_subscriptions.get(email, 0.0)
+        norm_email_lookup = email.strip().lower() if email else ""
+        existing_sub = ledger._contractor_subscriptions.get(norm_email_lookup, 0.0)
         effective_available = round(remaining_now + existing_sub, 2)
 
         if monthly_budget_cap >= 49.99 and effective_available >= 49.99:
@@ -805,20 +869,7 @@ class SellerAgent:
                 "active_subscription_id": old_sub_id,
             }
 
-        # 3. Record spend in ledger on actual checkout completion
-        ledger.record_spend(
-            agreed_monthly_rate,
-            {
-                "contractor_email": contractor_email,
-                "agent_id": buyer_id,
-                "tier_id": tier_id,
-                "mandate_proof_hash": mandate_proof_hash,
-                "offer_id": auth.get("offer_id"),
-            },
-        )
-        remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
-
-        # 4. Invoke PayPal Gateway (calls real PayPal Sandbox in live mode; deterministic in mock mode)
+        # 3. Invoke PayPal Gateway (calls real PayPal Sandbox in live mode; deterministic in mock mode)
         paypal_result = await paypal_service.create_subscription(
             tier_id=tier_id,
             agreed_monthly_rate=agreed_monthly_rate,
@@ -828,6 +879,8 @@ class SellerAgent:
             mandate_proof_hash=mandate_proof_hash,
         )
         sub_id = paypal_result["subscription_id"]
+        sub_status = paypal_result.get("status", "ACTIVE")
+        approval_url = paypal_result.get("approval_url")
         created_time = paypal_result.get("created_time") or datetime.datetime.now(datetime.timezone.utc).isoformat()
         next_billing = paypal_result.get("next_billing_time") or (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
         negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
@@ -847,13 +900,58 @@ class SellerAgent:
                 "method": "POST",
             },
         ]
+        if not approval_url and hateoas_links:
+            for link in hateoas_links:
+                if link.get("rel") == "approve":
+                    approval_url = link.get("href")
+                    break
 
         # Mark old subscription as REPLACED (Plan Change Model)
         if old_sub_id and old_sub:
-            old_sub["status"] = "REPLACED"
-            old_sub["replaced_by"] = sub_id
-            old_sub["replaced_at"] = created_time
-            old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
+            if sub_status == "ACTIVE":
+                old_sub["status"] = "REPLACED"
+                old_sub["replaced_by"] = sub_id
+                old_sub["replaced_at"] = created_time
+                old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
+            else:
+                # Keep old subscription ACTIVE while new plan awaits buyer authorization in PayPal
+                old_sub["pending_replacement"] = sub_id
+                old_sub["pending_replacement_tier"] = tier_id
+                old_sub["pending_replacement_at"] = created_time
+
+        # Reconcile contractor active pointer and ledger commitment strictly from active subscription state
+        if norm_email:
+            if sub_status == "ACTIVE":
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+                ledger.sync_contractor_commitment(
+                    contractor_email=norm_email,
+                    active_monthly_rate=agreed_monthly_rate,
+                    agent_id=buyer_id,
+                )
+            elif old_sub_id and old_sub and old_sub.get("status") == "ACTIVE":
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = old_sub_id
+                ledger.sync_contractor_commitment(
+                    contractor_email=norm_email,
+                    active_monthly_rate=old_rate,
+                    agent_id=buyer_id,
+                )
+            elif _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
+                reconcile_contractor_ledger(norm_email)
+        else:
+            if sub_status == "ACTIVE":
+                ledger.record_spend(
+                    agreed_monthly_rate,
+                    {
+                        "agent_id": buyer_id,
+                        "tier_id": tier_id,
+                        "mandate_proof_hash": mandate_proof_hash,
+                    },
+                )
+
+        remaining_budget = ledger.get_remaining_budget(
+            agent_id=buyer_id, cap=cap, contractor_email=contractor_email
+        )
 
         # Return the exact signed mandate issued at negotiation, unchanged
         ap2_mandate = auth.get("ap2_mandate")
@@ -880,15 +978,32 @@ class SellerAgent:
             }
         ]
 
-        next_action = {
-            "type": "tool_call",
-            "tool": "provision_telecom_line",
-            "parameters": {
+        if sub_status == "APPROVAL_PENDING":
+            next_action = {
+                "type": "human_approval_required",
+                "action": "approve_paypal_subscription",
+                "approval_url": approval_url,
                 "subscription_id": sub_id,
-                "contractor_email": contractor_email,
-                "area_code": "863",
-            },
-        }
+                "message": "Human approval required: please authorize the recurring subscription in PayPal Sandbox at approval_url before provisioning.",
+            }
+            msg = f"PayPal subscription {sub_id} created with status APPROVAL_PENDING. Awaiting buyer authorization via PayPal checkout."
+            vault_status = "PENDING_APPROVAL"
+            vault_authorized = False
+            customer_present = True
+        else:
+            next_action = {
+                "type": "tool_call",
+                "tool": "provision_telecom_line",
+                "parameters": {
+                    "subscription_id": sub_id,
+                    "contractor_email": contractor_email,
+                    "area_code": "863",
+                },
+            }
+            msg = f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate."
+            vault_status = "VAULT_BOUND"
+            vault_authorized = True
+            customer_present = False
 
         # Generate traceable proof linking negotiation -> subscription -> ERP
         mandate_id = ap2_mandate.get("mandate_id") if isinstance(ap2_mandate, dict) else None
@@ -896,10 +1011,11 @@ class SellerAgent:
         traceable_proof = f"mandate:{mandate_id or 'none'}|cart:{cart_id or 'none'}|hash:{mandate_proof_hash or offer_id}"
 
         response = {
-            "status": "ACTIVE",
+            "status": sub_status,
             "subscription_id": sub_id,
             "negotiation_id": negotiation_id,
             "offer_id": auth.get("offer_id"),
+            "buyer_agent_id": buyer_id,
             "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
             "product_id": "PROD-FIELDSMITH-A2A-TELEPHONY",
             "payer_id": payer_id,
@@ -918,9 +1034,9 @@ class SellerAgent:
             "contractor_email": contractor_email,
             "contractor_name": "Marcus Miller",
             "business_entity": "Miller Custom Flooring LLC",
-            "paypal_vault_status": "VAULT_BOUND",
-            "vault_billing_authorized": True,
-            "vault_customer_present": False,
+            "paypal_vault_status": vault_status,
+            "vault_billing_authorized": vault_authorized,
+            "vault_customer_present": customer_present,
             "paypal_environment": "sandbox",
             "paypal_request_id": paypal_req_id,
             "create_time": created_time,
@@ -929,8 +1045,10 @@ class SellerAgent:
             "ap2_intent_mandate": ap2_mandate,
             "ap2_cart_mandate": auth.get("ap2_cart_mandate"),
             "next_action": next_action,
-            "message": f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate.",
+            "message": msg,
         }
+        if approval_url:
+            response["approval_url"] = approval_url
         if old_sub_id:
             response["replaces_subscription_id"] = old_sub_id
 
@@ -943,7 +1061,9 @@ class SellerAgent:
             _COMPLETED_SUBSCRIPTIONS[offer_id] = response
         _COMPLETED_SUBSCRIPTIONS[sub_id] = response
         if norm_email:
-            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+            if sub_status == "ACTIVE":
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+            reconcile_contractor_ledger(norm_email)
         return response
 
 
@@ -980,13 +1100,16 @@ class SellerAgent:
         if not sub:
             try:
                 remote_sub = await paypal_service.verify_subscription(subscription_id.strip())
-                if remote_sub and remote_sub.get("status") == "ACTIVE" and not remote_sub.get("mock_mode"):
+                if remote_sub and not remote_sub.get("mock_mode"):
+                    remote_status = remote_sub.get("status", "ACTIVE")
+                    tier_id, rate = resolve_tier_from_paypal_plan(remote_sub.get("plan_id"))
                     sub = {
                         "subscription_id": subscription_id.strip(),
-                        "status": "ACTIVE",
+                        "status": remote_status,
                         "contractor_email": remote_sub.get("subscriber", {}).get("email_address", contractor_email),
-                        "tier_id": "fieldsmith-pro",
-                        "agreed_monthly_rate": 79.99,
+                        "tier_id": tier_id,
+                        "agreed_monthly_rate": rate,
+                        "plan_id": remote_sub.get("plan_id"),
                     }
                     _COMPLETED_SUBSCRIPTIONS[subscription_id.strip()] = sub
             except Exception as e:
@@ -999,8 +1122,22 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' does not exist or has not been activated in PayPal Vault. Call purchase_subscription first.",
             }
 
-        # 2. Validate that the subscription is ACTIVE (not REPLACED)
-        if sub.get("status") == "REPLACED":
+        # 1.5 Validate payment approval and active status
+        sub_status = sub.get("status")
+        if sub_status == "APPROVAL_PENDING":
+            return {
+                "status": "REJECTED",
+                "error": "PAYMENT_APPROVAL_PENDING",
+                "reason": f"Subscription '{subscription_id}' is pending buyer approval in PayPal. It must be approved before telecom provisioning can proceed.",
+                "approval_url": sub.get("approval_url"),
+            }
+        elif sub_status in ["CANCELLED", "SUSPENDED", "PAYMENT_FAILED"]:
+            return {
+                "status": "REJECTED",
+                "error": f"SUBSCRIPTION_{sub_status}",
+                "reason": f"Subscription '{subscription_id}' is {sub_status}. Telecom provisioning is blocked for inactive subscriptions.",
+            }
+        elif sub_status == "REPLACED":
             return {
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_SUPERSEDED",

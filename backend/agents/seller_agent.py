@@ -34,7 +34,7 @@ from ..services.mandate_evaluator import (
 from ..services.paypal_service import paypal_service
 from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
-from ..services.crypto_mandate import verify_mandate_proof
+from ..services.crypto_mandate import verify_mandate_proof, verify_ap2_intent_mandate
 from ..config import settings
 
 logger = logging.getLogger("seller_agent")
@@ -89,6 +89,10 @@ SELLER_MCP_TOOLS = [
                     "default": "TELEPHONY_AI_SCREENER",
                     "description": "Authorized spending category",
                 },
+                "buyer_intent_mandate": {
+                    "type": "object",
+                    "description": "Optional buyer-signed AP2 Intent Mandate (vct: ap2.mandate.intent.1). If omitted, seller creates a seller-attested intent mandate on buyer's behalf.",
+                },
             },
         },
     },
@@ -116,16 +120,31 @@ SELLER_MCP_TOOLS = [
     },
     {
         "name": "purchase_subscription",
-        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing.",
+        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Provide offer_id (recommended from next_action) or tier_id + agreed_monthly_rate + mandate_proof_hash.",
         "input_schema": {
             "type": "object",
             "required": ["contractor_email"],
             "properties": {
-                "offer_id": {"type": "string", "description": "Optional merchant offer_id from signed AP2 Cart Mandate. If provided, binds directly to pre-verified terms."},
-                "tier_id": {"type": "string", "description": "Subscription tier ID (e.g. 'solo-starter', 'fieldsmith-pro', 'pro-dispatch')"},
-                "agreed_monthly_rate": {"type": "number", "description": "Agreed monthly subscription rate"},
-                "mandate_proof_hash": {"type": "string", "description": "mandate_proof_hash returned by negotiate_tier_terms"},
-                "contractor_email": {"type": "string", "description": "Contractor PayPal billing email; must match the email the mandate was negotiated for"},
+                "offer_id": {
+                    "type": "string",
+                    "description": "Merchant offer_id returned in Cart Mandate and next_action (e.g. 'off_solo_starter_49_...'). Automatically resolves and binds all pre-verified terms without rate tampering risk.",
+                },
+                "contractor_email": {
+                    "type": "string",
+                    "description": "Contractor PayPal billing email; must match the email the mandate was negotiated for.",
+                },
+                "tier_id": {
+                    "type": "string",
+                    "description": "Optional if offer_id is provided. Subscription tier ID (e.g. 'solo-starter', 'fieldsmith-pro', 'pro-dispatch').",
+                },
+                "agreed_monthly_rate": {
+                    "type": "number",
+                    "description": "Optional if offer_id is provided. Agreed monthly subscription rate.",
+                },
+                "mandate_proof_hash": {
+                    "type": "string",
+                    "description": "Optional if offer_id is provided. mandate_proof_hash returned by negotiate_tier_terms.",
+                },
             },
         },
     },
@@ -315,8 +334,9 @@ class SellerAgent:
         recurrence: str,
         category: str,
         monthly_budget_cap: float,
+        buyer_intent_mandate: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Issues one email-bound proof hash, signed AP2 Intent Mandate, and signed AP2 Cart Mandate."""
+        """Issues one email-bound proof hash, signed AP2 Intent Mandate (or adopts verified buyer-signed mandate), and signed AP2 Cart Mandate."""
         email = contractor_email.strip().lower()
         proof_hash = sign_mandate_token(
             agent_id=buyer_agent_id,
@@ -329,15 +349,19 @@ class SellerAgent:
         clean_tier = tier_id.replace("-", "_").lower()
         offer_id = f"off_{clean_tier}_{int(amount)}_{uuid.uuid4().hex[:8]}"
 
-        ap2_mandate = build_ap2_intent_mandate(
-            buyer_agent_id=buyer_agent_id,
-            amount=amount,
-            recurrence=recurrence,
-            category=category,
-            tier_id=tier_id,
-            contractor_email=email,
-            negotiation_id=negotiation_id,
-        )
+        if buyer_intent_mandate and verify_ap2_intent_mandate(buyer_intent_mandate):
+            ap2_mandate = dict(buyer_intent_mandate)
+        else:
+            ap2_mandate = build_ap2_intent_mandate(
+                buyer_agent_id=buyer_agent_id,
+                amount=amount,
+                recurrence=recurrence,
+                category=category,
+                tier_id=tier_id,
+                contractor_email=email,
+                negotiation_id=negotiation_id,
+            )
+
         ap2_cart = build_ap2_cart_mandate(
             offer_id=offer_id,
             tier_id=tier_id,
@@ -381,10 +405,12 @@ class SellerAgent:
         proposed_price: Optional[float] = None,
         recurrence: str = "monthly",
         category: str = "TELEPHONY_AI_SCREENER",
+        buyer_intent_mandate: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Tool implementation: Evaluates buyer budget cap against desired tier.
         Autonomously negotiates down-tier counter-offers with verifiable AP2 cryptographic mandate proof hashes.
+        Accepts optional buyer_intent_mandate signed by the buyer agent; falls back to seller-attested intent mandate.
         """
         tier_prices = {
             "solo-starter": 49.99,
@@ -422,6 +448,33 @@ class SellerAgent:
         standard_price = tier_prices[tier_id]
         minutes = tier_minutes[tier_id]
 
+        if not contractor_email and buyer_intent_mandate and isinstance(buyer_intent_mandate, dict):
+            payer = buyer_intent_mandate.get("payer")
+            if isinstance(payer, dict):
+                contractor_email = payer.get("email")
+
+        if buyer_intent_mandate:
+            if not isinstance(buyer_intent_mandate, dict) or not verify_ap2_intent_mandate(buyer_intent_mandate):
+                return {
+                    "status": "REJECTED",
+                    "approved": False,
+                    "original_request_approved": False,
+                    "tier_id": tier_id,
+                    "error": "INVALID_BUYER_INTENT_MANDATE",
+                    "reason": "Provided buyer_intent_mandate failed Ed25519 cryptographic signature verification.",
+                }
+            payer = buyer_intent_mandate.get("payer")
+            mandate_payer_email = payer.get("email") if isinstance(payer, dict) else None
+            if contractor_email and mandate_payer_email and mandate_payer_email.strip().lower() != contractor_email.strip().lower():
+                return {
+                    "status": "REJECTED",
+                    "approved": False,
+                    "original_request_approved": False,
+                    "tier_id": tier_id,
+                    "error": "IDENTITY_MISMATCH_DETECTED",
+                    "reason": f"buyer_intent_mandate payer email '{mandate_payer_email}' does not match contractor_email '{contractor_email}'.",
+                }
+
         if not contractor_email or "@" not in contractor_email:
             return {
                 "status": "REJECTED",
@@ -455,6 +508,7 @@ class SellerAgent:
             issued = self._issue_mandate(
                 buyer_agent_id, email, tier_id, standard_price,
                 recurrence, category, monthly_budget_cap,
+                buyer_intent_mandate=buyer_intent_mandate,
             )
             next_action = {
                 "type": "tool_call",
@@ -491,6 +545,7 @@ class SellerAgent:
             issued = self._issue_mandate(
                 buyer_agent_id, email, "solo-starter", 49.99,
                 recurrence, category, monthly_budget_cap,
+                buyer_intent_mandate=buyer_intent_mandate,
             )
             solo_hash = issued["hash"]
             remaining_after_solo = round(monthly_budget_cap - 49.99, 2)
@@ -526,10 +581,9 @@ class SellerAgent:
                 "next_action": next_action,
                 "reason": (
                     f"Requested FieldSmith plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                    f"Counter-offer: Down-tier to 'FieldSmith Solo Starter' at $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line), "
+                    f"Counter-offer available: Down-tier to 'FieldSmith Solo Starter' at $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line), "
                     f"leaving ${remaining_after_solo:.2f} in your monthly software budget. "
-                    f"A pre-signed mandateProofHash is included; call purchase_subscription with tier_id='solo-starter' "
-                    f"and agreed_monthly_rate=49.99 to bind instantly to PayPal Vault."
+                    f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
                 ),
             }
 

@@ -25,8 +25,10 @@ from .crypto_mandate import (
 )
 
 AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
-AP2_OFFER_TTL_SEC = 1800  # 30 minutes exact TTL across all mandates and registry entries
-AP2_MANDATE_TTL_SEC = AP2_OFFER_TTL_SEC
+AP2_INTENT_MANDATE_TTL_SEC = 31536000  # 1 year (365 days) standing monthly authorization
+AP2_CART_OFFER_TTL_SEC = 1800  # 30 minutes merchant price quote validity
+AP2_OFFER_TTL_SEC = AP2_CART_OFFER_TTL_SEC
+AP2_MANDATE_TTL_SEC = AP2_INTENT_MANDATE_TTL_SEC
 
 ALLOWED_CATEGORIES = {
     "contractor-dispatch-ai",
@@ -46,13 +48,14 @@ _AUTHORIZED_MANDATES: Dict[str, Dict[str, Any]] = {}
 def register_authorized_mandate(proof_hash: str, details: Dict[str, Any]):
     """Registers an authorized mandate hash with its bounded terms."""
     now = time.time()
-    expires_at = now + AP2_OFFER_TTL_SEC
+    expires_at = now + AP2_CART_OFFER_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(int(expires_at), tz=datetime.timezone.utc).isoformat()
     entry = {
         **details,
         "registered_at": now,
         "expires_at": expires_at,
         "offer_expires_at": expires_at_iso,
+        "expires_at_iso": expires_at_iso,
     }
     _AUTHORIZED_MANDATES[proof_hash] = entry
     offer_id = details.get("offer_id")
@@ -86,15 +89,17 @@ def build_ap2_intent_mandate(
     negotiation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Builds and Ed25519-signs the single canonical AP2 Intent Mandate for a negotiation.
-    The same signed object is returned by negotiate_tier_terms and purchase_subscription.
+    Builds and Ed25519-signs the canonical AP2 Intent Mandate for standing authorization.
+    Valid for 1 year (365 days) to authorize recurring monthly subscription charges.
     """
     now = int(time.time())
-    expires_at = now + AP2_OFFER_TTL_SEC
+    issued_at_iso = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).isoformat()
+    expires_at = now + AP2_INTENT_MANDATE_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
     mandate = {
         "mandate_id": f"mandate_{uuid.uuid4().hex[:16]}",
         "vct": "ap2.mandate.intent.1",
+        "attestation": "seller_attested",
         "issuer": buyer_agent_id,
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
         "payee": AP2_PAYEE_ID,
@@ -104,8 +109,10 @@ def build_ap2_intent_mandate(
         "category": category,
         "negotiation_id": negotiation_id,
         "issued_at": now,
+        "issued_at_iso": issued_at_iso,
         "expires_at": expires_at,
-        "offer_expires_at": expires_at_iso,
+        "expires_at_iso": expires_at_iso,
+        "validity_period": "P1Y",
         "nonce": uuid.uuid4().hex[:16],
         "user_present": False,
     }
@@ -123,10 +130,11 @@ def build_ap2_cart_mandate(
 ) -> Dict[str, Any]:
     """
     Builds and Ed25519-signs the merchant AP2 Cart Mandate (vct: ap2.mandate.cart.1).
-    Signed by the Merchant/Seller to bind the negotiated tier, price, and expiration.
+    Valid for 30 minutes to reserve the merchant price quote for checkout.
     """
     now = int(time.time())
-    expires_at = now + AP2_OFFER_TTL_SEC
+    issued_at_iso = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).isoformat()
+    expires_at = now + AP2_CART_OFFER_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
     cart = {
         "cart_id": f"cart_{uuid.uuid4().hex[:16]}",
@@ -141,7 +149,9 @@ def build_ap2_cart_mandate(
         "billing_cadence": recurrence,
         "negotiation_id": negotiation_id,
         "issued_at": now,
+        "issued_at_iso": issued_at_iso,
         "expires_at": expires_at,
+        "expires_at_iso": expires_at_iso,
         "offer_expires_at": expires_at_iso,
         "nonce": uuid.uuid4().hex[:16],
     }

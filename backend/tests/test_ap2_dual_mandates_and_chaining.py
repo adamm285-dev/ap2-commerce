@@ -12,7 +12,10 @@ from backend.agents.seller_agent import seller_agent
 from backend.services.mandate_evaluator import (
     ledger,
     get_authorized_mandate,
+    build_ap2_intent_mandate,
     AP2_OFFER_TTL_SEC,
+    AP2_INTENT_MANDATE_TTL_SEC,
+    AP2_CART_OFFER_TTL_SEC,
 )
 from backend.services.crypto_mandate import (
     verify_ap2_intent_mandate,
@@ -136,8 +139,8 @@ async def test_ttl_alignment_and_offer_expiry():
     cart = neg["ap2_cart_mandate"]
     auth = get_authorized_mandate(neg["offer_id"])
 
-    assert intent["expires_at"] - intent["issued_at"] == AP2_OFFER_TTL_SEC
-    assert cart["expires_at"] - cart["issued_at"] == AP2_OFFER_TTL_SEC
+    assert intent["expires_at"] - intent["issued_at"] == AP2_INTENT_MANDATE_TTL_SEC
+    assert cart["expires_at"] - cart["issued_at"] == AP2_CART_OFFER_TTL_SEC
     assert abs(auth["expires_at"] - cart["expires_at"]) <= 1
     assert "T" in neg["offer_expires_at"]  # Valid ISO-8601 string
 
@@ -184,3 +187,89 @@ def test_agent_discovery_card_endpoint():
     res_alias = client.get("/agent.json")
     assert res_alias.status_code == 200
     assert res_alias.json()["name"] == data["name"]
+
+
+@pytest.mark.asyncio
+async def test_buyer_signed_intent_mandate_acceptance():
+    """Verifies that negotiate_tier_terms accepts and binds a buyer-signed AP2 Intent Mandate."""
+    # Buyer generates and Ed25519-signs its own intent mandate
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert verify_ap2_intent_mandate(custom_mandate) is True
+
+    # Buyer passes the signed intent mandate to negotiate_tier_terms
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "COUNTER_OFFER"
+    assert neg["offer_id"] is not None
+    assert neg["ap2_intent_mandate"] == custom_mandate
+
+    # Complete purchase using the merchant offer_id
+    purchase = await seller_agent.purchase_subscription(
+        offer_id=neg["offer_id"],
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    assert purchase["status"] == "ACTIVE"
+    assert purchase["agreed_monthly_rate"] == 49.99
+    assert purchase["ap2_intent_mandate"] == custom_mandate
+
+
+@pytest.mark.asyncio
+async def test_tampered_buyer_signed_intent_mandate_rejected():
+    """Verifies that a tampered buyer-signed mandate is rejected by negotiate_tier_terms."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="marcus@millercustomfloors.com",
+    )
+    # Tamper with the payload (signature will no longer match)
+    tampered = dict(custom_mandate)
+    tampered["amount"] = {"value": "999.00", "currency_code": "USD"}
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=tampered,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "INVALID_BUYER_INTENT_MANDATE"
+
+
+@pytest.mark.asyncio
+async def test_buyer_signed_intent_mandate_identity_mismatch():
+    """Verifies that a buyer-signed mandate with conflicting contractor email is rejected."""
+    custom_mandate = build_ap2_intent_mandate(
+        buyer_agent_id="claude-desktop-buyer",
+        amount=60.00,
+        recurrence="monthly",
+        category="TELEPHONY_AI_SCREENER",
+        tier_id="fieldsmith-pro",
+        contractor_email="attacker@evil.com",
+    )
+
+    neg = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="claude-desktop-buyer",
+        tier_id="fieldsmith-pro",
+        monthly_budget_cap=60.00,
+        contractor_email="marcus@millercustomfloors.com",
+        buyer_intent_mandate=custom_mandate,
+    )
+    assert neg["status"] == "REJECTED"
+    assert neg["error"] == "IDENTITY_MISMATCH_DETECTED"
+

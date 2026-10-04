@@ -162,6 +162,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     proposed_price=float(arguments["proposed_price"]) if "proposed_price" in arguments and arguments["proposed_price"] is not None else None,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
+                    buyer_intent_mandate=arguments.get("buyer_intent_mandate"),
                 )
 
             elif tool_name == "purchase_subscription":

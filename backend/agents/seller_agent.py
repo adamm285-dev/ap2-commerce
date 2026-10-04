@@ -255,8 +255,7 @@ class SellerAgent:
                     "annual_price": 767.90,
                     "screening_minutes": 300,
                     "overage_rate_per_min": 0.20,
-                    "is_negotiable": True,
-                    "negotiation_notes": "Custom tailored trade plan available at $59.99/mo for 200 mins.",
+                    "is_negotiable": False,
                     "features": [
                         "300 Screening Minutes",
                         "Sub-500ms Voice Screener",
@@ -343,7 +342,6 @@ class SellerAgent:
             "roofing-storm": 79.99,
             "plumbing-emergency": 79.99,
             "pro-dispatch": 179.99,
-            "flooring-tile-starter": 59.99,
         }
         tier_minutes = {
             "solo-starter": 100,
@@ -351,7 +349,6 @@ class SellerAgent:
             "roofing-storm": 300,
             "plumbing-emergency": 300,
             "pro-dispatch": 1000,
-            "flooring-tile-starter": 200,
         }
         standard_price = tier_prices.get(tier_id, 79.99)
         minutes = tier_minutes.get(tier_id, 300)
@@ -388,86 +385,57 @@ class SellerAgent:
                 "reason": f"Plan '{tier_id}' at ${standard_price:.2f}/mo approved within ${monthly_budget_cap:.2f}/mo cap.",
             }
 
-        # 2. Desired tier exceeds budget: Construct intelligent counter-negotiation
-        solo_hash = sign_mandate_token(
-            agent_id=buyer_agent_id,
-            amount=49.99,
-            recurrence=recurrence,
-            secret=settings.a2a_mandate_secret,
-        )
-        register_authorized_mandate(
-            solo_hash,
-            {
-                "tier_id": "solo-starter",
-                "amount": 49.99,
-                "buyer_agent_id": buyer_agent_id,
-                "monthly_budget_cap": monthly_budget_cap,
-            },
-        )
-
-        counter_offers = [
-            {
-                "tier_id": "solo-starter",
-                "title": "Solo Starter Intake",
-                "monthly_price": 49.99,
-                "screening_minutes": 100,
-                "mandate_proof_hash": solo_hash,
-                "features": ["100 Screening Minutes", "Automated Voice Screener", "Dedicated 10DLC DID"],
-            }
-        ]
-
-        if "flooring" in tier_id and monthly_budget_cap >= 59.99:
-            tailored_hash = sign_mandate_token(
+        # 2. Desired tier exceeds budget: Down-tier counter-offer to Solo Starter ($49.99)
+        if monthly_budget_cap >= 49.99:
+            solo_hash = sign_mandate_token(
                 agent_id=buyer_agent_id,
-                amount=59.99,
+                amount=49.99,
                 recurrence=recurrence,
                 secret=settings.a2a_mandate_secret,
             )
             register_authorized_mandate(
-                tailored_hash,
+                solo_hash,
                 {
-                    "tier_id": "flooring-tile-starter",
-                    "amount": 59.99,
+                    "tier_id": "solo-starter",
+                    "amount": 49.99,
                     "buyer_agent_id": buyer_agent_id,
                     "monthly_budget_cap": monthly_budget_cap,
                 },
             )
-            tailored_plan = {
-                "tier_id": "flooring-tile-starter",
-                "title": "Flooring & Tile Starter (Negotiated)",
-                "monthly_price": 59.99,
-                "screening_minutes": 200,
-                "mandate_proof_hash": tailored_hash,
-                "features": ["200 Screening Minutes", "Tile & Subfloor Scoping", "Deposit Authorization"],
+
+            remaining_after_solo = round(monthly_budget_cap - 49.99, 2)
+            return {
+                "status": "COUNTER_OFFER",
+                "approved": False,
+                "tier_id": tier_id,
+                "counter_offer_available": True,
+                "counter_offer_tier": "Solo Starter",
+                "counter_offer_tier_id": "solo-starter",
+                "counter_offer_plan_id": "solo-starter",
+                "counter_offer_amount": 49.99,
+                "counter_offer_mandate_hash": solo_hash,
+                "mandate_proof_hash": solo_hash,
+                "monthly_budget_cap": round(monthly_budget_cap, 2),
+                "monthly_cap_remaining": remaining_after_solo,
+                "reason": (
+                    f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
+                    f"Counter-offer: Down-tier to 'Solo Starter' at $49.99/mo (100 screening minutes), leaving ${remaining_after_solo:.2f} in your monthly budget. "
+                    f"A pre-signed mandateProofHash is included; call purchase_subscription with tier_id='solo-starter' "
+                    f"and agreed_monthly_rate=49.99 to bind instantly."
+                ),
             }
-            counter_offers.insert(0, tailored_plan)
 
-        primary_counter = counter_offers[0]
-        selected_counter_tier = primary_counter["tier_id"]
-        selected_counter_amount = primary_counter["monthly_price"]
-        selected_counter_hash = primary_counter["mandate_proof_hash"]
-
+        # 3. Budget below minimum viable tier ($49.99)
         return {
-            "status": "COUNTER_OFFER",
+            "status": "REJECTED",
             "approved": False,
             "tier_id": tier_id,
-            "counter_offer_available": True,
-            "counter_offer_tier": primary_counter["title"],
-            "counter_offer_tier_id": selected_counter_tier,
-            "counter_offer_plan_id": selected_counter_tier,
-            "counter_offer_amount": selected_counter_amount,
-            "counter_offer_mandate_hash": selected_counter_hash,
-            "mandate_proof_hash": selected_counter_hash,
+            "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
-            "monthly_cap_remaining": round(monthly_budget_cap - selected_counter_amount, 2),
-            "available_counter_offers": counter_offers,
-            "reason": (
-                f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo which exceeds budget cap ${monthly_budget_cap:.2f}. "
-                f"Counter-offer: '{primary_counter['title']}' at ${selected_counter_amount:.2f}/mo. "
-                f"A pre-signed mandateProofHash is included; call purchase_subscription with tier_id='{selected_counter_tier}' "
-                f"and agreed_monthly_rate={selected_counter_amount} to bind instantly."
-            ),
+            "monthly_cap_remaining": round(monthly_budget_cap, 2),
+            "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (Solo Starter at $49.99/mo).",
         }
+
 
     async def verify_spending_mandate(
         self,

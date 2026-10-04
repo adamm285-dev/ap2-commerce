@@ -7,6 +7,7 @@ Conforms to FIDO / AP2 Intent Mandate specifications.
 
 import os
 import json
+import uuid
 import hashlib
 import datetime
 import logging
@@ -26,6 +27,7 @@ from ..services.mandate_evaluator import (
     get_authorized_mandate,
     bind_mandate_email,
     build_ap2_intent_mandate,
+    build_ap2_cart_mandate,
     sign_mandate_token,
     ledger,
 )
@@ -114,11 +116,12 @@ SELLER_MCP_TOOLS = [
     },
     {
         "name": "purchase_subscription",
-        "description": "Binds a verified AP2 Intent Mandate to PayPal Recurring Vault for automated monthly billing.",
+        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing.",
         "input_schema": {
             "type": "object",
-            "required": ["tier_id", "agreed_monthly_rate", "mandate_proof_hash", "contractor_email"],
+            "required": ["contractor_email"],
             "properties": {
+                "offer_id": {"type": "string", "description": "Optional merchant offer_id from signed AP2 Cart Mandate. If provided, binds directly to pre-verified terms."},
                 "tier_id": {"type": "string", "description": "Subscription tier ID (e.g. 'solo-starter', 'fieldsmith-pro', 'pro-dispatch')"},
                 "agreed_monthly_rate": {"type": "number", "description": "Agreed monthly subscription rate"},
                 "mandate_proof_hash": {"type": "string", "description": "mandate_proof_hash returned by negotiate_tier_terms"},
@@ -313,7 +316,7 @@ class SellerAgent:
         category: str,
         monthly_budget_cap: float,
     ) -> Dict[str, Any]:
-        """Issues one email-bound proof hash and its signed AP2 Intent Mandate, and registers both."""
+        """Issues one email-bound proof hash, signed AP2 Intent Mandate, and signed AP2 Cart Mandate."""
         email = contractor_email.strip().lower()
         proof_hash = sign_mandate_token(
             agent_id=buyer_agent_id,
@@ -323,6 +326,9 @@ class SellerAgent:
             contractor_email=email,
         )
         negotiation_id = f"neg_{hashlib.sha256(proof_hash.encode()).hexdigest()[:12]}"
+        clean_tier = tier_id.replace("-", "_").lower()
+        offer_id = f"off_{clean_tier}_{int(amount)}_{uuid.uuid4().hex[:8]}"
+
         ap2_mandate = build_ap2_intent_mandate(
             buyer_agent_id=buyer_agent_id,
             amount=amount,
@@ -332,19 +338,39 @@ class SellerAgent:
             contractor_email=email,
             negotiation_id=negotiation_id,
         )
-        register_authorized_mandate(
-            proof_hash,
-            {
-                "tier_id": tier_id,
-                "amount": amount,
-                "buyer_agent_id": buyer_agent_id,
-                "contractor_email": email,
-                "monthly_budget_cap": monthly_budget_cap,
-                "negotiation_id": negotiation_id,
-                "ap2_mandate": ap2_mandate,
-            },
+        ap2_cart = build_ap2_cart_mandate(
+            offer_id=offer_id,
+            tier_id=tier_id,
+            amount=amount,
+            recurrence=recurrence,
+            contractor_email=email,
+            negotiation_id=negotiation_id,
+            category=category,
         )
-        return {"hash": proof_hash, "negotiation_id": negotiation_id, "ap2_mandate": ap2_mandate}
+        auth_entry = {
+            "tier_id": tier_id,
+            "amount": amount,
+            "buyer_agent_id": buyer_agent_id,
+            "contractor_email": email,
+            "monthly_budget_cap": monthly_budget_cap,
+            "negotiation_id": negotiation_id,
+            "offer_id": offer_id,
+            "proof_hash": proof_hash,
+            "mandate_proof_hash": proof_hash,
+            "ap2_mandate": ap2_mandate,
+            "ap2_cart_mandate": ap2_cart,
+        }
+        register_authorized_mandate(proof_hash, auth_entry)
+        register_authorized_mandate(offer_id, auth_entry)
+
+        return {
+            "hash": proof_hash,
+            "offer_id": offer_id,
+            "negotiation_id": negotiation_id,
+            "ap2_mandate": ap2_mandate,
+            "ap2_cart_mandate": ap2_cart,
+            "offer_expires_at": ap2_cart.get("offer_expires_at"),
+        }
 
     async def negotiate_tier_terms(
         self,
@@ -406,6 +432,8 @@ class SellerAgent:
                 "reason": "contractor_email is required; the issued AP2 mandate is bound to it.",
             }
 
+        email = contractor_email.strip().lower()
+
         # 1. Direct Approval: Desired tier is within budget cap
         if monthly_budget_cap >= standard_price:
             mandate_res = await self.verify_spending_mandate(
@@ -425,14 +453,26 @@ class SellerAgent:
                     "reason": mandate_res.get("reason"),
                 }
             issued = self._issue_mandate(
-                buyer_agent_id, contractor_email, tier_id, standard_price,
+                buyer_agent_id, email, tier_id, standard_price,
                 recurrence, category, monthly_budget_cap,
             )
+            next_action = {
+                "type": "tool_call",
+                "tool": "purchase_subscription",
+                "parameters": {
+                    "offer_id": issued["offer_id"],
+                    "contractor_email": email,
+                    "tier_id": tier_id,
+                    "agreed_monthly_rate": standard_price,
+                    "mandate_proof_hash": issued["hash"],
+                },
+            }
             return {
                 "status": "APPROVED",
                 "approved": True,
                 "original_request_approved": True,
                 "negotiation_id": issued["negotiation_id"],
+                "offer_id": issued["offer_id"],
                 "tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
@@ -440,23 +480,37 @@ class SellerAgent:
                 "screening_minutes": minutes,
                 "mandate_proof_hash": issued["hash"],
                 "ap2_intent_mandate": issued["ap2_mandate"],
+                "ap2_cart_mandate": issued["ap2_cart_mandate"],
+                "offer_expires_at": issued["offer_expires_at"],
+                "next_action": next_action,
                 "reason": f"Plan '{tier_id}' at ${standard_price:.2f}/mo approved within ${monthly_budget_cap:.2f}/mo cap.",
             }
 
         # 2. Desired tier exceeds budget: Down-tier counter-offer to Solo Starter ($49.99)
         if monthly_budget_cap >= 49.99:
             issued = self._issue_mandate(
-                buyer_agent_id, contractor_email, "solo-starter", 49.99,
+                buyer_agent_id, email, "solo-starter", 49.99,
                 recurrence, category, monthly_budget_cap,
             )
             solo_hash = issued["hash"]
-
             remaining_after_solo = round(monthly_budget_cap - 49.99, 2)
+            next_action = {
+                "type": "tool_call",
+                "tool": "purchase_subscription",
+                "parameters": {
+                    "offer_id": issued["offer_id"],
+                    "contractor_email": email,
+                    "tier_id": "solo-starter",
+                    "agreed_monthly_rate": 49.99,
+                    "mandate_proof_hash": solo_hash,
+                },
+            }
             return {
                 "status": "COUNTER_OFFER",
                 "approved": False,
                 "original_request_approved": False,
                 "negotiation_id": issued["negotiation_id"],
+                "offer_id": issued["offer_id"],
                 "tier_id": tier_id,
                 "counter_offer_available": True,
                 "counter_offer_tier": "FieldSmith Solo Starter",
@@ -465,8 +519,11 @@ class SellerAgent:
                 "counter_offer_mandate_hash": solo_hash,
                 "mandate_proof_hash": solo_hash,
                 "ap2_intent_mandate": issued["ap2_mandate"],
+                "ap2_cart_mandate": issued["ap2_cart_mandate"],
+                "offer_expires_at": issued["offer_expires_at"],
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": remaining_after_solo,
+                "next_action": next_action,
                 "reason": (
                     f"Requested FieldSmith plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
                     f"Counter-offer: Down-tier to 'FieldSmith Solo Starter' at $49.99/mo (100 AI screening minutes, dedicated 10DLC phone line), "
@@ -509,22 +566,33 @@ class SellerAgent:
 
     async def purchase_subscription(
         self,
-        tier_id: str,
-        agreed_monthly_rate: float,
-        mandate_proof_hash: str,
-        contractor_email: str,
+        tier_id: Optional[str] = None,
+        agreed_monthly_rate: Optional[float] = None,
+        mandate_proof_hash: Optional[str] = None,
+        contractor_email: Optional[str] = None,
+        offer_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Tool implementation: Binds verified AP2 Intent Mandate to PayPal Recurring Vault.
+        Tool implementation: Binds verified AP2 Intent Mandate or AP2 Cart Mandate to PayPal Recurring Vault.
         Cryptographically verifies the mandate proof against tier, rate, and contractor identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
+        # Resolve parameters from offer_id if caller omitted them
+        if offer_id and not (tier_id and agreed_monthly_rate and mandate_proof_hash):
+            auth_lookup = get_authorized_mandate(offer_id)
+            if auth_lookup:
+                tier_id = tier_id or auth_lookup.get("tier_id")
+                agreed_monthly_rate = agreed_monthly_rate if agreed_monthly_rate is not None else auth_lookup.get("amount")
+                mandate_proof_hash = mandate_proof_hash or auth_lookup.get("mandate_proof_hash") or auth_lookup.get("proof_hash") or offer_id
+                contractor_email = contractor_email or auth_lookup.get("contractor_email")
+
         # 1. Anti-Tamper & Identity Verification (always runs, even for replays)
         valid, reason = verify_authorized_mandate(
             proof_hash=mandate_proof_hash,
             tier_id=tier_id,
             agreed_rate=agreed_monthly_rate,
             contractor_email=contractor_email,
+            offer_id=offer_id,
         )
         if not valid:
             logger.warning(f"[SECURITY] Mandate verification failed for {tier_id}: {reason}")
@@ -536,33 +604,40 @@ class SellerAgent:
             }
 
         # 2. Idempotency Check: a verified replay returns the existing subscription
-        if mandate_proof_hash in _COMPLETED_SUBSCRIPTIONS:
-            return _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash]
+        cache_key = mandate_proof_hash or offer_id
+        if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
+            return _COMPLETED_SUBSCRIPTIONS[cache_key]
 
         # Mandates issued without an email are locked to their first redeemer
-        bind_mandate_email(mandate_proof_hash, contractor_email)
-        auth = get_authorized_mandate(mandate_proof_hash) or {}
+        if mandate_proof_hash and contractor_email:
+            bind_mandate_email(mandate_proof_hash, contractor_email)
+        auth = get_authorized_mandate(mandate_proof_hash or offer_id) or {}
 
         # 3. Record spend in ledger on actual checkout completion
+        buyer_id = auth.get("buyer_agent_id", "unknown")
         ledger.record_spend(
             agreed_monthly_rate,
             {
                 "contractor_email": contractor_email,
+                "agent_id": buyer_id,
                 "tier_id": tier_id,
                 "mandate_proof_hash": mandate_proof_hash,
+                "offer_id": auth.get("offer_id"),
             },
         )
+        cap = auth.get("monthly_budget_cap", 100.0)
+        remaining_budget = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap)
 
         # 4. Deterministic Subscription ID
-        seed = f"{mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
+        seed = f"{mandate_proof_hash or offer_id}:{tier_id}:{agreed_monthly_rate:.2f}"
         stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
         sub_id = f"I-A2A-VAULT-{stable_int:07d}"
 
         utc_now = datetime.datetime.now(datetime.timezone.utc)
         created_time = utc_now.isoformat()
         next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
-        negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256(mandate_proof_hash.encode()).hexdigest()[:12]}"
-        payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}"
+        negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
+        payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-A2A-BUYER"
         vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
         payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
         paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
@@ -571,11 +646,11 @@ class SellerAgent:
         ap2_mandate = auth.get("ap2_mandate")
         if ap2_mandate is None:
             ap2_mandate = build_ap2_intent_mandate(
-                buyer_agent_id=auth.get("buyer_agent_id", "unknown"),
+                buyer_agent_id=buyer_id,
                 amount=agreed_monthly_rate,
                 recurrence="monthly",
                 category="TELEPHONY_AI_SCREENER",
-                tier_id=tier_id,
+                tier_id=tier_id or "*",
                 contractor_email=contractor_email,
                 negotiation_id=negotiation_id,
             )
@@ -592,6 +667,7 @@ class SellerAgent:
             }
         ]
 
+        # Machine-initiated vaulted subscription links: omit human browser 'approve' link
         hateoas_links = [
             {
                 "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
@@ -599,40 +675,61 @@ class SellerAgent:
                 "method": "GET",
             },
             {
-                "href": f"https://www.sandbox.paypal.com/checkoutnow?token=BA-{sub_id}",
-                "rel": "approve",
-                "method": "GET",
+                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}/cancel",
+                "rel": "cancel",
+                "method": "POST",
             },
         ]
+
+        next_action = {
+            "type": "tool_call",
+            "tool": "provision_telecom_line",
+            "parameters": {
+                "subscription_id": sub_id,
+                "contractor_email": contractor_email,
+                "area_code": "863",
+            },
+        }
 
         response = {
             "status": "ACTIVE",
             "subscription_id": sub_id,
             "negotiation_id": negotiation_id,
+            "offer_id": auth.get("offer_id"),
             "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
             "product_id": "PROD-FIELDSMITH-A2A-TELEPHONY",
             "payer_id": payer_id,
             "vault_id": vault_id,
             "payment_token": payment_token,
+            "payment_method": "paypal_vault_mit",
             "tier_id": tier_id,
             "agreed_monthly_rate": round(agreed_monthly_rate, 2),
+            "monthly_budget_cap": round(cap, 2),
+            "monthly_cap_remaining": round(remaining_budget, 2),
             "billing_cycle": "monthly",
             "billing_cycles": billing_cycles,
             "currency": "USD",
             "mandate_proof_hash": mandate_proof_hash,
             "contractor_email": contractor_email,
             "paypal_vault_status": "VAULT_BOUND",
+            "vault_billing_authorized": True,
+            "vault_customer_present": False,
             "paypal_environment": "sandbox",
             "paypal_request_id": paypal_req_id,
             "create_time": created_time,
             "next_billing_time": next_billing,
             "hateoas_links": hateoas_links,
             "ap2_intent_mandate": ap2_mandate,
+            "ap2_cart_mandate": auth.get("ap2_cart_mandate"),
+            "next_action": next_action,
             "message": f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate.",
         }
 
         # Cache for strict idempotency
-        _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
+        if mandate_proof_hash:
+            _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
+        if auth.get("offer_id"):
+            _COMPLETED_SUBSCRIPTIONS[auth["offer_id"]] = response
         _COMPLETED_SUBSCRIPTIONS[sub_id] = response
         return response
 
@@ -672,7 +769,23 @@ class SellerAgent:
             simulateExhaustion=simulate_exhaustion,
         )
         res = await telnyx_provisioner.provision_did(req, simulate_exhaustion=simulate_exhaustion)
-        return res.model_dump(by_alias=True)
+        res_dict = res.model_dump(by_alias=True)
+        allocated_did = res_dict.get("allocatedDid") or res_dict.get("allocated_did", "+1 (863) 267-8902")
+        res_dict["next_action"] = {
+            "type": "tool_call",
+            "tool": "dispatch_zapier_mcp",
+            "parameters": {
+                "workflow_type": "a2a_onboarding",
+                "contractor_name": "Marcus Miller",
+                "business_entity": "Miller Custom Flooring LLC",
+                "allocated_did": allocated_did,
+                "trade_vertical": "Tile & Custom Flooring",
+                "monthly_subscription_fee": 49.99,
+                "paypal_subscription_id": subscription_id,
+                "contractor_email": contractor_email,
+            },
+        }
+        return res_dict
 
     async def dispatch_zapier_mcp(
         self,

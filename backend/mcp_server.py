@@ -166,11 +166,13 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
             elif tool_name == "purchase_subscription":
                 default_email = os.getenv("A2A_DEFAULT_EMAIL", "contractor@example.com")
+                raw_rate = arguments.get("agreed_monthly_rate")
                 result = await seller_agent.purchase_subscription(
-                    tier_id=arguments.get("tier_id", "solo-starter"),
-                    agreed_monthly_rate=float(arguments.get("agreed_monthly_rate", 49.99)),
-                    mandate_proof_hash=arguments.get("mandate_proof_hash", ""),
+                    tier_id=arguments.get("tier_id"),
+                    agreed_monthly_rate=float(raw_rate) if raw_rate is not None else None,
+                    mandate_proof_hash=arguments.get("mandate_proof_hash"),
                     contractor_email=arguments.get("contractor_email", default_email),
+                    offer_id=arguments.get("offer_id"),
                 )
 
             elif tool_name == "evaluate_spending_mandate":

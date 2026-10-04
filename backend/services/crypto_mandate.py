@@ -16,11 +16,24 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 # Environment-configurable default secret / keys (Zero hardcoded secrets in repository)
 SECRET_KEY = os.getenv("A2A_MANDATE_SECRET", "fieldsmith_agentic_mandate_secret_2026").encode("utf-8")
 
-# In-memory default buyer keypair for sandbox/mock scenarios if environment key is omitted
-_DEFAULT_BUYER_PRIVATE_KEY = ed25519.Ed25519PrivateKey.generate()
+# Deterministic fallback keys for reproducible development/sandbox testing
+# Guaranteed stable across restarts while allowing production override via environment
+_SELLER_SEED = hashlib.sha256(b"fieldsmith_pro_seller_ed25519_seed_2026").digest()
+_BUYER_SEED = hashlib.sha256(b"fieldsmith_pro_buyer_ed25519_seed_2026").digest()
+
+_DEFAULT_SELLER_PRIVATE_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(_SELLER_SEED)
+_DEFAULT_SELLER_PUBLIC_KEY = _DEFAULT_SELLER_PRIVATE_KEY.public_key()
+DEFAULT_SELLER_PRIVATE_KEY_HEX = _DEFAULT_SELLER_PRIVATE_KEY.private_bytes_raw().hex()
+DEFAULT_SELLER_PUBLIC_KEY_HEX = _DEFAULT_SELLER_PUBLIC_KEY.public_bytes_raw().hex()
+
+_DEFAULT_BUYER_PRIVATE_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(_BUYER_SEED)
 _DEFAULT_BUYER_PUBLIC_KEY = _DEFAULT_BUYER_PRIVATE_KEY.public_key()
 DEFAULT_BUYER_PRIVATE_KEY_HEX = _DEFAULT_BUYER_PRIVATE_KEY.private_bytes_raw().hex()
 DEFAULT_BUYER_PUBLIC_KEY_HEX = _DEFAULT_BUYER_PUBLIC_KEY.public_bytes_raw().hex()
+
+
+DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
+DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
 
 
 def generate_ed25519_keypair() -> Tuple[str, str]:
@@ -78,6 +91,7 @@ def generate_dynamic_mandate_proof(
         "nonce": nonce,
         "timestamp": timestamp,
         "public_key": pub_hex,
+        "kid": DEFAULT_BUYER_KID,
     }
     canonical_payload = canonicalize_mandate_payload(raw_payload)
     encoded_bytes = json.dumps(canonical_payload, sort_keys=True).encode("utf-8")
@@ -89,13 +103,14 @@ def generate_dynamic_mandate_proof(
         "canonical_payload": canonical_payload,
         "signature": signature,
         "public_key": pub_hex,
+        "kid": DEFAULT_BUYER_KID,
         "algorithm": "Ed25519",
         "vct": "ap2.mandate.intent.1",
     }
 
 
 def _ap2_signing_bytes(mandate: Dict[str, Any]) -> bytes:
-    """Canonical bytes of an AP2 Intent Mandate, excluding the signature itself."""
+    """Canonical bytes of an AP2 Mandate, excluding the signature itself."""
     body = {k: v for k, v in mandate.items() if k != "signature"}
     return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -108,6 +123,7 @@ def sign_ap2_intent_mandate(
     priv_key = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(priv_hex))
     signed = {
         **mandate,
+        "kid": mandate.get("kid", DEFAULT_BUYER_KID),
         "signature_alg": "Ed25519",
         "public_key": priv_key.public_key().public_bytes_raw().hex(),
     }
@@ -118,11 +134,50 @@ def sign_ap2_intent_mandate(
 def verify_ap2_intent_mandate(mandate: Dict[str, Any]) -> bool:
     """Verifies the Ed25519 signature of an AP2 Intent Mandate against its embedded public key."""
     try:
-        verifier = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(mandate["public_key"]))
-        verifier.verify(bytes.fromhex(mandate["signature"]), _ap2_signing_bytes(mandate))
+        pub_hex = mandate.get("public_key")
+        sig_hex = mandate.get("signature")
+        if not pub_hex or not sig_hex:
+            return False
+        verifier = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_hex))
+        verifier.verify(bytes.fromhex(sig_hex), _ap2_signing_bytes(mandate))
         return True
     except Exception:
         return False
+
+
+def sign_ap2_cart_mandate(
+    cart: Dict[str, Any], private_key_hex: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Returns a copy of the AP2 Cart Mandate (merchant offer) with Ed25519 `public_key` and `signature` attached.
+    Signed by the Merchant/Seller to bind the negotiated tier, price, and expiration.
+    """
+    priv_hex = private_key_hex or os.getenv("A2A_SELLER_PRIVATE_KEY") or DEFAULT_SELLER_PRIVATE_KEY_HEX
+    priv_key = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(priv_hex))
+    signed = {
+        **cart,
+        "vct": "ap2.mandate.cart.1",
+        "kid": cart.get("kid", DEFAULT_SELLER_KID),
+        "signature_alg": "Ed25519",
+        "public_key": priv_key.public_key().public_bytes_raw().hex(),
+    }
+    signed["signature"] = priv_key.sign(_ap2_signing_bytes(signed)).hex()
+    return signed
+
+
+def verify_ap2_cart_mandate(cart: Dict[str, Any]) -> bool:
+    """Verifies the Ed25519 signature of an AP2 Cart Mandate against its embedded public key."""
+    try:
+        pub_hex = cart.get("public_key")
+        sig_hex = cart.get("signature")
+        if not pub_hex or not sig_hex:
+            return False
+        verifier = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_hex))
+        verifier.verify(bytes.fromhex(sig_hex), _ap2_signing_bytes(cart))
+        return True
+    except Exception:
+        return False
+
 
 
 def verify_mandate_proof(

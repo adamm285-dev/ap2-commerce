@@ -41,6 +41,8 @@ from .services.crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
     canonicalize_mandate_payload,
+    DEFAULT_SELLER_KID,
+    DEFAULT_SELLER_PUBLIC_KEY_HEX,
     SECRET_KEY,
 )
 from .mcp_server import (
@@ -138,6 +140,71 @@ async def health_check():
         "telnyx_configured": bool(settings.telnyx_api_key),
         "zapier_configured": bool(settings.zapier_nla_api_key),
         "mcp_server_active": True,
+    }
+
+
+# --- Google A2A / AP2 Agent Discovery Card ---
+@app.get("/.well-known/agent.json", tags=["Agent Discovery"])
+@app.get("/agent.json", tags=["Agent Discovery"])
+async def agent_discovery_card():
+    """
+    Google A2A / AP2 Agent Card for Autonomous Discovery.
+    Publishes capabilities, cryptographic identity keys, pricing plans, and MCP endpoints.
+    """
+    return {
+        "name": "FieldSmith Pro A2A Seller Agent",
+        "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Solo Field Service Contractors. Provides automated voice receptionist, 10DLC telephony line provisioning, and PayPal Recurring Vault binding.",
+        "version": "1.0.0",
+        "protocol_version": "2024-11-05",
+        "supported_protocols": ["A2A", "AP2", "MCP"],
+        "provider": {
+            "organization": "FieldSmith Pro LLC",
+            "service": "FieldSmith Autonomous Telephony SaaS",
+            "url": "https://fieldsmith.pro",
+        },
+        "endpoints": {
+            "mcp": "/mcp",
+            "catalog": "/api/agent/catalog",
+            "health": "/health",
+            "m2m_audit": "/api/m2m/audit-trail",
+            "wire_stream": "/api/mcp/sse",
+        },
+        "authentication": {
+            "type": "asymmetric_cryptographic_mandate",
+            "algorithms": ["Ed25519", "HMAC-SHA256"],
+            "seller_kid": DEFAULT_SELLER_KID,
+            "seller_public_key": DEFAULT_SELLER_PUBLIC_KEY_HEX,
+        },
+        "plans": [
+            {
+                "tier_id": "solo-starter",
+                "title": "FieldSmith Solo Starter",
+                "monthly_price": 49.99,
+                "screening_minutes": 100,
+            },
+            {
+                "tier_id": "fieldsmith-pro",
+                "title": "FieldSmith Pro Specialized Trade Screener",
+                "monthly_price": 79.99,
+                "screening_minutes": 300,
+            },
+            {
+                "tier_id": "pro-dispatch",
+                "title": "FieldSmith Fleet Multi-Crew Dispatch",
+                "monthly_price": 179.99,
+                "screening_minutes": 1000,
+            },
+        ],
+        "capabilities": {
+            "inspect_subscription_tiers": True,
+            "negotiate_tier_terms": True,
+            "autonomous_down_tiering": True,
+            "ap2_intent_mandate_verification": True,
+            "ap2_cart_mandate_issuance": True,
+            "paypal_vault_recurring": True,
+            "telecom_10dlc_allocation": True,
+            "backoffice_erp_dispatch": True,
+        },
     }
 
 

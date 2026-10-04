@@ -8,6 +8,7 @@ import hmac
 import hashlib
 import time
 import uuid
+import datetime
 from typing import Dict, Any, Tuple, Optional
 from ..config import settings
 from ..models import SpendingMandateRequest, SpendingMandateResponse, RecurrenceType
@@ -17,10 +18,15 @@ from .crypto_mandate import (
     canonicalize_mandate_payload,
     sign_ap2_intent_mandate,
     verify_ap2_intent_mandate,
+    sign_ap2_cart_mandate,
+    verify_ap2_cart_mandate,
+    DEFAULT_SELLER_KID,
+    DEFAULT_BUYER_KID,
 )
 
 AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
-AP2_MANDATE_TTL_SEC = 2592000  # 30 days
+AP2_OFFER_TTL_SEC = 1800  # 30 minutes exact TTL across all mandates and registry entries
+AP2_MANDATE_TTL_SEC = AP2_OFFER_TTL_SEC
 
 ALLOWED_CATEGORIES = {
     "contractor-dispatch-ai",
@@ -39,23 +45,35 @@ _AUTHORIZED_MANDATES: Dict[str, Dict[str, Any]] = {}
 
 def register_authorized_mandate(proof_hash: str, details: Dict[str, Any]):
     """Registers an authorized mandate hash with its bounded terms."""
-    _AUTHORIZED_MANDATES[proof_hash] = {
+    now = time.time()
+    expires_at = now + AP2_OFFER_TTL_SEC
+    expires_at_iso = datetime.datetime.fromtimestamp(int(expires_at), tz=datetime.timezone.utc).isoformat()
+    entry = {
         **details,
-        "registered_at": time.time(),
-        "expires_at": time.time() + 1800,  # 30-minute validity window
+        "registered_at": now,
+        "expires_at": expires_at,
+        "offer_expires_at": expires_at_iso,
     }
+    _AUTHORIZED_MANDATES[proof_hash] = entry
+    offer_id = details.get("offer_id")
+    if offer_id:
+        _AUTHORIZED_MANDATES[offer_id] = entry
 
 
-def get_authorized_mandate(proof_hash: str) -> Optional[Dict[str, Any]]:
-    """Returns the registered terms for a mandate proof hash, if any."""
-    return _AUTHORIZED_MANDATES.get(proof_hash)
+def get_authorized_mandate(key: str) -> Optional[Dict[str, Any]]:
+    """Returns the registered terms for a mandate proof hash or offer_id, if any."""
+    return _AUTHORIZED_MANDATES.get(key)
 
 
 def bind_mandate_email(proof_hash: str, contractor_email: str):
     """Locks a mandate that was issued without a contractor email to its first redeemer."""
     auth = _AUTHORIZED_MANDATES.get(proof_hash)
     if auth is not None and not auth.get("contractor_email"):
-        auth["contractor_email"] = contractor_email.strip().lower()
+        email = contractor_email.strip().lower()
+        auth["contractor_email"] = email
+        offer_id = auth.get("offer_id")
+        if offer_id and offer_id in _AUTHORIZED_MANDATES:
+            _AUTHORIZED_MANDATES[offer_id]["contractor_email"] = email
 
 
 def build_ap2_intent_mandate(
@@ -72,6 +90,8 @@ def build_ap2_intent_mandate(
     The same signed object is returned by negotiate_tier_terms and purchase_subscription.
     """
     now = int(time.time())
+    expires_at = now + AP2_OFFER_TTL_SEC
+    expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
     mandate = {
         "mandate_id": f"mandate_{uuid.uuid4().hex[:16]}",
         "vct": "ap2.mandate.intent.1",
@@ -84,29 +104,71 @@ def build_ap2_intent_mandate(
         "category": category,
         "negotiation_id": negotiation_id,
         "issued_at": now,
-        "expires_at": now + AP2_MANDATE_TTL_SEC,
+        "expires_at": expires_at,
+        "offer_expires_at": expires_at_iso,
         "nonce": uuid.uuid4().hex[:16],
         "user_present": False,
     }
     return sign_ap2_intent_mandate(mandate)
 
 
-def verify_authorized_mandate(
-    proof_hash: str,
+def build_ap2_cart_mandate(
+    offer_id: str,
     tier_id: str,
-    agreed_rate: float,
+    amount: float,
+    recurrence: str,
+    contractor_email: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+    category: str = "TELEPHONY_AI_SCREENER",
+) -> Dict[str, Any]:
+    """
+    Builds and Ed25519-signs the merchant AP2 Cart Mandate (vct: ap2.mandate.cart.1).
+    Signed by the Merchant/Seller to bind the negotiated tier, price, and expiration.
+    """
+    now = int(time.time())
+    expires_at = now + AP2_OFFER_TTL_SEC
+    expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
+    cart = {
+        "cart_id": f"cart_{uuid.uuid4().hex[:16]}",
+        "offer_id": offer_id,
+        "vct": "ap2.mandate.cart.1",
+        "merchant_id": AP2_PAYEE_ID,
+        "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
+        "tier_id": tier_id,
+        "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
+        "category": category,
+        "amount": {"value": f"{amount:.2f}", "currency_code": "USD"},
+        "billing_cadence": recurrence,
+        "negotiation_id": negotiation_id,
+        "issued_at": now,
+        "expires_at": expires_at,
+        "offer_expires_at": expires_at_iso,
+        "nonce": uuid.uuid4().hex[:16],
+    }
+    return sign_ap2_cart_mandate(cart)
+
+
+def verify_authorized_mandate(
+    proof_hash: Optional[str] = None,
+    tier_id: Optional[str] = None,
+    agreed_rate: Optional[float] = None,
     contractor_email: Optional[str] = None,
     max_cap: Optional[float] = None,
+    offer_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
-    Validates that a purchase submission matches a mandate issued by this seller.
+    Validates that a purchase submission matches a mandate or offer issued by this seller.
     Prevents buyer agents or attackers from submitting a $49.99 proof for a $179.99 tier,
     redeeming a mandate bound to a different contractor email, or presenting a forged token.
+    Supports lookup via proof_hash or offer_id.
     """
-    if not proof_hash or not proof_hash.strip():
-        return False, "EMPTY_MANDATE_HASH: A signed AP2 mandate proof hash is required."
+    lookup_key = proof_hash.strip() if proof_hash and proof_hash.strip() else (offer_id.strip() if offer_id and offer_id.strip() else None)
+    if not lookup_key:
+        return False, "EMPTY_MANDATE_HASH: A signed AP2 mandate proof hash or offer_id is required."
 
-    auth = _AUTHORIZED_MANDATES.get(proof_hash)
+    auth = _AUTHORIZED_MANDATES.get(lookup_key)
+    if not auth and offer_id:
+        auth = _AUTHORIZED_MANDATES.get(offer_id.strip())
     if not auth:
         return False, "UNKNOWN_MANDATE: Proof hash was not issued by this seller. Call negotiate_tier_terms first."
 
@@ -127,25 +189,33 @@ def verify_authorized_mandate(
     if ap2_mandate is not None and not verify_ap2_intent_mandate(ap2_mandate):
         return False, "MANDATE_SIGNATURE_INVALID: AP2 Intent Mandate signature verification failed."
 
+    ap2_cart = auth.get("ap2_cart_mandate")
+    if ap2_cart is not None and not verify_ap2_cart_mandate(ap2_cart):
+        return False, "CART_SIGNATURE_INVALID: AP2 Cart Mandate signature verification failed."
+
     allowed_tier = auth.get("tier_id")
     allowed_rate = auth.get("amount", 0.0)
 
     # Verify rate doesn't exceed authorized amount
-    if round(agreed_rate, 2) > round(allowed_rate, 2):
+    effective_rate = agreed_rate if agreed_rate is not None else allowed_rate
+    if round(effective_rate, 2) > round(allowed_rate, 2):
         return (
             False,
-            f"RATE_TAMPERING_DETECTED: Agreed rate ${agreed_rate:.2f} exceeds authorized mandate amount ${allowed_rate:.2f}.",
+            f"RATE_TAMPERING_DETECTED: Agreed rate ${effective_rate:.2f} exceeds authorized mandate amount ${allowed_rate:.2f}.",
         )
+
     # If tier was restricted, verify tier
-    if allowed_tier and allowed_tier not in ["*", "any", tier_id]:
+    effective_tier = tier_id if tier_id is not None else allowed_tier
+    if allowed_tier and effective_tier and allowed_tier not in ["*", "any", effective_tier]:
         normalized_allowed = allowed_tier.replace("-", "").replace("_", "").lower()
-        normalized_req = tier_id.replace("-", "").replace("_", "").lower()
+        normalized_req = effective_tier.replace("-", "").replace("_", "").lower()
         if normalized_allowed not in normalized_req and normalized_req not in normalized_allowed:
             return (
                 False,
-                f"TIER_MISMATCH_DETECTED: Mandate was authorized for '{allowed_tier}', but attempted to purchase '{tier_id}'.",
+                f"TIER_MISMATCH_DETECTED: Mandate was authorized for '{allowed_tier}', but attempted to purchase '{effective_tier}'.",
             )
     return True, "VERIFIED"
+
 
 
 class MandateLedger:

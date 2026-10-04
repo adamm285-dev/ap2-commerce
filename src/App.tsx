@@ -331,10 +331,13 @@ export function App() {
                 const idx = prev.findIndex((t) => t.contractor_name === contractorName);
                 if (idx !== -1) {
                   const updated = [...prev];
+                  const agreedRate = maxMonthlyBudget < 79.99 ? 49.99 : 79.99;
+                  const planTitle = agreedRate === 49.99 ? 'FieldSmith Solo Starter (100 Mins)' : 'FieldSmith Pro (300 Mins)';
                   updated[idx] = {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-                    monthly_amount: 79.99,
+                    service_plan: planTitle,
+                    monthly_amount: agreedRate,
                     paypal_sub_id: subscriptionId,
                     kyc_status: 'VERIFIED (PayPal Identity Bound)',
                     allocated_did: allocatedDid,

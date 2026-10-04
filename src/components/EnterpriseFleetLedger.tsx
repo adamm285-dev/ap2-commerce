@@ -786,7 +786,7 @@ export function EnterpriseFleetLedger({
                   </span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  3 Live Datasets &bull; 14 Active Carrier Subscriptions &bull; 10DLC KYC Attestation
+                  {tradeImpactData.length} Live Datasets &bull; {activeLinesCount} Active Carrier Subscriptions &bull; 10DLC KYC Attestation
                 </div>
               </div>
             </div>

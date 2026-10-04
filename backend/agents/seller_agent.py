@@ -66,7 +66,7 @@ SELLER_MCP_TOOLS = [
                 },
                 "tier_id": {
                     "type": "string",
-                    "description": "Desired FieldSmith SaaS subscription tier ('solo-starter' at $49.99, 'fieldsmith-pro' or 'flooring-tile' at $79.99, 'pro-dispatch' at $179.99)",
+                    "description": "Desired FieldSmith SaaS subscription tier ('solo-starter' at $49.99, 'fieldsmith-pro' at $79.99, 'pro-dispatch' at $179.99)",
                 },
                 "monthly_budget_cap": {
                     "type": "number",
@@ -119,7 +119,7 @@ SELLER_MCP_TOOLS = [
             "type": "object",
             "required": ["tier_id", "agreed_monthly_rate", "mandate_proof_hash", "contractor_email"],
             "properties": {
-                "tier_id": {"type": "string", "description": "Subscription tier ID (e.g. 'solo-starter', 'flooring-tile')"},
+                "tier_id": {"type": "string", "description": "Subscription tier ID (e.g. 'solo-starter', 'fieldsmith-pro', 'pro-dispatch')"},
                 "agreed_monthly_rate": {"type": "number", "description": "Agreed monthly subscription rate"},
                 "mandate_proof_hash": {"type": "string", "description": "mandate_proof_hash returned by negotiate_tier_terms"},
                 "contractor_email": {"type": "string", "description": "Contractor PayPal billing email; must match the email the mandate was negotiated for"},
@@ -261,7 +261,8 @@ class SellerAgent:
                 },
                 {
                     "tier_id": "fieldsmith-pro",
-                    "trade_id": "flooring-tile",
+                    "trade_id": "fieldsmith-pro",
+                    "trade_id_aliases": ["flooring-tile", "roofing-storm", "plumbing-emergency"],
                     "title": "FieldSmith Pro Specialized Trade Screener ($79.99/mo)",
                     "monthly_price": 79.99,
                     "annual_price": "767.90",
@@ -458,7 +459,7 @@ class SellerAgent:
                 "negotiation_id": issued["negotiation_id"],
                 "tier_id": tier_id,
                 "counter_offer_available": True,
-                "counter_offer_tier": "Solo Starter",
+                "counter_offer_tier": "FieldSmith Solo Starter",
                 "counter_offer_tier_id": "solo-starter",
                 "counter_offer_amount": 49.99,
                 "counter_offer_mandate_hash": solo_hash,
@@ -484,7 +485,7 @@ class SellerAgent:
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
             "monthly_cap_remaining": round(monthly_budget_cap, 2),
-            "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (Solo Starter at $49.99/mo).",
+            "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier (FieldSmith Solo Starter at $49.99/mo).",
         }
 
     async def verify_spending_mandate(

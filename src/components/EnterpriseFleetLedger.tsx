@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   ShieldCheck,
   PhoneCall,
@@ -21,6 +21,20 @@ import {
 } from 'lucide-react';
 import { AgStudio } from 'ag-studio-react';
 import { studioTheme, type AgDataSourcesDefinition, type AgStudioMode } from 'ag-studio';
+import { AgGridReact } from 'ag-grid-react';
+import {
+  ModuleRegistry as GridModuleRegistry,
+  AllCommunityModule as AllGridCommunityModule,
+  themeQuartz,
+  type ColDef,
+  type ICellRendererParams,
+} from 'ag-grid-community';
+import { AgCharts } from 'ag-charts-react';
+import type { AgChartOptions } from 'ag-charts-community';
+
+// Register AG Grid Community Modules
+GridModuleRegistry.registerModules([AllGridCommunityModule]);
+
 import {
   type A2aTransaction,
   type TradeImpact,
@@ -60,7 +74,6 @@ export function EnterpriseFleetLedger({
   const [selectedTrade, setSelectedTrade] = useState<string>('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeChartTrade, setActiveChartTrade] = useState<string | null>(null);
 
   // AG Studio theme accent & reset state
   const [accentColor, setAccentColor] = useState<string>('#0284c7');
@@ -181,8 +194,18 @@ export function EnterpriseFleetLedger({
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // Export CSV
+  // Grid Ref for AG Grid API calls
+  const gridRef = useRef<AgGridReact<A2aTransaction>>(null);
+
+  // Export CSV using AG Grid's native CSV export with fallback
   const handleExportCsv = () => {
+    if (gridRef.current?.api) {
+      gridRef.current.api.exportDataAsCsv({
+        fileName: `fieldsmith_enterprise_fleet_ledger_${new Date().toISOString().slice(0, 10)}.csv`,
+      });
+      return;
+    }
+
     const headers = [
       'Transaction ID',
       'Timestamp',
@@ -226,6 +249,297 @@ export function EnterpriseFleetLedger({
     document.body.removeChild(link);
   };
 
+  // AG Grid Quartz Dark Theme Configuration
+  const agGridDarkTheme = useMemo(() => {
+    return themeQuartz.withParams({
+      backgroundColor: '#0f172a',
+      foregroundColor: '#f8fafc',
+      headerBackgroundColor: '#131e32',
+      headerTextColor: '#94a3b8',
+      headerFontSize: 11,
+      headerFontWeight: 700,
+      borderColor: '#1e293b',
+      rowHoverColor: 'rgba(30, 41, 59, 0.6)',
+      accentColor: '#38bdf8',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+      fontSize: 12,
+    });
+  }, []);
+
+  // AG Grid Column Definitions
+  const colDefs = useMemo<ColDef<A2aTransaction>[]>(
+    () => [
+      {
+        field: 'id',
+        headerName: 'Tenant / Txn ID',
+        width: 160,
+        pinned: 'left',
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace', fontWeight: 600, color: '#38bdf8' }}>
+                <span>{t.id}</span>
+                <button
+                  onClick={() => handleCopy(t.id, t.id)}
+                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+                  title="Copy Transaction ID"
+                >
+                  {copiedKey === t.id ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                </button>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b', lineHeight: 1 }}>{t.timestamp.slice(11, 19)}</div>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'status',
+        headerName: 'Status',
+        width: 175,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          const isActive = t.status === 'ACTIVE_STREAMING';
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 8px',
+                  borderRadius: '9999px',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  backgroundColor: isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: isActive ? '#34d399' : '#fbbf24',
+                  border: `1px solid ${isActive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                }}
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: isActive ? '#10b981' : '#f59e0b',
+                  }}
+                />
+                {isActive ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT'}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'contractor_name',
+        headerName: 'Contractor & Legal Entity',
+        flex: 1.4,
+        minWidth: 220,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          const isMarcus = t.contractor_name === 'Marcus Miller';
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              <div style={{ fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>{t.contractor_name}</span>
+                {isMarcus && (
+                  <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '1px 5px', borderRadius: '4px' }}>
+                    CURRENT COPILOT
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.2 }}>{t.kyc_legal_entity}</div>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'trade_vertical',
+        headerName: 'Trade Vertical',
+        width: 160,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <span style={{ fontSize: '11px', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', padding: '3px 8px', borderRadius: '6px' }}>
+                {t.trade_vertical}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'allocated_did',
+        headerName: 'Allocated 10DLC DID',
+        width: 180,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          const isActive = t.status === 'ACTIVE_STREAMING';
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              {isActive ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <strong style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{t.allocated_did}</strong>
+                  <button
+                    onClick={() => handleCopy(t.allocated_did, t.allocated_did)}
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+                    title="Copy 10DLC DID"
+                  >
+                    {copiedKey === t.allocated_did ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              ) : (
+                <span style={{ color: '#f59e0b', fontStyle: 'italic', fontSize: '11px' }}>Awaiting Approval</span>
+              )}
+              <div style={{ fontSize: '10px', color: '#64748b', lineHeight: 1 }}>Telnyx Carrier Bound</div>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'monthly_amount',
+        headerName: 'Monthly Rate & Rail',
+        width: 160,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              <div style={{ fontWeight: 700, color: '#f8fafc' }}>
+                ${t.monthly_amount.toFixed(2)}
+                <span style={{ fontSize: '10px', color: '#94a3b8' }}>/mo</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#38bdf8', fontFamily: 'monospace', lineHeight: 1 }}>
+                {t.paypal_sub_id.startsWith('I-') ? t.paypal_sub_id : 'Pre-Debit Token'}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        field: 'kyc_status',
+        headerName: 'KYC Identity & TCPA',
+        width: 170,
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#34d399', fontSize: '11px', fontWeight: 600 }}>
+                <CheckCircle2 size={12} /> {t.kyc_status.includes('VERIFIED') ? 'KYC Verified' : 'Pending KYC'}
+              </div>
+              <div style={{ fontSize: '10px', color: '#94a3b8', lineHeight: 1 }}>
+                100% Inbound Locked
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        headerName: 'Back-Office',
+        width: 150,
+        sortable: false,
+        filter: false,
+        cellRenderer: () => {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '100%' }}>
+              <span style={{ fontSize: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
+                Jobber
+              </span>
+              <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
+                QBO #6300
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        headerName: 'Action',
+        width: 100,
+        sortable: false,
+        filter: false,
+        pinned: 'right',
+        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
+          const t = params.data;
+          if (!t) return null;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <button
+                onClick={() => {
+                  if (onNavigateTab) {
+                    onNavigateTab('copilot');
+                  }
+                  if (onInspectTrace) {
+                    onInspectTrace(t.id);
+                  }
+                }}
+                style={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  color: '#38bdf8',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                title="Inspect machine-to-machine execution trace in Copilot"
+              >
+                Trace <ExternalLink size={11} />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    [copiedKey, onInspectTrace, onNavigateTab]
+  );
+
+  // AG Charts: Autonomous A2A Commerce Volume by Trade
+  const tradeChartOptions: AgChartOptions = useMemo(
+    () => ({
+      theme: 'ag-default-dark',
+      data: tradeImpactData.map((d) => ({
+        trade: d.trade,
+        gmv: d.annualized_gmv ?? d.recovered_revenue ?? 0,
+      })),
+      series: [
+        {
+          type: 'bar',
+          direction: 'horizontal',
+          xKey: 'trade',
+          yKey: 'gmv',
+          yName: 'ARR ($)',
+          cornerRadius: 4,
+          fill: '#0284c7',
+          stroke: '#38bdf8',
+        } as any,
+      ],
+      background: {
+        fill: 'transparent',
+      },
+      axes: [
+        {
+          type: 'category',
+          position: 'left',
+        },
+        {
+          type: 'number',
+          position: 'bottom',
+        },
+      ],
+    }),
+    [tradeImpactData]
+  );
+
   // Dynamic metrics computed from real state
   const totalMrr = useMemo(() => {
     return transactions.reduce((acc, t) => acc + (t.status === 'ACTIVE_STREAMING' ? t.monthly_amount : 0), 0);
@@ -263,20 +577,67 @@ export function EnterpriseFleetLedger({
   }, [transactions, searchTerm, selectedStatus, selectedTrade]);
 
   // 24-Hour Autonomous A2A Settlement & Mandate Stream
-  const hourlyA2aStream = [
-    { hour: '00:00', settled: 2, mandates: 2, volume: 159.98 },
-    { hour: '02:00', settled: 1, mandates: 1, volume: 79.99 },
-    { hour: '04:00', settled: 3, mandates: 3, volume: 239.97 },
-    { hour: '06:00', settled: 7, mandates: 8, volume: 559.93 },
-    { hour: '08:00', settled: 17, mandates: 18, volume: 1359.83 },
-    { hour: '10:00', settled: 26, mandates: 28, volume: 2079.74 },
-    { hour: '12:00', settled: 32, mandates: 34, volume: 2559.68 },
-    { hour: '14:00', settled: 28, mandates: 29, volume: 2239.72 },
-    { hour: '16:00', settled: 21, mandates: 22, volume: 1679.79 },
-    { hour: '18:00', settled: 14, mandates: 14, volume: 1119.86 },
-    { hour: '20:00', settled: 6, mandates: 6, volume: 479.94 },
-    { hour: '22:00', settled: 3, mandates: 3, volume: 239.97 },
-  ];
+  const hourlyA2aStream = useMemo(
+    () => [
+      { hour: '00:00', settled: 2, mandates: 2, volume: 159.98 },
+      { hour: '02:00', settled: 1, mandates: 1, volume: 79.99 },
+      { hour: '04:00', settled: 3, mandates: 3, volume: 239.97 },
+      { hour: '06:00', settled: 7, mandates: 8, volume: 559.93 },
+      { hour: '08:00', settled: 17, mandates: 18, volume: 1359.83 },
+      { hour: '10:00', settled: 26, mandates: 28, volume: 2079.74 },
+      { hour: '12:00', settled: 32, mandates: 34, volume: 2559.68 },
+      { hour: '14:00', settled: 28, mandates: 29, volume: 2239.72 },
+      { hour: '16:00', settled: 21, mandates: 22, volume: 1679.79 },
+      { hour: '18:00', settled: 14, mandates: 14, volume: 1119.86 },
+      { hour: '20:00', settled: 6, mandates: 6, volume: 479.94 },
+      { hour: '22:00', settled: 3, mandates: 3, volume: 239.97 },
+    ],
+    []
+  );
+
+  // AG Charts: 24h Autonomous A2A Settlement Velocity
+  const velocityChartOptions: AgChartOptions = useMemo(
+    () => ({
+      theme: 'ag-default-dark',
+      data: hourlyA2aStream,
+      series: [
+        {
+          type: 'bar',
+          direction: 'vertical',
+          xKey: 'hour',
+          yKey: 'mandates',
+          yName: 'Mandates Evaluated',
+          fill: '#a855f7',
+          stroke: '#c084fc',
+          cornerRadius: 3,
+        } as any,
+        {
+          type: 'bar',
+          direction: 'vertical',
+          xKey: 'hour',
+          yKey: 'settled',
+          yName: 'Settled M2M',
+          fill: '#0284c7',
+          stroke: '#38bdf8',
+          cornerRadius: 3,
+        } as any,
+      ],
+      background: {
+        fill: 'transparent',
+      },
+      axes: [
+        {
+          type: 'category',
+          position: 'bottom',
+        },
+        {
+          type: 'number',
+          position: 'left',
+        },
+      ],
+    }),
+    [hourlyA2aStream]
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#080d1a', color: '#f8fafc', overflowY: 'auto' }}>
@@ -547,7 +908,7 @@ export function EnterpriseFleetLedger({
           {/* Studio Canvas Embed */}
           <div style={{ flex: 1, minHeight: '660px', height: 'calc(100vh - 220px)', position: 'relative', overflow: 'hidden' }}>
             <AgStudio
-              key={`studio-${accentColor}-${resetKey}`}
+              key={`studio-${resetKey}`}
               data={studioData}
               mode={studioMode}
               initialState={initialDashboardState}
@@ -570,14 +931,14 @@ export function EnterpriseFleetLedger({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span>Telemetry: <strong style={{ color: '#38bdf8' }}>$1,119.86/mo MRR</strong></span>
+              <span>Telemetry: <strong style={{ color: '#38bdf8' }}>${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo MRR</strong></span>
               <span>&bull;</span>
               <span>Ingress Shield: <strong style={{ color: '#34d399' }}>99.8% TCPA Protected</strong></span>
               <span>&bull;</span>
               <span>Autonomous GMV: <strong style={{ color: '#38bdf8' }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARR</strong></span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span>AG Grid &amp; AG Charts Enterprise v3.0</span>
+              <span>AG Studio Enterprise v3.0 &bull; AG Grid Community v36</span>
               <span>&bull;</span>
               <span>Model Context Protocol (MCP 2024-11-05)</span>
             </div>
@@ -673,7 +1034,7 @@ export function EnterpriseFleetLedger({
                   100% Policy Enforced
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                  168 HMAC-SHA256 Mandates Verified &bull; 0 Budget Leaks
+                  168 Ed25519 &amp; HMAC Mandates Verified &bull; 0 Budget Leaks
                 </div>
               </div>
             </div>
@@ -703,13 +1064,13 @@ export function EnterpriseFleetLedger({
                   <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}> ARR</span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 600, marginTop: '4px' }}>
-                  14 Autonomous Buyer Mandates Cleared &bull; 100% M2M Rails
+                  14 Fleet Carrier Subscriptions Bound &bull; 100% PayPal Vault MIT Rails
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 2. DUAL VISUAL COMMAND DECK: COMMERCE BY TRADE & 24H INGRESS */}
+          {/* 2. DUAL VISUAL COMMAND DECK: COMMERCE BY TRADE & 24H INGRESS (POWERED BY AG CHARTS) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
             {/* Chart 1: Autonomous A2A Commerce Volume by Trade ($ ARR) */}
             <div
@@ -722,7 +1083,7 @@ export function EnterpriseFleetLedger({
                 flexDirection: 'column',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
                     Autonomous A2A Commerce Volume by Trade ($ ARR)
@@ -732,64 +1093,18 @@ export function EnterpriseFleetLedger({
                   </div>
                 </div>
                 <span style={{ fontSize: '11px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '3px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                  PayPal M2M Rails
+                  AG Charts v14
                 </span>
               </div>
 
-              {/* Bar Chart Visualization */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, justifyContent: 'center' }}>
-                {tradeImpactData.map((d) => {
-                  const gmv = d.annualized_gmv ?? d.recovered_revenue ?? 0;
-                  const maxGmv = 4500;
-                  const pct = Math.min(100, Math.round((gmv / maxGmv) * 100));
-                  const isHovered = activeChartTrade === d.trade;
-
-                  return (
-                    <div
-                      key={d.trade}
-                      onMouseEnter={() => setActiveChartTrade(d.trade)}
-                      onMouseLeave={() => setActiveChartTrade(null)}
-                      style={{
-                        cursor: 'pointer',
-                        padding: '6px 8px',
-                        borderRadius: '8px',
-                        backgroundColor: isHovered ? 'rgba(30, 41, 59, 0.8)' : 'transparent',
-                        transition: 'background-color 0.15s ease',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{d.trade}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            {d.active_agents ?? 2} agents &bull; <strong style={{ color: '#34d399' }}>{d.mandates_cleared ?? 24} settled</strong>
-                          </span>
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8' }}>
-                            ${gmv.toLocaleString('en-US', { minimumFractionDigits: 2 })} ARR
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ width: '100%', height: '10px', backgroundColor: '#1e293b', borderRadius: '5px', overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${pct}%`,
-                            height: '100%',
-                            background:
-                              gmv >= 3000
-                                ? 'linear-gradient(90deg, #0284c7, #38bdf8)'
-                                : 'linear-gradient(90deg, #059669, #10b981)',
-                            borderRadius: '5px',
-                            transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* AG Charts Component */}
+              <div style={{ height: '220px', width: '100%' }}>
+                <AgCharts options={tradeChartOptions} style={{ height: '100%', width: '100%' }} />
               </div>
 
               <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
-                <span>Top Vertical: <strong>Roofing &amp; Storm ($3,839.52 ARR &bull; 4 Agents)</strong></span>
-                <span>Fleet Tier: <strong>$79.99/mo &bull; PayPal Subscriptions Rail</strong></span>
+                <span>Top Vertical: <strong>Roofing &amp; Storm (${tradeImpactData[2]?.annualized_gmv ? `$${tradeImpactData[2].annualized_gmv.toLocaleString()}` : '$3,839.52'} ARR &bull; 4 Agents)</strong></span>
+                <span>Software Tiers: <strong>$49.99 Solo / $79.99 Pro / $179.99 Fleet &bull; PayPal Recurring</strong></span>
               </div>
             </div>
 
@@ -804,7 +1119,7 @@ export function EnterpriseFleetLedger({
                 flexDirection: 'column',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
                     24h Autonomous A2A Settlement Velocity
@@ -823,42 +1138,9 @@ export function EnterpriseFleetLedger({
                 </div>
               </div>
 
-              {/* Time-Series Column Visualization */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '170px', padding: '10px 0', borderBottom: '1px solid #1e293b' }}>
-                {hourlyA2aStream.map((h) => {
-                  const maxVal = 40;
-                  const mandatesHeight = Math.max(6, Math.round((h.mandates / maxVal) * 125));
-                  const settledHeight = Math.max(4, Math.round((h.settled / maxVal) * 125));
-
-                  return (
-                    <div key={h.hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', width: '100%', justifyContent: 'center' }}>
-                        {/* Mandates Evaluated Column */}
-                        <div
-                          style={{
-                            width: '45%',
-                            height: `${mandatesHeight}px`,
-                            backgroundColor: '#a855f7',
-                            borderRadius: '2px 2px 0 0',
-                            opacity: 0.85,
-                          }}
-                          title={`${h.hour}: ${h.mandates} spending mandates evaluated`}
-                        />
-                        {/* Settled Transactions Column */}
-                        <div
-                          style={{
-                            width: '45%',
-                            height: `${settledHeight}px`,
-                            backgroundColor: '#0284c7',
-                            borderRadius: '2px 2px 0 0',
-                          }}
-                          title={`${h.hour}: ${h.settled} settled M2M ($${h.volume.toFixed(2)})`}
-                        />
-                      </div>
-                      <span style={{ fontSize: '9px', color: '#64748b', marginTop: '6px' }}>{h.hour.slice(0, 2)}</span>
-                    </div>
-                  );
-                })}
+              {/* AG Charts Component */}
+              <div style={{ height: '220px', width: '100%' }}>
+                <AgCharts options={velocityChartOptions} style={{ height: '100%', width: '100%' }} />
               </div>
 
               <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
@@ -1026,189 +1308,24 @@ export function EnterpriseFleetLedger({
               </div>
             </div>
 
-            {/* High-Density Data Table */}
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#131e32', borderBottom: '1px solid #1e293b', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '10px 14px' }}>Tenant / Txn ID</th>
-                    <th style={{ padding: '10px 14px' }}>Status</th>
-                    <th style={{ padding: '10px 14px' }}>Contractor &amp; Legal Entity</th>
-                    <th style={{ padding: '10px 14px' }}>Trade Vertical</th>
-                    <th style={{ padding: '10px 14px' }}>Allocated 10DLC DID</th>
-                    <th style={{ padding: '10px 14px' }}>Monthly Rate &amp; Rail</th>
-                    <th style={{ padding: '10px 14px' }}>KYC Identity &amp; TCPA</th>
-                    <th style={{ padding: '10px 14px' }}>Back-Office</th>
-                    <th style={{ padding: '10px 14px', textAlign: 'center' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTransactions.map((t, idx) => {
-                    const isActive = t.status === 'ACTIVE_STREAMING';
-                    const isMarcus = t.contractor_name === 'Marcus Miller';
-
-                    return (
-                      <tr
-                        key={t.id}
-                        style={{
-                          borderBottom: '1px solid #1e293b',
-                          backgroundColor: idx % 2 === 0 ? 'rgba(15, 23, 42, 0.4)' : 'transparent',
-                          transition: 'background-color 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(30, 41, 59, 0.6)')}
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.backgroundColor = idx % 2 === 0 ? 'rgba(15, 23, 42, 0.4)' : 'transparent')
-                        }
-                      >
-                        {/* Tenant / Txn ID */}
-                        <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: '#38bdf8' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>{t.id}</span>
-                            <button
-                              onClick={() => handleCopy(t.id, t.id)}
-                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
-                              title="Copy Transaction ID"
-                            >
-                              {copiedKey === t.id ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
-                            </button>
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{t.timestamp.slice(11, 19)}</div>
-                        </td>
-
-                        {/* Status Badge */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '3px 8px',
-                              borderRadius: '9999px',
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              backgroundColor: isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                              color: isActive ? '#34d399' : '#fbbf24',
-                              border: `1px solid ${isActive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: '6px',
-                                height: '6px',
-                                borderRadius: '50%',
-                                backgroundColor: isActive ? '#10b981' : '#f59e0b',
-                              }}
-                            />
-                            {isActive ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT'}
-                          </span>
-                        </td>
-
-                        {/* Contractor & Legal Entity */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ fontWeight: 700, color: '#f8fafc' }}>
-                            {t.contractor_name}
-                            {isMarcus && (
-                              <span style={{ marginLeft: '6px', fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '1px 5px', borderRadius: '4px' }}>
-                                CURRENT COPILOT
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{t.kyc_legal_entity}</div>
-                        </td>
-
-                        {/* Trade Vertical */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <span style={{ fontSize: '11px', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', padding: '3px 8px', borderRadius: '6px' }}>
-                            {t.trade_vertical}
-                          </span>
-                        </td>
-
-                        {/* Allocated DID Phone */}
-                        <td style={{ padding: '12px 14px', fontFamily: 'monospace' }}>
-                          {isActive ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <strong style={{ color: '#38bdf8' }}>{t.allocated_did}</strong>
-                              <button
-                                onClick={() => handleCopy(t.allocated_did, t.allocated_did)}
-                                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
-                                title="Copy 10DLC DID"
-                              >
-                                {copiedKey === t.allocated_did ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
-                              </button>
-                            </div>
-                          ) : (
-                            <span style={{ color: '#f59e0b', fontStyle: 'italic' }}>Awaiting Approval</span>
-                          )}
-                          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>Telnyx Carrier Bound</div>
-                        </td>
-
-                        {/* Monthly Rate & Rail */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ fontWeight: 700, color: '#f8fafc' }}>
-                            ${t.monthly_amount.toFixed(2)}
-                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>/mo</span>
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#38bdf8', marginTop: '2px', fontFamily: 'monospace' }}>
-                            {t.paypal_sub_id.startsWith('I-') ? t.paypal_sub_id : 'Pre-Debit Token'}
-                          </div>
-                        </td>
-
-                        {/* KYC Identity & TCPA */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#34d399', fontSize: '11px', fontWeight: 600 }}>
-                            <CheckCircle2 size={12} /> {t.kyc_status.includes('VERIFIED') ? 'KYC Verified' : 'Pending KYC'}
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
-                            100% Inbound Locked
-                          </div>
-                        </td>
-
-                        {/* Back-Office */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
-                              Jobber
-                            </span>
-                            <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
-                              QBO #6300
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Quick Action */}
-                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                          <button
-                            onClick={() => {
-                              if (onNavigateTab) {
-                                onNavigateTab('copilot');
-                              }
-                              if (onInspectTrace) {
-                                onInspectTrace(t.id);
-                              }
-                            }}
-                            style={{
-                              backgroundColor: '#1e293b',
-                              border: '1px solid #334155',
-                              color: '#38bdf8',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                            title="Inspect machine-to-machine execution trace in Copilot"
-                          >
-                            Trace <ExternalLink size={11} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* AG Grid High-Density Data Table Container */}
+            <div style={{ height: '520px', width: '100%', position: 'relative' }}>
+              <AgGridReact<A2aTransaction>
+                ref={gridRef}
+                theme={agGridDarkTheme}
+                rowData={filteredTransactions}
+                columnDefs={colDefs}
+                pagination={true}
+                paginationPageSize={10}
+                paginationPageSizeSelector={[10, 20, 50]}
+                rowHeight={48}
+                headerHeight={38}
+                defaultColDef={{
+                  sortable: true,
+                  filter: true,
+                  resizable: true,
+                }}
+              />
             </div>
 
             {/* Table Footer */}
@@ -1224,8 +1341,8 @@ export function EnterpriseFleetLedger({
                 color: '#94a3b8',
               }}
             >
-              <span>Showing <strong>{filteredTransactions.length}</strong> of <strong>{transactions.length}</strong> Fleet Tenant Accounts</span>
-              <span>Central FL Telephony Trunks &bull; Carrier SLA: 99.999%</span>
+              <span>Powered by <strong>AG Grid Community v36</strong> &bull; Showing <strong>{filteredTransactions.length}</strong> of <strong>{transactions.length}</strong> Fleet Tenant Accounts</span>
+              <span>QuickFilter Active &bull; Column Sorting &amp; Filtering Enabled &bull; Central FL Telephony Trunks &bull; Carrier SLA: 99.999%</span>
             </div>
           </div>
         </div>

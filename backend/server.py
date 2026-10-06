@@ -172,6 +172,7 @@ async def agent_discovery_card():
         },
         "endpoints": {
             "mcp": "/mcp",
+            "sse": "/sse",
             "catalog": "/api/agent/catalog",
             "health": "/health",
             "m2m_audit": "/api/m2m/audit-trail",
@@ -206,7 +207,29 @@ async def agent_discovery_card():
     }
 
 
-# --- Model Context Protocol (MCP) JSON-RPC 2.0 Endpoint ---
+# --- Model Context Protocol (MCP) Streamable HTTP & JSON-RPC 2.0 Endpoint ---
+@app.get("/mcp", tags=["Model Context Protocol"])
+async def mcp_get_endpoint(request: Request):
+    """
+    Handles GET requests to /mcp.
+    If Accept header requests text/event-stream, opens the SSE stream with the standard MCP handshake.
+    Otherwise returns a machine-readable JSON status of the FastMCP server.
+    """
+    accept = request.headers.get("accept", "")
+    if "text/event-stream" in accept:
+        return await mcp_wire_stream(request)
+    return {
+        "name": "FieldSmith Pro A2A Seller FastMCP Server",
+        "version": "1.0.0",
+        "protocolVersion": "2024-11-05",
+        "transport": "streamable_http",
+        "mcp_endpoint": "/mcp",
+        "sse_endpoint": "/sse",
+        "status": "online",
+        "tools_count": len(seller_agent.list_mcp_tools()),
+    }
+
+
 @app.post("/mcp", tags=["Model Context Protocol"])
 async def mcp_jsonrpc_endpoint(request: Request):
     """
@@ -229,16 +252,23 @@ async def mcp_jsonrpc_endpoint(request: Request):
 
 
 # --- Live Wire Protocol SSE Stream & Packet Inspector ---
+@app.get("/sse", tags=["Model Context Protocol", "MCP Wire Protocol"])
+@app.get("/mcp/sse", tags=["Model Context Protocol", "MCP Wire Protocol"])
 @app.get("/api/mcp/sse", tags=["MCP Wire Protocol"])
 @app.get("/m2m/sse", tags=["MCP Wire Protocol"])
 async def mcp_wire_stream(request: Request):
     """
     Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames
-    exchanged between agents and the FieldSmith MCP Server.
+    exchanged between agents and the FieldSmith FastMCP Server.
+    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.
     """
     async def event_generator():
         q = subscribe_wire_stream()
         try:
+            # 1. MCP Standard 2024-11-05 SSE discovery handshake event
+            yield "event: endpoint\ndata: /mcp\n\n"
+
+            # 2. Informational connection event
             init_event = {
                 "type": "connected",
                 "message": "FieldSmith MCP Wire Protocol SSE Stream Active",
@@ -247,8 +277,6 @@ async def mcp_wire_stream(request: Request):
             yield f"data: {json.dumps(init_event)}\n\n"
 
             while True:
-                if await request.is_disconnected():
-                    break
                 try:
                     frame = await asyncio.wait_for(q.get(), timeout=15.0)
                     yield f"data: {json.dumps(frame)}\n\n"
@@ -489,6 +517,7 @@ async def provision_line_endpoint(request: ProvisionRequest):
         status_code = status.HTTP_400_BAD_REQUEST
         if err in [
             "IDENTITY_MISMATCH_DETECTED",
+            "US_DOMESTIC_ONLY",
             "SUBSCRIPTION_CANCELLED",
             "SUBSCRIPTION_SUSPENDED",
             "SUBSCRIPTION_PAYMENT_FAILED",

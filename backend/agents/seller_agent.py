@@ -6,6 +6,7 @@ Conforms to FIDO / AP2 Intent Mandate specifications.
 """
 
 import os
+import re
 import json
 import uuid
 import hashlib
@@ -165,14 +166,14 @@ SELLER_MCP_TOOLS = [
     },
     {
         "name": "provision_telecom_line",
-        "description": "Allocates a dedicated local 10DLC telephone DID upon verified PayPal subscription.",
+        "description": "Allocates a dedicated local 10DLC telephone DID upon verified PayPal subscription. Restricted strictly to licensed US contractors (NANP +1 3-digit area code).",
         "input_schema": {
             "type": "object",
             "required": ["subscription_id", "contractor_email"],
             "properties": {
                 "subscription_id": {"type": "string", "description": "Verified PayPal subscription ID"},
                 "contractor_email": {"type": "string", "description": "Contractor notification email"},
-                "area_code": {"type": "string", "default": "863", "description": "Target NPA area code"},
+                "area_code": {"type": "string", "default": "863", "description": "Target NPA area code (3-digit NANP e.g. 863, 813, 214)"},
                 "simulate_exhaustion": {"type": "boolean", "default": False, "description": "Test LATA failover"},
             },
         },
@@ -934,6 +935,7 @@ class SellerAgent:
             "contractor_email": contractor_email,
             "contractor_name": "Marcus Miller",
             "business_entity": "Miller Custom Flooring LLC",
+            "subscriber_country_code": paypal_result.get("subscriber_country_code", "US"),
             "paypal_vault_status": vault_status,
             "vault_billing_authorized": vault_authorized,
             "vault_customer_present": customer_present,
@@ -995,6 +997,15 @@ class SellerAgent:
         simulate_exhaustion: bool = False,
     ) -> Dict[str, Any]:
         """Tool implementation: Executes KYC-verified DID allocation with automated LATA failover."""
+        # 0. US-Domestic Only (NANP) Validation
+        area_code_str = str(area_code).strip()
+        if not re.match(r"^[2-9]\d{2}$", area_code_str) or area_code_str.endswith("11"):
+            return {
+                "status": "REJECTED",
+                "error": "US_DOMESTIC_ONLY",
+                "reason": f"FieldSmith Pro services are strictly restricted to licensed US contractors (NANP +1). Invalid US area code: '{area_code}'.",
+            }
+
         # 1. Validate that the PayPal subscription exists and has been captured
         sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id.strip())
         if not sub:
@@ -1003,13 +1014,24 @@ class SellerAgent:
                 if remote_sub and not remote_sub.get("mock_mode"):
                     remote_status = remote_sub.get("status", "ACTIVE")
                     tier_id, rate = resolve_tier_from_paypal_plan(remote_sub.get("plan_id"))
+                    subscriber_data = remote_sub.get("subscriber") or {}
+                    shipping_addr = subscriber_data.get("shipping_address") or {}
+                    addr = shipping_addr.get("address") or subscriber_data.get("address") or {}
+                    country = (
+                        addr.get("country_code")
+                        or subscriber_data.get("country_code")
+                        or remote_sub.get("country_code")
+                        or "US"
+                    )
                     sub = {
                         "subscription_id": subscription_id.strip(),
                         "status": remote_status,
-                        "contractor_email": remote_sub.get("subscriber", {}).get("email_address", contractor_email),
+                        "contractor_email": subscriber_data.get("email_address", contractor_email),
                         "tier_id": tier_id,
                         "agreed_monthly_rate": rate,
                         "plan_id": remote_sub.get("plan_id"),
+                        "subscriber_country_code": country,
+                        "subscriber": subscriber_data,
                     }
                     _COMPLETED_SUBSCRIPTIONS[subscription_id.strip()] = sub
             except Exception as e:
@@ -1042,6 +1064,21 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_SUPERSEDED",
                 "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
+            }
+
+        # 2. Validate US-Domestic subscriber entity
+        subscriber_country = (
+            sub.get("subscriber_country_code")
+            or sub.get("country_code")
+            or (sub.get("subscriber", {}).get("shipping_address", {}).get("address", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
+            or (sub.get("subscriber", {}).get("address", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
+            or (sub.get("subscriber", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
+        )
+        if subscriber_country and str(subscriber_country).strip().upper() != "US":
+            return {
+                "status": "REJECTED",
+                "error": "US_DOMESTIC_ONLY",
+                "reason": f"FieldSmith Pro services are strictly restricted to US entities. Payer country '{subscriber_country}' is not supported.",
             }
 
         # 3. Identity anti-theft: Ensure contractor_email matches the subscription owner

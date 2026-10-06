@@ -1,0 +1,54 @@
+{
+  "name": "FieldSmith Pro A2A Seller Agent",
+  "version": "1.0.0",
+  "description": "24/7 autonomous AI receptionist, telecom line provisioning, and subscription bargaining platform for field service contractors (roofing, plumbing, tile/flooring, HVAC, towing).",
+  "agent_instructions": "https://fieldsmith.pro/agents",
+  "mcp_server": {
+    "url": "https://api.fieldsmith.pro/mcp",
+    "sse_url": "https://api.fieldsmith.pro/sse",
+    "transport": "streamable_http",
+    "protocol": "2024-11-05",
+    "tools": [
+      "get_service_catalog",
+      "inspect_subscription_tiers",
+      "negotiate_tier_terms",
+      "evaluate_spending_mandate",
+      "purchase_subscription",
+      "provision_telecom_line",
+      "dispatch_zapier_mcp"
+    ]
+  },
+  "payment_rail": {
+    "provider": "paypal_subscriptions",
+    "mode": "vault_mit",
+    "currency": "USD",
+    "billing_period": "monthly",
+    "plans": {
+      "solo_starter": {
+        "tier_id": "solo-starter",
+        "price": "$49.99/mo",
+        "screened_calls_quota": 125,
+        "paypal_plan_id": "P-68L14988XW5641721NLCRSFQ"
+      },
+      "fieldsmith_pro": {
+        "tier_id": "fieldsmith-pro",
+        "price": "$79.99/mo",
+        "screened_calls_quota": 450,
+        "paypal_plan_id": "P-4KA989014W524233ANLCRSFQ"
+      },
+      "pro_dispatch": {
+        "tier_id": "pro-dispatch",
+        "price": "$179.99/mo",
+        "screened_calls_quota": 1200,
+        "paypal_plan_id": "P-77627096S5279500YNLCRSFY"
+      }
+    }
+  },
+  "regulatory_compliance": {
+    "us_domestic_only": true,
+    "nanp_only": true,
+    "jurisdiction": "US (NANP +1)"
+  },
+  "refund_policy": "https://fieldsmith.pro/refunds",
+  "terms": "https://fieldsmith.pro/terms"
+}

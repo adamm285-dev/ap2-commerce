@@ -5,6 +5,8 @@
  * and the FastAPI backend matching the OpenAPI 3.1.0 contract.
  */
 
+import type { A2aTransaction } from '../data/telemetryData';
+
 export interface AgentNegotiationRequest {
   contractorName: string;
   businessEntity: string;
@@ -250,3 +252,105 @@ export async function lockDispatchSlot(
     isLiveBackend: false,
   };
 }
+
+export interface FleetStats {
+  total_mrr: number;
+  active_lines: number;
+  total_subscribers: number;
+  annualized_gmv: number;
+  mandates_cleared: number;
+  compliance_guard: string;
+  carrier_resporg: string;
+  trade_breakdown: Array<{
+    trade: string;
+    active_agents: number;
+    monthly_settlement: number;
+    annualized_gmv: number;
+    mandates_cleared: number;
+  }>;
+}
+
+export interface FleetScheduleResponse {
+  status: string;
+  count: number;
+  resources: Array<{
+    id: string;
+    name: string;
+    entity: string;
+    trade: string;
+    did: string;
+    status: string;
+  }>;
+  events: Array<{
+    id: string;
+    resourceId: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    eventColor: string;
+    iconCls: string;
+    depositStatus: string;
+    paypalTxn: string;
+  }>;
+}
+
+/**
+ * Fetches dynamic enterprise fleet ledger from SQLite via GET /api/fleet/ledger.
+ */
+export async function fetchFleetLedger(): Promise<A2aTransaction[]> {
+  try {
+    const res = await fetch('/api/fleet/ledger');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.transactions) && data.transactions.length > 0) {
+        return data.transactions;
+      }
+    }
+  } catch (err) {
+    console.warn('[Fleet Ledger] Live backend not reachable, using fallback:', err);
+  }
+  return [];
+}
+
+/**
+ * Fetches real-time fleet aggregates and KPIs from SQLite via GET /api/fleet/stats.
+ */
+export async function fetchFleetStats(): Promise<FleetStats | null> {
+  try {
+    const res = await fetch('/api/fleet/stats');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[Fleet Stats] Live backend not reachable, using fallback:', err);
+  }
+  return null;
+}
+
+/**
+ * Fetches timeline resources, shifts, and appointment locks via GET /api/fleet/schedule.
+ */
+export async function fetchFleetSchedule(): Promise<FleetScheduleResponse | null> {
+  try {
+    const res = await fetch('/api/fleet/schedule');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[Fleet Schedule] Live backend not reachable, using fallback:', err);
+  }
+  return null;
+}
+
+/**
+ * Locks a territory dispatch slot for an enterprise crew via POST /api/agent/dispatch/lock-slot.
+ */
+export async function lockTerritorySlot(
+  leadId: string,
+  territoryZone: string,
+  slotStartIso: string,
+  paypalTransactionId: string
+): Promise<DispatchLockResult> {
+  return lockDispatchSlot(leadId, territoryZone, slotStartIso, paypalTransactionId);
+}
+

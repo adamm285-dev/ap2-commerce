@@ -52,6 +52,7 @@ export interface EnterpriseFleetLedgerProps {
   onSimulateClick: () => void;
   onInspectTrace?: (transactionId: string) => void;
   onNavigateTab?: (tab: 'copilot' | 'ag-studio' | 'bryntum' | 'zapier') => void;
+  onRefreshData?: () => Promise<void>;
 }
 
 export function EnterpriseFleetLedger({
@@ -64,6 +65,7 @@ export function EnterpriseFleetLedger({
   onSimulateClick,
   onInspectTrace,
   onNavigateTab,
+  onRefreshData,
 }: EnterpriseFleetLedgerProps) {
   // View toggle: 'command-center' (Default high-density mission control) vs 'ag-studio' (Raw drag-and-drop report builder)
   const [subView, setSubView] = useState<'command-center' | 'ag-studio'>('command-center');
@@ -188,10 +190,16 @@ export function EnterpriseFleetLedger({
     }
   };
 
-  // Simulate refresh
-  const handleRefresh = () => {
+  // Live refresh: synchronizes with SQLite backend via onRefreshData
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 600);
+    try {
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
 
   // Grid Ref for AG Grid API calls
@@ -1320,9 +1328,11 @@ export function EnterpriseFleetLedger({
                 paginationPageSizeSelector={[10, 20, 50]}
                 rowHeight={48}
                 headerHeight={38}
+                floatingFiltersHeight={34}
                 defaultColDef={{
                   sortable: true,
                   filter: true,
+                  floatingFilter: true,
                   resizable: true,
                 }}
               />

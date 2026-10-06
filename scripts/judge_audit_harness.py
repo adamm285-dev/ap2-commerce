@@ -250,9 +250,47 @@ def run_judge_audit():
     print_pass(f"Mandates Cleared:     {total_mandates} Annualized Autonomous Cycles")
 
     # -------------------------------------------------------------------------
+    # CHECK 8: Live Fleet Ledger & Bryntum Scheduling Verification
+    # -------------------------------------------------------------------------
+    print_step(8, "AG Studio Fleet Ledger & Bryntum Scheduling Telemetry")
+    ledger_res = client.get("/api/fleet/ledger")
+    assert ledger_res.status_code == 200
+    ledger_data = ledger_res.json()
+    assert ledger_data.get("count") == 14
+    print_pass(f"AG Studio Fleet Ledger: Hydrated {ledger_data.get('count')} subscriptions from SQLite WAL")
+
+    stats_res = client.get("/api/fleet/stats")
+    assert stats_res.status_code == 200
+    stats_data = stats_res.json()
+    assert stats_data.get("total_subscribers") == 14
+    assert "CITNRYD" in stats_data.get("carrier_resporg", "")
+    print_pass(f"Fleet Telemetry: TCR Campaign {stats_data.get('carrier_resporg')} • {stats_data.get('compliance_guard')}")
+
+    sched_res = client.get("/api/fleet/schedule")
+    assert sched_res.status_code == 200
+    sched_data = sched_res.json()
+    assert len(sched_data.get("resources", [])) >= 4
+    assert len(sched_data.get("events", [])) >= 4
+    print_pass(f"Bryntum Scheduler: Verified {len(sched_data.get('resources', []))} resources & {len(sched_data.get('events', []))} shifts")
+
+    # Lock territory slot via API
+    lock_res = client.post(
+        "/api/agent/dispatch/lock-slot",
+        json={
+            "leadId": "LEAD-AUDIT-863",
+            "territoryZone": "South Lakeland Zone 2",
+            "slotStartIso": "2026-10-02 13:00",
+            "paypalTransactionId": "TXN-AUDIT-9021",
+        },
+    )
+    assert lock_res.status_code == 200
+    assert lock_res.json().get("success") is True
+    print_pass("Bryntum Territory Dispatch: Locked 75-min window for Crew B (HTTP 200)")
+
+    # -------------------------------------------------------------------------
     # FINAL VERDICT
     # -------------------------------------------------------------------------
-    print_header("AUDIT SUMMARY: 7/7 CHECKS PASSED (100% GREEN)")
+    print_header("AUDIT SUMMARY: 8/8 CHECKS PASSED (100% GREEN)")
     print(f"{BOLD}{GREEN}ALL OPERATIONAL INVARIANTS, CRYPTOGRAPHIC PROOFS, AND PAYMENT CONTRACTS VERIFIED.{RESET}\n")
 
 if __name__ == "__main__":

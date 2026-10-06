@@ -63,7 +63,13 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
 )
 logger = logging.getLogger("a2a_server")
-from .database import ProcessedWebhooksProxy
+from .database import (
+    ProcessedWebhooksProxy,
+    get_fleet_ledger,
+    get_fleet_stats,
+    get_fleet_schedule,
+    record_dispatch_slot,
+)
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
 
@@ -553,12 +559,46 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         request.territory_zone, "Crew B - Custom Tile & Precision Master"
     )
 
+    record_dispatch_slot({
+        "lead_id": request.lead_id,
+        "contractor_id": "contractor_marcus_863",
+        "territory_zone": request.territory_zone,
+        "slot_start_iso": request.slot_start_iso,
+        "paypal_transaction_id": request.paypal_transaction_id,
+        "crew_assigned": assigned_crew,
+    })
+
     return DispatchLockResponse(
         success=True,
         slotLockedUntil=request.slot_start_iso,
         crewAssigned=assigned_crew,
         territoryZone=request.territory_zone,
     )
+
+
+# --- Enterprise Fleet & AG Studio / Bryntum Telemetry Endpoints ---
+
+@app.get("/api/fleet/ledger", tags=["Enterprise Fleet Ledger"])
+async def get_fleet_ledger_endpoint():
+    """Returns the persistent enterprise fleet ledger for AG Grid and AG Studio."""
+    txns = get_fleet_ledger()
+    return {
+        "status": "active",
+        "count": len(txns),
+        "transactions": txns,
+    }
+
+
+@app.get("/api/fleet/stats", tags=["Enterprise Fleet Ledger"])
+async def get_fleet_stats_endpoint():
+    """Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV, Trade Breakdown)."""
+    return get_fleet_stats()
+
+
+@app.get("/api/fleet/schedule", tags=["Bryntum Dispatch Scheduler"])
+async def get_fleet_schedule_endpoint():
+    """Returns dynamic resources and shift/appointment events for Bryntum Dispatch Scheduler."""
+    return get_fleet_schedule()
 
 
 @app.post(

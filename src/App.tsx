@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AgStudioLicenseManager } from 'ag-studio';
 import type { AgDataSourcesDefinition, AgStudioMode } from 'ag-studio';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
@@ -24,6 +24,7 @@ import {
   evaluateAgentNegotiation,
   resetMandateLedger,
   executeProvisioningAfterSubscription,
+  fetchFleetLedger,
   PAYPAL_CONFIG,
   type AgentNegotiationRequest,
   type AgentNegotiationResponse,
@@ -119,6 +120,36 @@ export function App() {
       ],
     };
   }, [transactions]);
+
+  // Hydrate fleet transactions and verify initial state from SQLite backend
+  useEffect(() => {
+    let mounted = true;
+    async function loadInitialFleet() {
+      const liveTxns = await fetchFleetLedger();
+      if (mounted && liveTxns.length > 0) {
+        setTransactions(liveTxns);
+        const marcus = liveTxns.find((t) => t.contractor_name === 'Marcus Miller');
+        if (marcus && marcus.status === 'ACTIVE_STREAMING') {
+          setIsMarcusDepositLocked(true);
+        }
+      }
+    }
+    loadInitialFleet();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleRefreshFleet = useCallback(async () => {
+    const liveTxns = await fetchFleetLedger();
+    if (liveTxns.length > 0) {
+      setTransactions(liveTxns);
+      const marcus = liveTxns.find((t) => t.contractor_name === 'Marcus Miller');
+      if (marcus && marcus.status === 'ACTIVE_STREAMING') {
+        setIsMarcusDepositLocked(true);
+      }
+    }
+  }, []);
 
   // Start Autonomous Negotiation Simulation
   const handleStartNegotiation = useCallback(async () => {
@@ -366,6 +397,7 @@ export function App() {
               setActiveTab('copilot');
             }}
             onNavigateTab={(tab) => setActiveTab(tab)}
+            onRefreshData={handleRefreshFleet}
           />
         )}
 

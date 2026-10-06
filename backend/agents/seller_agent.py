@@ -1121,6 +1121,8 @@ class SellerAgent:
         sub["assigned_did"] = allocated_did
         _COMPLETED_SUBSCRIPTIONS[subscription_id]["allocated_did"] = allocated_did
         _COMPLETED_SUBSCRIPTIONS[subscription_id]["assigned_did"] = allocated_did
+        if contractor_email:
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[contractor_email.strip().lower()] = subscription_id
         res_dict["status"] = res.status
         res_dict["assignedDid"] = allocated_did
         res_dict["assigned_did"] = allocated_did

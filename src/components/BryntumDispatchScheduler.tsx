@@ -4,9 +4,13 @@ import '@bryntum/scheduler/stockholm-dark.css';
 import '@bryntum/scheduler/fontawesome/css/fontawesome.css';
 import '@bryntum/scheduler/fontawesome/css/solid.css';
 import { Scheduler } from '@bryntum/scheduler';
-import { Zap, PhoneCall } from 'lucide-react';
+import { Zap, PhoneCall, CalendarCheck } from 'lucide-react';
 
-import { executeProvisioningAfterSubscription } from '../services/paypalAgentService';
+import {
+  executeProvisioningAfterSubscription,
+  fetchFleetSchedule,
+  lockTerritorySlot,
+} from '../services/paypalAgentService';
 
 export interface ScheduleEvent {
   id: number | string;
@@ -33,6 +37,8 @@ export function BryntumDispatchScheduler({
   const schedulerRef = useRef<Scheduler | null>(null);
   const [lastPaymentSync, setLastPaymentSync] = useState<string>('2026-10-02 02:14:22');
   const [isCallingApi, setIsCallingApi] = useState(false);
+  const [isLockingSlot, setIsLockingSlot] = useState(false);
+  const [isSlotLocked, setIsSlotLocked] = useState(false);
   const [apiStatus, setApiStatus] = useState<string>(
     isDepositLocked
       ? '● Live Line Active: +1 (863) 267-8902 via Telnyx (HTTP 201)'
@@ -193,7 +199,22 @@ export function BryntumDispatchScheduler({
 
     schedulerRef.current = scheduler;
 
+    let mounted = true;
+    async function hydrateLiveSchedule() {
+      const liveData = await fetchFleetSchedule();
+      if (liveData && liveData.resources && liveData.resources.length > 0 && schedulerRef.current && mounted) {
+        schedulerRef.current.resourceStore.data = liveData.resources;
+        schedulerRef.current.eventStore.data = liveData.events;
+        const hasLockedSlot = liveData.events.some((e: any) => e.name && e.name.includes('Takeoff:'));
+        if (hasLockedSlot) {
+          setIsSlotLocked(true);
+        }
+      }
+    }
+    hydrateLiveSchedule();
+
     return () => {
+      mounted = false;
       scheduler.destroy();
     };
   }, []);
@@ -310,6 +331,42 @@ export function BryntumDispatchScheduler({
     }
   };
 
+  // Atomically locks a 75-minute estimate window upon verified PayPal deposit capture
+  const handleLockTerritorySlot = async () => {
+    if (!schedulerRef.current || isLockingSlot || isSlotLocked) return;
+    setIsLockingSlot(true);
+    try {
+      const res = await lockTerritorySlot(
+        'LEAD-SLAKELAND-863',
+        'South Lakeland Zone 2',
+        '2026-10-02 13:00',
+        'TXN-DISPATCH-9021'
+      );
+      if (res.success) {
+        setIsSlotLocked(true);
+        const lockedEventId = 'locked-takeoff-slot-1';
+        const existing = schedulerRef.current.eventStore.getById(lockedEventId);
+        if (!existing) {
+          (schedulerRef.current.eventStore as any).add({
+            id: lockedEventId,
+            resourceId: 'crew-1',
+            name: 'Takeoff: 1,450 sqft Travertine Tile (South Lakeland Zone 2)',
+            startDate: '2026-10-02 13:00',
+            endDate: '2026-10-02 14:15',
+            eventColor: 'blue',
+            iconCls: 'b-fa b-fa-calendar-check',
+            depositStatus: 'DEPOSIT VERIFIED ($89.00)',
+            paypalTxn: 'TXN-DISPATCH-9021',
+          });
+        }
+        setApiStatus('● Territory Slot Locked: 75-Min Takeoff Window (HTTP 200)');
+        setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
+      }
+    } finally {
+      setIsLockingSlot(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#0f172a' }}>
       {/* Header Banner */}
@@ -374,6 +431,37 @@ export function BryntumDispatchScheduler({
             Last Sync:{' '}
             <span style={{ color: '#34d399', fontFamily: 'monospace' }}>{lastPaymentSync}</span>
           </div>
+
+          {/* Lock 75-Min Estimate Window Button */}
+          <button
+            onClick={handleLockTerritorySlot}
+            disabled={isLockingSlot || isSlotLocked}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: isSlotLocked
+                ? '#1e3a8a'
+                : isLockingSlot
+                ? '#1e293b'
+                : '#2563eb',
+              color: isSlotLocked ? '#60a5fa' : '#fff',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: isLockingSlot || isSlotLocked ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            <CalendarCheck size={14} />
+            {isLockingSlot
+              ? 'Locking Window via API...'
+              : isSlotLocked
+              ? '✓ 75-Min Takeoff Locked (South Lakeland)'
+              : '🔒 Lock 75-Min Estimate Window ($89 Deposit)'}
+          </button>
 
           {/* Simulate PayPal A2A Subscription Button */}
           <button

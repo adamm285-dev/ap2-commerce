@@ -114,9 +114,14 @@ export async function evaluateAgentNegotiation(
  */
 export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean> {
   try {
+    const adminKey = localStorage.getItem('fs_admin_key') || (window as any).__FS_ADMIN_KEY || '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminKey) {
+      headers['X-Admin-Key'] = adminKey;
+    }
     const res = await fetch('/api/agent/spending-mandate/reset', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(buyerAgentId ? { buyerAgentId } : {}),
     });
     return res.ok;

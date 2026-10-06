@@ -97,7 +97,7 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 * **Anti-Tamper Layer:** Byte-level canonical JSON digest verifier detecting price inflation, budget cap breaches, timestamp expiry, and unauthorized entity modification.
 * **Telecom & ERP Settlement:** Immediate Telnyx 10DLC local DID binding, Jobber GraphQL v2 client/job routing mutations with telephony custom fields, and QuickBooks Online API v3 expense mapping to general ledger Account 6300 (Software & SaaS).
 * **Persistent Database Layer:** SQLite WAL database engine (`a2a_database.db`) with 5000ms busy timeout, surviving process restarts across subscriptions, mandates, ledger commitments, processed webhook event IDs, and buyer key records.
-* **Production Cloud Deployment:** Dedicated Google Cloud Compute Engine instance (`fieldsmith-core-api` at static IP `35.231.247.43`) fronted by Caddy reverse proxy with Cloudflare TLS terminating at `https://api.fieldsmith.pro`.
+* **Production Cloud Deployment:** Dedicated Google Cloud Compute Engine instance (`fieldsmith-core-api`) fronted by Caddy reverse proxy with Cloudflare TLS terminating at `https://api.fieldsmith.pro`.
 
 ---
 

@@ -329,9 +329,14 @@ export function ContractorCopilotView({
   const triggerTestCycle = async () => {
     setIsTriggeringTestRun(true);
     try {
-      const res = await fetch('/api/harness/run-buyer-agent', {
+      let adminKey = localStorage.getItem('fs_admin_key') || (window as any).__FS_ADMIN_KEY || '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminKey) {
+        headers['X-Admin-Key'] = adminKey;
+      }
+      let res = await fetch('/api/harness/run-buyer-agent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           contractor_name: localContractorName,
           business_entity: localBusinessEntity,
@@ -341,6 +346,27 @@ export function ContractorCopilotView({
           simulate_exhaustion: simulateExhaustion,
         }),
       });
+
+      if (res.status === 401) {
+        const entered = prompt('Administrative authorization required to trigger autonomous buyer harness.\nEnter ADMIN_API_KEY:');
+        if (entered) {
+          adminKey = entered.trim();
+          localStorage.setItem('fs_admin_key', adminKey);
+          headers['X-Admin-Key'] = adminKey;
+          res = await fetch('/api/harness/run-buyer-agent', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              contractor_name: localContractorName,
+              business_entity: localBusinessEntity,
+              trade_vertical: localTradeVertical,
+              area_code: localAreaCode,
+              budget_cap: localBudgetCap,
+              simulate_exhaustion: simulateExhaustion,
+            }),
+          });
+        }
+      }
       if (res.ok) {
         const runData = await res.json();
         if (runData && (runData.provisioned_did || runData.assigned_did)) {

@@ -113,7 +113,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 - **API Specification:** OpenAPI 3.1.0 (`openapi.yaml` and `openapi.json`) + APIMatic SDK configuration (`apimatic.json`)
 - **Backend Core:** FastAPI + Uvicorn + Python 3.13 + Pydantic v2
 - **Persistence:** SQLite WAL Mode (`a2a_database.db`) with 5000ms busy timeout
-- **Cloud Deployment:** Google Cloud Platform VM (`35.231.247.43`) + Caddy Reverse Proxy + Cloudflare TLS (`api.fieldsmith.pro`)
+- **Cloud Deployment:** Google Cloud Platform VM + Caddy Reverse Proxy + Cloudflare TLS (`api.fieldsmith.pro`)
 
 ---
 

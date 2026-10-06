@@ -103,10 +103,16 @@ app = FastAPI(
 app.include_router(m2m_router)
 app.include_router(m2m_router, prefix="/api")
 
-# Enable CORS for frontend applications (e.g. Vite on port 5173)
+# Enable CORS for frontend applications (e.g. Vite on port 5173, production portal)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://api.fieldsmith.pro",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1229,11 +1235,34 @@ class RunBuyerAgentRequest(BaseModel):
 
 
 @app.post("/api/harness/run-buyer-agent", tags=["External Buyer Harness"])
-async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest):
+async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: Request):
     """
     Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).
     Returns the step-by-step audit log, cryptographic proof, and back-office payloads.
+    Requires administrative authorization.
     """
+    # Admin authorization check
+    auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
+
+    provided_token = None
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            provided_token = auth_header[7:].strip()
+        else:
+            provided_token = auth_header.strip()
+
+    expected_key = (getattr(settings, "admin_api_key", None) or "").strip()
+    if not expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ADMIN_API_KEY is not configured on the server. Configure a strong ADMIN_API_KEY in .env.",
+        )
+    if not provided_token or provided_token == "dev-admin-secret-key" or not hmac.compare_digest(provided_token.encode("utf-8"), expected_key.encode("utf-8")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authorization required to execute buyer agent harness. Provide valid X-Admin-Key or Authorization header.",
+        )
+
     if req.resetLedger:
         ledger.reset()
 

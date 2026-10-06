@@ -55,6 +55,9 @@ class Settings(BaseSettings):
         alias="A2A_MANDATE_SECRET",
     )
 
+    # Dedicated back-office webhook signing secret (derived from mandate secret if omitted)
+    a2a_webhook_secret: str = Field(default="", alias="A2A_WEBHOOK_SECRET")
+
     # Asymmetric Ed25519 Signing Keys (AP2 Protocol)
     a2a_seller_private_key: str = Field(default="", alias="A2A_SELLER_PRIVATE_KEY")
     a2a_private_key: str = Field(default="", alias="A2A_PRIVATE_KEY")

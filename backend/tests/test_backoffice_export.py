@@ -131,7 +131,7 @@ def test_qbo_vendor_payload_format():
 
 @pytest.mark.asyncio
 async def test_webhook_dispatcher_signing_and_dry_run():
-    """Verifies HMAC-SHA256 signature generation and dry-run headers."""
+    """Verifies HMAC-SHA256 signature generation with isolated derived secret and dry-run headers."""
     sample_payload = {
         "event": "a2a.subscription.provisioned",
         "sub_id": "I-TEST-1234",
@@ -145,18 +145,52 @@ async def test_webhook_dispatcher_signing_and_dry_run():
 
     assert res["dry_run"] is True
     assert res["dispatched"] is False
-    assert res["signature"].startswith("sha256=")
+    # Signature is isolated to HTTP headers and not leaked directly in response dict
+    assert "signature" not in res
 
-    # Manually compute expected signature to verify cryptographic parity
+    # Manually compute expected signature using isolated derived secret
     payload_bytes = json.dumps(sample_payload, sort_keys=True).encode("utf-8")
+    expected_secret = hashlib.sha256(
+        (settings.a2a_mandate_secret + ":webhook_isolation").encode("utf-8")
+    ).hexdigest()
     expected_hex = hmac.new(
-        settings.a2a_mandate_secret.encode("utf-8"),
+        expected_secret.encode("utf-8"),
         payload_bytes,
         hashlib.sha256,
     ).hexdigest()
-    assert res["signature"] == f"sha256={expected_hex}"
     assert res["headers"]["X-FieldSmith-Signature"] == f"sha256={expected_hex}"
     assert res["headers"]["X-FieldSmith-Event"] == "a2a.subscription.provisioned"
+
+
+@pytest.mark.asyncio
+async def test_webhook_dispatcher_ssrf_protection():
+    """Verifies that webhook dispatcher rejects malicious SSRF targets and permits whitelisted domains."""
+    from backend.services.backoffice.webhook_dispatcher import is_url_permitted
+
+    # Blocked targets: metadata, private IPs, non-whitelisted domains
+    assert not is_url_permitted("http://169.254.169.254/computeMetadata/v1/")
+    assert not is_url_permitted("http://169.254.1.1/secret")
+    assert not is_url_permitted("http://10.0.0.1:8080/admin")
+    assert not is_url_permitted("http://192.168.1.1/router")
+    assert not is_url_permitted("http://172.16.0.5/api")
+    assert not is_url_permitted("https://evil-attacker-site.com/steal")
+    assert not is_url_permitted("ftp://hooks.zapier.com/test")
+    assert not is_url_permitted("")
+
+    # Allowed targets: automation platforms
+    assert is_url_permitted("https://hooks.zapier.com/hooks/catch/123/abc")
+    assert is_url_permitted("https://hook.us1.make.com/webhooks/123")
+    assert is_url_permitted("https://maker.ifttt.com/trigger/event/json/with/key/xyz")
+    assert is_url_permitted("https://webhook.site/00000000-0000-0000-0000-000000000000")
+    assert is_url_permitted("https://eo12345.m.pipedream.net")
+
+    # Live dispatch to blocked target returns SSRF error without firing HTTP request
+    res = await webhook_dispatcher.dispatch(
+        payload={"test": 1},
+        target_url="http://169.254.169.254/latest/meta-data/",
+    )
+    assert res["dispatched"] is False
+    assert "SSRF security policy" in res["error"]
 
 
 @pytest.mark.asyncio

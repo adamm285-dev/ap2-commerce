@@ -922,7 +922,7 @@
           "External Buyer Harness"
         ],
         "summary": "Run External Buyer Agent Endpoint",
-        "description": "Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).\nReturns the step-by-step audit log, cryptographic proof, and back-office payloads.",
+        "description": "Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).\nReturns the step-by-step audit log, cryptographic proof, and back-office payloads.\nRequires administrative authorization (X-Admin-Key or Authorization Bearer header).",
         "operationId": "run_external_buyer_agent_endpoint_api_harness_run_buyer_agent_post",
         "requestBody": {
           "content": {

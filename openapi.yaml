@@ -652,7 +652,8 @@ paths:
       description: 'Executes the external buyer agent harness headlessly over MCP
         (HTTP or stdio).
 
-        Returns the step-by-step audit log, cryptographic proof, and back-office payloads.'
+        Returns the step-by-step audit log, cryptographic proof, and back-office payloads.
+        Requires administrative authorization (X-Admin-Key or Authorization Bearer header).'
       operationId: run_external_buyer_agent_endpoint_api_harness_run_buyer_agent_post
       requestBody:
         content:

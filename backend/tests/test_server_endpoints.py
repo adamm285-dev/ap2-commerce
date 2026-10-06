@@ -1117,3 +1117,68 @@ def test_simulate_paypal_approval_endpoint():
     assert res_404.status_code == 404
 
 
+def test_run_buyer_agent_endpoint_admin_auth():
+    """Verifies that /api/harness/run-buyer-agent enforces strict admin authentication."""
+    from backend.config import settings
+
+    admin_key = settings.admin_api_key
+
+    # 1. Unauthenticated request rejected with 401
+    res_unauth = client.post(
+        "/api/harness/run-buyer-agent",
+        json={"transport": "stdio", "budget_cap": 100.0},
+    )
+    assert res_unauth.status_code == 401
+    assert "Admin authorization required" in res_unauth.json()["detail"]
+
+    # 2. dev-admin-secret-key rejected with 401
+    res_dev = client.post(
+        "/api/harness/run-buyer-agent",
+        json={"transport": "stdio", "budget_cap": 100.0},
+        headers={"X-Admin-Key": "dev-admin-secret-key"},
+    )
+    assert res_dev.status_code == 401
+    assert "Admin authorization required" in res_dev.json()["detail"]
+
+    # 3. Wrong secret token rejected with 401
+    res_wrong = client.post(
+        "/api/harness/run-buyer-agent",
+        json={"transport": "stdio", "budget_cap": 100.0},
+        headers={"X-Admin-Key": "wrong-secret-token"},
+    )
+    assert res_wrong.status_code == 401
+    assert "Admin authorization required" in res_wrong.json()["detail"]
+
+    # 4. Bearer authorization header with wrong key rejected with 401
+    res_bearer_bad = client.post(
+        "/api/harness/run-buyer-agent",
+        json={"transport": "stdio", "budget_cap": 100.0},
+        headers={"Authorization": "Bearer wrong-key"},
+    )
+    assert res_bearer_bad.status_code == 401
+
+    # 5. Server with unconfigured ADMIN_API_KEY returns 500
+    orig_admin = settings.admin_api_key
+    try:
+        settings.admin_api_key = ""
+        res_no_key = client.post(
+            "/api/harness/run-buyer-agent",
+            json={"transport": "stdio", "budget_cap": 100.0},
+            headers={"X-Admin-Key": "some-key"},
+        )
+        assert res_no_key.status_code == 500
+        assert "ADMIN_API_KEY is not configured" in res_no_key.json()["detail"]
+    finally:
+        settings.admin_api_key = orig_admin
+
+    # 6. Valid admin key succeeds
+    res_valid = client.post(
+        "/api/harness/run-buyer-agent",
+        json={"transport": "stdio", "budget_cap": 100.0},
+        headers={"X-Admin-Key": admin_key},
+    )
+    assert res_valid.status_code == 200
+    assert res_valid.json()["status"] == "COMPLETED"
+
+
+

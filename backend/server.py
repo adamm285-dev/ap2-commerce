@@ -12,11 +12,13 @@ import uuid
 import datetime
 import asyncio
 import secrets
+from pathlib import Path
 from typing import Dict, Any, Optional, List, Set
 from pydantic import BaseModel, Field, ConfigDict
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .models import (
     CatalogResponse,
@@ -107,6 +109,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount frontend portal if built in dist/
+_DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
+if _DIST_DIR.exists():
+    _ASSETS_DIR = _DIST_DIR / "assets"
+    if _ASSETS_DIR.exists():
+        app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
+    app.mount("/portal", StaticFiles(directory=str(_DIST_DIR), html=True), name="portal")
 
 # In-memory trade service catalog
 TRADE_CATALOG = [

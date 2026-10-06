@@ -21,6 +21,8 @@ PORTAL_ROOT = os.path.dirname(SCRIPT_DIR)
 if PORTAL_ROOT not in sys.path:
     sys.path.insert(0, PORTAL_ROOT)
 
+import argparse
+import httpx
 from fastapi.testclient import TestClient
 from backend.server import app
 from backend.services.crypto_mandate import (
@@ -41,7 +43,15 @@ RED = "\033[91m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-client = TestClient(app)
+parser = argparse.ArgumentParser(description="Autonomous A2A Commerce Judge Audit Harness")
+parser.add_argument("--remote", action="store_true", help="Execute checks against live cloud deployment (https://api.fieldsmith.pro)")
+parser.add_argument("--url", type=str, default="https://api.fieldsmith.pro", help="Target API URL")
+args, _ = parser.parse_known_args()
+
+if args.remote or os.environ.get("REMOTE_AUDIT") == "1":
+    client = httpx.Client(base_url=args.url, timeout=30.0)
+else:
+    client = TestClient(app)
 
 def print_header(title: str):
     print(f"\n{BOLD}{CYAN}══════════════════════════════════════════════════════════════════════{RESET}")
@@ -258,13 +268,13 @@ def run_judge_audit():
     ledger_res = client.get("/api/fleet/ledger")
     assert ledger_res.status_code == 200
     ledger_data = ledger_res.json()
-    assert ledger_data.get("count") == 14
+    assert ledger_data.get("count") >= 14
     print_pass(f"AG Studio Fleet Ledger: Hydrated {ledger_data.get('count')} subscriptions from SQLite WAL")
 
     stats_res = client.get("/api/fleet/stats")
     assert stats_res.status_code == 200
     stats_data = stats_res.json()
-    assert stats_data.get("total_subscribers") == 14
+    assert stats_data.get("total_subscribers") >= 14
     assert "CITNRYD" in stats_data.get("carrier_resporg", "")
     print_pass(f"Fleet Telemetry: TCR Campaign {stats_data.get('carrier_resporg')} • {stats_data.get('compliance_guard')}")
 

@@ -550,7 +550,6 @@ async def evaluate_mandate_endpoint(request: SpendingMandateRequest):
 async def reset_mandate_endpoint(request: Request):
     """Resets the spending mandate ledger for simulations and testing (requires admin authentication)."""
     auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
-    admin_param = request.query_params.get("admin_key")
 
     provided_token = None
     if auth_header:
@@ -558,8 +557,6 @@ async def reset_mandate_endpoint(request: Request):
             provided_token = auth_header[7:].strip()
         else:
             provided_token = auth_header.strip()
-    elif admin_param:
-        provided_token = admin_param.strip()
 
     expected_key = (getattr(settings, "admin_api_key", None) or "").strip()
     if not expected_key:
@@ -567,10 +564,10 @@ async def reset_mandate_endpoint(request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="ADMIN_API_KEY is not configured on the server. Configure a strong ADMIN_API_KEY in .env.",
         )
-    if not provided_token or provided_token == "dev-admin-secret-key" or provided_token != expected_key:
+    if not provided_token or provided_token == "dev-admin-secret-key" or not hmac.compare_digest(provided_token.encode("utf-8"), expected_key.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authorization required to reset mandate ledger. Provide valid X-Admin-Key header or admin_key query param.",
+            detail="Admin authorization required to reset mandate ledger. Provide valid X-Admin-Key or Authorization header.",
         )
 
     agent_id = None
@@ -932,7 +929,6 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
     """
     # 1. Admin authentication check
     auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
-    admin_param = request.query_params.get("admin_key")
 
     provided_token = None
     if auth_header:
@@ -940,8 +936,6 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
             provided_token = auth_header[7:].strip()
         else:
             provided_token = auth_header.strip()
-    elif admin_param:
-        provided_token = admin_param.strip()
 
     expected_key = (getattr(settings, "admin_api_key", None) or "").strip()
     if not expected_key:
@@ -949,10 +943,10 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="ADMIN_API_KEY is not configured on the server. Configure a strong ADMIN_API_KEY in .env.",
         )
-    if not provided_token or provided_token == "dev-admin-secret-key" or provided_token != expected_key:
+    if not provided_token or provided_token == "dev-admin-secret-key" or not hmac.compare_digest(provided_token.encode("utf-8"), expected_key.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authorization required to simulate approval. Provide valid X-Admin-Key header or admin_key query param.",
+            detail="Admin authorization required to simulate approval. Provide valid X-Admin-Key or Authorization header.",
         )
 
     # 2. Strict Sandbox & Mock Environment Guard

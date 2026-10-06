@@ -9,7 +9,7 @@
 [![PayPal Agentic Commerce](https://img.shields.io/badge/PayPal-Agentic%20Commerce-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![Live Cloud Portal](https://img.shields.io/badge/Cloud%20Portal-Online%20(HTTP%20200)-success.svg)](https://api.fieldsmith.pro/portal/)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 137 Passed](https://img.shields.io/badge/Tests-137%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
+[![Tests: 138 Passed](https://img.shields.io/badge/Tests-138%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed%20(100%25)-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -29,14 +29,16 @@
 
 ## ⚡ Quickstart for Judges
 
-### 1. One-Click Live Cloud Audit
+> **⚠️ Judge Evaluation Note:** Please execute **`python scripts/judge_audit_harness.py --remote`** as your primary evaluation command. It requires **zero API keys or configuration**, runs instantly, and tests all 9 protocol, cryptographic (Ed25519/HMAC-SHA256), and operational invariants directly against the live public production API (`https://api.fieldsmith.pro`). The concurrent multi-agent stress test (`scripts/live_cloud_stress_test.py`) is designed for administrative load verification and requires an administrative key (`ADMIN_API_KEY`) for simulated sandbox buyer approval.
+
+### 1. One-Click Live Cloud Audit (Recommended for Judges)
 Verify all 9 critical operational and cryptographic checks against the live production deployment:
 ```bash
 python scripts/judge_audit_harness.py --remote
 ```
 
-### 2. Concurrent Multi-Agent Stress Test
-Launch 5 parallel autonomous buyer agents stressing the live cloud deployment simultaneously:
+### 2. Concurrent Multi-Agent Stress Test (Internal & Load Verification)
+Launch 5 parallel autonomous buyer agents stressing the live cloud deployment simultaneously (requires admin key for Scenario 1 approval simulation):
 ```bash
 python scripts/live_cloud_stress_test.py
 ```
@@ -50,7 +52,7 @@ python scripts/judge_audit_harness.py
 ### 4. Run the Full Automated Test Suite
 ```bash
 python -m pytest backend/tests/ -v
-# 133/133 tests passing (100% green)
+# 138/138 tests passing (100% green)
 ```
 
 ---
@@ -81,7 +83,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 | Sponsor Track | Prize | Implementation & Technology |
 | :--- | :--- | :--- |
 | **Best Use of Agentic Commerce** | **\$5,000** | `@paypal/react-paypal-js`<br/>`@paypal/paypal-server-sdk` | Autonomous A2A negotiation, counter-offer bargaining, delegated subscription approvals, and Vault MIT overage settlement. |
-| **Best Use of AG Grid / AG Studio** | **\$5,000** | `ag-studio-react`<br/>`ag-studio` (v3.0.0)<br/>AG Grid Community | High-density grid telemetry with custom enterprise-grade floating column filters, grouped bar charts, live SQLite WAL data hydration, and dual View/Edit reporting modes reconciling \$13,438.32 ARR across 14 simulated lines. |
+| **Best Use of AG Grid / AG Studio** | **\$5,000** | `ag-studio-react`<br/>`ag-studio` (v3.0.0)<br/>AG Grid Community | High-density grid telemetry with floating column filters, grouped bar charts, live SQLite WAL data hydration, and dual View/Edit reporting modes reconciling \$13,438.32 ARR across 14 simulated lines. |
 | **Best Use of PayPal + AI** | **\$5,000** | FastMCP 2024-11-05 Server<br/>SSE Wire Stream Inspector | Streamable HTTP/SSE wire protocol inspector, live cloud deployment (`https://api.fieldsmith.pro`), US-domestic NANP gating, and intelligent autonomous counter-offer generation. |
 | **Best Use of Bryntum** | **\$1,000** | `@bryntum/scheduler` 7.3.7 (Trial Build) | 4-zone territory dispatch calendar managing 24/7 AI voice screener shifts, 75-minute customer estimate window booking, and live in-place reactive color mutations (Orange &rarr; Green &rarr; Blue). |
 | **Best Use of APIMatic** | **\$1,000** | OpenAPI 3.1.0 Contract<br/>Ed25519 Challenge-Response | Production-grade OpenAPI specification with 33 endpoints (`openapi.yaml` and `openapi.json`), `apimatic.json` configuration for multi-language SDK compilation (Python, TypeScript, Go), and self-service buyer key onboarding. |

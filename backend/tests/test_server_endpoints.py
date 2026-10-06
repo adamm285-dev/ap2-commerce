@@ -70,6 +70,15 @@ def test_reset_mandate_ledger_endpoint():
     from ..config import settings
 
     admin_key = getattr(settings, "admin_api_key", "dev-admin-secret-key")
+
+    # Passing admin_key as query param is rejected with 401 (headers required)
+    res_qp = client.post(
+        f"/api/agent/spending-mandate/reset?admin_key={admin_key}",
+        json={"buyerAgentId": "test-buyer-agent"},
+    )
+    assert res_qp.status_code == 401
+    assert "Admin authorization required" in res_qp.json()["detail"]
+
     res = client.post(
         "/api/agent/spending-mandate/reset",
         json={"buyerAgentId": "test-buyer-agent"},
@@ -1047,6 +1056,13 @@ def test_simulate_paypal_approval_endpoint():
     )
     assert res_wrong.status_code == 401
     assert "Admin authorization required" in res_wrong.json()["detail"]
+
+    # Passing admin_key as query param is rejected with 401 (headers required)
+    res_qp = client.post(
+        f"/api/paypal/simulate-approval/{test_sub_id}?admin_key={admin_key}"
+    )
+    assert res_qp.status_code == 401
+    assert "Admin authorization required" in res_qp.json()["detail"]
 
     # 3. Server with unconfigured ADMIN_API_KEY returns 500
     orig_admin = settings.admin_api_key

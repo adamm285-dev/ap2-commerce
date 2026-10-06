@@ -1,532 +1,1572 @@
 openapi: 3.1.0
 info:
-  title: FieldSmith A2A Agentic Commerce & Telephony API
-  description: >
-    Autonomous Agent-to-Agent (A2A) Commerce Protocol for Trade Contractors.
-    Enables Buyer AI Agents to discover trade services, negotiate scoped commitments,
-    execute autonomous PayPal Subscriptions & deposit locks, allocate KYC-verified
-    telephony DIDs, and trigger downline CRM synchronizations via Zapier MCP.
+  title: FieldSmith Pro A2A Agentic Commerce API
+  description: Autonomous Agent-to-Agent (A2A) Commerce Protocol for Solo Trade Contractors
   version: 1.0.0
-  contact:
-    name: FieldSmith Pro Developer Relations
-    url: https://github.com/adamm285-dev/paypal-a2a-commerce
-    email: dev@fieldsmith.pro
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-
-servers:
-  - url: https://api.fieldsmith.pro
-    description: Production Cloud Gateway (Google Cloud us-east1)
-  - url: http://localhost:8000
-    description: Local Sandbox Development Server
-
 paths:
-  /api/agent/catalog:
+  /m2m/payloads/latest:
     get:
-      summary: Retrieve Agentic Trade Service Catalog & MCP Schemas
-      description: Returns available trade verticals, subscription tiers, and autonomous booking schemas for Buyer Agents.
-      operationId: getTradeCatalog
       tags:
-        - Agent Catalog
+      - M2M Audit
+      summary: Get Latest Payloads
+      description: Returns the latest M2M autonomous transaction artifacts for in-UI
+        inspection.
+      operationId: get_latest_payloads_m2m_payloads_latest_get
       responses:
         '200':
-          description: Successfully retrieved trade catalog.
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Latest Payloads M2M Payloads Latest Get
+  /api/m2m/payloads/latest:
+    get:
+      tags:
+      - M2M Audit
+      summary: Get Latest Payloads
+      description: Returns the latest M2M autonomous transaction artifacts for in-UI
+        inspection.
+      operationId: get_latest_payloads_api_m2m_payloads_latest_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Latest Payloads Api M2M Payloads Latest Get
+  /health:
+    get:
+      tags:
+      - System Health
+      summary: Health Check
+      description: Health check endpoint reporting API status and operating mode.
+      operationId: health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /agent.json:
+    get:
+      tags:
+      - Agent Discovery
+      summary: Agent Discovery Card
+      description: 'Google A2A / AP2 Agent Card for Autonomous Discovery.
+
+        Publishes capabilities, cryptographic identity keys, pricing plans, and MCP
+        endpoints.'
+      operationId: agent_discovery_card_agent_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /.well-known/agent.json:
+    get:
+      tags:
+      - Agent Discovery
+      summary: Agent Discovery Card
+      description: 'Google A2A / AP2 Agent Card for Autonomous Discovery.
+
+        Publishes capabilities, cryptographic identity keys, pricing plans, and MCP
+        endpoints.'
+      operationId: agent_discovery_card__well_known_agent_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /mcp:
+    get:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Get Endpoint
+      description: 'Handles GET requests to /mcp.
+
+        If Accept header requests text/event-stream, opens the SSE stream with the
+        standard MCP handshake.
+
+        Otherwise returns a machine-readable JSON status of the FastMCP server.'
+      operationId: mcp_get_endpoint_mcp_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
+
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
+
+        and invoke FieldSmith telephony capabilities, mandate evaluation, and line
+        provisioning.'
+      operationId: mcp_jsonrpc_endpoint_mcp_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /m2m/sse:
+    get:
+      tags:
+      - MCP Wire Protocol
+      summary: Mcp Wire Stream
+      description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
+        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
+        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
+        \ /mcp\n\n`."
+      operationId: mcp_wire_stream_m2m_sse_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/mcp/sse:
+    get:
+      tags:
+      - MCP Wire Protocol
+      summary: Mcp Wire Stream
+      description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
+        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
+        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
+        \ /mcp\n\n`."
+      operationId: mcp_wire_stream_api_mcp_sse_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /mcp/sse:
+    get:
+      tags:
+      - Model Context Protocol
+      - MCP Wire Protocol
+      summary: Mcp Wire Stream
+      description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
+        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
+        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
+        \ /mcp\n\n`."
+      operationId: mcp_wire_stream_mcp_sse_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /sse:
+    get:
+      tags:
+      - Model Context Protocol
+      - MCP Wire Protocol
+      summary: Mcp Wire Stream
+      description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
+        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
+        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
+        \ /mcp\n\n`."
+      operationId: mcp_wire_stream_sse_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /m2m/frames:
+    get:
+      tags:
+      - MCP Wire Protocol
+      summary: Get Wire Frames
+      description: Returns the buffer of recent JSON-RPC 2.0 frames for packet inspection.
+      operationId: get_wire_frames_m2m_frames_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/mcp/frames:
+    get:
+      tags:
+      - MCP Wire Protocol
+      summary: Get Wire Frames
+      description: Returns the buffer of recent JSON-RPC 2.0 frames for packet inspection.
+      operationId: get_wire_frames_api_mcp_frames_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/crypto/verify-tamper:
+    post:
+      tags:
+      - Anti-Tamper & Cryptography
+      summary: Verify Tamper Endpoint
+      description: 'Live anti-tamper verification endpoint.
+
+        Tests whether the supplied payload matches its HMAC-SHA256 signature,
+
+        checks budget caps, and verifies timestamp drift.'
+      operationId: verify_tamper_endpoint_api_crypto_verify_tamper_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyTamperRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/crypto/generate-proof:
+    post:
+      tags:
+      - Anti-Tamper & Cryptography
+      summary: Generate Proof Endpoint
+      description: Generates a canonical HMAC-SHA256 mandate proof for given parameters.
+      operationId: generate_proof_endpoint_api_crypto_generate_proof_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateProofRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/crypto/sample-proof:
+    get:
+      tags:
+      - Anti-Tamper & Cryptography
+      summary: Get Sample Proof
+      description: Returns a ready-to-test authentic proof for Marcus Miller.
+      operationId: get_sample_proof_api_crypto_sample_proof_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/copilot/chat:
+    post:
+      tags:
+      - Contractor Copilot
+      summary: Copilot Chat Endpoint
+      description: 'Contractor AI Copilot conversational engine.
+
+        Ingests messages from the contractor, diagnoses call leaks, queries FieldSmith
+        Seller MCP,
+
+        and returns conversational responses and proposed A2A actions.'
+      operationId: copilot_chat_endpoint_api_copilot_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CopilotChatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/catalog:
+    get:
+      tags:
+      - Agent Catalog
+      summary: Get Trade Catalog
+      description: Returns available trade verticals, pricing, and deposit rules for
+        Buyer Agents.
+      operationId: get_trade_catalog_api_agent_catalog_get
+      responses:
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogResponse'
-
   /api/agent/quote:
     post:
-      summary: Request Autonomous Scope Valuation & Deposit Quote
-      description: Evaluates trade requirements (square footage, material, urgency) and calculates required booking deposit.
-      operationId: calculateTradeQuote
       tags:
-        - Quoting & Scoping
+      - Quoting & Scoping
+      summary: Calculate Trade Quote
+      description: Calculates trade scoping estimates, waste allowances, and required
+        mobilization deposits.
+      operationId: calculate_trade_quote_api_agent_quote_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/QuoteRequest'
+        required: true
       responses:
         '200':
-          description: Calculated quote and required deposit.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/QuoteResponse'
-
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/agent/spending-mandate/evaluate:
     post:
-      summary: Validate Buyer Agent Spending Mandate
-      description: Verifies whether the requested recurring subscription or job deposit falls within the buyer's programmatic spending limits.
-      operationId: evaluateSpendingMandate
       tags:
-        - Autonomous Governance
+      - Autonomous Governance
+      summary: Evaluate Mandate Endpoint
+      description: Evaluates whether an inbound agent spending request complies with
+        buyer financial guardrails.
+      operationId: evaluate_mandate_endpoint_api_agent_spending_mandate_evaluate_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SpendingMandateRequest'
+        required: true
       responses:
         '200':
-          description: Spending mandate approval or violation status.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SpendingMandateResponse'
-
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/spending-mandate/reset:
+    post:
+      tags:
+      - Autonomous Governance
+      summary: Reset Mandate Endpoint
+      description: Resets the spending mandate ledger for simulations and testing
+        (requires admin authentication).
+      operationId: reset_mandate_endpoint_api_agent_spending_mandate_reset_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
   /api/agent/provision:
     post:
-      summary: Autonomous KYC DID Allocation & Carrier Onboarding
-      description: Post-subscription webhook allocating a dedicated 10DLC Telnyx telephone DID upon verified PayPal subscription confirmation.
-      operationId: provisionContractorLine
       tags:
-        - Telephony Provisioning
-      security:
-        - PayPalWebhookSignature: []
+      - Telephony Provisioning
+      summary: Provision Line Endpoint
+      description: Provisions a dedicated 10DLC telephone DID anchored to verified
+        PayPal subscriber identity.
+      operationId: provision_line_endpoint_api_agent_provision_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ProvisionRequest'
+        required: true
       responses:
         '201':
-          description: Dedicated business telephone line successfully allocated and active.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProvisionResponse'
-
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/agent/dispatch/lock-slot:
     post:
-      summary: Lock Bryntum Territory Dispatch Slot via Deposit
-      description: Atomically reserves a 75-minute estimate window across 4 territory zones upon verified PayPal deposit capture.
-      operationId: lockDispatchSlot
       tags:
-        - Dispatch Scheduling
+      - Dispatch Scheduling
+      summary: Lock Dispatch Slot
+      description: Atomically reserves a 75-minute estimate window across 4 territory
+        zones upon verified PayPal deposit capture.
+      operationId: lock_dispatch_slot_api_agent_dispatch_lock_slot_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DispatchLockRequest'
+        required: true
       responses:
         '200':
-          description: Territory calendar slot locked.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DispatchLockResponse'
-
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/fleet/ledger:
+    get:
+      tags:
+      - Enterprise Fleet Ledger
+      summary: Get Fleet Ledger Endpoint
+      description: Returns the persistent enterprise fleet ledger for AG Grid and
+        AG Studio.
+      operationId: get_fleet_ledger_endpoint_api_fleet_ledger_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/fleet/stats:
+    get:
+      tags:
+      - Enterprise Fleet Ledger
+      summary: Get Fleet Stats Endpoint
+      description: Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV,
+        Trade Breakdown).
+      operationId: get_fleet_stats_endpoint_api_fleet_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/fleet/schedule:
+    get:
+      tags:
+      - Bryntum Dispatch Scheduler
+      summary: Get Fleet Schedule Endpoint
+      description: Returns dynamic resources and shift/appointment events for Bryntum
+        Dispatch Scheduler.
+      operationId: get_fleet_schedule_endpoint_api_fleet_schedule_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
   /api/mcp/zapier-sync:
     post:
-      summary: Trigger Multi-App Downline CRM & Accounting Sync
-      description: Dispatches qualified contractor lead into Jobber, QuickBooks Online, and Google Calendar via Zapier Model Context Protocol.
-      operationId: triggerZapierMcpSync
       tags:
-        - Zapier MCP Integration
+      - Zapier MCP Integration
+      summary: Trigger Zapier Mcp Sync
+      description: Dispatches qualified contractor lead into Jobber, QuickBooks Online,
+        and Google Calendar via Zapier MCP.
+      operationId: trigger_zapier_mcp_sync_api_mcp_zapier_sync_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ZapierSyncRequest'
+        required: true
       responses:
         '200':
-          description: Multi-app sync chain executed successfully.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ZapierSyncResponse'
-
-  /health:
-    get:
-      summary: System Health & Provider Configuration Probe
-      description: Returns backend operational status and active API configuration states.
-      operationId: healthCheck
-      tags:
-        - System Health
-      responses:
-        '200':
-          description: API is healthy and operational.
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: healthy
-                  mock_mode:
-                    type: boolean
-                    example: true
-                  paypal_configured:
-                    type: boolean
-                    example: false
-                  telnyx_configured:
-                    type: boolean
-                    example: false
-                  zapier_configured:
-                    type: boolean
-                    example: false
-
-  /api/agent/spending-mandate/reset:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/export/backoffice:
     post:
-      summary: Reset Buyer Spending Mandate Ledger
-      description: Resets spent balances for simulation restarts and testing.
-      operationId: resetMandateLedger
       tags:
-        - Autonomous Governance
+      - Back-Office Exports
+      summary: Export Backoffice Endpoint
+      description: 'Dedicated Back-Office Export Endpoint.
+
+        Generates authentic Jobber GraphQL/REST mutations and QuickBooks Online API
+        v3 Expense
+
+        payloads for autonomous A2A subscriptions, with optional HMAC-signed webhook
+        forwarding.'
+      operationId: export_backoffice_endpoint_api_export_backoffice_post
       requestBody:
-        required: false
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                buyerAgentId:
-                  type: string
-                  example: contractor-solo-buyer-01
+              $ref: '#/components/schemas/ZapierSyncRequest'
+        required: true
       responses:
         '200':
-          description: Mandate ledger reset confirmation.
+          description: Successful Response
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: reset
-                  agent_id:
-                    type: string
-                    example: contractor-solo-buyer-01
-                  remaining_budget:
-                    type: number
-                    example: 100.00
+                $ref: '#/components/schemas/ZapierSyncResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/keys/challenge:
+    get:
+      tags:
+      - Autonomous Buyer Onboarding
+      summary: Get Buyer Key Challenge Endpoint
+      description: Generates an ephemeral Ed25519 challenge nonce for dynamic self-service
+        buyer key onboarding.
+      operationId: get_buyer_key_challenge_endpoint_api_agent_keys_challenge_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerKeyChallengeResponse'
+  /api/agent/keys/register:
+    post:
+      tags:
+      - Autonomous Buyer Onboarding
+      summary: Register Buyer Key Endpoint
+      description: 'Dynamically registers and trusts an external autonomous buyer
+        agent''s Ed25519 public key.
 
+        Requires cryptographic challenge-response signature verification guaranteeing
+        key ownership.'
+      operationId: register_buyer_key_endpoint_api_agent_keys_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerKeyRegistrationRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerKeyRegistrationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/keys/registry:
+    get:
+      tags:
+      - Autonomous Buyer Onboarding
+      summary: List Registered Buyer Keys Endpoint
+      description: Lists registered autonomous buyer agent keys from SQLite WAL.
+      operationId: list_registered_buyer_keys_endpoint_api_agent_keys_registry_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerKeyRegistryResponse'
   /api/paypal/create-order:
     post:
-      summary: Create PayPal Checkout Order
-      description: Creates a standard PayPal checkout order for mobilization deposits or subscriptions.
-      operationId: createPayPalOrder
       tags:
-        - PayPal Orders
+      - PayPal Orders
+      summary: Create Paypal Order
+      description: Creates a PayPal Checkout Order for subscriptions or estimate deposits.
+      operationId: create_paypal_order_api_paypal_create_order_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/PayPalOrderCreateRequest'
+        required: true
       responses:
         '200':
-          description: Order created successfully.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PayPalOrderResponse'
-
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/paypal/webhook:
     post:
-      summary: Receive Inbound PayPal Webhooks
-      description: Receives asynchronous notifications from PayPal (e.g. subscription activations, order completions).
-      operationId: receivePayPalWebhook
       tags:
-        - PayPal Webhooks
+      - PayPal Webhooks
+      summary: Paypal Webhook Receiver
+      description: Receives and processes PayPal subscription and order webhooks with
+        signature verification.
+      operationId: paypal_webhook_receiver_api_paypal_webhook_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/harness/run-buyer-agent:
+    post:
+      tags:
+      - External Buyer Harness
+      summary: Run External Buyer Agent Endpoint
+      description: 'Executes the external buyer agent harness headlessly over MCP
+        (HTTP or stdio).
+
+        Returns the step-by-step audit log, cryptographic proof, and back-office payloads.'
+      operationId: run_external_buyer_agent_endpoint_api_harness_run_buyer_agent_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              type: object
+              $ref: '#/components/schemas/RunBuyerAgentRequest'
+        required: true
       responses:
         '200':
-          description: Webhook received.
-
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
-  securitySchemes:
-    PayPalWebhookSignature:
-      type: apiKey
-      in: header
-      name: PAYPAL-TRANSMISSION-SIG
-      description: PayPal Webhook verification cryptographic signature.
-
   schemas:
-    CatalogResponse:
-      type: object
+    BuyerKeyChallengeResponse:
       properties:
-        status:
+        challenge:
           type: string
-          example: active
-        currency:
+          title: Challenge
+          description: Cryptographically random nonce to sign
+        timestamp:
+          type: integer
+          title: Timestamp
+          description: Unix timestamp of challenge creation
+        expiresIn:
+          type: integer
+          title: Expiresin
+          description: Challenge lifetime in seconds
+          default: 300
+        algorithm:
           type: string
-          example: USD
-        trades:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                example: flooring-tile
-              title:
-                type: string
-                example: Tile & Custom Flooring
-              monthlySubscription:
-                type: number
-                example: 89.00
-              depositRange:
-                type: string
-                example: $149.00 - $250.00
-
-    QuoteRequest:
+          title: Algorithm
+          description: Expected cryptographic signature algorithm
+          default: Ed25519
+        message:
+          type: string
+          title: Message
+          description: Instructions for autonomous buyer onboarding
       type: object
       required:
-        - tradeId
-        - squareFootage
-        - materialType
-        - postalCode
+      - challenge
+      - timestamp
+      - message
+      title: BuyerKeyChallengeResponse
+    BuyerKeyRecord:
       properties:
-        tradeId:
+        kid:
           type: string
-          example: flooring-tile
-        squareFootage:
-          type: number
-          example: 650
-        materialType:
+          title: Kid
+        publicKeyHex:
           type: string
-          example: porcelain-plank
-        postalCode:
+          title: Publickeyhex
+        contractorEmail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractoremail
+        businessName:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Businessname
+        registeredAt:
           type: string
-          example: '33813'
-
-    QuoteResponse:
-      type: object
-      properties:
-        estimatedLaborRange:
-          type: string
-          example: $2,600.00 - $3,250.00
-        wasteAllowanceSqFt:
-          type: number
-          example: 715
-        requiredDeposit:
-          type: number
-          example: 250.00
-        depositPolicy:
-          type: string
-          example: 100% credited against final invoice upon physical site takeoff
-
-    SpendingMandateRequest:
+          title: Registeredat
       type: object
       required:
-        - buyerAgentId
-        - amount
-        - recurrence
-        - category
+      - kid
+      - publicKeyHex
+      - registeredAt
+      title: BuyerKeyRecord
+    BuyerKeyRegistrationRequest:
       properties:
-        buyerAgentId:
+        kid:
           type: string
-          example: agent-pro-buyer-09
-        amount:
-          type: number
-          example: 89.00
-        recurrence:
+          maxLength: 64
+          minLength: 3
+          title: Kid
+          description: Unique key identifier for buyer agent
+        publicKeyHex:
           type: string
-          enum: [one_time, monthly, annual]
-          example: monthly
-        category:
-          type: string
-          example: contractor-dispatch-ai
-
-    SpendingMandateResponse:
-      type: object
-      properties:
-        approved:
-          type: boolean
-          example: true
-        authorizedAmount:
-          type: number
-          example: 89.00
-        monthlyCapRemaining:
-          type: number
-          example: 11.00
-        mandateProofHash:
-          type: string
-          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-
-    ProvisionRequest:
-      type: object
-      required:
-        - subscriptionId
-        - contractorEmail
-        - areaCode
-      properties:
-        subscriptionId:
-          type: string
-          example: I-BW452NX993L2
+          maxLength: 64
+          minLength: 64
+          title: Publickeyhex
+          description: 64-hex-character Ed25519 public key
         contractorEmail:
           type: string
-          example: adam@floorsmithllc.com
-        areaCode:
+          title: Contractoremail
+          description: Contractor email address (US domestic)
+        businessEntity:
           type: string
-          example: '863'
-
-    ProvisionResponse:
+          maxLength: 128
+          minLength: 2
+          title: Businessentity
+          description: Verified legal business entity name
+        challenge:
+          type: string
+          minLength: 10
+          title: Challenge
+          description: Challenge string provided by /api/agent/keys/challenge
+        challengeSignature:
+          type: string
+          maxLength: 128
+          minLength: 128
+          title: Challengesignature
+          description: 128-hex-character Ed25519 challenge signature
+        monthlyBudgetCap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Monthlybudgetcap
+          description: Monthly spending cap in USD
+          default: 100.0
+        allowedTiers:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Allowedtiers
+          description: Permitted subscription tiers
+          default:
+          - solo-starter
+          - fieldsmith-pro
       type: object
+      required:
+      - kid
+      - publicKeyHex
+      - contractorEmail
+      - businessEntity
+      - challenge
+      - challengeSignature
+      title: BuyerKeyRegistrationRequest
+    BuyerKeyRegistrationResponse:
       properties:
         status:
           type: string
-          example: ALLOCATED
-        assignedDid:
+          title: Status
+          description: Registration outcome status (REGISTERED / REJECTED)
+        kid:
           type: string
-          example: '+18638026000'
-        carrier:
+          title: Kid
+          description: Key identifier
+        publicKeyHex:
           type: string
-          example: Telnyx LLC
-        routingState:
+          title: Publickeyhex
+          description: Registered public key hex
+        contractorEmail:
           type: string
-          example: ACTIVE_10DLC_BOUND
-
-    DispatchLockRequest:
+          title: Contractoremail
+          description: Associated contractor email
+        businessEntity:
+          type: string
+          title: Businessentity
+          description: Associated legal entity
+        registeredAt:
+          type: string
+          title: Registeredat
+          description: ISO registration timestamp
+        verified:
+          type: boolean
+          title: Verified
+          description: Whether cryptographic challenge-response signature was verified
+        message:
+          type: string
+          title: Message
+          description: Human-readable onboarding status message
       type: object
       required:
-        - leadId
-        - territoryZone
-        - slotStartIso
-        - paypalTransactionId
+      - status
+      - kid
+      - publicKeyHex
+      - contractorEmail
+      - businessEntity
+      - registeredAt
+      - verified
+      - message
+      title: BuyerKeyRegistrationResponse
+    BuyerKeyRegistryResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: active
+        count:
+          type: integer
+          title: Count
+        keys:
+          items:
+            $ref: '#/components/schemas/BuyerKeyRecord'
+          type: array
+          title: Keys
+      type: object
+      required:
+      - count
+      - keys
+      title: BuyerKeyRegistryResponse
+    CatalogResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: active
+        currency:
+          type: string
+          title: Currency
+          default: USD
+        trades:
+          items:
+            $ref: '#/components/schemas/TradeService'
+          type: array
+          title: Trades
+      type: object
+      required:
+      - trades
+      title: CatalogResponse
+    CopilotChatRequest:
+      properties:
+        message:
+          type: string
+          title: Message
+        contractor_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractor Name
+          default: Marcus Miller
+        business_entity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Entity
+          default: Miller Custom Flooring LLC
+        trade_vertical:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trade Vertical
+          default: Tile & Custom Flooring
+        area_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Code
+          default: '863'
+        budget_cap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Budget Cap
+          default: 100.0
+        simulate_exhaustion:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Simulate Exhaustion
+          default: false
+      type: object
+      required:
+      - message
+      title: CopilotChatRequest
+    DispatchLockRequest:
       properties:
         leadId:
           type: string
-          example: lead-sarah-jenkins
+          title: Leadid
         territoryZone:
           type: string
-          example: Zone 2 - South Lakeland
+          title: Territoryzone
         slotStartIso:
           type: string
-          example: '2026-10-06T10:00:00-04:00'
+          title: Slotstartiso
         paypalTransactionId:
           type: string
-          example: TXN-PAYPAL-994182
-
-    DispatchLockResponse:
+          title: Paypaltransactionid
       type: object
+      required:
+      - leadId
+      - territoryZone
+      - slotStartIso
+      - paypalTransactionId
+      title: DispatchLockRequest
+    DispatchLockResponse:
       properties:
         success:
           type: boolean
-          example: true
+          title: Success
         slotLockedUntil:
           type: string
-          example: '2026-10-06T11:15:00-04:00'
+          title: Slotlockeduntil
         crewAssigned:
           type: string
-          example: Crew B - Custom Tile Specialist
-
-    ZapierSyncRequest:
-      type: object
-      properties:
-        workflowType:
+          title: Crewassigned
+        territoryZone:
           type: string
-          enum: [a2a_onboarding, homeowner_lead]
-          default: a2a_onboarding
-          example: a2a_onboarding
-        leadId:
-          type: string
-          example: lead-a2a-onboarding
-        customerName:
-          type: string
-          example: Marcus Miller
-        customerPhone:
-          type: string
-          example: '+18635550199'
-        propertyAddress:
-          type: string
-          example: 'Lakeland, FL'
-        depositAmount:
-          type: number
-          example: 89.00
-        paypalTxnId:
-          type: string
-          example: I-AUTONOMOUS-8902
-        contractorName:
-          type: string
-          example: Marcus Miller
-        businessEntity:
-          type: string
-          example: Miller Custom Flooring LLC
-        allocatedDid:
-          type: string
-          example: '+1 (863) 802-6000'
-        tradeVertical:
-          type: string
-          example: Tile & Custom Flooring
-        monthlySubscriptionFee:
-          type: number
-          example: 89.00
-        paypalSubscriptionId:
-          type: string
-          example: I-AUTONOMOUS-8902
-        contractorEmail:
-          type: string
-          example: marcus@millercustomfloors.com
-
-    ZapierSyncResponse:
-      type: object
-      properties:
-        jobberQuoteId:
-          type: string
-          example: JOB-ROUTING-A91B4C
-        qboDraftInvoiceId:
-          type: string
-          example: QBO-EXP-44021A
-        googleCalendarEventId:
-          type: string
-          example: gcal_briefing_6602938144
-        status:
-          type: string
-          example: COMPLETED
-        workflowType:
-          type: string
-          example: a2a_onboarding
-
-    PayPalOrderCreateRequest:
+          title: Territoryzone
       type: object
       required:
-        - amount
-        - description
+      - success
+      - slotLockedUntil
+      - crewAssigned
+      - territoryZone
+      title: DispatchLockResponse
+    GenerateProofRequest:
+      properties:
+        contractor_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractor Id
+          default: contractor_marcus_863
+        business_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Name
+          default: Miller Custom Flooring LLC
+        monthly_cap_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Monthly Cap Usd
+          default: 100.0
+        agreed_price_usd:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Agreed Price Usd
+          default: 79.99
+        nonce:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nonce
+      type: object
+      title: GenerateProofRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    PayPalOrderCreateRequest:
       properties:
         amount:
           type: number
-          example: 89.00
+          title: Amount
         currency:
           type: string
+          title: Currency
           default: USD
-          example: USD
         description:
           type: string
-          example: FieldSmith Pro - Voice Screener Subscription
+          title: Description
         custom_id:
-          type: string
-          example: contractor-solo-buyer-01
-
-    PayPalOrderResponse:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Custom Id
       type: object
+      required:
+      - amount
+      - description
+      title: PayPalOrderCreateRequest
+    PayPalOrderResponse:
       properties:
         order_id:
           type: string
-          example: ORDER-MOCK-449102
+          title: Order Id
         status:
           type: string
-          example: CREATED
+          title: Status
         approval_url:
-          type: string
-          nullable: true
-          example: https://www.sandbox.paypal.com/checkoutnow?token=ORDER-MOCK-449102
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Approval Url
         mock_mode:
           type: boolean
-          example: true
-
+          title: Mock Mode
+      type: object
+      required:
+      - order_id
+      - status
+      - mock_mode
+      title: PayPalOrderResponse
+    ProvisionRequest:
+      properties:
+        subscriptionId:
+          type: string
+          title: Subscriptionid
+        contractorEmail:
+          type: string
+          title: Contractoremail
+        areaCode:
+          type: string
+          title: Areacode
+          default: '863'
+        simulateExhaustion:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Simulateexhaustion
+          default: false
+      type: object
+      required:
+      - subscriptionId
+      - contractorEmail
+      title: ProvisionRequest
+    ProvisionResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+        assignedDid:
+          type: string
+          title: Assigneddid
+        carrier:
+          type: string
+          title: Carrier
+        routingState:
+          type: string
+          title: Routingstate
+        subscriptionId:
+          type: string
+          title: Subscriptionid
+        failoverTriggered:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Failovertriggered
+          default: false
+        region:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region
+        retainedFromSubscription:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Retainedfromsubscription
+      type: object
+      required:
+      - status
+      - assignedDid
+      - carrier
+      - routingState
+      - subscriptionId
+      title: ProvisionResponse
+    QuoteRequest:
+      properties:
+        tradeId:
+          type: string
+          title: Tradeid
+        squareFootage:
+          type: number
+          title: Squarefootage
+        materialType:
+          type: string
+          title: Materialtype
+        postalCode:
+          type: string
+          title: Postalcode
+      type: object
+      required:
+      - tradeId
+      - squareFootage
+      - materialType
+      - postalCode
+      title: QuoteRequest
+    QuoteResponse:
+      properties:
+        tradeId:
+          type: string
+          title: Tradeid
+        estimatedLaborRange:
+          type: string
+          title: Estimatedlaborrange
+        wasteAllowanceSqFt:
+          type: number
+          title: Wasteallowancesqft
+        requiredDeposit:
+          type: number
+          title: Requireddeposit
+        depositPolicy:
+          type: string
+          title: Depositpolicy
+      type: object
+      required:
+      - tradeId
+      - estimatedLaborRange
+      - wasteAllowanceSqFt
+      - requiredDeposit
+      - depositPolicy
+      title: QuoteResponse
+    RecurrenceType:
+      type: string
+      enum:
+      - one_time
+      - monthly
+      - annual
+      title: RecurrenceType
+    RunBuyerAgentRequest:
+      properties:
+        transport:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transport
+          default: http
+        contractor_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractor Name
+          default: Marcus Miller
+        business_entity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Entity
+          default: Miller Custom Flooring LLC
+        contractor_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractor Email
+          default: marcus@millercustomfloors.com
+        trade_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trade Id
+          default: flooring-tile
+        budget_cap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Budget Cap
+          default: 100.0
+        area_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Code
+          default: '863'
+        simulate_exhaustion:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Simulate Exhaustion
+          default: false
+        webhook_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Webhook Url
+        reset_ledger:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Reset Ledger
+          default: false
+      type: object
+      title: RunBuyerAgentRequest
+    SpendingMandateRequest:
+      properties:
+        buyerAgentId:
+          type: string
+          title: Buyeragentid
+        amount:
+          type: number
+          title: Amount
+        recurrence:
+          $ref: '#/components/schemas/RecurrenceType'
+        category:
+          type: string
+          title: Category
+        monthlyBudgetCap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Monthlybudgetcap
+          default: 100.0
+        contractorEmail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractoremail
+      type: object
+      required:
+      - buyerAgentId
+      - amount
+      - recurrence
+      - category
+      title: SpendingMandateRequest
+    SpendingMandateResponse:
+      properties:
+        approved:
+          type: boolean
+          title: Approved
+        authorizedAmount:
+          type: number
+          title: Authorizedamount
+        monthlyCapRemaining:
+          type: number
+          title: Monthlycapremaining
+        mandateProofHash:
+          type: string
+          title: Mandateproofhash
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        counterOfferAvailable:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Counterofferavailable
+          default: false
+        counterOfferTier:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counteroffertier
+        counterOfferAmount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Counterofferamount
+        counterOfferPlanId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counterofferplanid
+        counterOfferTierId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counteroffertierid
+        counterOfferMandateHash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counteroffermandatehash
+        tierId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tierid
+        ap2IntentMandate:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Ap2Intentmandate
+        signatureAlgorithm:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Signaturealgorithm
+          default: Ed25519
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        activeSubscriptionId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Activesubscriptionid
+      type: object
+      required:
+      - approved
+      - authorizedAmount
+      - monthlyCapRemaining
+      - mandateProofHash
+      title: SpendingMandateResponse
+    TradeService:
+      properties:
+        id:
+          type: string
+          title: Id
+        title:
+          type: string
+          title: Title
+        monthlySubscription:
+          type: number
+          title: Monthlysubscription
+        depositRange:
+          type: string
+          title: Depositrange
+        description:
+          type: string
+          title: Description
+      type: object
+      required:
+      - id
+      - title
+      - monthlySubscription
+      - depositRange
+      - description
+      title: TradeService
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    VerifyTamperRequest:
+      properties:
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        signature:
+          type: string
+          title: Signature
+      type: object
+      required:
+      - payload
+      - signature
+      title: VerifyTamperRequest
+    ZapierSyncRequest:
+      properties:
+        workflowType:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Workflowtype
+        leadId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Leadid
+          default: lead-a2a-onboarding
+        customerName:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Customername
+          default: Marcus Miller
+        customerPhone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Customerphone
+          default: +1 (863) 267-8902
+        propertyAddress:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Propertyaddress
+          default: Lakeland, FL
+        depositAmount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Depositamount
+          default: 79.99
+        paypalTxnId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paypaltxnid
+          default: I-AUTONOMOUS-8902
+        contractorName:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractorname
+          default: Marcus Miller
+        businessEntity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Businessentity
+          default: Miller Custom Flooring LLC
+        allocatedDid:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Allocateddid
+          default: +1 (863) 267-8902
+        tradeVertical:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tradevertical
+          default: Tile & Custom Flooring
+        monthlySubscriptionFee:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Monthlysubscriptionfee
+          default: 79.99
+        paypalSubscriptionId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paypalsubscriptionid
+          default: I-AUTONOMOUS-8902
+        contractorEmail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contractoremail
+          default: marcus@millercustomfloors.com
+        mandateProofHash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mandateproofhash
+        webhookUrl:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Webhookurl
+        dryRun:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Dryrun
+          default: true
+      type: object
+      title: ZapierSyncRequest
+    ZapierSyncResponse:
+      properties:
+        jobberQuoteId:
+          type: string
+          title: Jobberquoteid
+        qboDraftInvoiceId:
+          type: string
+          title: Qbodraftinvoiceid
+        googleCalendarEventId:
+          type: string
+          title: Googlecalendareventid
+        status:
+          type: string
+          title: Status
+        workflowType:
+          type: string
+          title: Workflowtype
+          default: a2a_onboarding
+        jobberPayload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Jobberpayload
+        qboPayload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Qbopayload
+        webhookDeliveryId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Webhookdeliveryid
+        webhookDispatched:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Webhookdispatched
+          default: false
+        webhookStatusCode:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Webhookstatuscode
+      type: object
+      required:
+      - jobberQuoteId
+      - qboDraftInvoiceId
+      - googleCalendarEventId
+      - status
+      title: ZapierSyncResponse
+servers:
+- url: https://api.fieldsmith.pro
+  description: Production Cloud Gateway (Google Cloud us-east1)
+- url: http://localhost:8001
+  description: Local Sandbox Development Server

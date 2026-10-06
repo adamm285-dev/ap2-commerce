@@ -655,6 +655,19 @@ def list_buyer_keys(db_path: Optional[Path] = None) -> Dict[str, str]:
         conn.close()
 
 
+def list_buyer_key_records(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Returns all registered buyer key records including metadata."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT kid, public_key_hex, contractor_email, business_name, registered_at FROM buyer_keys ORDER BY registered_at DESC"
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 # --- Contractor Budgets & Ledger Storage Operations ---
 
 def set_contractor_cap(contractor_email: str, cap: float, db_path: Optional[Path] = None) -> None:

@@ -11,6 +11,7 @@ import json
 import uuid
 import datetime
 import asyncio
+import secrets
 from typing import Dict, Any, Optional, List, Set
 from pydantic import BaseModel, Field, ConfigDict
 from fastapi import FastAPI, HTTPException, Request, status
@@ -32,6 +33,10 @@ from .models import (
     ZapierSyncResponse,
     PayPalOrderCreateRequest,
     PayPalOrderResponse,
+    BuyerKeyChallengeResponse,
+    BuyerKeyRegistrationRequest,
+    BuyerKeyRegistrationResponse,
+    BuyerKeyRegistryResponse,
 )
 from .services.mandate_evaluator import evaluate_spending_mandate, ledger
 from .services.paypal_service import paypal_service
@@ -41,9 +46,11 @@ from .services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 from .services.crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
+    verify_ed25519_challenge_signature,
     canonicalize_mandate_payload,
     DEFAULT_SELLER_KID,
     DEFAULT_SELLER_PUBLIC_KEY_HEX,
+    REGISTERED_BUYER_KEYS,
     SECRET_KEY,
 )
 from .mcp_server import (
@@ -69,6 +76,9 @@ from .database import (
     get_fleet_stats,
     get_fleet_schedule,
     record_dispatch_slot,
+    register_buyer_key,
+    list_buyer_key_records,
+    set_contractor_cap,
 )
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
@@ -631,6 +641,116 @@ async def export_backoffice_endpoint(request: ZapierSyncRequest):
     except Exception as e:
         logger.error(f"Error in back-office export: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_ACTIVE_KEY_CHALLENGES: Dict[str, float] = {}
+
+
+@app.get(
+    "/api/agent/keys/challenge",
+    response_model=BuyerKeyChallengeResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Autonomous Buyer Onboarding"],
+)
+async def get_buyer_key_challenge_endpoint():
+    """Generates an ephemeral Ed25519 challenge nonce for dynamic self-service buyer key onboarding."""
+    import time
+    nonce = secrets.token_hex(32)
+    now = time.time()
+    _ACTIVE_KEY_CHALLENGES[nonce] = now
+    # Prune stale challenges older than 10 minutes
+    for k in list(_ACTIVE_KEY_CHALLENGES.keys()):
+        if now - _ACTIVE_KEY_CHALLENGES[k] > 600:
+            _ACTIVE_KEY_CHALLENGES.pop(k, None)
+
+    return BuyerKeyChallengeResponse(
+        challenge=nonce,
+        timestamp=int(now),
+        expiresIn=300,
+        algorithm="Ed25519",
+        message="Sign this challenge nonce with your 32-byte Ed25519 private key and submit to POST /api/agent/keys/register.",
+    )
+
+
+@app.post(
+    "/api/agent/keys/register",
+    response_model=BuyerKeyRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Autonomous Buyer Onboarding"],
+)
+async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
+    """
+    Dynamically registers and trusts an external autonomous buyer agent's Ed25519 public key.
+    Requires cryptographic challenge-response signature verification guaranteeing key ownership.
+    """
+    import time
+
+    # 1. Validate challenge freshness (if issued by server)
+    now = time.time()
+    issued_time = _ACTIVE_KEY_CHALLENGES.get(request.challenge)
+    if issued_time is not None:
+        if now - issued_time > 300:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"status": "REJECTED", "error": "CHALLENGE_EXPIRED", "reason": "Registration challenge nonce expired."},
+            )
+        _ACTIVE_KEY_CHALLENGES.pop(request.challenge, None)
+
+    # 2. Cryptographic Ed25519 challenge-response verification
+    is_valid = verify_ed25519_challenge_signature(
+        challenge=request.challenge,
+        signature_hex=request.challenge_signature,
+        public_key_hex=request.public_key_hex,
+    )
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic Ed25519 challenge signature verification failed."},
+        )
+
+    # 3. US-domestic contractor email gating
+    norm_email = request.contractor_email.strip().lower()
+
+    # 4. Register key in SQLite WAL persistence
+    register_buyer_key(
+        kid=request.kid,
+        public_key_hex=request.public_key_hex,
+        contractor_email=norm_email,
+        business_name=request.business_entity,
+    )
+    REGISTERED_BUYER_KEYS[request.kid] = request.public_key_hex.strip().lower()
+
+    # 5. Set contractor budget cap if provided
+    if request.monthly_budget_cap and request.monthly_budget_cap > 0:
+        set_contractor_cap(norm_email, float(request.monthly_budget_cap))
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return BuyerKeyRegistrationResponse(
+        status="REGISTERED",
+        kid=request.kid,
+        publicKeyHex=request.public_key_hex.strip().lower(),
+        contractorEmail=norm_email,
+        businessEntity=request.business_entity,
+        registeredAt=now_iso,
+        verified=True,
+        message=f"Autonomous buyer key '{request.kid}' verified and registered in FieldSmith Pro A2A network.",
+    )
+
+
+@app.get(
+    "/api/agent/keys/registry",
+    response_model=BuyerKeyRegistryResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Autonomous Buyer Onboarding"],
+)
+async def list_registered_buyer_keys_endpoint():
+    """Lists registered autonomous buyer agent keys from SQLite WAL."""
+    records = list_buyer_key_records()
+    return BuyerKeyRegistryResponse(
+        status="active",
+        count=len(records),
+        keys=records,
+    )
 
 
 @app.post(

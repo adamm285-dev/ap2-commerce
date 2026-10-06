@@ -209,3 +209,59 @@ class PayPalOrderResponse(BaseModel):
     status: str
     approval_url: Optional[str] = None
     mock_mode: bool
+
+
+# --- Dynamic Buyer Key Onboarding Models ---
+class BuyerKeyChallengeResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    challenge: str = Field(description="Cryptographically random nonce to sign")
+    timestamp: int = Field(description="Unix timestamp of challenge creation")
+    expires_in: int = Field(default=300, alias="expiresIn", description="Challenge lifetime in seconds")
+    algorithm: str = Field(default="Ed25519", description="Expected cryptographic signature algorithm")
+    message: str = Field(description="Instructions for autonomous buyer onboarding")
+
+
+class BuyerKeyRegistrationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    kid: str = Field(min_length=3, max_length=64, description="Unique key identifier for buyer agent")
+    public_key_hex: str = Field(alias="publicKeyHex", min_length=64, max_length=64, description="64-hex-character Ed25519 public key")
+    contractor_email: str = Field(alias="contractorEmail", description="Contractor email address (US domestic)")
+    business_entity: str = Field(alias="businessEntity", min_length=2, max_length=128, description="Verified legal business entity name")
+    challenge: str = Field(min_length=10, description="Challenge string provided by /api/agent/keys/challenge")
+    challenge_signature: str = Field(alias="challengeSignature", min_length=128, max_length=128, description="128-hex-character Ed25519 challenge signature")
+    monthly_budget_cap: Optional[float] = Field(default=100.0, alias="monthlyBudgetCap", description="Monthly spending cap in USD")
+    allowed_tiers: Optional[List[str]] = Field(default=["solo-starter", "fieldsmith-pro"], alias="allowedTiers", description="Permitted subscription tiers")
+
+
+class BuyerKeyRegistrationResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = Field(description="Registration outcome status (REGISTERED / REJECTED)")
+    kid: str = Field(description="Key identifier")
+    public_key_hex: str = Field(alias="publicKeyHex", description="Registered public key hex")
+    contractor_email: str = Field(alias="contractorEmail", description="Associated contractor email")
+    business_entity: str = Field(alias="businessEntity", description="Associated legal entity")
+    registered_at: str = Field(alias="registeredAt", description="ISO registration timestamp")
+    verified: bool = Field(description="Whether cryptographic challenge-response signature was verified")
+    message: str = Field(description="Human-readable onboarding status message")
+
+
+class BuyerKeyRecord(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    kid: str
+    public_key_hex: str = Field(alias="publicKeyHex")
+    contractor_email: Optional[str] = Field(default=None, alias="contractorEmail")
+    business_name: Optional[str] = Field(default=None, alias="businessName")
+    registered_at: str = Field(alias="registeredAt")
+
+
+class BuyerKeyRegistryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = "active"
+    count: int
+    keys: List[BuyerKeyRecord]
+

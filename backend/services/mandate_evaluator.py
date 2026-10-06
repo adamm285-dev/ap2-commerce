@@ -36,6 +36,7 @@ ALLOWED_CATEGORIES = {
     "contractor-dispatch-ai",
     "telephony-screener",
     "telephony-ai-screener",
+    "ai-voice-screener",
     "trade-software",
     "job-deposit",
     "emergency-towing",

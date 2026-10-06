@@ -26,6 +26,8 @@ from backend.server import app
 from backend.services.crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
+    generate_ed25519_keypair,
+    sign_ed25519_message,
 )
 from backend.services.telecom_router import allocate_dynamic_did
 from backend.services.backoffice.jobber_exporter import jobber_exporter
@@ -288,9 +290,57 @@ def run_judge_audit():
     print_pass("Bryntum Territory Dispatch: Locked 75-min window for Crew B (HTTP 200)")
 
     # -------------------------------------------------------------------------
+    # CHECK 9: Dynamic Self-Service Buyer Key Onboarding & Challenge Verification
+    # -------------------------------------------------------------------------
+    print_step(9, "Dynamic Self-Service Buyer Key Onboarding (APIMatic / AP2 Challenge-Response)")
+    chal_res = client.get("/api/agent/keys/challenge")
+    assert chal_res.status_code == 200
+    challenge_nonce = chal_res.json()["challenge"]
+    assert len(challenge_nonce) == 64
+    print_pass(f"Ephemeral Challenge Nonce: {challenge_nonce[:16]}... (Algorithm: Ed25519, TTL: 300s)")
+
+    # Generate new keypair and sign challenge
+    new_priv, new_pub = generate_ed25519_keypair()
+    sig = sign_ed25519_message(challenge_nonce, new_priv)
+
+    # Register external autonomous buyer key
+    reg_res = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "judge-audit-buyer-v1",
+            "publicKeyHex": new_pub,
+            "contractorEmail": "judge@fieldsmith.pro",
+            "businessEntity": "Hackathon Evaluation Crew LLC",
+            "challenge": challenge_nonce,
+            "challengeSignature": sig,
+            "monthlyBudgetCap": 150.0,
+        },
+    )
+    assert reg_res.status_code == 201
+    assert reg_res.json().get("status") == "REGISTERED"
+    assert reg_res.json().get("verified") is True
+    print_pass(f"Cryptographic Challenge Verification: Key 'judge-audit-buyer-v1' Enrolled (Ed25519 Verified)")
+
+    # Anti-tamper challenge verification: tampered signature must be rejected
+    bad_sig = "0" * 128
+    tamper_res = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "tampered-buyer-agent",
+            "publicKeyHex": new_pub,
+            "contractorEmail": "hacker@evil.com",
+            "businessEntity": "Forged Agent LLC",
+            "challenge": challenge_nonce,
+            "challengeSignature": bad_sig,
+        },
+    )
+    assert tamper_res.status_code == 401
+    print_pass("Anti-Tamper Challenge Guard: Forged/Tampered signature REJECTED (HTTP 401 Unauthorized)")
+
+    # -------------------------------------------------------------------------
     # FINAL VERDICT
     # -------------------------------------------------------------------------
-    print_header("AUDIT SUMMARY: 8/8 CHECKS PASSED (100% GREEN)")
+    print_header("AUDIT SUMMARY: 9/9 CHECKS PASSED (100% GREEN)")
     print(f"{BOLD}{GREEN}ALL OPERATIONAL INVARIANTS, CRYPTOGRAPHIC PROOFS, AND PAYMENT CONTRACTS VERIFIED.{RESET}\n")
 
 if __name__ == "__main__":

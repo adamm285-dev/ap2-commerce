@@ -284,3 +284,35 @@ def verify_mandate_proof(
         pass
 
     return False, "SIGNATURE_MISMATCH"
+
+
+def verify_ed25519_challenge_signature(
+    challenge: str,
+    signature_hex: str,
+    public_key_hex: str,
+) -> bool:
+    """
+    Verifies an Ed25519 challenge signature guaranteeing the caller possesses
+    the private key corresponding to public_key_hex.
+    """
+    try:
+        if not challenge or not signature_hex or not public_key_hex:
+            return False
+        clean_pub = public_key_hex.strip()
+        clean_sig = signature_hex.strip()
+        if len(clean_pub) != 64 or len(clean_sig) != 128:
+            return False
+        pub_bytes = bytes.fromhex(clean_pub)
+        sig_bytes = bytes.fromhex(clean_sig)
+        verifier = ed25519.Ed25519PublicKey.from_public_bytes(pub_bytes)
+        verifier.verify(sig_bytes, challenge.encode("utf-8"))
+        return True
+    except Exception:
+        return False
+
+
+def sign_ed25519_message(message: str, private_key_hex: str) -> str:
+    """Signs an arbitrary UTF-8 string with a 32-byte Ed25519 private key, returning 128-hex signature."""
+    priv = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex.strip()))
+    return priv.sign(message.encode("utf-8")).hex()
+

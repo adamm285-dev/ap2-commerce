@@ -920,6 +920,119 @@ async def create_paypal_order(request: PayPalOrderCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post(
+    "/api/paypal/simulate-approval/{subscription_id}",
+    tags=["PayPal Orders"],
+)
+async def simulate_paypal_approval(subscription_id: str):
+    """
+    Simulates buyer approval for a PayPal Sandbox subscription.
+    Transitions status from APPROVAL_PENDING to ACTIVE and marks PayPal Vault as VAULT_BOUND.
+    Strictly restricted to sandbox and mock environments.
+    """
+    if (
+        getattr(settings, "paypal_environment", "sandbox") != "sandbox"
+        and not getattr(settings, "mock_external_apis", False)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sandbox approval simulation is strictly restricted to sandbox and mock environments.",
+        )
+
+    sub_id = subscription_id.strip()
+    from .agents.seller_agent import (
+        _COMPLETED_SUBSCRIPTIONS,
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+        reconcile_contractor_ledger,
+        resolve_tier_from_paypal_plan,
+    )
+
+    sub_record = _COMPLETED_SUBSCRIPTIONS.get(sub_id)
+    if not sub_record:
+        for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+            if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+                sub_record = v
+                sub_id = v.get("subscription_id")
+                break
+
+    if not sub_record:
+        try:
+            remote_sub = await paypal_service.verify_subscription(sub_id)
+            if remote_sub and not remote_sub.get("mock_mode"):
+                tier_id, rate = resolve_tier_from_paypal_plan(remote_sub.get("plan_id"))
+                subscriber_data = remote_sub.get("subscriber") or {}
+                sub_record = {
+                    "subscription_id": sub_id,
+                    "status": "ACTIVE",
+                    "contractor_email": subscriber_data.get("email_address", "marcus@millercustomfloors.com"),
+                    "tier_id": tier_id,
+                    "agreed_monthly_rate": rate,
+                    "plan_id": remote_sub.get("plan_id"),
+                    "paypal_vault_status": "VAULT_BOUND",
+                    "vault_billing_authorized": True,
+                    "vault_customer_present": False,
+                }
+                _COMPLETED_SUBSCRIPTIONS[sub_id] = sub_record
+        except Exception as e:
+            logger.warning(f"Could not verify remote PayPal subscription {sub_id} during simulation: {e}")
+
+    if not sub_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Subscription '{sub_id}' does not exist in registry.",
+        )
+
+    sub_record["status"] = "ACTIVE"
+    sub_record["paypal_vault_status"] = "VAULT_BOUND"
+    sub_record["vault_billing_authorized"] = True
+    sub_record["vault_customer_present"] = False
+    sub_record["next_action"] = {
+        "type": "tool_call",
+        "tool": "provision_telecom_line",
+        "parameters": {
+            "subscription_id": sub_id,
+            "contractor_email": sub_record.get("contractor_email"),
+            "area_code": "863",
+        },
+    }
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = sub_record
+
+    email = sub_record.get("contractor_email")
+    if email:
+        norm_email = email.strip().lower()
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+
+        replaces_id = sub_record.get("replaces_subscription_id")
+        if replaces_id and replaces_id in _COMPLETED_SUBSCRIPTIONS:
+            old_sub = _COMPLETED_SUBSCRIPTIONS[replaces_id]
+            if isinstance(old_sub, dict):
+                old_sub["status"] = "REPLACED"
+                old_sub["replaced_by"] = sub_id
+                old_sub.pop("pending_replacement", None)
+                old_sub["vault_billing_authorized"] = False
+                _COMPLETED_SUBSCRIPTIONS[replaces_id] = old_sub
+
+        reconcile_contractor_ledger(norm_email)
+
+    for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+        if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+            v["status"] = "ACTIVE"
+            v["paypal_vault_status"] = "VAULT_BOUND"
+            v["vault_billing_authorized"] = True
+            v["vault_customer_present"] = False
+            v["next_action"] = sub_record["next_action"]
+
+    logger.info(f"[PayPal Sandbox] Successfully simulated buyer approval for {sub_id}. Status -> ACTIVE.")
+    return {
+        "status": "ACTIVE",
+        "subscription_id": sub_id,
+        "paypal_vault_status": "VAULT_BOUND",
+        "vault_billing_authorized": True,
+        "message": f"Sandbox buyer approval simulated for subscription {sub_id}. Status transitioned to ACTIVE.",
+        "next_action": sub_record["next_action"],
+    }
+
+
 @app.post("/api/paypal/webhook", tags=["PayPal Webhooks"])
 async def paypal_webhook_receiver(request: Request):
     """Receives and processes PayPal subscription and order webhooks with signature verification."""

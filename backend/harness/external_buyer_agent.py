@@ -319,6 +319,49 @@ class ExternalBuyerAgent:
         self.log(f"   PayPal Vault Status:   {purchase_resp.get('paypal_vault_status', 'VAULT_BOUND')}")
         self.log(f"   Monthly Billing Rate:  ${monthly_price:.2f}/mo (Auto-debit)\n")
 
+        # Step 6b: If sub_status == "APPROVAL_PENDING" (live PayPal Sandbox flow), simulate buyer approval
+        if sub_status == "APPROVAL_PENDING":
+            self.log(f"⏳ [Step 6b: Simulating Sandbox Buyer Approval in PayPal Sandbox for {subscription_id}]")
+            approval_simulated = False
+            if self.transport == "http" and self.server_url:
+                base_url = self.server_url.replace("/a2a/mcp", "").replace("/mcp", "")
+                sim_url = f"{base_url}/api/paypal/simulate-approval/{subscription_id}"
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as sim_client:
+                        sim_resp = await sim_client.post(sim_url)
+                        if sim_resp.status_code == 200:
+                            sim_data = sim_resp.json()
+                            sub_status = sim_data.get("status", "ACTIVE")
+                            approval_simulated = True
+                            self.log(f"   ✓ Sandbox approval simulated via HTTP ({subscription_id} -> ACTIVE)\n")
+                        else:
+                            self.log(f"   ⚠️ Sandbox approval simulation HTTP returned {sim_resp.status_code}: {sim_resp.text}")
+                except Exception as e:
+                    self.log(f"   ⚠️ Sandbox approval simulation HTTP error: {e}")
+
+            if not approval_simulated:
+                try:
+                    from ..agents.seller_agent import (
+                        _COMPLETED_SUBSCRIPTIONS,
+                        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+                        reconcile_contractor_ledger,
+                    )
+                    if subscription_id in _COMPLETED_SUBSCRIPTIONS:
+                        rec = _COMPLETED_SUBSCRIPTIONS[subscription_id]
+                        if isinstance(rec, dict):
+                            rec["status"] = "ACTIVE"
+                            rec["paypal_vault_status"] = "VAULT_BOUND"
+                            rec["vault_billing_authorized"] = True
+                            rec["vault_customer_present"] = False
+                            _COMPLETED_SUBSCRIPTIONS[subscription_id] = rec
+                            if self.contractor_email:
+                                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[self.contractor_email.strip().lower()] = subscription_id
+                                reconcile_contractor_ledger(self.contractor_email)
+                            sub_status = "ACTIVE"
+                            self.log(f"   ✓ Sandbox approval simulated via in-memory registry ({subscription_id} -> ACTIVE)\n")
+                except Exception as e:
+                    self.log(f"   ⚠️ In-process approval simulation error: {e}")
+
         # Step 7: Telecom Line Allocation
         self.log("📞 [Step 7: KYC Telecom Line Allocation (provision_telecom_line)]")
         prov = await self._call_tool(

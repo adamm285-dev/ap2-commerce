@@ -1008,3 +1008,37 @@ def test_edge_case_suspended_then_activated_recommits_spend():
     assert ledger.get_remaining_budget(contractor_email=email) == 50.01
 
 
+def test_simulate_paypal_approval_endpoint():
+    """Verifies that /api/paypal/simulate-approval/{sub_id} transitions APPROVAL_PENDING to ACTIVE."""
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    test_sub_id = "I-SIM-APPROVAL-TEST-01"
+    test_email = "sim_test@contractorhub.io"
+    _COMPLETED_SUBSCRIPTIONS[test_sub_id] = {
+        "subscription_id": test_sub_id,
+        "status": "APPROVAL_PENDING",
+        "contractor_email": test_email,
+        "tier_id": "fieldsmith-pro",
+        "agreed_monthly_rate": 79.99,
+        "paypal_vault_status": "PENDING_APPROVAL",
+        "vault_billing_authorized": False,
+        "vault_customer_present": True,
+    }
+
+    # Simulate approval
+    res = client.post(f"/api/paypal/simulate-approval/{test_sub_id}")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ACTIVE"
+    assert data["subscription_id"] == test_sub_id
+    assert data["paypal_vault_status"] == "VAULT_BOUND"
+    assert data["vault_billing_authorized"] is True
+
+    # Check updated record in registry
+    assert _COMPLETED_SUBSCRIPTIONS[test_sub_id]["status"] == "ACTIVE"
+    assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(test_email) == test_sub_id
+
+    # 404 for non-existent subscription
+    res_404 = client.post("/api/paypal/simulate-approval/I-NON-EXISTENT-XYZ")
+    assert res_404.status_code == 404
+
+

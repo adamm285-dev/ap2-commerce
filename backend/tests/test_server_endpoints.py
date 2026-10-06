@@ -1009,8 +1009,10 @@ def test_edge_case_suspended_then_activated_recommits_spend():
 
 
 def test_simulate_paypal_approval_endpoint():
-    """Verifies that /api/paypal/simulate-approval/{sub_id} transitions APPROVAL_PENDING to ACTIVE."""
+    """Verifies that /api/paypal/simulate-approval/{sub_id} enforces admin auth, sandbox gating, and transitions APPROVAL_PENDING to ACTIVE."""
     from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+    from ..config import settings
+
     test_sub_id = "I-SIM-APPROVAL-TEST-01"
     test_email = "sim_test@contractorhub.io"
     _COMPLETED_SUBSCRIPTIONS[test_sub_id] = {
@@ -1024,8 +1026,62 @@ def test_simulate_paypal_approval_endpoint():
         "vault_customer_present": True,
     }
 
-    # Simulate approval
-    res = client.post(f"/api/paypal/simulate-approval/{test_sub_id}")
+    admin_key = (getattr(settings, "admin_api_key", None) or "dev-admin-secret-key").strip()
+
+    # 1. Unauthenticated request is rejected with 401
+    res_unauth = client.post(f"/api/paypal/simulate-approval/{test_sub_id}")
+    assert res_unauth.status_code == 401
+    assert "Admin authorization required" in res_unauth.json()["detail"]
+
+    # 2. dev-admin-secret-key and wrong keys are rejected with 401
+    res_dev = client.post(
+        f"/api/paypal/simulate-approval/{test_sub_id}",
+        headers={"X-Admin-Key": "dev-admin-secret-key"},
+    )
+    assert res_dev.status_code == 401
+    assert "Admin authorization required" in res_dev.json()["detail"]
+
+    res_wrong = client.post(
+        f"/api/paypal/simulate-approval/{test_sub_id}",
+        headers={"X-Admin-Key": "wrong-secret-token"},
+    )
+    assert res_wrong.status_code == 401
+    assert "Admin authorization required" in res_wrong.json()["detail"]
+
+    # 3. Server with unconfigured ADMIN_API_KEY returns 500
+    orig_admin = settings.admin_api_key
+    try:
+        settings.admin_api_key = ""
+        res_no_key = client.post(
+            f"/api/paypal/simulate-approval/{test_sub_id}",
+            headers={"X-Admin-Key": "some-key"},
+        )
+        assert res_no_key.status_code == 500
+        assert "ADMIN_API_KEY is not configured" in res_no_key.json()["detail"]
+    finally:
+        settings.admin_api_key = orig_admin
+
+    # 4. Non-sandbox environment is rejected with 403 Forbidden
+    orig_url = settings.paypal_base_url
+    orig_mock = settings.mock_external_apis
+    try:
+        settings.paypal_base_url = "https://api-m.paypal.com"
+        settings.mock_external_apis = False
+        res_prod = client.post(
+            f"/api/paypal/simulate-approval/{test_sub_id}",
+            headers={"X-Admin-Key": admin_key},
+        )
+        assert res_prod.status_code == 403
+        assert "Sandbox approval simulation is strictly restricted" in res_prod.json()["detail"]
+    finally:
+        settings.paypal_base_url = orig_url
+        settings.mock_external_apis = orig_mock
+
+    # 5. Valid admin key + sandbox environment successfully approves
+    res = client.post(
+        f"/api/paypal/simulate-approval/{test_sub_id}",
+        headers={"X-Admin-Key": admin_key},
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "ACTIVE"
@@ -1037,8 +1093,11 @@ def test_simulate_paypal_approval_endpoint():
     assert _COMPLETED_SUBSCRIPTIONS[test_sub_id]["status"] == "ACTIVE"
     assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(test_email) == test_sub_id
 
-    # 404 for non-existent subscription
-    res_404 = client.post("/api/paypal/simulate-approval/I-NON-EXISTENT-XYZ")
+    # 6. 404 for non-existent subscription with valid admin key
+    res_404 = client.post(
+        "/api/paypal/simulate-approval/I-NON-EXISTENT-XYZ",
+        headers={"X-Admin-Key": admin_key},
+    )
     assert res_404.status_code == 404
 
 

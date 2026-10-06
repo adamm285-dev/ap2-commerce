@@ -924,16 +924,43 @@ async def create_paypal_order(request: PayPalOrderCreateRequest):
     "/api/paypal/simulate-approval/{subscription_id}",
     tags=["PayPal Orders"],
 )
-async def simulate_paypal_approval(subscription_id: str):
+async def simulate_paypal_approval(subscription_id: str, request: Request):
     """
     Simulates buyer approval for a PayPal Sandbox subscription.
     Transitions status from APPROVAL_PENDING to ACTIVE and marks PayPal Vault as VAULT_BOUND.
-    Strictly restricted to sandbox and mock environments.
+    Strictly restricted to sandbox and mock environments and requires administrative authorization.
     """
-    if (
-        getattr(settings, "paypal_environment", "sandbox") != "sandbox"
-        and not getattr(settings, "mock_external_apis", False)
-    ):
+    # 1. Admin authentication check
+    auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
+    admin_param = request.query_params.get("admin_key")
+
+    provided_token = None
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            provided_token = auth_header[7:].strip()
+        else:
+            provided_token = auth_header.strip()
+    elif admin_param:
+        provided_token = admin_param.strip()
+
+    expected_key = (getattr(settings, "admin_api_key", None) or "").strip()
+    if not expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ADMIN_API_KEY is not configured on the server. Configure a strong ADMIN_API_KEY in .env.",
+        )
+    if not provided_token or provided_token == "dev-admin-secret-key" or provided_token != expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authorization required to simulate approval. Provide valid X-Admin-Key header or admin_key query param.",
+        )
+
+    # 2. Strict Sandbox & Mock Environment Guard
+    is_sandbox = (
+        "sandbox" in (getattr(settings, "paypal_base_url", "") or "").lower()
+        or getattr(settings, "mock_external_apis", False)
+    )
+    if not is_sandbox:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sandbox approval simulation is strictly restricted to sandbox and mock environments.",

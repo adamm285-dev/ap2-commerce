@@ -42,6 +42,7 @@ class ExternalBuyerAgent:
         verbose: bool = True,
         reset_ledger: bool = True,
         simulate_exhaustion: bool = False,
+        admin_api_key: Optional[str] = None,
     ):
         self.transport = transport
         self.server_url = server_url
@@ -55,6 +56,14 @@ class ExternalBuyerAgent:
         self.verbose = verbose
         self.reset_ledger = reset_ledger
         self.simulate_exhaustion = simulate_exhaustion
+        if admin_api_key:
+            self.admin_api_key = admin_api_key
+        else:
+            try:
+                from ..config import settings
+                self.admin_api_key = getattr(settings, "admin_api_key", "")
+            except Exception:
+                self.admin_api_key = os.getenv("ADMIN_API_KEY", "")
         self.request_id = 0
         self.audit_log: List[Dict[str, Any]] = []
 
@@ -155,9 +164,12 @@ class ExternalBuyerAgent:
                 pass
             if self.transport == "http":
                 try:
+                    headers = {}
+                    if getattr(self, "admin_api_key", None):
+                        headers["X-Admin-Key"] = self.admin_api_key
                     async with httpx.AsyncClient(timeout=3.0) as client:
                         reset_url = self.server_url.replace("/mcp", "/api/agent/spending-mandate/reset")
-                        await client.post(reset_url, json={})
+                        await client.post(reset_url, json={}, headers=headers)
                 except Exception:
                     pass
 
@@ -327,8 +339,11 @@ class ExternalBuyerAgent:
                 base_url = self.server_url.replace("/a2a/mcp", "").replace("/mcp", "")
                 sim_url = f"{base_url}/api/paypal/simulate-approval/{subscription_id}"
                 try:
+                    headers = {}
+                    if getattr(self, "admin_api_key", None):
+                        headers["X-Admin-Key"] = self.admin_api_key
                     async with httpx.AsyncClient(timeout=10.0) as sim_client:
-                        sim_resp = await sim_client.post(sim_url)
+                        sim_resp = await sim_client.post(sim_url, headers=headers)
                         if sim_resp.status_code == 200:
                             sim_data = sim_resp.json()
                             sub_status = sim_data.get("status", "ACTIVE")

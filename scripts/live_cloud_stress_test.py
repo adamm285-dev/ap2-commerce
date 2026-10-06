@@ -135,22 +135,28 @@ async def run_scenario_cryptographic_buyer_onboarding(client: httpx.AsyncClient)
 
 async def run_scenario_adversarial_tamper_attack(client: httpx.AsyncClient) -> Dict[str, Any]:
     t0 = time.perf_counter()
-    # Attempt forged registration with corrupted signature
+    # 1. Fetch valid challenge nonce from the server
+    ch_res = await client.get("/api/agent/keys/challenge")
+    if ch_res.status_code != 200:
+        raise RuntimeError(f"Failed to fetch challenge nonce: HTTP {ch_res.status_code}")
+    real_challenge = ch_res.json()["challenge"]
+
+    # 2. Attempt forged registration with valid issued nonce but corrupted Ed25519 signature
     bad_sig = "a" * 128
     res = await client.post(
         "/api/agent/keys/register",
         json={
-            "kid": "malicious-counterfeit-agent",
+            "kid": f"malicious-counterfeit-agent-{int(time.time())}",
             "publicKeyHex": "0" * 64,
             "contractorEmail": "attacker@evil.org",
             "businessEntity": "Scam Telemarketers Group",
-            "challenge": "0" * 64,
+            "challenge": real_challenge,
             "challengeSignature": bad_sig,
         },
     )
     elapsed = time.perf_counter() - t0
-    # Must be rejected with 400 or 401
-    rejected = res.status_code in (400, 401)
+    # Must be strictly rejected with HTTP 401 Unauthorized by cryptographic verifier
+    rejected = res.status_code == 401
     return {
         "scenario": "Adversarial Forged Ed25519 Signature Defense",
         "success": rejected,

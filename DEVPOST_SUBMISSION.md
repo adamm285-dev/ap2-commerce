@@ -50,7 +50,7 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 * **Self-Service Buyer Key Onboarding:** Cryptographic Ed25519 challenge-response enrollment (`GET /api/agent/keys/challenge` & `POST /api/agent/keys/register`) allowing any third-party autonomous agent to register verified public keys with US-domestic contractor identity validation.
 
 ### 2. AG Studio v3.0.0 & AG Grid Operations Fleet Ledger
-* Embedded high-density executive operations deck using `ag-studio-react`, `ag-studio` (v3.0.0), and AG Grid Community with a custom enterprise-grade floating filter engine.
+* Embedded high-density executive operations deck using `ag-studio-react`, `ag-studio` (v3.0.0), and AG Grid Community with floating filters.
 * **Full AG Grid Floating Column Filters:** Dynamic filtering across all columns (Contractor, Plan, MRR, Status, Allocated DID) with `floatingFilter: true` and 34px filter height.
 * **Dynamic SQLite WAL Persistence:** Live asynchronous data refresh (`onRefreshData`) pulling directly from persistent database records with zero hardcoded metrics.
 * **Simulated Live Fleet Telemetry:** Every metric reconciles to the penny across 14 simulated contractor subscriber lines demonstrating 24/7 AG Studio operations across Florida contractor trade verticals:
@@ -80,7 +80,7 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 | Sponsor Track | Prize | How FieldSmith Pro Fulfills the Track Requirements |
 | :--- | :--- | :--- |
 | **Best Use of Agentic Commerce** | **\$5,000** | Autonomous multi-tier negotiation between Buyer Agent and Seller MCP Server, budget cap enforcement with HMAC-SHA256 proofs, interactive anti-tamper testing, delegated PayPal Subscriptions (Vault setup tokens for off-session MIT), and statutory KYC telecom line provisioning. |
-| **Best Use of AG Grid / AG Studio** | **\$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community custom floating filter engine, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling \$13,438.32 ARR GMV across 14 simulated subscriber lines. |
+| **Best Use of AG Grid / AG Studio** | **\$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community with floating filters, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling \$13,438.32 ARR GMV across 14 simulated subscriber lines. |
 | **Best Use of PayPal + AI** | **\$5,000** | Real-time FastMCP 2024-11-05 streamable HTTP/SSE wire protocol inspector, live cloud deployment (`https://api.fieldsmith.pro`), US-domestic NANP gating, and intelligent autonomous counter-offer generation. |
 | **Best Use of Bryntum** | **\$1,000** | Evaluated with Bryntum Scheduler trial build managing 24/7 AI voice screener shifts, 75-minute customer estimate window booking, territory dispatch across 4 zones, and live in-place reactive color state transitions (Orange &rarr; Green &rarr; Blue). |
 | **Best Use of APIMatic** | **\$1,000** | Production-grade OpenAPI 3.1.0 specification with 33 endpoints (`openapi.yaml` and `openapi.json`), `apimatic.json` configuration for multi-language SDK compilation (Python, TypeScript, Go), and self-service Ed25519 cryptographic buyer key challenge-response onboarding. |
@@ -92,7 +92,7 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 * **Protocol Layer:** Model Context Protocol (MCP) standard `2024-11-05` running over dual transports:
   * **Streamable HTTP & SSE Transport:** Standard JSON-RPC 2.0 at `/mcp`, SSE endpoint discovery at `/sse`, `/mcp/sse`, `/api/mcp/sse`, `/m2m/sse`.
   * **Stdio Transport:** Standard I/O loop (`backend/mcp_server.py`) for desktop MCP clients (Claude Desktop, Cursor, external autonomous harnesses).
-* **Payment Rails:** PayPal Subscriptions API (`I-AUTONOMOUS-...`) backed by PayPal Vault setup tokens for off-session, merchant-initiated transactions (MIT).
+* **Payment Rails:** PayPal Subscriptions API (`I-AUTONOMOUS-...`) backed by PayPal Vault setup tokens for off-session, merchant-initiated transactions (MIT). Automated test harnesses (`ExternalBuyerAgent`) simulate sandbox buyer approvals using administrative authorization (`POST /api/paypal/simulate-approval/{id}`), while live users approve via the official PayPal Subscriptions portal.
 * **Policy Enforcement:** Cryptographic spending mandate evaluator generating 64-character HMAC-SHA256 authorization proofs (`X-FieldSmith-Signature`) enforcing strict contractor budget caps.
 * **Anti-Tamper Layer:** Byte-level canonical JSON digest verifier detecting price inflation, budget cap breaches, timestamp expiry, and unauthorized entity modification.
 * **Telecom & ERP Settlement:** Immediate Telnyx 10DLC local DID binding, Jobber GraphQL v2 client/job routing mutations with telephony custom fields, and QuickBooks Online API v3 expense mapping to general ledger Account 6300 (Software & SaaS).

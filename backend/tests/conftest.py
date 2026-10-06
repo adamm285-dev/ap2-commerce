@@ -1,3 +1,9 @@
+import os
+
+# Ensure A2A_MANDATE_SECRET is populated prior to importing backend.config in CI/test environments
+os.environ.setdefault("A2A_MANDATE_SECRET", "ci_test_mandate_secret_key_32_chars_long")
+os.environ.setdefault("MOCK_EXTERNAL_APIS", "true")
+
 import pytest
 from backend.config import settings
 from backend.services.paypal_service import paypal_service

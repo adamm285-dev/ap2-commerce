@@ -10,6 +10,10 @@ jobs:
   backend-test:
     name: Backend Test Suite (FastAPI + Pytest)
     runs-on: ubuntu-latest
+    env:
+      A2A_MANDATE_SECRET: "ci_test_mandate_secret_key_32_chars_long"
+      MOCK_EXTERNAL_APIS: "true"
+      PYTHONPATH: "."
     steps:
       - uses: actions/checkout@v4
 

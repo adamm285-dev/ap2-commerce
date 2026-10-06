@@ -35,7 +35,7 @@ async def test_external_buyer_agent_stdio_success():
     assert result["assigned_did"].startswith("+1863")
     assert result["jobber_routing_id"].startswith("JOB-ROUTING-")
     assert result["qbo_expense_id"].startswith("QBO-EXP-")
-    assert len(result["audit_log"]) == 5  # 5 tools called
+    assert len(result["audit_log"]) == 6  # 6 tools called (catalog, quote, mandate, purchase, provision, zapier)
 
 
 @pytest.mark.asyncio

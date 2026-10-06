@@ -22,8 +22,13 @@ from .config import settings, get_db_path
 logger = logging.getLogger("a2a_database")
 
 _DEFAULT_BUYER_KIDS = {
-    "marcus-buyer-ed25519-v1",
+    "seller-agent-fieldsmith",
+    "buyer-agent-001",
+    "contractor_marcus_863",
+    "buyer-marcus-01",
+    "test-agent-001",
     "fieldsmith-seller-ed25519-v1",
+    "marcus-buyer-ed25519-v1",
     "buyer-agent-01",
     "marcus-buyer",
     "claude-desktop-buyer",
@@ -855,6 +860,8 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM spend_history")
             conn.execute("DELETE FROM processed_webhooks")
             conn.execute("DELETE FROM dispatch_slots")
+            placeholders = ",".join("?" for _ in _DEFAULT_BUYER_KIDS)
+            conn.execute(f"DELETE FROM buyer_keys WHERE kid NOT IN ({placeholders})", list(_DEFAULT_BUYER_KIDS))
     finally:
         conn.close()
 
@@ -1209,11 +1216,36 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
     return seeded
 
 
-def get_fleet_ledger(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def _mask_phone(phone: Optional[str]) -> str:
+    if not phone or phone in ("AWAITING_DEPOSIT", "PENDING_ACTIVATION"):
+        return phone or "AWAITING_DEPOSIT"
+    cleaned = phone.strip()
+    if len(cleaned) >= 10:
+        return f"{cleaned[:8]} ***-{cleaned[-4:]}"
+    return "***-****"
+
+
+def _mask_name(name: Optional[str]) -> str:
+    if not name:
+        return "Contractor"
+    parts = name.strip().split()
+    return " ".join([f"{p[0]}***" for p in parts if p])
+
+
+def _mask_sub_id(sub_id: Optional[str]) -> str:
+    if not sub_id or sub_id in ("AWAITING_PAYPAL_TOKEN", "NONE"):
+        return sub_id or "AWAITING_PAYPAL_TOKEN"
+    if len(sub_id) > 10:
+        return f"{sub_id[:6]}***{sub_id[-4:]}"
+    return f"{sub_id[:3]}***"
+
+
+def get_fleet_ledger(db_path: Optional[Path] = None, mask_pii: bool = False) -> List[Dict[str, Any]]:
     """
     Returns the dynamic enterprise fleet ledger formatted for AG Grid and AG Studio.
     Seeds the 14 fleet records if the database is unpopulated.
     Dynamically elevates Marcus Miller to ACTIVE_STREAMING if a subscription has been provisioned.
+    Masks PII (phone, name, PayPal ID) when mask_pii=True for public endpoints.
     """
     seed_fleet_subscriptions_if_empty(db_path=db_path)
 
@@ -1282,18 +1314,22 @@ def get_fleet_ledger(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
         monthly_amt = float(r.get("agreed_monthly_rate") or 79.99)
         txn_id = details.get("initial_txn_id") or r.get("offer_id") or f"TXN-{sub_id[-4:]}"
 
+        display_name = _mask_name(r.get("contractor_name")) if mask_pii else (r.get("contractor_name") or "Marcus Miller")
+        display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
+        display_did = _mask_phone(assigned_did) if mask_pii else assigned_did
+
         result.append({
             "id": txn_id,
             "timestamp": r.get("updated_at") or r.get("created_at") or "2026-10-02 02:14:22",
             "buyer_agent": details.get("buyer_agent") or f"AutonomousBuyerAgent-{(r.get('contractor_name') or 'Agent').split()[0]}",
-            "contractor_name": r.get("contractor_name") or "Marcus Miller",
+            "contractor_name": display_name,
             "trade_vertical": details.get("trade_vertical") or "Tile & Flooring",
             "service_plan": details.get("service_plan") or f"AI Screener Pro (${monthly_amt:.2f}/mo)",
             "monthly_amount": monthly_amt,
-            "paypal_sub_id": sub_id if is_active else "AWAITING_PAYPAL_TOKEN",
+            "paypal_sub_id": display_sub_id,
             "kyc_status": kyc_status,
             "kyc_legal_entity": r.get("business_entity") or "Miller Custom Flooring LLC",
-            "allocated_did": assigned_did,
+            "allocated_did": display_did,
             "tcpa_guard": tcpa_guard,
             "status": status_str,
         })

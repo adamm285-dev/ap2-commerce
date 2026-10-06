@@ -14,6 +14,7 @@ import sys
 import os
 import json
 import time
+import uuid
 
 # Ensure a2a_commerce_portal root is on sys.path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -89,16 +90,17 @@ def run_judge_audit():
             "clientInfo": {"name": "JudgeEvaluationClient", "version": "1.0.0"}
         }
     }
-    res = client.post("/mcp", json=mcp_init_req)
+    mcp_endpoint = "/a2a/mcp" if (args.remote or os.environ.get("REMOTE_AUDIT") == "1") else "/mcp"
+    res = client.post(mcp_endpoint, json=mcp_init_req)
     assert res.status_code == 200, f"Expected 200, got {res.status_code}"
     body = res.json()
     assert body.get("jsonrpc") == "2.0"
     server_info = body.get("result", {}).get("serverInfo", {})
-    print_pass(f"MCP Server Handshake: {server_info.get('name')} v{server_info.get('version')}")
+    print_pass(f"MCP Server Handshake: {server_info.get('name')} v{server_info.get('version')} (Endpoint: {mcp_endpoint})")
 
     # List Tools
     tools_req = {"jsonrpc": "2.0", "id": "judge-tools-02", "method": "tools/list", "params": {}}
-    res = client.post("/mcp", json=tools_req)
+    res = client.post(mcp_endpoint, json=tools_req)
     assert res.status_code == 200
     tools = res.json().get("result", {}).get("tools", [])
     tool_names = [t["name"] for t in tools]
@@ -312,12 +314,13 @@ def run_judge_audit():
     # Generate new keypair and sign challenge
     new_priv, new_pub = generate_ed25519_keypair()
     sig = sign_ed25519_message(challenge_nonce, new_priv)
+    kid = f"judge-audit-buyer-{uuid.uuid4().hex[:6]}"
 
     # Register external autonomous buyer key
     reg_res = client.post(
         "/api/agent/keys/register",
         json={
-            "kid": "judge-audit-buyer-v1",
+            "kid": kid,
             "publicKeyHex": new_pub,
             "contractorEmail": "judge@fieldsmith.pro",
             "businessEntity": "Hackathon Evaluation Crew LLC",
@@ -329,18 +332,21 @@ def run_judge_audit():
     assert reg_res.status_code == 201
     assert reg_res.json().get("status") == "REGISTERED"
     assert reg_res.json().get("verified") is True
-    print_pass(f"Cryptographic Challenge Verification: Key 'judge-audit-buyer-v1' Enrolled (Ed25519 Verified)")
+    print_pass(f"Cryptographic Challenge Verification: Key '{kid}' Enrolled (Ed25519 Verified)")
 
-    # Anti-tamper challenge verification: tampered signature must be rejected
+    # Anti-tamper challenge verification: tampered signature with fresh challenge must be rejected
+    bad_chal_res = client.get("/api/agent/keys/challenge")
+    assert bad_chal_res.status_code == 200
+    bad_challenge = bad_chal_res.json()["challenge"]
     bad_sig = "0" * 128
     tamper_res = client.post(
         "/api/agent/keys/register",
         json={
-            "kid": "tampered-buyer-agent",
+            "kid": f"tampered-buyer-{uuid.uuid4().hex[:6]}",
             "publicKeyHex": new_pub,
             "contractorEmail": "hacker@evil.com",
             "businessEntity": "Forged Agent LLC",
-            "challenge": challenge_nonce,
+            "challenge": bad_challenge,
             "challengeSignature": bad_sig,
         },
     )

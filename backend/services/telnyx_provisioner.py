@@ -19,7 +19,8 @@ logger = logging.getLogger("telnyx_provisioner")
 class TelnyxProvisioner:
     def __init__(self):
         self.api_key = settings.telnyx_api_key
-        self.mock_mode = settings.mock_external_apis or not self.api_key
+        live_orders_enabled = getattr(settings, "enable_live_telnyx_orders", False)
+        self.mock_mode = settings.mock_external_apis or not self.api_key or not live_orders_enabled
         self._allocated_inventory: Dict[str, Dict[str, Any]] = {}
         self._contractor_dids: Dict[str, Dict[str, Any]] = {}
 

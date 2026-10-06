@@ -178,3 +178,128 @@ def test_newly_registered_buyer_key_can_evaluate_mandate():
     mandate_body = mandate_eval_res.json()
     assert mandate_body["approved"] is True
     assert mandate_body["mandateProofHash"] is not None
+
+
+def test_rejected_registration_reserved_key_id():
+    """POST /api/agent/keys/register rejects attempts to overwrite system-reserved key IDs with HTTP 403."""
+    priv_hex, pub_hex = generate_ed25519_keypair()
+    chal_res = client.get("/api/agent/keys/challenge")
+    challenge = chal_res.json()["challenge"]
+    sig_hex = sign_ed25519_message(challenge, priv_hex)
+
+    reg_res = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "seller-agent-fieldsmith",
+            "publicKeyHex": pub_hex,
+            "contractorEmail": "hacker@evil.com",
+            "businessEntity": "Rogue Agent LLC",
+            "challenge": challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg_res.status_code == 403
+    assert reg_res.json().get("detail", {}).get("error") == "RESERVED_KEY_ID"
+
+
+def test_rejected_registration_key_collision():
+    """POST /api/agent/keys/register rejects overwriting an existing registered key ID with HTTP 409."""
+    priv_hex, pub_hex = generate_ed25519_keypair()
+    kid = "unique-test-buyer-001"
+    email = "unique@floridabuilder.com"
+    entity = "Florida Unique Builder LLC"
+
+    # Register first time
+    chal_res = client.get("/api/agent/keys/challenge")
+    challenge = chal_res.json()["challenge"]
+    sig_hex = sign_ed25519_message(challenge, priv_hex)
+    reg_res1 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": kid,
+            "publicKeyHex": pub_hex,
+            "contractorEmail": email,
+            "businessEntity": entity,
+            "challenge": challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg_res1.status_code == 201
+
+    # Attempt to overwrite with a different key
+    other_priv, other_pub = generate_ed25519_keypair()
+    chal_res2 = client.get("/api/agent/keys/challenge")
+    challenge2 = chal_res2.json()["challenge"]
+    sig_hex2 = sign_ed25519_message(challenge2, other_priv)
+    reg_res2 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": kid,
+            "publicKeyHex": other_pub,
+            "contractorEmail": "intruder@evil.com",
+            "businessEntity": "Intruder LLC",
+            "challenge": challenge2,
+            "challengeSignature": sig_hex2,
+        },
+    )
+    assert reg_res2.status_code == 409
+    assert reg_res2.json().get("detail", {}).get("error") == "KEY_ALREADY_EXISTS"
+
+
+def test_rejected_registration_unissued_challenge():
+    """POST /api/agent/keys/register rejects challenges not issued by the server with HTTP 400."""
+    priv_hex, pub_hex = generate_ed25519_keypair()
+    fake_challenge = "f" * 64
+    sig_hex = sign_ed25519_message(fake_challenge, priv_hex)
+
+    reg_res = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "unissued-chal-agent",
+            "publicKeyHex": pub_hex,
+            "contractorEmail": "contractor@validhub.com",
+            "businessEntity": "Valid Hub LLC",
+            "challenge": fake_challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg_res.status_code == 400
+    assert reg_res.json().get("detail", {}).get("error") == "INVALID_CHALLENGE"
+
+
+def test_rejected_registration_single_use_consumed_challenge():
+    """POST /api/agent/keys/register burns challenge on use; replaying same challenge is rejected with HTTP 400."""
+    priv_hex, pub_hex = generate_ed25519_keypair()
+    chal_res = client.get("/api/agent/keys/challenge")
+    challenge = chal_res.json()["challenge"]
+    sig_hex = sign_ed25519_message(challenge, priv_hex)
+
+    # First registration consumes challenge
+    reg1 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "single-use-agent-01",
+            "publicKeyHex": pub_hex,
+            "contractorEmail": "burn1@builder.com",
+            "businessEntity": "Burn Test LLC",
+            "challenge": challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg1.status_code == 201
+
+    # Second registration with same challenge must be rejected as already consumed
+    reg2 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "single-use-agent-02",
+            "publicKeyHex": pub_hex,
+            "contractorEmail": "burn2@builder.com",
+            "businessEntity": "Burn Test LLC",
+            "challenge": challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg2.status_code == 400
+    assert reg2.json().get("detail", {}).get("error") == "INVALID_CHALLENGE"
+

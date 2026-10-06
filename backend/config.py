@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     telnyx_messaging_profile_id: str = Field(
         default="", alias="TELNYX_MESSAGING_PROFILE_ID"
     )
+    # Live Telnyx Ordering Safety Breaker (Defaults to False; orders must be explicitly enabled)
+    enable_live_telnyx_orders: bool = Field(default=False, alias="ENABLE_LIVE_TELNYX_ORDERS")
 
     # Zapier Model Context Protocol / NLA (Optional)
     zapier_nla_api_key: str = Field(default="", alias="ZAPIER_NLA_API_KEY")

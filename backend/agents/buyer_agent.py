@@ -131,30 +131,25 @@ class BuyerAgent:
 
         # Phase 4: Delegate PayPal Subscription Session
         print("💳 [Phase 4: Delegated PayPal Subscription Initiation]")
-        synthetic_sub_id = f"I-A2A-{proof_hash[:12].upper()}"
-        from .seller_agent import _COMPLETED_SUBSCRIPTIONS
-        _COMPLETED_SUBSCRIPTIONS[synthetic_sub_id] = {
-            "status": "ACTIVE",
-            "subscription_id": synthetic_sub_id,
-            "contractor_email": self.contractor_email,
-            "contractor_name": "Marcus Miller",
-            "business_entity": "Miller Custom Flooring LLC",
-            "agreed_monthly_rate": monthly_price,
-            "tier_id": matching_tier.get("trade_id", "fieldsmith-pro"),
-            "mandate_proof_hash": proof_hash,
-        }
-        print(f"   Generated Delegated Subscription: {synthetic_sub_id}")
+        purchase_result = await seller_agent.purchase_subscription(
+            tier_id=matching_tier.get("trade_id", "fieldsmith-pro"),
+            agreed_monthly_rate=monthly_price,
+            mandate_proof_hash=proof_hash,
+            contractor_email=self.contractor_email,
+        )
+        subscription_id = purchase_result.get("subscription_id")
+        print(f"   PayPal Vault Subscription: {subscription_id}")
         print(
-            f"   Payment Channel:                  PayPal Subscriptions (Plan: P-5ML4271244454362WXNWU5NQ)"
+            f"   Payment Channel:           PayPal Subscriptions Vault"
         )
         print(
-            f"   Billing Cycle:                    ${monthly_price:.2f} / month (Auto-debit)\n"
+            f"   Billing Cycle:             ${monthly_price:.2f} / month (Auto-debit)\n"
         )
 
         # Phase 5: KYC-Anchored Telecom Provisioning
         print("📞 [Phase 5: KYC Telnyx DID Line Allocation]")
         provision_result = await seller_agent.provision_telecom_line(
-            subscription_id=synthetic_sub_id,
+            subscription_id=subscription_id,
             contractor_email=self.contractor_email,
             area_code="863",
         )
@@ -177,7 +172,7 @@ class BuyerAgent:
             allocated_did=assigned_did,
             trade_vertical="Tile & Custom Flooring",
             monthly_subscription_fee=monthly_price,
-            paypal_subscription_id=synthetic_sub_id,
+            paypal_subscription_id=subscription_id,
             contractor_email=self.contractor_email,
         )
         print(
@@ -196,7 +191,7 @@ class BuyerAgent:
             "trade": target_trade,
             "monthly_amount": monthly_price,
             "mandate_proof": proof_hash,
-            "subscription_id": synthetic_sub_id,
+            "subscription_id": subscription_id,
             "assigned_did": assigned_did,
             "status": "ACTIVE_SUBSCRIPTION",
             "zapier_mcp_sync": {

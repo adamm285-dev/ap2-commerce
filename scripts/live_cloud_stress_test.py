@@ -47,9 +47,10 @@ RESET = "\033[0m"
 
 async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
     t0 = time.perf_counter()
+    mcp_endpoint = f"{server_url}/a2a/mcp" if not server_url.endswith("/a2a/mcp") else server_url
     agent = ExternalBuyerAgent(
         transport="http",
-        server_url=f"{server_url}/mcp",
+        server_url=mcp_endpoint,
         contractor_name="Elena Vance",
         business_entity="Vance Custom Tile LLC",
         contractor_email="elena@vancetile.com",
@@ -61,12 +62,20 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
     )
     result = await agent.execute_autonomous_procurement()
     elapsed = time.perf_counter() - t0
+    did = result.get("provisioned_did") or result.get("assigned_did")
+    sub_id = result.get("paypal_subscription_id")
+    is_success = (
+        result.get("status") == "COMPLETED"
+        and bool(did)
+        and bool(sub_id)
+        and (str(sub_id).startswith("I-") or str(sub_id).startswith("SUB-"))
+    )
     return {
         "scenario": "Standard Procurement ($120 Cap -> $79.99 Pro)",
-        "success": result.get("status") == "COMPLETED",
+        "success": is_success,
         "elapsed_ms": round(elapsed * 1000, 1),
-        "did": result.get("provisioned_did"),
-        "sub_id": result.get("paypal_subscription_id"),
+        "did": did,
+        "sub_id": sub_id,
     }
 
 

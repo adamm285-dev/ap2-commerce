@@ -291,30 +291,63 @@ class ExternalBuyerAgent:
 
         self.log(f"   HMAC-SHA256:     {proof_hash[:24]}... ({len(proof_hash)} chars)\n")
 
-        # Step 6: Telecom Line Allocation
-        self.log("📞 [Step 6: KYC Telecom Line Allocation (provision_telecom_line)]")
-        synthetic_sub_id = f"I-AUTONOMOUS-{uuid.uuid4().hex[:8].upper()}"
-        from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
-        _COMPLETED_SUBSCRIPTIONS[synthetic_sub_id] = {
-            "status": "ACTIVE",
-            "subscription_id": synthetic_sub_id,
-            "contractor_email": self.contractor_email,
-            "contractor_name": self.contractor_name,
-            "business_entity": self.business_entity,
+        # Step 6: Bind to PayPal Recurring Vault via purchase_subscription
+        self.log("💳 [Step 6: Autonomous PayPal Subscription Vault Binding (purchase_subscription)]")
+        offer_id = mandate.get("offerId") or mandate.get("offer_id")
+        purchase_args = {
+            "tier_id": plan_id,
             "agreed_monthly_rate": monthly_price,
-            "tier_id": self.trade_id,
             "mandate_proof_hash": proof_hash,
+            "contractor_email": self.contractor_email,
         }
+        if offer_id:
+            purchase_args["offer_id"] = offer_id
+
+        purchase_resp = await self._call_tool("purchase_subscription", purchase_args)
+        sub_status = purchase_resp.get("status")
+        subscription_id = purchase_resp.get("subscription_id")
+        if not subscription_id or sub_status not in ("ACTIVE", "APPROVAL_PENDING"):
+            err_msg = purchase_resp.get("reason") or purchase_resp.get("error") or f"Status: {sub_status}"
+            self.log(f"\n❌ [ABORT] PayPal Purchase Failed: {err_msg}")
+            return {
+                "status": "PURCHASE_FAILED",
+                "error": err_msg,
+                "audit_log": self.audit_log,
+            }
+
+        self.log(f"   Vault Subscription ID: {subscription_id} (Status: {sub_status})")
+        self.log(f"   PayPal Vault Status:   {purchase_resp.get('paypal_vault_status', 'VAULT_BOUND')}")
+        self.log(f"   Monthly Billing Rate:  ${monthly_price:.2f}/mo (Auto-debit)\n")
+
+        # Step 7: Telecom Line Allocation
+        self.log("📞 [Step 7: KYC Telecom Line Allocation (provision_telecom_line)]")
         prov = await self._call_tool(
             "provision_telecom_line",
             {
-                "subscription_id": synthetic_sub_id,
+                "subscription_id": subscription_id,
                 "contractor_email": self.contractor_email,
                 "area_code": self.area_code,
                 "simulate_exhaustion": self.simulate_exhaustion,
             },
         )
-        assigned_did = prov.get("assignedDid") or prov.get("assigned_did", f"+1 ({self.area_code}) 267-8902")
+        if prov.get("status") == "REJECTED":
+            err_msg = prov.get("reason") or prov.get("error") or "Provisioning rejected"
+            self.log(f"\n❌ [ABORT] Telecom Provisioning Rejected: {err_msg}")
+            return {
+                "status": "PROVISION_FAILED",
+                "error": err_msg,
+                "audit_log": self.audit_log,
+            }
+
+        assigned_did = prov.get("assignedDid") or prov.get("assigned_did")
+        if not assigned_did:
+            self.log("\n❌ [ABORT] Telecom Provisioning returned empty DID.")
+            return {
+                "status": "PROVISION_FAILED",
+                "error": "EMPTY_DID_RETURNED",
+                "audit_log": self.audit_log,
+            }
+
         carrier = prov.get("carrier", "Telnyx LLC")
         routing_state = prov.get("routingState", "ACTIVE_10DLC_BOUND")
 
@@ -323,8 +356,8 @@ class ExternalBuyerAgent:
         self.log(f"   Routing State:   {routing_state}")
         self.log(f"   Protection:      100% Inbound Defensive (Zero Robocalls)\n")
 
-        # Step 7: Downline Back-Office Synchronization (Jobber & QBO)
-        self.log("⚡ [Step 7: Back-Office CRM & Accounting Export (dispatch_zapier_mcp)]")
+        # Step 8: Downline Back-Office Synchronization (Jobber & QBO)
+        self.log("⚡ [Step 8: Back-Office CRM & Accounting Export (dispatch_zapier_mcp)]")
         zapier_res = await self._call_tool(
             "dispatch_zapier_mcp",
             {
@@ -334,7 +367,7 @@ class ExternalBuyerAgent:
                 "allocated_did": assigned_did,
                 "trade_vertical": tier_title,
                 "monthly_subscription_fee": monthly_price,
-                "paypal_subscription_id": synthetic_sub_id,
+                "paypal_subscription_id": subscription_id,
                 "contractor_email": self.contractor_email,
                 "mandate_proof_hash": proof_hash,
                 "webhook_url": self.webhook_url,
@@ -356,7 +389,7 @@ class ExternalBuyerAgent:
         self.log("=" * 65)
         self.log("🎉 [SUCCESS] Autonomous Machine-to-Machine Commerce Cycle Complete!")
         self.log("   • Buyer Agent Mandate Hash: " + proof_hash)
-        self.log("   • PayPal Subscription ID:   " + synthetic_sub_id)
+        self.log("   • PayPal Subscription ID:   " + subscription_id)
         self.log("   • Provisioned DID:          " + assigned_did)
         self.log("   • Jobber Routing Record:    " + str(jobber_id))
         self.log("   • QuickBooks Expense Ref:   " + str(qbo_id))
@@ -369,8 +402,9 @@ class ExternalBuyerAgent:
             "selected_tier": tier_title,
             "monthly_amount": monthly_price,
             "mandate_proof_hash": proof_hash,
-            "paypal_subscription_id": synthetic_sub_id,
+            "paypal_subscription_id": subscription_id,
             "assigned_did": assigned_did,
+            "provisioned_did": assigned_did,
             "carrier": carrier,
             "jobber_routing_id": jobber_id,
             "qbo_expense_id": qbo_id,

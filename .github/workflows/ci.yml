@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       A2A_MANDATE_SECRET: "ci_test_mandate_secret_key_32_chars_long"
+      ADMIN_API_KEY: "ci_admin_secret_token_key_for_testing"
       MOCK_EXTERNAL_APIS: "true"
       PYTHONPATH: "."
     steps:

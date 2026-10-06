@@ -386,8 +386,7 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
     orig_method = paypal_service.create_subscription
     paypal_service.create_subscription = mock_create_sub
     try:
-        loop = asyncio.get_event_loop()
-        res = loop.run_until_complete(seller_agent.purchase_subscription(
+        res = asyncio.run(seller_agent.purchase_subscription(
             tier_id="fieldsmith-pro",
             agreed_monthly_rate=79.99,
             mandate_proof_hash=proof,
@@ -779,8 +778,7 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
     orig_method = paypal_service.create_subscription
     paypal_service.create_subscription = mock_create_sub
     try:
-        loop = asyncio.get_event_loop()
-        res = loop.run_until_complete(seller_agent.purchase_subscription(
+        res = asyncio.run(seller_agent.purchase_subscription(
             tier_id="pro-dispatch",
             agreed_monthly_rate=179.99,
             mandate_proof_hash=proof,

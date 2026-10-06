@@ -200,8 +200,10 @@ SELLER_MCP_TOOLS = [
 ]
 
 
-_COMPLETED_SUBSCRIPTIONS: Dict[str, Dict[str, Any]] = {}
-_ACTIVE_CONTRACTOR_SUBSCRIPTIONS: Dict[str, str] = {}
+from ..database import SubscriptionsDictProxy, ActiveContractorSubscriptionsProxy
+
+_COMPLETED_SUBSCRIPTIONS = SubscriptionsDictProxy()
+_ACTIVE_CONTRACTOR_SUBSCRIPTIONS = ActiveContractorSubscriptionsProxy()
 
 
 def reconcile_contractor_ledger(contractor_email: str) -> float:

@@ -43,8 +43,18 @@ ALLOWED_CATEGORIES = {
 
 DEFAULT_MONTHLY_CAP = 100.00
 
+from ..database import (
+    AuthorizedMandatesProxy,
+    set_contractor_cap as db_set_contractor_cap,
+    get_contractor_cap as db_get_contractor_cap,
+    get_contractor_committed_spend as db_get_contractor_committed_spend,
+    sync_contractor_commitment as db_sync_contractor_commitment,
+    record_spend_entry as db_record_spend_entry,
+    reset_all_data as db_reset_all_data,
+)
+
 # Registry of active authorized mandate proofs to prevent parameter tampering at checkout
-_AUTHORIZED_MANDATES: Dict[str, Dict[str, Any]] = {}
+_AUTHORIZED_MANDATES = AuthorizedMandatesProxy()
 
 
 def register_authorized_mandate(proof_hash: str, details: Dict[str, Any]):
@@ -314,7 +324,7 @@ def verify_authorized_mandate(
 
 
 class MandateLedger:
-    """Thread-safe active ledger tracking cumulative monthly agent spend and active contractor commitments."""
+    """Thread-safe active ledger tracking cumulative monthly agent spend and active contractor commitments, backed by SQLite persistence."""
 
     def __init__(self, monthly_cap: float = DEFAULT_MONTHLY_CAP):
         self.monthly_cap = monthly_cap
@@ -326,20 +336,26 @@ class MandateLedger:
 
     def set_contractor_cap(self, email: str, cap: float):
         if email and cap is not None:
-            self._contractor_caps[email.strip().lower()] = float(cap)
+            norm = email.strip().lower()
+            self._contractor_caps[norm] = float(cap)
+            db_set_contractor_cap(norm, float(cap))
 
     def get_remaining_budget(
         self, agent_id: str = None, cap: float = None, contractor_email: str = None
     ) -> float:
         norm_email = contractor_email.strip().lower() if contractor_email else None
         effective_cap = cap
-        if effective_cap is None and norm_email and norm_email in self._contractor_caps:
-            effective_cap = self._contractor_caps[norm_email]
+        if effective_cap is None and norm_email:
+            if norm_email in self._contractor_caps:
+                effective_cap = self._contractor_caps[norm_email]
+            else:
+                effective_cap = db_get_contractor_cap(norm_email, self.monthly_cap)
         if effective_cap is None:
             effective_cap = self.monthly_cap
 
         if norm_email:
-            spent = self._contractor_subscriptions.get(norm_email, 0.0)
+            spent = db_get_contractor_committed_spend(norm_email)
+            self._contractor_subscriptions[norm_email] = spent
             return round(max(0.0, effective_cap - spent), 2)
         if agent_id:
             spent = self._agent_spent.get(agent_id, 0.0)
@@ -348,22 +364,23 @@ class MandateLedger:
 
     def record_spend(self, amount: float, metadata: Dict[str, Any]):
         email = metadata.get("contractor_email")
+        agent_id = metadata.get("agent_id")
         if email:
             norm_email = email.strip().lower()
             old_amount = self._contractor_subscriptions.get(norm_email, 0.0)
             self._contractor_subscriptions[norm_email] = amount
             self._current_spent = max(0.0, self._current_spent - old_amount + amount)
-            agent_id = metadata.get("agent_id")
             if agent_id:
                 old_agent = self._agent_spent.get(agent_id, 0.0)
                 self._agent_spent[agent_id] = max(0.0, old_agent - old_amount + amount)
+            db_sync_contractor_commitment(norm_email, amount, agent_id=agent_id)
         else:
             self._current_spent += amount
-            agent_id = metadata.get("agent_id")
             if agent_id:
                 self._agent_spent[agent_id] = (
                     self._agent_spent.get(agent_id, 0.0) + amount
                 )
+        db_record_spend_entry(amount, "RECORD_SPEND", contractor_email=email, agent_id=agent_id, metadata=metadata)
         self._history.append(
             {"timestamp": time.time(), "amount": amount, **metadata}
         )
@@ -384,8 +401,10 @@ class MandateLedger:
             else:
                 self._contractor_subscriptions.pop(norm_email, None)
             self._current_spent = max(0.0, self._current_spent - amount)
+            db_sync_contractor_commitment(norm_email, new_spent, agent_id=agent_id)
         elif amount:
             self._current_spent = max(0.0, self._current_spent - amount)
+        db_record_spend_entry(amount, "RELEASE_SPEND", contractor_email=contractor_email, agent_id=agent_id)
 
     def sync_contractor_commitment(
         self,
@@ -393,11 +412,6 @@ class MandateLedger:
         active_monthly_rate: float,
         agent_id: Optional[str] = None,
     ):
-        """
-        Synchronizes the contractor's committed spend directly from their subscription state:
-        commitment = the rate of the contractor's one ACTIVE subscription.
-        If active_monthly_rate is 0.0 (or no active subscription), committed spend is 0.0.
-        """
         if not contractor_email:
             return
         norm_email = contractor_email.strip().lower()
@@ -414,6 +428,8 @@ class MandateLedger:
             old_agent = self._agent_spent.get(agent_id, 0.0)
             self._agent_spent[agent_id] = round(max(0.0, old_agent - old_amount + new_amount), 2)
 
+        db_sync_contractor_commitment(norm_email, new_amount, agent_id=agent_id)
+
     def reset(self, agent_id: str = None):
         if agent_id:
             self._agent_spent.pop(agent_id, None)
@@ -423,6 +439,7 @@ class MandateLedger:
             self._contractor_subscriptions.clear()
             self._contractor_caps.clear()
             self._history.clear()
+            db_reset_all_data()
         _AUTHORIZED_MANDATES.clear()
 
 

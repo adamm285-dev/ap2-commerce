@@ -63,8 +63,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
 )
 logger = logging.getLogger("a2a_server")
+from .database import ProcessedWebhooksProxy
 
-_PROCESSED_WEBHOOK_IDS: Set[str] = set()
+_PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
 
 
 def clear_processed_webhooks():

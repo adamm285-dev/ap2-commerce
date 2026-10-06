@@ -63,15 +63,20 @@ if _env_buyer_pub and len(_env_buyer_pub.strip()) == 64:
 DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
 DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
 
+from ..database import BuyerKeysProxy
+
 # Known / registered buyer agent public keys (kid -> public_key_hex)
-# Prevents arbitrary third parties from forging mandates for known contractors
-REGISTERED_BUYER_KEYS: Dict[str, str] = {
-    DEFAULT_BUYER_KID: DEFAULT_BUYER_PUBLIC_KEY_HEX,
-    "marcus-buyer-ed25519-v1": DEFAULT_BUYER_PUBLIC_KEY_HEX,
-    "buyer-agent-01": DEFAULT_BUYER_PUBLIC_KEY_HEX,
-    "marcus-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
-    "claude-desktop-buyer": DEFAULT_BUYER_PUBLIC_KEY_HEX,
-}
+# Prevents arbitrary third parties from forging mandates for known contractors, backed by persistent SQLite storage
+REGISTERED_BUYER_KEYS = BuyerKeysProxy()
+for _default_kid in [
+    DEFAULT_BUYER_KID,
+    "marcus-buyer-ed25519-v1",
+    "buyer-agent-01",
+    "marcus-buyer",
+    "claude-desktop-buyer",
+]:
+    if _default_kid not in REGISTERED_BUYER_KEYS or REGISTERED_BUYER_KEYS[_default_kid] == "a0" * 32:
+        REGISTERED_BUYER_KEYS[_default_kid] = DEFAULT_BUYER_PUBLIC_KEY_HEX
 
 
 

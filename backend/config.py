@@ -66,8 +66,24 @@ class Settings(BaseSettings):
     paypal_plan_id_pro: str = Field(default="P-FLSMITH-PRO", alias="PAYPAL_PLAN_ID_PRO")
     paypal_plan_id_dispatch: str = Field(default="P-FLSMITH-DISPATCH", alias="PAYPAL_PLAN_ID_DISPATCH")
 
+    # Persistent SQLite database path (defaults to backend/data/a2a_commerce.db)
+    a2a_db_path: str = Field(default="", alias="A2A_DB_PATH")
+
 
 settings = Settings()
+
+
+def get_db_path() -> Path:
+    """Returns the resolved database path, ensuring parent directory exists."""
+    if settings.a2a_db_path and settings.a2a_db_path.strip():
+        if settings.a2a_db_path.strip() == ":memory:":
+            return Path(":memory:")
+        p = Path(settings.a2a_db_path.strip())
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    data_dir = ROOT_DIR / "backend" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "a2a_commerce.db"
 
 # Automatically force mock mode if required keys are missing
 if not settings.paypal_client_id or not settings.paypal_client_secret:

@@ -18,6 +18,7 @@ import {
   initialA2aTransactions,
   tradeImpactData,
   kycAuditData,
+  telecomTrunkData,
   type A2aTransaction,
 } from './data/telemetryData';
 import {
@@ -117,11 +118,25 @@ export function App() {
             { id: 'statutory_shield_status', name: 'Statutory Shield Status', format: 'textFormat' },
           ],
         },
+        {
+          id: 'telecom_trunks',
+          data: telecomTrunkData,
+          fields: [
+            { id: 'allocated_did', name: 'Allocated DID Phone', format: 'textFormat' },
+            { id: 'lata', name: 'LATA Market Route', format: 'textFormat' },
+            { id: 'market_region', name: 'Market Region', format: 'textFormat' },
+            { id: 'tcr_brand', name: 'TCR 10DLC Brand', format: 'textFormat' },
+            { id: 'tcr_campaign_id', name: 'TCR Campaign ID', format: 'textFormat' },
+            { id: 'monthly_quota_minutes', name: 'Monthly Inbound Quota (Min)', format: 'integerFormat' },
+            { id: 'stir_shaken_level', name: 'STIR/SHAKEN Level', format: 'textFormat' },
+            { id: 'inbound_routing_mode', name: 'Intake Routing Mode', format: 'textFormat' },
+          ],
+        },
       ],
     };
   }, [transactions]);
 
-  // Hydrate fleet transactions and verify initial state from SQLite backend
+  // Hydrate fleet transactions and verify initial state from SQLite backend with periodic background polling
   useEffect(() => {
     let mounted = true;
     async function loadInitialFleet() {
@@ -135,8 +150,23 @@ export function App() {
       }
     }
     loadInitialFleet();
+
+    const intervalId = setInterval(async () => {
+      if (!mounted) return;
+      const liveTxns = await fetchFleetLedger();
+      if (mounted && liveTxns.length > 0) {
+        setTransactions((prev) => {
+          if (prev.length !== liveTxns.length || liveTxns[0]?.id !== prev[0]?.id || liveTxns[0]?.status !== prev[0]?.status) {
+            return liveTxns;
+          }
+          return prev;
+        });
+      }
+    }, 10000);
+
     return () => {
       mounted = false;
+      clearInterval(intervalId);
     };
   }, []);
 
@@ -182,6 +212,9 @@ export function App() {
         );
         setProvisioningResult(result);
 
+        const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
+        const agreedPlanName = negotiationResult?.agreedPlanName ?? `FieldSmith Pro - AI Voice Screener (${tradeVertical})`;
+
         // Mutate Marcus Miller's existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
         setTransactions((prev) => {
           const idx = prev.findIndex((t) => t.contractor_name === contractorName);
@@ -190,7 +223,8 @@ export function App() {
             updated[idx] = {
               ...updated[idx],
               timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-              monthly_amount: 89.0,
+              monthly_amount: agreedMonthlyAmount,
+              service_plan: agreedPlanName,
               paypal_sub_id: subId,
               kyc_status: 'VERIFIED (PayPal Identity Bound)',
               allocated_did: result.allocatedDid,
@@ -207,8 +241,8 @@ export function App() {
             buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`,
             contractor_name: contractorName,
             trade_vertical: tradeVertical,
-            service_plan: 'AI Screener Pro (PayPal A2A)',
-            monthly_amount: 89.0,
+            service_plan: agreedPlanName,
+            monthly_amount: agreedMonthlyAmount,
             paypal_sub_id: subId,
             kyc_status: 'VERIFIED (PayPal Identity Bound)',
             kyc_legal_entity: businessEntity,
@@ -225,7 +259,7 @@ export function App() {
         setIsProvisioning(false);
       }
     },
-    [contractorName, businessEntity, tradeVertical, preferredAreaCode]
+    [contractorName, businessEntity, tradeVertical, preferredAreaCode, negotiationResult]
   );
 
   return (

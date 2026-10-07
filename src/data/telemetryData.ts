@@ -366,6 +366,60 @@ export const kycAuditData: KycAuditRecord[] = [
   },
 ];
 
+export interface TelecomTrunkRecord {
+  allocated_did: string;
+  lata: string;
+  market_region: string;
+  tcr_brand: string;
+  tcr_campaign_id: string;
+  monthly_quota_minutes: number;
+  stir_shaken_level: string;
+  inbound_routing_mode: string;
+}
+
+export const telecomTrunkData: TelecomTrunkRecord[] = [
+  {
+    allocated_did: '+1 (863) 267-8902',
+    lata: '408 (Lakeland/Winter Haven, FL)',
+    market_region: 'Central Florida',
+    tcr_brand: 'Floorsmith (BOCC17Z)',
+    tcr_campaign_id: '4b3001a0-c5af-db76-3128-a88a3d668ff6',
+    monthly_quota_minutes: 2500,
+    stir_shaken_level: 'Attestation A',
+    inbound_routing_mode: 'AI Voice Receptionist (Gemini 3.8 Live)',
+  },
+  {
+    allocated_did: '+1 (863) 356-7801',
+    lata: '408 (Lakeland/Winter Haven, FL)',
+    market_region: 'Central Florida',
+    tcr_brand: 'Floorsmith (BOCC17Z)',
+    tcr_campaign_id: '4b3001a0-c5af-db76-3128-a88a3d668ff6',
+    monthly_quota_minutes: 2500,
+    stir_shaken_level: 'Attestation A',
+    inbound_routing_mode: 'Emergency GPS + Deposit Intake',
+  },
+  {
+    allocated_did: '+1 (863) 356-7802',
+    lata: '408 (Lakeland/Winter Haven, FL)',
+    market_region: 'Central Florida',
+    tcr_brand: 'Floorsmith (BOCC17Z)',
+    tcr_campaign_id: '4b3001a0-c5af-db76-3128-a88a3d668ff6',
+    monthly_quota_minutes: 2500,
+    stir_shaken_level: 'Attestation A',
+    inbound_routing_mode: 'Storm Photo Scoping & Bid Intake',
+  },
+  {
+    allocated_did: '+1 (863) 356-7803',
+    lata: '408 (Lakeland/Winter Haven, FL)',
+    market_region: 'Central Florida',
+    tcr_brand: 'Floorsmith (BOCC17Z)',
+    tcr_campaign_id: '4b3001a0-c5af-db76-3128-a88a3d668ff6',
+    monthly_quota_minutes: 2500,
+    stir_shaken_level: 'Attestation A',
+    inbound_routing_mode: '24/7 Roadside GPS Dispatch',
+  },
+];
+
 export const a2aDataSources: AgDataSourcesDefinition = {
   sources: [
     {
@@ -414,6 +468,20 @@ export const a2aDataSources: AgDataSourcesDefinition = {
         { id: 'paypal_payer_id', name: 'PayPal Verified Payer ID', format: 'textFormat' },
         { id: 'autodialer_blocked', name: 'Autodialer Lock (FCC/TCPA)', format: 'booleanFormat' },
         { id: 'statutory_shield_status', name: 'Statutory Shield Status', format: 'textFormat' },
+      ],
+    },
+    {
+      id: 'telecom_trunks',
+      data: telecomTrunkData,
+      fields: [
+        { id: 'allocated_did', name: 'Allocated DID Phone', format: 'textFormat' },
+        { id: 'lata', name: 'LATA Market Route', format: 'textFormat' },
+        { id: 'market_region', name: 'Market Region', format: 'textFormat' },
+        { id: 'tcr_brand', name: 'TCR 10DLC Brand', format: 'textFormat' },
+        { id: 'tcr_campaign_id', name: 'TCR Campaign ID', format: 'textFormat' },
+        { id: 'monthly_quota_minutes', name: 'Monthly Inbound Quota (Min)', format: 'integerFormat' },
+        { id: 'stir_shaken_level', name: 'STIR/SHAKEN Level', format: 'textFormat' },
+        { id: 'inbound_routing_mode', name: 'Intake Routing Mode', format: 'textFormat' },
       ],
     },
   ],
@@ -545,6 +613,33 @@ export const initialDashboardState: AgReportState = {
       },
       widgetLayout: {
         'grid-kyc-audit': { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 18 },
+      },
+    },
+    {
+      id: 'telecom-trunks-registry',
+      widgets: {
+        'grid-telecom-trunks': {
+          type: 'grid',
+          dataMapping: {
+            cols: [
+              { id: 'telecom_trunks.allocated_did' },
+              { id: 'telecom_trunks.lata' },
+              { id: 'telecom_trunks.market_region' },
+              { id: 'telecom_trunks.tcr_brand' },
+              { id: 'telecom_trunks.tcr_campaign_id' },
+              { id: 'telecom_trunks.monthly_quota_minutes' },
+              { id: 'telecom_trunks.stir_shaken_level' },
+              { id: 'telecom_trunks.inbound_routing_mode' },
+            ],
+          },
+          format: {
+            title: { enabled: true, text: 'Carrier 10DLC Trunk & Route Registry' },
+            subtitle: { enabled: true, text: 'Telnyx Wholesale Voice & SMS Routing Attestation' },
+          },
+        },
+      },
+      widgetLayout: {
+        'grid-telecom-trunks': { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 18 },
       },
     },
   ],

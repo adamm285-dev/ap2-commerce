@@ -54,7 +54,7 @@ export const PAYPAL_CONFIG = {
 export async function evaluateAgentNegotiation(
   request: AgentNegotiationRequest
 ): Promise<AgentNegotiationResponse> {
-  const sellerMonthlyRate = 89.0;
+  const sellerMonthlyRate = request.maxMonthlyBudget >= 79.99 ? 79.99 : 49.99;
   const buyerAgentId = `BuyerAgent-${request.contractorName.split(' ')[0]}-${request.tradeVertical.replace(/\s+/g, '')}`;
 
   try {
@@ -72,19 +72,32 @@ export async function evaluateAgentNegotiation(
 
     if (res.ok) {
       const data = await res.json();
-      const message = data.approved
+      const approved = data.approved ?? false;
+      const finalMonthlyRate = approved
+        ? sellerMonthlyRate
+        : (data.counter_offer_amount || sellerMonthlyRate);
+      const agreedPlanId = data.counter_offer_plan_id || (sellerMonthlyRate === 49.99 ? 'P-FLSMITH-SOLO-STARTER' : PAYPAL_CONFIG.planId);
+      const agreedPlanName = data.counter_offer_tier
+        ? `FieldSmith ${data.counter_offer_tier} (${request.tradeVertical})`
+        : sellerMonthlyRate === 49.99
+        ? `FieldSmith Solo Starter (${request.tradeVertical})`
+        : `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`;
+
+      const message = approved
         ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Estimated ROI saves $${request.missedCallLossEstimate}/mo in lost revenue.`
+        : data.counter_offer_available
+        ? `[BuyerAgent]: Counter-offer accepted for $${finalMonthlyRate}/mo (${data.counter_offer_tier}) within budget cap $${request.maxMonthlyBudget}/mo.`
         : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds contractor cap ($${request.maxMonthlyBudget}).`;
 
       return {
-        agreedPlanId: PAYPAL_CONFIG.planId,
-        agreedPlanName: `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`,
-        monthlyFee: sellerMonthlyRate,
-        mandateSatisfied: data.approved,
+        agreedPlanId: agreedPlanId,
+        agreedPlanName: agreedPlanName,
+        monthlyFee: finalMonthlyRate,
+        mandateSatisfied: approved || Boolean(data.counter_offer_available),
         kycRequired: true,
         message: data.reason || message,
         sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
-        mandateToken: data.mandateProofHash,
+        mandateToken: data.mandateProofHash || data.counter_offer_mandate_hash,
         isLiveBackend: true,
       };
     }
@@ -94,9 +107,13 @@ export async function evaluateAgentNegotiation(
 
   // Graceful client-side fallback
   const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
+  const fallbackPlanName = sellerMonthlyRate === 49.99
+    ? `FieldSmith Solo Starter (${request.tradeVertical})`
+    : `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`;
+  const fallbackPlanId = sellerMonthlyRate === 49.99 ? 'P-FLSMITH-SOLO-STARTER' : PAYPAL_CONFIG.planId;
   return {
-    agreedPlanId: PAYPAL_CONFIG.planId,
-    agreedPlanName: `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`,
+    agreedPlanId: fallbackPlanId,
+    agreedPlanName: fallbackPlanName,
     monthlyFee: sellerMonthlyRate,
     mandateSatisfied: isBudgetAcceptable,
     kycRequired: true,

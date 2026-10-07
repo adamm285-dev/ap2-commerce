@@ -2052,7 +2052,7 @@ export function ContractorCopilotView({
                               account_mapping: inspectorData?.quickbooks?.account_mapping || {
                                 expense_account: '6300 - Dues & Subscriptions: Software & SaaS',
                                 clearing_account: '99 - PayPal Clearing Account',
-                                monthly_amount: inspectorData?.agreed_price || 89.0,
+                                monthly_amount: inspectorData?.agreed_price || 79.99,
                               },
                             },
                             null,

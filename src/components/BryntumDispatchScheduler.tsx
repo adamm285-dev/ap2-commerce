@@ -355,7 +355,7 @@ export function BryntumDispatchScheduler({
             endDate: '2026-10-02 14:15',
             eventColor: 'blue',
             iconCls: 'b-fa b-fa-calendar-check',
-            depositStatus: 'DEPOSIT VERIFIED ($89.00)',
+            depositStatus: 'DEPOSIT VERIFIED ($79.99)',
             paypalTxn: 'TXN-DISPATCH-9021',
           });
         }
@@ -460,7 +460,7 @@ export function BryntumDispatchScheduler({
               ? 'Locking Window via API...'
               : isSlotLocked
               ? '✓ 75-Min Takeoff Locked (South Lakeland)'
-              : '🔒 Lock 75-Min Estimate Window ($89 Deposit)'}
+              : '🔒 Lock 75-Min Estimate Window ($79.99 Deposit)'}
           </button>
 
           {/* Simulate PayPal A2A Subscription Button */}

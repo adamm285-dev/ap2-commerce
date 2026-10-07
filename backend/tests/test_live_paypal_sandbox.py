@@ -37,6 +37,7 @@ def test_llms_txt_endpoints():
         assert "text/plain" in res.headers["content-type"]
         text = res.text
         assert "FieldSmith Pro A2A Autonomous Commerce Protocol" in text
+        assert "PayPal Sandbox demo for the PayPal AI Hackathon" in text
         assert "FastMCP Tools Catalog" in text
         assert "Dynamic Buyer Key Registration" in text
         assert "10DLC Messaging Timeline" in text

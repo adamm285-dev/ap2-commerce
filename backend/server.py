@@ -197,8 +197,9 @@ async def agent_discovery_card():
     Publishes capabilities, cryptographic identity keys, pricing plans, and MCP endpoints.
     """
     return {
-        "name": "FieldSmith Pro A2A Seller Agent",
-        "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Solo Field Service Contractors. Provides automated voice receptionist, 10DLC telephony line provisioning, and PayPal Recurring Vault binding.",
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt.",
+        "name": "FieldSmith Pro A2A Seller Agent (PayPal Sandbox Demo)",
+        "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Solo Field Service Contractors. (PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt).",
         "version": "1.0.0",
         "protocol_version": "2024-11-05",
         "supported_protocols": ["A2A", "AP2", "MCP"],
@@ -343,9 +344,10 @@ async def well_known_mcp_discovery():
 async def agents_json_discovery():
     """Agent discovery manifest specifying autonomous endpoints and capabilities."""
     return {
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt.",
         "schema_version": "1.0",
-        "name": "FieldSmith Pro Autonomous Marketplace",
-        "description": "Agent-to-Agent autonomous trade contractor dispatch and voice receptionist commerce system.",
+        "name": "FieldSmith Pro Autonomous Marketplace (PayPal Sandbox Demo)",
+        "description": "Agent-to-Agent autonomous trade contractor dispatch and voice receptionist commerce system. (PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt).",
         "endpoints": {
             "mcp": "https://api.fieldsmith.pro/a2a/mcp",
             "sse": "https://api.fieldsmith.pro/sse",
@@ -355,6 +357,19 @@ async def agents_json_discovery():
             "keys_register": "https://api.fieldsmith.pro/api/agent/keys/register",
         },
     }
+
+
+@app.get("/llms.txt", tags=["Discovery"])
+@app.get("/.well-known/llms.txt", tags=["Discovery"])
+async def llms_txt_discovery():
+    """Machine-readable llms.txt context document for autonomous LLM agents."""
+    llms_path = Path(__file__).resolve().parent.parent / "public" / "llms.txt"
+    if llms_path.exists():
+        content = llms_path.read_text(encoding="utf-8")
+    else:
+        content = "# FieldSmith Pro A2A Autonomous Commerce Protocol\n"
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content, media_type="text/plain; charset=utf-8")
 
 
 # --- Live Wire Protocol SSE Stream & Packet Inspector ---
@@ -1266,7 +1281,10 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
         )
 
     if req.resetLedger:
-        ledger.reset()
+        if not settings.mock_external_apis:
+            logger.warning("[SECURITY] resetLedger requested in live production mode; suppressed to protect database integrity.")
+        else:
+            ledger.reset()
 
     agent = ExternalBuyerAgent(
         transport=req.transport or "http",

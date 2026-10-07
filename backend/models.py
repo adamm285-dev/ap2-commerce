@@ -135,6 +135,10 @@ class ProvisionResponse(BaseModel):
     retained_from_subscription: Optional[str] = Field(
         default=None, alias="retainedFromSubscription"
     )
+    compliance_note: Optional[str] = Field(
+        default="Voice routing active immediately. A2P 10DLC messaging active upon campaign vetting completion (estimated 1-3 business days).",
+        alias="complianceNote",
+    )
 
 
 # --- Territory Dispatch Models ---

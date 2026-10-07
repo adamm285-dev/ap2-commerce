@@ -16,6 +16,17 @@ import httpx
 from ..config import settings
 from ..models import PayPalOrderResponse
 
+try:
+    from paypal_agent_toolkit.shared.paypal_client import PayPalClient
+    from paypal_agent_toolkit.shared.configuration import Context as PayPalContext
+    from paypal_agent_toolkit.shared.subscriptions import tool_handlers as paypal_sub_handlers
+    PAYPAL_TOOLKIT_AVAILABLE = True
+except ImportError:
+    PayPalClient = None  # type: ignore
+    PayPalContext = None  # type: ignore
+    paypal_sub_handlers = None  # type: ignore
+    PAYPAL_TOOLKIT_AVAILABLE = False
+
 logger = logging.getLogger("paypal_service")
 
 
@@ -112,6 +123,49 @@ class PayPalService:
                 return token
         except Exception as e:
             logger.error(f"[PayPal Sync] Failed to obtain OAuth token from {self.base_url}: {e}")
+            return None
+
+    def get_toolkit_client(self) -> Optional[Any]:
+        """Returns official PayPalAgentToolkit client if configured and available."""
+        if not PAYPAL_TOOLKIT_AVAILABLE or self.mock_mode or not self.client_id or not self.client_secret:
+            return None
+        ctx = PayPalContext(sandbox=("sandbox" in self.base_url.lower()))
+        return PayPalClient(self.client_id, self.client_secret, ctx)
+
+    def list_plans_via_toolkit(self) -> Optional[List[Dict[str, Any]]]:
+        """Queries plans using official PayPal Agent Toolkit."""
+        client = self.get_toolkit_client()
+        if not client:
+            return None
+        try:
+            raw = paypal_sub_handlers.list_subscription_plans(client, {"total_required": True})
+            return json.loads(raw).get("plans", [])
+        except Exception as e:
+            logger.warning(f"[PayPal Toolkit] Failed to list plans: {e}")
+            return None
+
+    def show_plan_details_via_toolkit(self, plan_id: str) -> Optional[Dict[str, Any]]:
+        """Queries plan details using official PayPal Agent Toolkit."""
+        client = self.get_toolkit_client()
+        if not client:
+            return None
+        try:
+            raw = paypal_sub_handlers.show_subscription_plan_details(client, {"plan_id": plan_id})
+            return json.loads(raw)
+        except Exception as e:
+            logger.warning(f"[PayPal Toolkit] Failed to show plan {plan_id}: {e}")
+            return None
+
+    def show_subscription_details_via_toolkit(self, subscription_id: str) -> Optional[Dict[str, Any]]:
+        """Queries subscription details using official PayPal Agent Toolkit."""
+        client = self.get_toolkit_client()
+        if not client:
+            return None
+        try:
+            raw = paypal_sub_handlers.show_subscription_details(client, {"subscription_id": subscription_id})
+            return json.loads(raw)
+        except Exception as e:
+            logger.warning(f"[PayPal Toolkit] Failed to show subscription {subscription_id}: {e}")
             return None
 
     async def create_order(

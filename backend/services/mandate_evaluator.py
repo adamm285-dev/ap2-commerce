@@ -60,8 +60,13 @@ _AUTHORIZED_MANDATES = AuthorizedMandatesProxy()
 
 def register_authorized_mandate(proof_hash: str, details: Dict[str, Any]):
     """Registers an authorized mandate hash with its bounded terms."""
+    cart_mandate = details.get("ap2_cart_mandate") or {}
+    cart_expires = cart_mandate.get("expires_at") or details.get("expires_at")
     now = time.time()
-    expires_at = now + AP2_CART_OFFER_TTL_SEC
+    if cart_expires is not None:
+        expires_at = float(cart_expires)
+    else:
+        expires_at = now + AP2_CART_OFFER_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(int(expires_at), tz=datetime.timezone.utc).isoformat()
     entry = {
         **details,

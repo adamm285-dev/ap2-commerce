@@ -600,30 +600,59 @@ export function EnterpriseFleetLedger({
     });
   }, [transactions, searchTerm, selectedStatus, selectedTrade]);
 
-  // Dynamic 24-Hour Autonomous A2A Settlement & Mandate Stream scaled by active fleet lines
+  // Real Hourly Settlement Velocity aggregated directly from transaction timestamps in active fleet ledger
   const dynamicHourlyVelocity = useMemo(() => {
-    const scale = Math.max(1, activeLinesCount / 14);
-    const baseStream = [
-      { hour: '00:00', settled: 2, mandates: 2, volume: 159.98 },
-      { hour: '02:00', settled: 1, mandates: 1, volume: 79.99 },
-      { hour: '04:00', settled: 3, mandates: 3, volume: 239.97 },
-      { hour: '06:00', settled: 7, mandates: 8, volume: 559.93 },
-      { hour: '08:00', settled: 17, mandates: 18, volume: 1359.83 },
-      { hour: '10:00', settled: 26, mandates: 28, volume: 2079.74 },
-      { hour: '12:00', settled: 32, mandates: 34, volume: 2559.68 },
-      { hour: '14:00', settled: 28, mandates: 29, volume: 2239.72 },
-      { hour: '16:00', settled: 21, mandates: 22, volume: 1679.79 },
-      { hour: '18:00', settled: 14, mandates: 14, volume: 1119.86 },
-      { hour: '20:00', settled: 6, mandates: 6, volume: 479.94 },
-      { hour: '22:00', settled: 3, mandates: 3, volume: 239.97 },
+    const timeSlots = [
+      { hour: '00:00', startH: 0, endH: 1 },
+      { hour: '02:00', startH: 2, endH: 3 },
+      { hour: '04:00', startH: 4, endH: 5 },
+      { hour: '06:00', startH: 6, endH: 7 },
+      { hour: '08:00', startH: 8, endH: 9 },
+      { hour: '10:00', startH: 10, endH: 11 },
+      { hour: '12:00', startH: 12, endH: 13 },
+      { hour: '14:00', startH: 14, endH: 15 },
+      { hour: '16:00', startH: 16, endH: 17 },
+      { hour: '18:00', startH: 18, endH: 19 },
+      { hour: '20:00', startH: 20, endH: 21 },
+      { hour: '22:00', startH: 22, endH: 23 },
     ];
-    return baseStream.map((item) => ({
-      ...item,
-      settled: Math.round(item.settled * scale),
-      mandates: Math.round(item.mandates * scale),
-      volume: Math.round(item.volume * scale * 100) / 100,
+
+    const slotCounts = timeSlots.map((ts) => ({
+      hour: ts.hour,
+      settled: 0,
+      mandates: 0,
+      volume: 0,
     }));
-  }, [activeLinesCount]);
+
+    transactions.forEach((t) => {
+      let hour = -1;
+      if (t.timestamp) {
+        const timePart = t.timestamp.includes('T')
+          ? t.timestamp.split('T')[1]
+          : t.timestamp.split(' ')[1];
+        if (timePart) {
+          const parsed = parseInt(timePart.slice(0, 2), 10);
+          if (!isNaN(parsed)) {
+            hour = parsed;
+          }
+        }
+      }
+
+      if (hour >= 0 && hour < 24) {
+        const slotIdx = Math.floor(hour / 2);
+        if (slotCounts[slotIdx]) {
+          slotCounts[slotIdx].mandates += 1;
+          if (t.status === 'ACTIVE_STREAMING') {
+            slotCounts[slotIdx].settled += 1;
+            slotCounts[slotIdx].volume =
+              Math.round((slotCounts[slotIdx].volume + t.monthly_amount) * 100) / 100;
+          }
+        }
+      }
+    });
+
+    return slotCounts;
+  }, [transactions]);
 
   // AG Charts: 24h Autonomous A2A Settlement Velocity
   const velocityChartOptions: AgChartOptions = useMemo(
@@ -708,6 +737,22 @@ export function EnterpriseFleetLedger({
               <span
                 style={{
                   fontSize: '10px',
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                SIMULATED SANDBOX DATA
+              </span>
+              <span
+                style={{
+                  fontSize: '10px',
                   backgroundColor: 'rgba(16, 185, 129, 0.2)',
                   color: '#34d399',
                   border: '1px solid rgba(16, 185, 129, 0.4)',
@@ -724,7 +769,7 @@ export function EnterpriseFleetLedger({
               </span>
             </div>
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-              Autonomous M2M Telephony Fleet &bull; Telnyx 10DLC Wholesale &bull; PayPal Subscriptions &bull; Florida LATA 952/953
+              Simulated Fleet Demonstration &bull; 14 Pre-Seeded Florida Contractor Verticals &bull; Telnyx 10DLC Wholesale &bull; Florida LATA 952/953
             </div>
           </div>
         </div>
@@ -995,7 +1040,7 @@ export function EnterpriseFleetLedger({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8' }}>Total Active Fleet MRR</span>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8' }}>Fleet Run-Rate (Simulated MRR)</span>
                 <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CreditCard size={16} />
                 </div>
@@ -1003,10 +1048,10 @@ export function EnterpriseFleetLedger({
               <div style={{ marginTop: '10px' }}>
                 <div style={{ fontSize: '26px', fontWeight: 800, color: '#f8fafc' }}>
                   ${totalMrr.toFixed(2)}
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>/mo</span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>/mo (Simulated)</span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#34d399', fontWeight: 600, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <TrendingUp size={13} /> +32.4% MoM &bull; {activeLinesCount} Active Trunks
+                  <TrendingUp size={13} /> +32.4% MoM &bull; {activeLinesCount} Seeded Trunks
                 </div>
               </div>
             </div>
@@ -1035,7 +1080,7 @@ export function EnterpriseFleetLedger({
                   {activeLinesCount} Active Trunks
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                  Telnyx TCR Campaign <strong>CITNRYD</strong> &bull; STIR/SHAKEN A
+                  Telnyx TCR Campaign <strong>CITNRYD</strong> &bull; Simulated Allocation
                 </div>
               </div>
             </div>
@@ -1064,7 +1109,7 @@ export function EnterpriseFleetLedger({
                   100% Policy Enforced
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                  {activeLinesCount * 12} Ed25519 &amp; HMAC Mandates Verified &bull; 0 Budget Leaks
+                  {activeLinesCount} Carrier Trunks Bound &bull; 0 Budget Leaks Detected
                 </div>
               </div>
             </div>
@@ -1091,10 +1136,10 @@ export function EnterpriseFleetLedger({
               <div style={{ marginTop: '10px' }}>
                 <div style={{ fontSize: '26px', fontWeight: 800, color: '#f8fafc' }}>
                   ${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}> ARR</span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}> ARR (Simulated)</span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 600, marginTop: '4px' }}>
-                  {activeLinesCount} Fleet Carrier Subscriptions Bound &bull; 100% PayPal Vault MIT Rails
+                  {activeLinesCount} Seeded Carrier Subscriptions &bull; PayPal Vault MIT Simulation
                 </div>
               </div>
             </div>
@@ -1152,10 +1197,10 @@ export function EnterpriseFleetLedger({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-                    24h Autonomous A2A Settlement Velocity
+                    Fleet Settlement Velocity (by Ledger Timestamp)
                   </h4>
                   <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                    Hourly M2M stream: PayPal Subscriptions Settled (Cyan) vs Mandates Evaluated (Violet)
+                    Aggregated directly from transaction timestamps &bull; Active Settled (Cyan) vs Mandates (Violet)
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px' }}>
@@ -1175,7 +1220,7 @@ export function EnterpriseFleetLedger({
 
               <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
                 <span>Autonomous Rails: <strong>PayPal Subscriptions API + PayPal Vault MIT</strong></span>
-                <span style={{ color: '#34d399', fontWeight: 600 }}>100% Cryptographic Match (0 Tamper Events)</span>
+                <span style={{ color: '#38bdf8', fontWeight: 600 }}>Real-Time Ledger Timestamp Distribution</span>
               </div>
             </div>
           </div>

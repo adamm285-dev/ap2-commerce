@@ -793,11 +793,11 @@ export function App() {
                       STEP 2
                     </span>
                     <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
-                      Execute Verified PayPal Subscription
+                      Simulate Approval &amp; Line Provisioning (Sandbox)
                     </h4>
                   </div>
                   <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 12px 0' }}>
-                    Subscribes to $79.99/month recurring plan. Once payment is confirmed, the Seller Agent allocates a live Telnyx DID bound to <strong>{businessEntity}</strong>.
+                    Simulates approval for $79.99/month recurring plan. Upon simulated approval, the Seller Agent allocates a simulated Telnyx DID bound to <strong>{businessEntity}</strong> in the sandbox harness.
                   </p>
 
                   {/* Primary Instant Simulated Approval Button */}
@@ -826,10 +826,10 @@ export function App() {
                     }}
                   >
                     {isProvisioning ? (
-                      'Provisioning Telnyx DID & Binding KYC...'
+                      'Simulating Line Allocation &amp; Binding KYC...'
                     ) : (
                       <>
-                        <ShieldCheck size={16} /> Authorize $79.99/mo Subscription (Instant Live Simulation)
+                        <ShieldCheck size={16} /> Authorize $79.99/mo (Instant Sandbox Simulation)
                       </>
                     )}
                   </button>

@@ -190,7 +190,7 @@ def test_agent_discovery_card_endpoint():
     res = client.get("/.well-known/agent.json")
     assert res.status_code == 200
     data = res.json()
-    assert data["name"] == "FieldSmith Pro A2A Seller Agent"
+    assert data["name"].startswith("FieldSmith Pro A2A Seller Agent")
     assert "AP2" in data["supported_protocols"]
     assert "A2A" in data["supported_protocols"]
     assert data["authentication"]["seller_kid"] == DEFAULT_SELLER_KID

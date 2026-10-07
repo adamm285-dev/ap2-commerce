@@ -39,20 +39,13 @@ def execute_headless_mit_capture(
             "mock_mode": True,
         }
 
-    # Live PayPal Orders v2 Vault Capture
-    token = asyncio.run(paypal_service.get_access_token()) if False else None  # helper for sync callers
-    # Use sync httpx client for synchronous service call
+    # Live PayPal Orders v2 Vault Capture with proactive token caching & 401 refresh
     try:
-        with httpx.Client(timeout=10.0) as client:
-            token_res = client.post(
-                f"{settings.paypal_base_url}/v1/oauth2/token",
-                auth=(settings.paypal_client_id, settings.paypal_client_secret),
-                data={"grant_type": "client_credentials"},
-                headers={"Accept": "application/json"},
-            )
-            token_res.raise_for_status()
-            token = token_res.json().get("access_token")
+        token = paypal_service.get_sync_access_token()
+        if not token:
+            raise RuntimeError("Failed to obtain PayPal OAuth token for headless MIT capture.")
 
+        with httpx.Client(timeout=10.0) as client:
             order_payload = {
                 "intent": "CAPTURE",
                 "payment_source": {
@@ -80,6 +73,19 @@ def execute_headless_mit_capture(
                 },
                 json=order_payload,
             )
+            if res.status_code == 401:
+                logger.warning(
+                    "[PayPal Vault] 401 Unauthorized during MIT capture; proactively refreshing expired token and retrying..."
+                )
+                token = paypal_service.get_sync_access_token(force_refresh=True)
+                res = client.post(
+                    f"{settings.paypal_base_url}/v2/checkout/orders",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=order_payload,
+                )
             res.raise_for_status()
             data = res.json()
             captures = (

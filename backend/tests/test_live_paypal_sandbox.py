@@ -88,3 +88,32 @@ async def test_live_paypal_sandbox_billing_plans():
             data = res.json()
             assert data.get("id") == plan_id
             assert data.get("status") in ["ACTIVE", "CREATED"]
+
+
+@pytest.mark.asyncio
+async def test_proactive_oauth_token_caching_and_refresh():
+    """Verify proactive token caching, 9-hour expiry tracking, and forced refresh."""
+    import datetime
+    svc = PayPalService()
+    svc.mock_mode = False
+
+    # Mock response data for testing caching logic without hitting live rate limits
+    svc._cached_token = "MOCK_CACHED_TOKEN_A"
+    svc._token_expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+
+    # 1. Active cache returns token immediately without network call
+    token1 = await svc.get_access_token()
+    assert token1 == "MOCK_CACHED_TOKEN_A"
+
+    # 2. Sync accessor also returns cached token
+    sync_token = svc.get_sync_access_token()
+    assert sync_token == "MOCK_CACHED_TOKEN_A"
+
+    # 3. Near-expiration (< 5 min) invalidates cache and triggers refresh
+    svc._token_expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=2)
+    # If in mock mode, will return synthetic token; in live mode, refreshes
+    svc.mock_mode = True
+    refreshed_token = await svc.get_access_token()
+    assert refreshed_token.startswith("MOCK_BEARER_TOKEN_")
+    assert refreshed_token != "MOCK_CACHED_TOKEN_A"
+

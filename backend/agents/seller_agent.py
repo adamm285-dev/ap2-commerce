@@ -201,6 +201,20 @@ SELLER_MCP_TOOLS = [
             },
         },
     },
+    {
+        "name": "get_subscription_details",
+        "description": "Retrieves the live status, plan information, next billing date, and subscriber details of a PayPal subscription. Aligns with official PayPal AI-Toolkit subscription schema.",
+        "input_schema": {
+            "type": "object",
+            "required": ["subscription_id"],
+            "properties": {
+                "subscription_id": {
+                    "type": "string",
+                    "description": "PayPal Subscription ID (e.g. 'I-...' or 'I-A2A-VAULT-...')",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -980,7 +994,38 @@ class SellerAgent:
             reconcile_contractor_ledger(norm_email)
         return response
 
+    async def get_subscription_details(self, subscription_id: str) -> Dict[str, Any]:
+        """
+        Retrieves live subscription details, plan information, and status.
+        Conforms to official PayPal AI-Toolkit subscription schema.
+        """
+        if not subscription_id:
+            return {"error": "INVALID_ARGUMENT", "message": "subscription_id is required."}
 
+        # Check local persistent store first
+        sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id)
+        if sub:
+            return {
+                "id": sub.get("subscription_id"),
+                "status": sub.get("status"),
+                "plan_id": sub.get("plan_id"),
+                "tier_id": sub.get("tier_id"),
+                "agreed_monthly_rate": sub.get("agreed_monthly_rate"),
+                "contractor_email": sub.get("contractor_email"),
+                "create_time": sub.get("create_time"),
+                "next_billing_time": sub.get("next_billing_time"),
+                "paypal_vault_status": sub.get("paypal_vault_status"),
+                "approval_url": sub.get("approval_url"),
+                "hateoas_links": sub.get("hateoas_links", []),
+                "mock_mode": paypal_service.mock_mode,
+            }
+
+        # Query PayPal Sandbox API directly
+        try:
+            live_data = await paypal_service.verify_subscription(subscription_id)
+            return live_data
+        except Exception as e:
+            return {"error": "NOT_FOUND", "message": f"Subscription '{subscription_id}' not found: {e}"}
 
     async def calculate_quote(
         self,

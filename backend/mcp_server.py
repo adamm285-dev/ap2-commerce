@@ -221,6 +221,11 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     webhook_url=arguments.get("webhook_url"),
                 )
 
+            elif tool_name == "get_subscription_details":
+                result = await seller_agent.get_subscription_details(
+                    subscription_id=arguments.get("subscription_id", ""),
+                )
+
             else:
                 return {
                     "jsonrpc": jsonrpc,

@@ -23,7 +23,7 @@ def test_mcp_get_status():
     assert data["transport"] == "streamable_http"
     assert data["mcp_endpoint"] == "/mcp"
     assert data["sse_endpoint"] == "/sse"
-    assert data["tools_count"] == 7
+    assert data["tools_count"] == 8
 
 
 @pytest.mark.asyncio
@@ -81,7 +81,7 @@ def test_mcp_post_jsonrpc_tools_call():
     assert tools_res.status_code == 200
     tools = tools_res.json()["result"]["tools"]
     tool_names = [t["name"] for t in tools]
-    assert len(tool_names) == 7
+    assert len(tool_names) == 8
     assert "get_service_catalog" in tool_names
     assert "inspect_subscription_tiers" in tool_names
     assert "negotiate_tier_terms" in tool_names
@@ -89,6 +89,7 @@ def test_mcp_post_jsonrpc_tools_call():
     assert "purchase_subscription" in tool_names
     assert "provision_telecom_line" in tool_names
     assert "dispatch_zapier_mcp" in tool_names
+    assert "get_subscription_details" in tool_names
 
     # 3. tools/call -> get_service_catalog
     call_res = client.post(

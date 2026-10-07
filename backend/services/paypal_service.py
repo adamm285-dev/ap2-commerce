@@ -27,14 +27,28 @@ class PayPalService:
         self.mock_mode = (
             settings.mock_external_apis or not self.client_id or not self.client_secret
         )
+        self._cached_token: Optional[str] = None
+        self._token_expires_at: Optional[datetime.datetime] = None
 
-    async def get_access_token(self) -> Optional[str]:
-        """Obtains an OAuth2 bearer token from PayPal Sandbox."""
+    async def get_access_token(self, force_refresh: bool = False) -> Optional[str]:
+        """
+        Obtains an OAuth2 bearer token from PayPal Sandbox with proactive in-memory caching and refresh.
+        Cached token is automatically refreshed 5 minutes before the 9-hour sandbox expiration window.
+        """
         if self.mock_mode:
             logger.info(
                 "[PayPal] Running in Mock Mode; returning synthetic bearer token."
             )
             return f"MOCK_BEARER_TOKEN_{uuid.uuid4().hex[:16]}"
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            not force_refresh
+            and self._cached_token
+            and self._token_expires_at
+            and now < (self._token_expires_at - datetime.timedelta(minutes=5))
+        ):
+            return self._cached_token
 
         async with httpx.AsyncClient() as client:
             try:
@@ -47,12 +61,58 @@ class PayPalService:
                 )
                 res.raise_for_status()
                 data = res.json()
-                return data.get("access_token")
+                token = data.get("access_token")
+                expires_in = int(data.get("expires_in", 32400))  # Default 9 hours (32400s)
+                self._cached_token = token
+                self._token_expires_at = now + datetime.timedelta(seconds=expires_in)
+                logger.info(
+                    f"[PayPal] Acquired OAuth token (expires in {expires_in}s, cached until {self._token_expires_at.isoformat()})"
+                )
+                return token
             except Exception as e:
                 logger.error(
                     f"[PayPal] Failed to obtain OAuth token from {self.base_url}: {e}"
                 )
                 return None
+
+    def get_sync_access_token(self, force_refresh: bool = False) -> Optional[str]:
+        """
+        Synchronous counterpart to get_access_token for synchronous service paths (e.g. paypal_vault.py).
+        Reuses cached token and proactively refreshes before expiration or upon forced invalidation.
+        """
+        if self.mock_mode:
+            return f"MOCK_BEARER_TOKEN_{uuid.uuid4().hex[:16]}"
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            not force_refresh
+            and self._cached_token
+            and self._token_expires_at
+            and now < (self._token_expires_at - datetime.timedelta(minutes=5))
+        ):
+            return self._cached_token
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                res = client.post(
+                    f"{self.base_url}/v1/oauth2/token",
+                    auth=(self.client_id, self.client_secret),
+                    data={"grant_type": "client_credentials"},
+                    headers={"Accept": "application/json"},
+                )
+                res.raise_for_status()
+                data = res.json()
+                token = data.get("access_token")
+                expires_in = int(data.get("expires_in", 32400))
+                self._cached_token = token
+                self._token_expires_at = now + datetime.timedelta(seconds=expires_in)
+                logger.info(
+                    f"[PayPal Sync] Acquired OAuth token (expires in {expires_in}s, cached until {self._token_expires_at.isoformat()})"
+                )
+                return token
+        except Exception as e:
+            logger.error(f"[PayPal Sync] Failed to obtain OAuth token from {self.base_url}: {e}")
+            return None
 
     async def create_order(
         self,
@@ -151,6 +211,14 @@ class PayPalService:
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=10.0,
             )
+            if res.status_code == 401:
+                logger.warning(f"[PayPal] 401 Unauthorized during subscription verification ({subscription_id}); refreshing expired token...")
+                token = await self.get_access_token(force_refresh=True)
+                res = await client.get(
+                    f"{self.base_url}/v1/billing/subscriptions/{subscription_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10.0,
+                )
             res.raise_for_status()
             return res.json()
 
@@ -250,6 +318,18 @@ class PayPalService:
                 json=payload,
                 timeout=10.0,
             )
+            if res.status_code == 401:
+                logger.warning(f"[PayPal] 401 Unauthorized during subscription creation ({target_plan_id}); refreshing expired token...")
+                token = await self.get_access_token(force_refresh=True)
+                res = await client.post(
+                    f"{self.base_url}/v1/billing/subscriptions",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=10.0,
+                )
             res.raise_for_status()
             data = res.json()
             sub_id = data.get("id")

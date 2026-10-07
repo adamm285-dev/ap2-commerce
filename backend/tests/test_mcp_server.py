@@ -84,3 +84,25 @@ async def test_mcp_tools_call_mandate():
     assert not resp["result"]["isError"]
     content = resp["result"]["content"][0]["text"]
     assert "mandateProofHash" in content or "mandate_proof_hash" in content
+
+
+@pytest.mark.asyncio
+async def test_mcp_tools_call_get_subscription_details():
+    req = {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "get_subscription_details",
+            "arguments": {
+                "subscription_id": "I-MOCK-TEST-123",
+            },
+        },
+    }
+    resp = await process_mcp_request(req)
+    assert resp["id"] == 5
+    assert not resp["result"]["isError"]
+    content = resp["result"]["content"][0]["text"]
+    assert "status" in content
+    assert "id" in content or "subscription_id" in content
+

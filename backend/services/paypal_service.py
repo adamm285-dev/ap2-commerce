@@ -20,11 +20,15 @@ try:
     from paypal_agent_toolkit.shared.paypal_client import PayPalClient
     from paypal_agent_toolkit.shared.configuration import Context as PayPalContext
     from paypal_agent_toolkit.shared.subscriptions import tool_handlers as paypal_sub_handlers
+    from paypal_agent_toolkit.shared.orders import tool_handlers as paypal_ord_handlers
+    from paypal_agent_toolkit.shared.tools import tools as paypal_official_tools
     PAYPAL_TOOLKIT_AVAILABLE = True
 except ImportError:
     PayPalClient = None  # type: ignore
     PayPalContext = None  # type: ignore
     paypal_sub_handlers = None  # type: ignore
+    paypal_ord_handlers = None  # type: ignore
+    paypal_official_tools = []  # type: ignore
     PAYPAL_TOOLKIT_AVAILABLE = False
 
 logger = logging.getLogger("paypal_service")
@@ -168,6 +172,30 @@ class PayPalService:
             logger.warning(f"[PayPal Toolkit] Failed to show subscription {subscription_id}: {e}")
             return None
 
+    def capture_order_via_toolkit(self, order_id: str) -> Optional[Dict[str, Any]]:
+        """Captures an order using the official PayPal Agent Toolkit."""
+        client = self.get_toolkit_client()
+        if not client or not paypal_ord_handlers:
+            return None
+        try:
+            raw = paypal_ord_handlers.capture_order(client, {"order_id": order_id})
+            return json.loads(raw) if isinstance(raw, str) else raw
+        except Exception as e:
+            logger.warning(f"[PayPal Toolkit] Failed to capture order {order_id}: {e}")
+            return None
+
+    def cancel_subscription_via_toolkit(self, subscription_id: str, reason: str = "Customer requested cancellation") -> Optional[Dict[str, Any]]:
+        """Cancels an active subscription using the official PayPal Agent Toolkit."""
+        client = self.get_toolkit_client()
+        if not client or not paypal_sub_handlers:
+            return None
+        try:
+            raw = paypal_sub_handlers.cancel_subscription(client, {"subscription_id": subscription_id, "payload": {"reason": reason}})
+            return json.loads(raw) if isinstance(raw, str) else raw
+        except Exception as e:
+            logger.warning(f"[PayPal Toolkit] Failed to cancel subscription {subscription_id}: {e}")
+            return None
+
     async def create_order(
         self,
         amount: float,
@@ -188,6 +216,39 @@ class PayPalService:
                 approval_url=mock_approval_url,
                 mock_mode=True,
             )
+
+        # First try official PayPal Agent Toolkit order handler
+        client = self.get_toolkit_client()
+        if client and paypal_ord_handlers:
+            try:
+                params = {
+                    "currency_code": "USD",
+                    "items": [
+                        {
+                            "name": description,
+                            "item_cost": float(amount),
+                            "item_total": float(amount),
+                            "quantity": 1,
+                        }
+                    ],
+                    "return_url": "http://localhost:5173/payment-success",
+                    "cancel_url": "http://localhost:5173/payment-cancelled",
+                }
+                raw = paypal_ord_handlers.create_order(client, params)
+                data = json.loads(raw)
+                approval_url = None
+                for link in data.get("links", []):
+                    if link.get("rel") == "approve":
+                        approval_url = link.get("href")
+                        break
+                return PayPalOrderResponse(
+                    order_id=data.get("id"),
+                    status=data.get("status", "CREATED"),
+                    approval_url=approval_url,
+                    mock_mode=False,
+                )
+            except Exception as e:
+                logger.warning(f"[PayPal Toolkit] Failed to create order via toolkit, falling back to direct REST: {e}")
 
         token = await self.get_access_token()
         if not token:
@@ -254,6 +315,12 @@ class PayPalService:
                 },
                 "mock_mode": True,
             }
+
+        # First try official PayPal Agent Toolkit subscription handler
+        toolkit_data = self.show_subscription_details_via_toolkit(subscription_id)
+        if toolkit_data and isinstance(toolkit_data, dict) and "id" in toolkit_data:
+            logger.info(f"[PayPal Toolkit] Verified subscription {subscription_id} via official toolkit")
+            return toolkit_data
 
         token = await self.get_access_token()
         if not token:
@@ -330,10 +397,6 @@ class PayPalService:
                 ],
             }
 
-        token = await self.get_access_token()
-        if not token:
-            raise RuntimeError("Failed to authenticate with PayPal Sandbox API.")
-
         plan_map = {
             "solo-starter": getattr(settings, "paypal_plan_id_solo", "P-FLSMITH-SOLO-STARTER"),
             "fieldsmith-pro": getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO"),
@@ -344,6 +407,57 @@ class PayPalService:
         name_parts = contractor_name.split(" ", 1)
         given_name = name_parts[0]
         surname = name_parts[1] if len(name_parts) > 1 else "Contractor"
+
+        # First try official PayPal Agent Toolkit subscription handler
+        client = self.get_toolkit_client()
+        if client and paypal_sub_handlers:
+            try:
+                params = {
+                    "plan_id": target_plan_id,
+                    "subscriber": {
+                        "name": {"given_name": given_name, "surname": surname},
+                        "email_address": contractor_email,
+                    },
+                    "custom_id": f"a2a_{offer_id or (mandate_proof_hash[:16] if mandate_proof_hash else 'sub')}",
+                    "application_context": {
+                        "brand_name": "FieldSmith Pro A2A",
+                        "locale": "en-US",
+                        "shipping_preference": "GET_FROM_FILE",
+                        "user_action": "SUBSCRIBE_NOW",
+                        "return_url": "http://localhost:5173/subscription-success",
+                        "cancel_url": "http://localhost:5173/subscription-cancelled",
+                    },
+                }
+                raw = paypal_sub_handlers.create_subscription(client, params)
+                data = json.loads(raw) if isinstance(raw, str) else raw
+                sub_id = data.get("id")
+                links = data.get("links", [])
+                approval_url = None
+                for link in links:
+                    if link.get("rel") == "approve":
+                        approval_url = link.get("href")
+                        break
+                live_status = data.get("status", "APPROVAL_PENDING")
+                return {
+                    "subscription_id": sub_id,
+                    "status": live_status,
+                    "approval_url": approval_url,
+                    "plan_id": target_plan_id,
+                    "payer_id": f"PAYER-{data.get('subscriber', {}).get('payer_id', 'SANDBOX')}",
+                    "vault_id": f"vault_tok_{sub_id.lower().replace('-', '_')}",
+                    "payment_token": f"tok_{sub_id.lower().replace('-', '_')}",
+                    "paypal_request_id": f"req_{sub_id}",
+                    "created_time": data.get("create_time"),
+                    "next_billing_time": data.get("billing_info", {}).get("next_billing_time"),
+                    "hateoas_links": links,
+                    "mock_mode": False,
+                }
+            except Exception as e:
+                logger.warning(f"[PayPal Toolkit] Failed to create subscription via toolkit, falling back to direct REST: {e}")
+
+        token = await self.get_access_token()
+        if not token:
+            raise RuntimeError("Failed to authenticate with PayPal Sandbox API.")
 
         payload = {
             "plan_id": target_plan_id,

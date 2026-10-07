@@ -120,9 +120,11 @@ async def test_proactive_oauth_token_caching_and_refresh():
 
 def test_official_paypal_agent_toolkit_integration():
     """Verify that official paypal_agent_toolkit queries live subscription plans and details."""
-    svc = PayPalService()
-    if svc.mock_mode or not svc.client_id or not svc.client_secret:
+    if not settings.paypal_client_id or not settings.paypal_client_secret:
         pytest.skip("PayPal Sandbox credentials not configured for live toolkit test")
+
+    svc = PayPalService()
+    svc.mock_mode = False
 
     plans = svc.list_plans_via_toolkit()
     assert plans is not None
@@ -135,4 +137,19 @@ def test_official_paypal_agent_toolkit_integration():
     assert detail is not None
     assert detail.get("id") == "P-4KA989014W524233ANLCRSFQ"
     assert detail.get("status") in ["ACTIVE", "CREATED"]
+
+
+def test_official_paypal_agent_toolkit_subscription_lookup():
+    """Verify official toolkit can query live subscription details on PayPal Sandbox."""
+    if not settings.paypal_client_id or not settings.paypal_client_secret:
+        pytest.skip("PayPal Sandbox credentials not configured for live toolkit test")
+
+    svc = PayPalService()
+    svc.mock_mode = False
+
+    sub = svc.show_subscription_details_via_toolkit("I-XM0DGNAYF04E")
+    assert sub is not None
+    assert sub.get("id") == "I-XM0DGNAYF04E"
+    assert sub.get("status") in ["APPROVAL_PENDING", "ACTIVE", "APPROVED"]
+
 

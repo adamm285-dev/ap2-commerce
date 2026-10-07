@@ -81,6 +81,20 @@ def test_catalog_matches_llms_full_txt():
     assert published == CATALOG
 
 
+def test_website_llms_txt_retains_stripe_signup_flow():
+    """Website llms.txt must preserve the live production Stripe signup tools, URLs, and MCP endpoint."""
+    path = _find_upwards("fieldsmith_web_deploy/llms.txt")
+    if path is None:
+        pytest.skip("fieldsmith_web_deploy/llms.txt not present in this checkout")
+    text = path.read_text(encoding="utf-8")
+    assert "https://buy.stripe.com/" in text, "Missing live Stripe Checkout links in website llms.txt"
+    assert "start_signup" in text, "Missing start_signup tool in website llms.txt"
+    assert "list_plans" in text, "Missing list_plans tool in website llms.txt"
+    assert "signup_status" in text, "Missing signup_status tool in website llms.txt"
+    assert "https://api.fieldsmith.pro/mcp" in text, "Missing production /mcp endpoint in website llms.txt"
+    assert "PayPal" not in text, "Website llms.txt must not advertise PayPal sandbox subscriptions to real customers"
+
+
 def test_stripe_feed_matches_catalog():
     path = _find_upwards("fieldsmith_stripe_product_feed.csv")
     if path is None:

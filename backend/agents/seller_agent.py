@@ -50,7 +50,11 @@ from ..services.plan_catalog import (
 )
 from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
-from ..services.crypto_mandate import verify_mandate_proof, verify_ap2_intent_mandate
+from ..services.crypto_mandate import (
+    verify_mandate_proof,
+    verify_ap2_intent_mandate,
+    is_trusted_buyer_key,
+)
 from ..config import settings
 
 logger = logging.getLogger("seller_agent")
@@ -340,7 +344,13 @@ class SellerAgent:
         )
         negotiation_id = f"neg_{hashlib.sha256(proof_hash.encode()).hexdigest()[:12]}"
 
-        if buyer_intent_mandate and verify_ap2_intent_mandate(buyer_intent_mandate):
+        kid = buyer_intent_mandate.get("kid") if isinstance(buyer_intent_mandate, dict) else None
+        pub_hex = buyer_intent_mandate.get("public_key") if isinstance(buyer_intent_mandate, dict) else None
+        if (
+            buyer_intent_mandate
+            and is_trusted_buyer_key(kid, pub_hex)
+            and verify_ap2_intent_mandate(buyer_intent_mandate)
+        ):
             ap2_mandate = dict(buyer_intent_mandate)
         else:
             ap2_mandate = build_ap2_intent_mandate(

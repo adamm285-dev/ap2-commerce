@@ -1353,10 +1353,12 @@ export function ContractorCopilotView({
                     <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px' }}>
                       Reason Code: <code>{tamperVerificationResult.reason}</code> &bull; Status: <code>HTTP {tamperVerificationResult.status_code}</code>
                     </div>
-                    {!tamperVerificationResult.valid && tamperVerificationResult.expected_signature && (
+                    {!tamperVerificationResult.valid && (
                       <div style={{ marginTop: '6px', fontSize: '10px', color: '#94a3b8', wordBreak: 'break-all' }}>
-                        <div>Expected HMAC: <code style={{ color: '#34d399' }}>{tamperVerificationResult.expected_signature}</code></div>
-                        <div>Provided HMAC: <code style={{ color: '#f87171' }}>{tamperVerificationResult.provided_signature}</code></div>
+                        <div>Cryptographic Status: <code style={{ color: '#f87171' }}>TAMPER DETECTED / SIGNATURE REJECTED</code></div>
+                        {tamperVerificationResult.provided_signature && (
+                          <div>Provided Signature: <code style={{ color: '#f87171' }}>{tamperVerificationResult.provided_signature}</code></div>
+                        )}
                       </div>
                     )}
                   </div>

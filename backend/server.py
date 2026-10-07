@@ -55,6 +55,7 @@ from .services.crypto_mandate import (
     DEFAULT_SELLER_PUBLIC_KEY_HEX,
     REGISTERED_BUYER_KEYS,
     SECRET_KEY,
+    DEMO_TAMPER_SECRET,
 )
 from .mcp_server import (
     process_mcp_request,
@@ -442,13 +443,11 @@ class GenerateProofRequest(BaseModel):
 async def verify_tamper_endpoint(req: VerifyTamperRequest):
     """
     Live anti-tamper verification endpoint.
-    Tests whether the supplied payload matches its HMAC-SHA256 signature,
+    Tests whether the supplied payload matches its signature,
     checks budget caps, and verifies timestamp drift.
+    Never returns expected signatures or leaks secrets.
     """
-    valid, reason = verify_mandate_proof(req.payload, req.signature)
-    canonical = canonicalize_mandate_payload(req.payload)
-    encoded_bytes = json.dumps(canonical, sort_keys=True).encode("utf-8")
-    expected_sig = hmac.new(SECRET_KEY, encoded_bytes, hashlib.sha256).hexdigest()
+    valid, reason = verify_mandate_proof(req.payload, req.signature, secret_key=DEMO_TAMPER_SECRET)
 
     status_code = 200 if valid else 401
     return {
@@ -456,11 +455,10 @@ async def verify_tamper_endpoint(req: VerifyTamperRequest):
         "status_code": status_code,
         "reason": reason,
         "detail": (
-            "200 OK: Cryptographically Verified"
+            "200 OK: Cryptographically Verified (Integrity & Budget Intact)"
             if valid
             else f"401 Signature Mismatch: Budget Policy Violated ({reason})"
         ),
-        "expected_signature": expected_sig,
         "provided_signature": req.signature,
         "payload": req.payload,
     }
@@ -468,7 +466,7 @@ async def verify_tamper_endpoint(req: VerifyTamperRequest):
 
 @app.post("/api/crypto/generate-proof", tags=["Anti-Tamper & Cryptography"])
 async def generate_proof_endpoint(req: GenerateProofRequest):
-    """Generates a canonical HMAC-SHA256 mandate proof for given parameters."""
+    """Generates a canonical mandate proof for given parameters using the demo tamper key."""
     nonce = req.nonce or uuid.uuid4().hex[:12]
     proof = generate_dynamic_mandate_proof(
         contractor_id=req.contractor_id or "contractor_marcus_863",
@@ -476,14 +474,15 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
         monthly_cap_usd=req.monthly_cap_usd if req.monthly_cap_usd is not None else 100.00,
         agreed_price_usd=req.agreed_price_usd if req.agreed_price_usd is not None else 79.99,
         nonce=nonce,
+        secret_key=DEMO_TAMPER_SECRET,
     )
-    proof["secret_key_preview"] = SECRET_KEY.decode("utf-8")
+    # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
 
 
 @app.get("/api/crypto/sample-proof", tags=["Anti-Tamper & Cryptography"])
 async def get_sample_proof():
-    """Returns a ready-to-test authentic proof for Marcus Miller."""
+    """Returns a ready-to-test authentic proof for Marcus Miller using the demo tamper key."""
     nonce = uuid.uuid4().hex[:12]
     proof = generate_dynamic_mandate_proof(
         contractor_id="contractor_marcus_863",
@@ -491,8 +490,9 @@ async def get_sample_proof():
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce=nonce,
+        secret_key=DEMO_TAMPER_SECRET,
     )
-    proof["secret_key_preview"] = SECRET_KEY.decode("utf-8")
+    # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
 
 

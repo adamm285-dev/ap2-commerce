@@ -439,6 +439,7 @@ class GenerateProofRequest(BaseModel):
     nonce: Optional[str] = None
 
 
+@app.post("/api/agent/anti-tamper/verify-tamper", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.post("/api/crypto/verify-tamper", tags=["Anti-Tamper & Cryptography"])
 async def verify_tamper_endpoint(req: VerifyTamperRequest):
     """
@@ -464,6 +465,7 @@ async def verify_tamper_endpoint(req: VerifyTamperRequest):
     }
 
 
+@app.post("/api/agent/anti-tamper/generate-proof", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.post("/api/crypto/generate-proof", tags=["Anti-Tamper & Cryptography"])
 async def generate_proof_endpoint(req: GenerateProofRequest):
     """Generates a canonical mandate proof for given parameters using the demo tamper key."""
@@ -480,6 +482,7 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
     return proof
 
 
+@app.get("/api/agent/anti-tamper/sample-proof", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.get("/api/crypto/sample-proof", tags=["Anti-Tamper & Cryptography"])
 async def get_sample_proof():
     """Returns a ready-to-test authentic proof for Marcus Miller using the demo tamper key."""

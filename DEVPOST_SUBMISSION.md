@@ -13,10 +13,10 @@
 
 ## 1. Project Title & Tagline
 
-* **Project Title:** FieldSmith Pro &mdash; Autonomous A2A Commerce & Multi-Agent Operations Deck
-* **Elevator Pitch (Tagline):** Autonomous Agent-to-Agent (A2A) commerce protocol for solo trade contractors &mdash; enabling AI Buyer Agents to negotiate within strict spending mandates, execute recurring PayPal subscriptions, provision KYC-verified business phone lines, and automate downline back-office accounting with zero human friction.
+* **Project Title:** FieldSmith Pro &mdash; Autonomous Agentic Commerce & AP2 Operations Deck
+* **Elevator Pitch (Tagline):** Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) engine for solo trade contractors &mdash; enabling AI Buyer Agents to negotiate within strict spending mandates, execute recurring PayPal subscriptions, provision KYC-verified business phone lines, and automate downline back-office accounting with zero human friction.
 * **Live Web Portal:** [https://api.fieldsmith.pro/portal/](https://api.fieldsmith.pro/portal/)
-* **Live FastMCP Endpoint:** `https://api.fieldsmith.pro/a2a/mcp` (A2A Hackathon Seller Protocol; core contractor Stripe signups at `https://api.fieldsmith.pro/mcp`)
+* **Live FastMCP Endpoint:** `https://api.fieldsmith.pro/a2a/mcp` (Agentic Commerce Seller Protocol; core contractor Stripe signups at `https://api.fieldsmith.pro/mcp`)
 * **Live SSE Stream Endpoint:** `https://api.fieldsmith.pro/sse`
 * **Interactive OpenAPI Docs:** [https://api.fieldsmith.pro/docs](https://api.fieldsmith.pro/docs)
 
@@ -39,8 +39,8 @@ The Buyer Agent detects missed call revenue leaks, consults the contractor's loc
 
 FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operations ecosystem across four integrated portals:
 
-### 1. Contractor Copilot & Split-Screen A2A Command Center
-* **Autonomous Buyer Agent:** Analyzes contractor call logs, discovers uncaptured revenue (\$4,200 - \$6,200/mo), evaluates local spending mandates (`amount <= \$100.00/mo`), and generates asymmetric Ed25519 authorization proofs (`X-A2A-Signature`) conforming to the emerging FIDO / AP2 Intent Mandate specification.
+### 1. Contractor Copilot & Split-Screen Agentic Commerce Command Center
+* **Autonomous Buyer Agent:** Analyzes contractor call logs, discovers uncaptured revenue (\$4,200 - \$6,200/mo), evaluates local spending mandates (`amount <= \$100.00/mo`), and generates asymmetric Ed25519 authorization proofs (`X-AP2-Signature` / `X-FieldSmith-Signature`) conforming to the emerging Google & PayPal AP2 Intent Mandate specification.
 * **Seller Agent (MCP Server):** Exposes machine-readable trade solution tiers over Model Context Protocol (`get_service_catalog`, `inspect_subscription_tiers`, `negotiate_tier_terms`, `evaluate_spending_mandate`, `purchase_subscription`, `provision_telecom_line`, `dispatch_zapier_mcp`).
 * **Dynamic Multi-Tier Counter-Offer Negotiation:** When the contractor's spending cap is below the standard asking price (e.g. \$60 cap vs \$79.99 plan), the Seller Agent autonomously calculates and returns a dynamic counter-offer: *Solo Starter (125 AI screened calls/mo) available at \$49.99/mo*. The Buyer Agent evaluates the counter-offer autonomously and signs.
 * **Interactive Anti-Tamper Verifier (Live Byte-Level Mismatch):** Judges can edit any single byte of the canonical JSON payload (e.g., inflating price from \$79.99 to \$80.00 or changing the contractor entity name) and watch the cryptographic verifier immediately reject authorization with `401 Signature Mismatch: Budget Policy Violated`.
@@ -55,7 +55,7 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 * **Dynamic SQLite WAL Persistence:** Live asynchronous data refresh (`onRefreshData`) pulling directly from persistent database records with zero hardcoded metrics.
 * **Simulated Live Fleet Telemetry:** Every metric reconciles to the penny across 14 simulated contractor subscriber lines demonstrating 24/7 AG Studio operations across Florida contractor trade verticals:
   * **Active Fleet MRR:** \$1,039.87/mo pending &rarr; \$1,119.86/mo fully settled.
-  * **Autonomous A2A Settlement GMV:** \$13,438.32 ARR.
+  * **Autonomous Agentic Commerce Settlement GMV:** \$13,438.32 ARR.
   * **Mandates Settled:** 168 Autonomous Cycles (14 lines &times; 12 monthly cycles).
   * **Policy Enforcement:** 100% Policy Enforced &bull; 0 Budget Leaks.
 * Features runtime **View / Drag & Drop Editor Mode switching**, allowing contractors or fleet managers to visually customize charts, rearrange widgets, or slice metrics by trade vertical.
@@ -132,7 +132,7 @@ python -m pytest backend/tests/ -v
 ## 7. The 9 Judge Audit Verification Checks
 
 1. **[CHECK 1] MCP JSON-RPC 2.0 Handshake:** Validates `initialize` and `tools/list` protocol handshake returning 7 registered seller tools.
-2. **[CHECK 2] Standard A2A Negotiation:** Evaluates \$79.99/mo plan under \$100 budget cap with HMAC-SHA256 cryptographic authorization proof.
+2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates \$79.99/mo plan under \$100 budget cap with HMAC-SHA256 cryptographic authorization proof.
 3. **[CHECK 3] Sub-Budget Counter-Offer Bargaining:** Generates scaled-down *Solo Starter* (\$49.99/mo) counter-offer when cap is \$60.00.
 4. **[CHECK 4] Anti-Tamper Verification:** Proves 1-cent inflation tampering, entity name alteration, and budget breaches are strictly rejected.
 5. **[CHECK 5] Nationwide LATA Routing:** Validates primary local allocation (863 Lakeland) and automated contiguous failover (813 Tampa).

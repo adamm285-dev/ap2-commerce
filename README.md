@@ -1,6 +1,6 @@
-# FieldSmith Pro &mdash; Autonomous A2A Commerce Portal & Multi-Agent Operations Deck
+# FieldSmith Pro &mdash; Autonomous Agentic Commerce Portal & AP2 Operations Deck
 
-> **Autonomous Agent-to-Agent (A2A) Commerce for Solo Tradespeople**  
+> **Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Tradespeople**  
 > Built for the **PayPal AI Hackathon 2026** (\$67,500+ Prize Purse &bull; Targeting \$17,000+ Across 5 Sponsor Tracks)  
 > Combining **PayPal Agentic Commerce**, **AG Studio v3.0.0 & AG Grid Community**, **Bryntum Scheduler**, **APIMatic**, and **Zapier MCP**.
 
@@ -9,7 +9,7 @@
 [![PayPal Agentic Commerce](https://img.shields.io/badge/PayPal-Agentic%20Commerce-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![Live Cloud Portal](https://img.shields.io/badge/Cloud%20Portal-Online%20(HTTP%20200)-success.svg)](https://api.fieldsmith.pro/portal/)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 138 Passed](https://img.shields.io/badge/Tests-138%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
+[![Tests: 149 Passed](https://img.shields.io/badge/Tests-149%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed%20(100%25)-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -19,7 +19,7 @@
 | Resource | URL | Protocol / Format |
 | :--- | :--- | :--- |
 | **Interactive Web Portal** | [https://api.fieldsmith.pro/portal/](https://api.fieldsmith.pro/portal/) | React 19 + AG Studio + Bryntum UI |
-| **FastMCP Seller Server** | `https://api.fieldsmith.pro/a2a/mcp` | MCP 2024-11-05 JSON-RPC 2.0 (A2A Hackathon Seller Protocol; core contractor signups at `/mcp`) |
+| **FastMCP Seller Server** | `https://api.fieldsmith.pro/a2a/mcp` | MCP 2024-11-05 JSON-RPC 2.0 (Agentic Commerce Seller Protocol; core contractor signups at `/mcp`) |
 | **Live SSE Wire Stream** | `https://api.fieldsmith.pro/sse` | Server-Sent Events (SSE) Wire Frames |
 | **OpenAPI 3.1.0 Specification** | [https://api.fieldsmith.pro/openapi.json](https://api.fieldsmith.pro/openapi.json) | OpenAPI 3.1.0 JSON (33 Endpoints) |
 | **Interactive API Documentation**| [https://api.fieldsmith.pro/docs](https://api.fieldsmith.pro/docs) | Swagger UI |
@@ -65,7 +65,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 3. **Downline Admin Fatigue:** Once a job is booked, contractors spend hours every night manually creating Jobber quotes, QuickBooks Online invoices, and calendar appointments.
 4. **Telecom Robocall Abuse & KYC:** Rogue AI voice bots create statutory liability (TCPA / FCC compliance) if agents are provisioned anonymously without verified KYC identity.
 
-**FieldSmith Pro introduces an Autonomous Agent-to-Agent (A2A) Commerce Ecosystem:**
+**FieldSmith Pro introduces an Autonomous Agentic Commerce & AP2 Protocol Ecosystem:**
 - **Autonomous Buyer Agent:** Evaluates local telephony call logs, identifies uncaptured customer revenue, validates the contractor's programmatic spending mandate (`maxMonthlyBudget <= \$100/mo`), and autonomously negotiates with service providers.
 - **Autonomous Multi-Tier Counter-Offer Bargaining:** When the contractor's budget cap is below the standard asking price (\$60 cap vs \$79.99 plan), the Seller Agent autonomously offers a scaled-down tier (*Solo Starter at \$49.99/mo*) which the Buyer Agent signs autonomously.
 - **Cryptographic Anti-Tamper Engine:** Validates 64-character HMAC-SHA256 signatures (`X-FieldSmith-Signature`). Any byte-level alteration (such as inflating price by 1¢) is immediately intercepted and rejected with `401 Signature Mismatch: Budget Policy Violated`.
@@ -82,7 +82,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 
 | Sponsor Track | Prize | Implementation & Technology |
 | :--- | :--- | :--- |
-| **Best Use of Agentic Commerce** | **\$5,000** | `@paypal/react-paypal-js`<br/>`@paypal/paypal-server-sdk` | Autonomous A2A negotiation, counter-offer bargaining, delegated subscription approvals, and Vault MIT overage settlement. |
+| **Best Use of Agentic Commerce** | **\$5,000** | `@paypal/react-paypal-js`<br/>`@paypal/paypal-server-sdk` | Autonomous AP2 mandate negotiation, counter-offer bargaining, delegated subscription approvals, and Vault MIT overage settlement. |
 | **Best Use of AG Grid / AG Studio** | **\$5,000** | `ag-studio-react`<br/>`ag-studio` (v3.0.0)<br/>AG Grid Community | High-density grid telemetry with floating column filters, grouped bar charts, live SQLite WAL data hydration, and dual View/Edit reporting modes reconciling \$13,438.32 ARR across 14 simulated lines. |
 | **Best Use of PayPal + AI** | **\$5,000** | FastMCP 2024-11-05 Server<br/>SSE Wire Stream Inspector | Streamable HTTP/SSE wire protocol inspector, live cloud deployment (`https://api.fieldsmith.pro`), US-domestic NANP gating, and intelligent autonomous counter-offer generation. |
 | **Best Use of Bryntum** | **\$1,000** | `@bryntum/scheduler` 7.3.7 (Trial Build) | 4-zone territory dispatch calendar managing 24/7 AI voice screener shifts, 75-minute customer estimate window booking, and live in-place reactive color mutations (Orange &rarr; Green &rarr; Blue). |
@@ -93,7 +93,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 ## 3. The 9 Judge Audit Verification Checks
 
 1. **[CHECK 1] MCP JSON-RPC 2.0 Handshake:** Validates `initialize` and `tools/list` protocol handshake returning 7 registered seller tools.
-2. **[CHECK 2] Standard A2A Negotiation:** Evaluates \$79.99/mo plan under \$100 budget cap with HMAC-SHA256 cryptographic authorization proof.
+2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates \$79.99/mo plan under \$100 budget cap with HMAC-SHA256 cryptographic authorization proof.
 3. **[CHECK 3] Sub-Budget Counter-Offer Bargaining:** Generates scaled-down *Solo Starter* (\$49.99/mo) counter-offer when cap is \$60.00.
 4. **[CHECK 4] Anti-Tamper Verification:** Proves 1-cent inflation tampering, entity name alteration, and budget breaches are strictly rejected.
 5. **[CHECK 5] Nationwide LATA Routing:** Validates primary local allocation (863 Lakeland) and automated contiguous failover (813 Tampa).

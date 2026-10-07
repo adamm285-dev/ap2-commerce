@@ -396,7 +396,7 @@ export function BryntumDispatchScheduler({
               Bryntum Telephony Fleet &amp; Line Activation Timeline
             </h3>
             <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0 0' }}>
-              Dedicated Inbound 10DLC Lines &bull; Statutory KYC Identity Bound &bull; Unlocked via PayPal A2A Commerce ($79.99/mo)
+              Dedicated Inbound 10DLC Lines &bull; Statutory KYC Identity Bound &bull; Unlocked via PayPal Agentic Commerce ($79.99/mo)
             </p>
           </div>
         </div>
@@ -491,7 +491,7 @@ export function BryntumDispatchScheduler({
               ? 'Calling /api/agent/provision...'
               : isDepositLocked
               ? '✓ Marcus Miller Line Active (+1 863-267-8902)'
-              : '⚡ Simulate $79.99/mo A2A Subscription & Provisioning'}
+              : '⚡ Simulate $79.99/mo AP2 Subscription & Provisioning'}
           </button>
 
           {/* Reset Line Button */}

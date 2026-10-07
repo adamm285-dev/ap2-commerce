@@ -95,8 +95,8 @@ def clear_processed_webhooks():
     _PROCESSED_WEBHOOK_IDS.clear()
 
 app = FastAPI(
-    title="FieldSmith Pro A2A Agentic Commerce API",
-    description="Autonomous Agent-to-Agent (A2A) Commerce Protocol for Solo Trade Contractors",
+    title="FieldSmith Pro Agentic Commerce & AP2 API",
+    description="Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Trade Contractors",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

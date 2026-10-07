@@ -44,7 +44,7 @@ RED = "\033[91m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-parser = argparse.ArgumentParser(description="Autonomous A2A Commerce Judge Audit Harness")
+parser = argparse.ArgumentParser(description="Autonomous Agentic Commerce & AP2 Judge Audit Harness")
 parser.add_argument("--remote", action="store_true", help="Execute checks against live cloud deployment (https://api.fieldsmith.pro)")
 parser.add_argument("--url", type=str, default="https://api.fieldsmith.pro", help="Target API URL")
 args, _ = parser.parse_known_args()
@@ -70,7 +70,7 @@ def print_fail(msg: str):
     sys.exit(1)
 
 def run_judge_audit():
-    print_header("FIELDSMITH PRO: AUTONOMOUS A2A COMMERCE JUDGE AUDIT")
+    print_header("FIELDSMITH PRO: AUTONOMOUS AGENTIC COMMERCE & AP2 JUDGE AUDIT")
     print(f"  Target Event: {BOLD}PayPal AI Hackathon 2026{RESET}")
     print(f"  Standard:     {BOLD}Model Context Protocol (MCP 2024-11-05){RESET}")
     print(f"  Payment Rail: {BOLD}PayPal Subscriptions & Vault MIT{RESET}")
@@ -109,7 +109,7 @@ def run_judge_audit():
     # -------------------------------------------------------------------------
     # CHECK 2: Standard Trade Negotiation ($79.99/mo under $100 cap)
     # -------------------------------------------------------------------------
-    print_step(2, "Standard A2A Negotiation ($79.99/mo Plan under $100 Cap)")
+    print_step(2, "Standard AP2 Negotiation ($79.99/mo Plan under $100 Cap)")
     mandate_req = {
         "buyerAgentId": "usr_judge_01",
         "amount": 79.99,

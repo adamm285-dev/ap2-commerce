@@ -1039,7 +1039,7 @@ export function ContractorCopilotView({
                   cursor: 'pointer',
                 }}
               >
-                <Terminal size={14} /> A2A Execution Trace
+                <Terminal size={14} /> AP2 Execution Trace
               </button>
 
               <button
@@ -1726,7 +1726,7 @@ export function ContractorCopilotView({
                     }}
                   >
                     <Play size={14} />
-                    {isTriggeringTestRun ? 'Executing A2A Procurement Cycle...' : 'Execute Live Test Cycle (Generate Artifacts)'}
+                    {isTriggeringTestRun ? 'Executing AP2 Procurement Cycle...' : 'Execute Live Test Cycle (Generate Artifacts)'}
                   </button>
                 </div>
               ) : (

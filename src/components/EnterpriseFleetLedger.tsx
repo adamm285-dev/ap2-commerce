@@ -834,7 +834,7 @@ export function EnterpriseFleetLedger({
               boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
             }}
           >
-            <Sliders size={14} /> Simulate A2A Purchase
+            <Sliders size={14} /> Simulate AP2 Purchase
           </button>
         </div>
       </div>
@@ -855,7 +855,7 @@ export function EnterpriseFleetLedger({
               <div style={{ width: '1px', height: '18px', backgroundColor: '#334155' }} />
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Autonomous Telephony &amp; A2A Commerce Report
+                  Autonomous Telephony &amp; Agentic Commerce Report
                   <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
                     LIVE IN-MEMORY
                   </span>
@@ -1161,7 +1161,7 @@ export function EnterpriseFleetLedger({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-                    Autonomous A2A Commerce Volume by Trade ($ ARR)
+                    Autonomous Agentic Commerce Volume by Trade ($ ARR)
                   </h4>
                   <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                     Recurring contract run-rate negotiated and settled autonomously under policy spending caps
@@ -1250,7 +1250,7 @@ export function EnterpriseFleetLedger({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Layers size={16} /> Autonomous A2A Fleet Ledger
+                  <Layers size={16} /> Autonomous Agentic Fleet Ledger
                 </span>
 
                 {/* Search Bar */}

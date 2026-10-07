@@ -120,7 +120,7 @@ export function ZapierMcpView({
           </h2>
           <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
             {activeScenario === 'a2a'
-              ? 'Autonomous A2A Post-Payment Chain: Wires Marcus Miller’s accounting, CRM line routing, and morning briefs automatically.'
+              ? 'Autonomous AP2 Post-Payment Chain: Wires Marcus Miller’s accounting, CRM line routing, and morning briefs automatically.'
               : 'FieldSmith Inbound Lead CRM Chain: Dispatches homeowner project quote, deposit receipt, and jobsite booking.'}
           </p>
         </div>
@@ -153,7 +153,7 @@ export function ZapierMcpView({
               }}
             >
               <Sparkles size={13} color={activeScenario === 'a2a' ? '#fde047' : '#94a3b8'} />
-              A2A Contractor Onboarding (Active Demo)
+              AP2 Contractor Onboarding (Active Demo)
             </button>
             <button
               onClick={() => setActiveScenario('lead')}
@@ -198,7 +198,7 @@ export function ZapierMcpView({
             {isRunning
               ? 'Invoking Zapier MCP...'
               : activeScenario === 'a2a'
-              ? 'Run Autonomous A2A Onboarding Chain'
+              ? 'Run Autonomous AP2 Onboarding Chain'
               : 'Run Homeowner CRM Chain'}
           </button>
         </div>
@@ -235,7 +235,7 @@ export function ZapierMcpView({
                   gap: '8px',
                 }}
               >
-                <ShieldCheck size={16} color="#34d399" /> Autonomous A2A Subscriber State
+                <ShieldCheck size={16} color="#34d399" /> Autonomous AP2 Subscriber State
               </h3>
               <span
                 style={{
@@ -436,7 +436,7 @@ export function ZapierMcpView({
               <Network size={36} style={{ marginBottom: '10px', opacity: 0.5 }} />
               <p style={{ margin: 0, maxWidth: '300px' }}>
                 {activeScenario === 'a2a'
-                  ? 'Click "Run Autonomous A2A Onboarding Chain" to execute the live multi-app setup into QuickBooks, Jobber, and Google Workspace.'
+                  ? 'Click "Run Autonomous AP2 Onboarding Chain" to execute the live multi-app setup into QuickBooks, Jobber, and Google Workspace.'
                   : 'Click "Run Homeowner CRM Chain" to dispatch Sarah Jenkins quote and deposit intake.'}
               </p>
             </div>

@@ -97,12 +97,12 @@ export function App() {
             { id: 'active_agents', name: 'Autonomous Buyer Agents', format: 'integerFormat' },
             { id: 'mandates_cleared', name: 'Mandates Settled', format: 'integerFormat' },
             { id: 'monthly_settlement', name: 'Monthly M2M Volume ($/mo)', format: 'currencyFormat' },
-            { id: 'annualized_gmv', name: 'Autonomous A2A GMV ($ ARR)', format: 'currencyFormat' },
-            { id: 'recovered_revenue', name: 'Autonomous A2A GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'annualized_gmv', name: 'Autonomous Agentic GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'recovered_revenue', name: 'Autonomous Agentic GMV ($ ARR)', format: 'currencyFormat' },
             { id: 'leads_captured', name: 'Booked Leads Intake', format: 'integerFormat' },
             { id: 'missed_calls_prevented', name: 'Robocalls Filtered', format: 'integerFormat' },
             { id: 'subscription_cost', name: 'PayPal Cost ($79.99/mo)', format: 'currencyFormat' },
-            { id: 'roi_multiple', name: 'A2A Settlement Multiplier (x)', format: 'decimalFormat' },
+            { id: 'roi_multiple', name: 'AP2 Settlement Multiplier (x)', format: 'decimalFormat' },
           ],
         },
         {
@@ -273,7 +273,7 @@ export function App() {
           </div>
           <div className="brand-titles">
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1>FieldSmith Pro &mdash; Autonomous A2A Commerce Portal</h1>
+              <h1>FieldSmith Pro &mdash; Autonomous Agentic Commerce &amp; AP2 Operations Deck</h1>
               <span
                 style={{
                   fontSize: '10px',
@@ -376,7 +376,7 @@ export function App() {
 
         <div className="header-actions">
           <button className="btn-simulate" onClick={() => setIsModalOpen(true)}>
-            <Sliders size={15} /> Simulate A2A Purchase
+            <Sliders size={15} /> Simulate AP2 Purchase
           </button>
         </div>
       </header>
@@ -478,13 +478,13 @@ export function App() {
         )}
       </main>
 
-      {/* Modal: A2A Commerce Negotiation & Subscription Simulator */}
+      {/* Modal: AP2 Agentic Commerce Negotiation & Subscription Simulator */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-card">
             <div className="modal-header">
               <h3>
-                <PhoneCall size={18} /> Autonomous Agent-to-Agent Commerce Simulator
+                <PhoneCall size={18} /> Autonomous Agentic Commerce Simulator (AP2)
               </h3>
               <button className="btn-close" onClick={() => setIsModalOpen(false)}>
                 <X size={18} />
@@ -676,7 +676,7 @@ export function App() {
                     ? 'Evaluating Telemetry & Mandate...'
                     : negotiationResult?.mandateSatisfied
                     ? '✓ 1. Negotiation Approved ($79.99/mo)'
-                    : '1. Run A2A Autonomous Negotiation'}
+                    : '1. Run AP2 Autonomous Negotiation'}
                 </button>
                 <button
                   onClick={async () => {
@@ -749,7 +749,7 @@ export function App() {
                   )}
                   {negotiationResult.mandateSatisfied && (
                     <div className="negotiation-line success">
-                      [A2A Protocol]: Spending mandate approved. Ready for delegated PayPal subscription token.
+                      [AP2 Protocol]: Spending mandate approved. Ready for delegated PayPal subscription token.
                     </div>
                   )}
                 </div>
@@ -891,7 +891,7 @@ export function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#34d399', fontWeight: 700 }}>
                     <ShieldCheck size={20} />
-                    <span>A2A Transaction Complete &amp; Telecom Line Live!</span>
+                    <span>AP2 Transaction Complete &amp; Telecom Line Live!</span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#f8fafc', lineHeight: 1.6 }}>
                     <div>

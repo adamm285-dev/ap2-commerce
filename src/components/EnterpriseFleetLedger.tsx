@@ -30,10 +30,15 @@ import {
   type ICellRendererParams,
 } from 'ag-grid-community';
 import { AgCharts } from 'ag-charts-react';
-import type { AgChartOptions } from 'ag-charts-community';
+import {
+  ModuleRegistry as ChartModuleRegistry,
+  AllCommunityModule as AllChartCommunityModule,
+  type AgChartOptions,
+} from 'ag-charts-community';
 
-// Register AG Grid Community Modules
+// Register AG Grid & AG Charts Community Modules
 GridModuleRegistry.registerModules([AllGridCommunityModule]);
+ChartModuleRegistry.registerModules([AllChartCommunityModule]);
 
 import {
   type A2aTransaction,

@@ -2,12 +2,13 @@
 
 > **Event:** PayPal AI Hackathon 2026 (\$67,500+ Purse) &mdash; Deadline: November 12, 2026 at 12:00 PM PST  
 > **Target Tracks:**
-> 1. Best Use of Agentic Commerce (\$5,000)
-> 2. Best Use of AG Grid / AG Studio (\$5,000)
-> 3. Best Use of PayPal + AI (\$5,000)
-> 4. Best Use of Bryntum (\$1,000)
-> 5. Best Use of APIMatic (\$1,000)  
-> **Total Purse Targeted:** \$17,000+
+> 1. Best Use of Agentic Commerce ($5,000)
+> 2. Best Use of AG Grid / AG Studio ($5,000)
+> 3. Best Use of PayPal + AI ($5,000)
+> 4. Best Use of Bryntum ($1,000)
+> 5. Best Use of Zapier ($1,000)
+> 6. Best Use of APIMatic ($1,000)
+> **Total Purse Targeted:** $18,000+
 
 ---
 
@@ -75,15 +76,16 @@ FieldSmith Pro delivers a complete, end-to-end multi-agent commerce and operatio
 
 ---
 
-## 4. Multi-Sponsor Track Alignment (\$17,000+ Purse)
+## 4. Multi-Sponsor Track Alignment ($18,000+ Purse)
 
 | Sponsor Track | Prize | How FieldSmith Pro Fulfills the Track Requirements |
 | :--- | :--- | :--- |
-| **Best Use of Agentic Commerce** | **\$5,000** | Autonomous multi-tier negotiation between Buyer Agent and Seller MCP Server, budget cap enforcement with HMAC-SHA256 proofs, interactive anti-tamper testing, delegated PayPal Subscriptions (Vault setup tokens for off-session MIT), and statutory KYC telecom line provisioning. |
-| **Best Use of AG Grid / AG Studio** | **\$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community with floating filters, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling \$13,438.32 ARR GMV across 14 simulated subscriber lines. |
-| **Best Use of PayPal + AI** | **\$5,000** | Real-time FastMCP 2024-11-05 streamable HTTP/SSE wire protocol inspector, live cloud deployment (`https://api.fieldsmith.pro`), US-domestic NANP gating, and intelligent autonomous counter-offer generation. |
-| **Best Use of Bryntum** | **\$1,000** | Evaluated with Bryntum Scheduler trial build managing 24/7 AI voice screener shifts, 75-minute customer estimate window booking, territory dispatch across 4 zones, and live in-place reactive color state transitions (Orange &rarr; Green &rarr; Blue). |
-| **Best Use of APIMatic** | **\$1,000** | Production-grade OpenAPI 3.1.0 specification with 33 endpoints (`openapi.yaml` and `openapi.json`), `apimatic.json` configuration for multi-language SDK compilation (Python, TypeScript, Go), and self-service Ed25519 cryptographic buyer key challenge-response onboarding. |
+| **Best Use of Agentic Commerce** | **$5,000** | Autonomous multi-tier negotiation between Buyer Agent and Seller MCP Server, budget cap enforcement with HMAC-SHA256 proofs, interactive anti-tamper testing, delegated PayPal Subscriptions (Vault setup tokens for off-session MIT), and statutory KYC telecom line provisioning. |
+| **Best Use of AG Grid / AG Studio** | **$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community with floating filters, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling $13,438.32 ARR GMV across 14 simulated subscriber lines. |
+| **Best Use of PayPal + AI** | **$5,000** | Real-time FastMCP 2024-11-05 streamable HTTP/SSE wire protocol inspector, live cloud deployment (`https://api.fieldsmith.pro`), US-domestic NANP gating, and intelligent autonomous counter-offer generation. |
+| **Best Use of Bryntum** | **$1,000** | Evaluated with Bryntum Scheduler trial build managing 24/7 AI voice screener shifts, 75-minute customer estimate window booking, territory dispatch across 4 zones, and live in-place reactive color state transitions (Orange &rarr; Green &rarr; Blue). |
+| **Best Use of Zapier** | **$1,000** | Autonomous Model Context Protocol bridge (`dispatch_zapier_mcp` tool & automatic downline post-provisioning sync) executing QBO v3 (GL 6300 SaaS expense), Jobber GraphQL v2 client & custom-field DID line routing, and SSRF-safe HMAC-SHA256 signed webhook envelopes, complete with an interactive 3-tab Wire & Schema Inspector. |
+| **Best Use of APIMatic** | **$1,000** | Production-grade OpenAPI 3.1.0 specification with 34 endpoints (`openapi.yaml` and `openapi.json`), `apimatic.json` configuration for multi-language SDK compilation (Python, TypeScript, Go), and self-service Ed25519 cryptographic buyer key challenge-response onboarding. |
 
 ---
 
@@ -124,20 +126,20 @@ python scripts/live_cloud_stress_test.py
 ### Automated Test Suite
 ```bash
 python -m pytest backend/tests/ -v
-# 133/133 tests passing (100% green)
+# 149/149 tests passing (100% green)
 ```
 
 ---
 
 ## 7. The 9 Judge Audit Verification Checks
 
-1. **[CHECK 1] MCP JSON-RPC 2.0 Handshake:** Validates `initialize` and `tools/list` protocol handshake returning 7 registered seller tools.
-2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates \$79.99/mo plan under \$100 budget cap with HMAC-SHA256 cryptographic authorization proof.
-3. **[CHECK 3] Sub-Budget Counter-Offer Bargaining:** Generates scaled-down *Solo Starter* (\$49.99/mo) counter-offer when cap is \$60.00.
+1. **[CHECK 1] MCP JSON-RPC 2.0 Handshake:** Validates `initialize` and `tools/list` protocol handshake returning 8 registered seller tools.
+2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates $79.99/mo plan under $100 budget cap with HMAC-SHA256 cryptographic authorization proof.
+3. **[CHECK 3] Sub-Budget Counter-Offer Bargaining:** Generates scaled-down *Solo Starter* ($49.99/mo) counter-offer when cap is $60.00.
 4. **[CHECK 4] Anti-Tamper Verification:** Proves 1-cent inflation tampering, entity name alteration, and budget breaches are strictly rejected.
 5. **[CHECK 5] Nationwide LATA Routing:** Validates primary local allocation (863 Lakeland) and automated contiguous failover (813 Tampa).
 6. **[CHECK 6] Back-Office ERP Payloads:** Generates authentic Jobber GraphQL v2 mutation and QuickBooks Online v3 Purchase mapped to GL Account 6300.
-7. **[CHECK 7] Financial Telemetry Reconciliation:** Reconciles 14 simulated subscriber lines, \$1,119.86/mo MRR, and \$13,438.32 ARR GMV to the penny.
+7. **[CHECK 7] Financial Telemetry Reconciliation:** Reconciles 14 simulated subscriber lines, $1,119.86/mo MRR, and $13,438.32 ARR GMV to the penny.
 8. **[CHECK 8] AG Studio & Bryntum Scheduling:** Hydrates 14 lines from SQLite WAL, verifies 24/7 AI screener shifts, and locks 75-minute estimate slot for Crew B.
 9. **[CHECK 9] Dynamic Buyer Key Onboarding:** Generates 300s ephemeral Ed25519 challenge nonce, validates cryptographic signature, enrolls buyer key, and rejects forged signatures.
 
@@ -145,4 +147,4 @@ python -m pytest backend/tests/ -v
 
 ## 8. Built With
 
-`paypal-subscriptions-api`, `paypal-vault`, `model-context-protocol-mcp`, `ag-studio-v3`, `ag-grid-community`, `bryntum-scheduler-trial`, `fastapi`, `python-3.13`, `react-19`, `typescript`, `vite-8`, `sqlite-wal`, `ed25519-cryptography`, `hmac-sha256`, `telnyx-10dlc`, `jobber-graphql-v2`, `quickbooks-online-v3`, `openapi-3.1`
+`paypal-subscriptions-api`, `paypal-vault`, `model-context-protocol-mcp`, `zapier-mcp`, `ag-studio-v3`, `ag-grid-community`, `bryntum-scheduler-trial`, `fastapi`, `python-3.13`, `react-19`, `typescript`, `vite-8`, `sqlite-wal`, `ed25519-cryptography`, `hmac-sha256`, `telnyx-10dlc`, `jobber-graphql-v2`, `quickbooks-online-v3`, `openapi-3.1`

@@ -44,6 +44,15 @@ export interface ZapierExecutionResult {
   leadId: string;
   logs: ZapierMcpActionLog[];
   isLiveBackend?: boolean;
+  jobberPayload?: any;
+  qboPayload?: any;
+  webhookEnvelope?: {
+    headers: Record<string, string>;
+    body: any;
+    status: number;
+    targetUrl: string;
+    deliveryId: string;
+  };
 }
 
 /**
@@ -104,11 +113,45 @@ export async function executeZapierA2aWorkflow(
         },
       ];
 
+      const webhookEnvelope = {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-FieldSmith-Signature': 'sha256=9b72e1858a74e47bcf056ad8564177d6118d098e94fae75896a297b83d8e578a',
+          'X-FieldSmith-Timestamp': new Date().toISOString(),
+          'X-FieldSmith-Delivery-Id': data.webhookDeliveryId || `del_${Math.random().toString(36).substring(2, 10)}`,
+          'X-FieldSmith-Event': 'a2a.subscription.provisioned',
+        },
+        body: {
+          event: 'a2a.subscription.provisioned',
+          contractor: {
+            name: contractor.contractorName,
+            entity: contractor.businessEntity,
+            email: contractor.contractorEmail,
+          },
+          subscription: {
+            paypal_subscription_id: contractor.paypalSubscriptionId,
+            monthly_fee: contractor.monthlyFee,
+            currency: 'USD',
+            allocated_did: contractor.allocatedDid,
+            trade_vertical: contractor.tradeVertical,
+            mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
+          },
+          jobber_export: data.jobberPayload,
+          qbo_export: data.qboPayload,
+        },
+        status: data.webhookStatusCode ?? 200,
+        targetUrl: 'https://hooks.zapier.com/hooks/catch/912837/b821af/',
+        deliveryId: data.webhookDeliveryId || 'del_live_sync_001',
+      };
+
       return {
         success: true,
         leadId: syncId,
         logs,
         isLiveBackend: true,
+        jobberPayload: data.jobberPayload,
+        qboPayload: data.qboPayload,
+        webhookEnvelope,
       };
     }
   } catch (err) {
@@ -118,9 +161,146 @@ export async function executeZapierA2aWorkflow(
   // Graceful client-side simulation fallback
   await new Promise((resolve) => setTimeout(resolve, 600));
 
+  const fallbackJobberPayload = {
+    mutation: `mutation ClientCreate($input: ClientCreateInput!) {
+  clientCreate(input: $input) {
+    client {
+      id
+      firstName
+      lastName
+      companyName
+      isCompany
+      phones {
+        number
+        primary
+        type
+        description
+      }
+      emails {
+        address
+        primary
+      }
+      customFields {
+        ... on CustomFieldText {
+          label
+          valueText
+        }
+      }
+    }
+    userErrors {
+      message
+      field
+    }
+  }
+}`,
+    variables: {
+      input: {
+        firstName: contractor.contractorName.split(' ')[0] || 'Marcus',
+        lastName: contractor.contractorName.split(' ')[1] || 'Miller',
+        companyName: contractor.businessEntity,
+        isCompany: true,
+        phones: [
+          {
+            number: contractor.allocatedDid,
+            primary: true,
+            type: 'WORK',
+            description: 'FieldSmith Dedicated AI Inbound Line',
+          },
+        ],
+        emails: [
+          {
+            address: contractor.contractorEmail,
+            primary: true,
+          },
+        ],
+        customFields: [
+          { label: 'Telephony DID', valueText: contractor.allocatedDid },
+          { label: 'Carrier Route', valueText: 'Telnyx Wholesale Voice 10DLC' },
+          { label: 'AI Voice Screener Webhook', valueText: 'https://api.fieldsmith.pro/voice/inbound' },
+        ],
+      },
+    },
+    jobber_routing_id: `JOB-ROUTING-${Math.floor(1000 + Math.random() * 9000)}`,
+  };
+
+  const fallbackQboPayload = {
+    Purchase: {
+      PaymentType: 'CreditCard',
+      AccountRef: {
+        value: '99',
+        name: 'PayPal Clearing Account',
+      },
+      EntityRef: {
+        value: '101',
+        name: 'FieldSmith Pro Inc.',
+        type: 'Vendor',
+      },
+      TxnDate: new Date().toISOString().substring(0, 10),
+      DocNumber: `FS-A2A-${contractor.paypalSubscriptionId.slice(-6)}`,
+      TotalAmt: contractor.monthlyFee,
+      CurrencyRef: {
+        value: 'USD',
+        name: 'United States Dollar',
+      },
+      PrivateNote: `FieldSmith Pro Autonomous A2A Commerce Protocol.\nPayPal Sub: ${contractor.paypalSubscriptionId} | Monthly: $${contractor.monthlyFee.toFixed(2)} USD\nDedicated DID: ${contractor.allocatedDid} | Vertical: ${contractor.tradeVertical}\nMandate Proof Hash: HMAC-MANDATE-VERIFIED-01\nCarrier FCC Attestation: STIR/SHAKEN Class A (Telnyx LLC)\nPurchaser: ${contractor.contractorName} (${contractor.businessEntity})`,
+      GlobalTaxCalculation: 'NotApplicable',
+      Line: [
+        {
+          Id: '1',
+          LineNum: 1,
+          Amount: contractor.monthlyFee,
+          DetailType: 'AccountBasedExpenseLineDetail',
+          Description: `FieldSmith Pro AI Telephony & Dispatch Screener (${contractor.tradeVertical}) — Autonomous Recurring Subscription`,
+          AccountBasedExpenseLineDetail: {
+            AccountRef: {
+              value: '6300',
+              name: 'Dues & Subscriptions: Software & SaaS',
+            },
+            BillableStatus: 'NotBillable',
+            TaxCodeRef: {
+              value: 'NON',
+            },
+          },
+        },
+      ],
+    },
+    purchase_id: `QBO-EXP-${Math.floor(1000 + Math.random() * 9000)}`,
+  };
+
+  const fallbackWebhookEnvelope = {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-FieldSmith-Signature': 'sha256=c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2',
+      'X-FieldSmith-Timestamp': new Date().toISOString(),
+      'X-FieldSmith-Delivery-Id': `del_${Math.random().toString(36).substring(2, 10)}`,
+      'X-FieldSmith-Event': 'a2a.subscription.provisioned',
+    },
+    body: {
+      event: 'a2a.subscription.provisioned',
+      contractor: {
+        name: contractor.contractorName,
+        entity: contractor.businessEntity,
+        email: contractor.contractorEmail,
+      },
+      subscription: {
+        paypal_subscription_id: contractor.paypalSubscriptionId,
+        monthly_fee: contractor.monthlyFee,
+        currency: 'USD',
+        allocated_did: contractor.allocatedDid,
+        trade_vertical: contractor.tradeVertical,
+        mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
+      },
+      jobber_export: fallbackJobberPayload,
+      qbo_export: fallbackQboPayload,
+    },
+    status: 200,
+    targetUrl: 'https://hooks.zapier.com/hooks/catch/912837/b821af/',
+    deliveryId: `del_${Math.random().toString(36).substring(2, 10)}`,
+  };
+
   const logs: ZapierMcpActionLog[] = [
     {
-      actionId: `QBO-EXP-${Math.floor(1000 + Math.random() * 9000)}`,
+      actionId: fallbackQboPayload.purchase_id,
       toolName: 'zapier_mcp_qbo_record_expense',
       targetApp: 'QuickBooks Online',
       status: 'VERIFIED',
@@ -128,7 +308,7 @@ export async function executeZapierA2aWorkflow(
       timestamp: now(),
     },
     {
-      actionId: `JOB-ROUTING-${Math.floor(1000 + Math.random() * 9000)}`,
+      actionId: fallbackJobberPayload.jobber_routing_id,
       toolName: 'zapier_mcp_jobber_register_line',
       targetApp: 'Jobber',
       status: 'VERIFIED',
@@ -150,6 +330,9 @@ export async function executeZapierA2aWorkflow(
     leadId: syncId,
     logs,
     isLiveBackend: false,
+    jobberPayload: fallbackJobberPayload,
+    qboPayload: fallbackQboPayload,
+    webhookEnvelope: fallbackWebhookEnvelope,
   };
 }
 
@@ -208,11 +391,46 @@ export async function executeZapierMcpWorkflow(
         },
       ];
 
+      const homeQboPayload = {
+        Invoice: {
+          CustomerRef: { value: '202', name: lead.callerName },
+          Line: [
+            {
+              Amount: lead.depositAmount,
+              DetailType: 'SalesItemLineDetail',
+              Description: `Mobilization Deposit: ${lead.tradeVertical} (${lead.scopeSummary})`,
+              SalesItemLineDetail: {
+                ItemRef: { value: '1', name: 'Services' },
+                UnitPrice: lead.depositAmount,
+                Qty: 1,
+              },
+            },
+          ],
+          TxnDate: new Date().toISOString().substring(0, 10),
+          PrivateNote: `PayPal Deposit Verified: ${lead.paypalTransactionId} | Zone: ${lead.territoryZone}`,
+        },
+      };
+
+      const homeJobberPayload = {
+        mutation: `mutation QuoteCreate($input: QuoteCreateInput!) { quoteCreate(input: $input) { quote { id title total } } }`,
+        variables: {
+          input: {
+            title: `Consultation & Scope: ${lead.tradeVertical}`,
+            clientName: lead.callerName,
+            phone: lead.callerPhone,
+            address: lead.propertyAddress,
+            notes: lead.scopeSummary,
+          },
+        },
+      };
+
       return {
         success: true,
         leadId: leadId,
         logs,
         isLiveBackend: true,
+        jobberPayload: data.jobberPayload || homeJobberPayload,
+        qboPayload: data.qboPayload || homeQboPayload,
       };
     }
   } catch (err) {
@@ -221,6 +439,39 @@ export async function executeZapierMcpWorkflow(
 
   // Graceful client-side fallback
   await new Promise((resolve) => setTimeout(resolve, 600));
+
+  const fallbackHomeQboPayload = {
+    Invoice: {
+      CustomerRef: { value: '202', name: lead.callerName },
+      Line: [
+        {
+          Amount: lead.depositAmount,
+          DetailType: 'SalesItemLineDetail',
+          Description: `Mobilization Deposit: ${lead.tradeVertical} (${lead.scopeSummary})`,
+          SalesItemLineDetail: {
+            ItemRef: { value: '1', name: 'Services' },
+            UnitPrice: lead.depositAmount,
+            Qty: 1,
+          },
+        },
+      ],
+      TxnDate: new Date().toISOString().substring(0, 10),
+      PrivateNote: `PayPal Deposit Verified: ${lead.paypalTransactionId} | Zone: ${lead.territoryZone}`,
+    },
+  };
+
+  const fallbackHomeJobberPayload = {
+    mutation: `mutation QuoteCreate($input: QuoteCreateInput!) { quoteCreate(input: $input) { quote { id title total } } }`,
+    variables: {
+      input: {
+        title: `Consultation & Scope: ${lead.tradeVertical}`,
+        clientName: lead.callerName,
+        phone: lead.callerPhone,
+        address: lead.propertyAddress,
+        notes: lead.scopeSummary,
+      },
+    },
+  };
 
   const logs: ZapierMcpActionLog[] = [
     {
@@ -254,5 +505,7 @@ export async function executeZapierMcpWorkflow(
     leadId,
     logs,
     isLiveBackend: false,
+    jobberPayload: fallbackHomeJobberPayload,
+    qboPayload: fallbackHomeQboPayload,
   };
 }

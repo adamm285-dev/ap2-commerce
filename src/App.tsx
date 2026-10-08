@@ -860,7 +860,7 @@ export function App() {
                             }}
                             onError={(err) => {
                               console.warn('[PayPal]: Sandbox interaction warning:', err);
-                              setPaypalError('PayPal Sandbox error. Use the Instant Live Simulation button above.');
+                              setPaypalError('PayPal Sandbox error. Use the Instant Sandbox Simulation button above.');
                             }}
                           />
                         </PayPalScriptProvider>

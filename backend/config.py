@@ -84,10 +84,11 @@ settings = Settings()
 
 def get_db_path() -> Path:
     """Returns the resolved database path, ensuring parent directory exists."""
-    if settings.a2a_db_path and settings.a2a_db_path.strip():
-        if settings.a2a_db_path.strip() == ":memory:":
+    env_path = os.environ.get("A2A_DB_PATH") or settings.a2a_db_path
+    if env_path and env_path.strip():
+        if env_path.strip() == ":memory:":
             return Path(":memory:")
-        p = Path(settings.a2a_db_path.strip())
+        p = Path(env_path.strip())
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
     data_dir = ROOT_DIR / "backend" / "data"

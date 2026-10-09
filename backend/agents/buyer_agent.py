@@ -5,12 +5,34 @@ negotiates with Seller Nodes over Model Context Protocol (MCP),
 and autonomously executes approved compute infrastructure commitments.
 """
 
+import os
+import sys
+import tempfile
+import atexit
+import uuid
 import asyncio
 import argparse
 import json
 import logging
 from pathlib import Path
 from typing import Dict, Any
+
+# Ensure isolated temp DB in buyer agent to protect development DB
+if not os.environ.get("A2A_DB_PATH"):
+    _temp_buyer_db = os.path.join(tempfile.gettempdir(), f"a2a_buyer_{os.getpid()}_{uuid.uuid4().hex[:8]}.db")
+    os.environ["A2A_DB_PATH"] = _temp_buyer_db
+
+    def _cleanup_buyer_temp_db():
+        for ext in ["", "-wal", "-shm", "-journal"]:
+            f = _temp_buyer_db + ext
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except OSError:
+                pass
+
+    atexit.register(_cleanup_buyer_temp_db)
+
 from .seller_agent import seller_agent
 from ..models import RecurrenceType
 

@@ -243,6 +243,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     category=arguments.get("category", "autonomous-node-service"),
                     buyer_intent_mandate=arguments.get("buyer_intent_mandate"),
                     buyer_email=email,
+                    checkout_jwt=arguments.get("checkout_jwt"),
                 )
 
             elif tool_name == "purchase_subscription":
@@ -254,6 +255,9 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     contractor_email=email,
                     offer_id=arguments.get("offer_id"),
                     buyer_email=email,
+                    checkout_mandate_chain=arguments.get("checkout_mandate_chain"),
+                    payment_mandate_chain=arguments.get("payment_mandate_chain"),
+                    checkout_jwt=arguments.get("checkout_jwt"),
                 )
 
             elif tool_name == "evaluate_spending_mandate":

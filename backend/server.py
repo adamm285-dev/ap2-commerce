@@ -71,6 +71,12 @@ from .agents.contractor_copilot import ContractorCopilot
 from .agents.seller_agent import seller_agent
 from .harness.external_buyer_agent import ExternalBuyerAgent
 from .api.m2m_audit import router as m2m_router
+from .services.ap2_keys import get_merchant_public_jwk
+from .services.ap2_service import (
+    get_stored_receipt,
+    verify_receipt_jwt,
+    get_issued_checkout,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -518,6 +524,45 @@ async def get_sample_proof(profile: str = Query("default")):
         )
     # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
+
+
+# --- AP2 v0.2 Protocol Receipts, Checkouts & JWKS Discovery ---
+@app.get("/.well-known/jwks.json", tags=["Discovery"])
+@app.get("/api/agent/keys/jwks.json", tags=["Discovery"])
+async def get_jwks():
+    """Returns the merchant public JWKS for verifying Checkout JWTs and Receipts."""
+    pub_jwk = get_merchant_public_jwk()
+    return {"keys": [pub_jwk]}
+
+
+@app.get("/api/receipts/{reference}", tags=["AP2 Mandates & Receipts"])
+@app.get("/api/agent/receipts/{reference}", tags=["AP2 Mandates & Receipts"])
+async def get_receipt_endpoint(reference: str, jwt: Optional[str] = None):
+    """
+    Retrieves or verifies an authentic AP2 v0.2 Checkout or Payment Receipt.
+    Supports lookup by closed mandate reference or direct JWT signature verification.
+    """
+    if jwt:
+        try:
+            payload = verify_receipt_jwt(jwt)
+            return {"verified": True, "reference": reference, "receipt": payload}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid receipt JWT: {e}")
+
+    stored = get_stored_receipt(reference)
+    if not stored:
+        raise HTTPException(status_code=404, detail=f"No receipt found for reference '{reference}'.")
+    return {"verified": True, "reference": reference, "receipt": stored}
+
+
+@app.get("/api/checkout/{order_id}", tags=["AP2 Mandates & Receipts"])
+@app.get("/api/agent/checkout/{order_id}", tags=["AP2 Mandates & Receipts"])
+async def get_checkout_endpoint(order_id: str):
+    """Retrieves an issued merchant Checkout JWT by order_id or checkout_hash."""
+    record = get_issued_checkout(order_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Checkout '{order_id}' not found.")
+    return record
 
 
 # --- Contractor AI Copilot Conversational Engine ---

@@ -64,6 +64,18 @@ from ..services.crypto_mandate import (
 )
 from ..database import get_buyer_key_email
 from ..config import settings
+from ..services.ap2_service import (
+    create_merchant_checkout,
+    create_merchant_counter_offer,
+    verify_ap2_chains,
+    create_checkout_receipt_jwt,
+    create_payment_receipt_jwt,
+    compute_checkout_hash,
+    get_issued_checkout,
+    ERR_INVALID_CREDENTIAL,
+    ERR_INVALID_MANDATE,
+    ERR_UNRESOLVED_CONSTRAINT,
+)
 
 logger = logging.getLogger("seller_agent")
 
@@ -81,7 +93,7 @@ AP2_SELLER_MCP_TOOLS = [
     },
     {
         "name": "negotiate_tier_terms",
-        "description": "Evaluates buyer budget cap against desired AP2 compute tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Batch Worker at $49.99/mo) with a signed AP2 Intent Mandate.",
+        "description": "Evaluates buyer budget cap against desired AP2 compute tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Batch Worker at $49.99/mo). Issues merchant-signed Checkout JWT (ES256) binding line items and price in integer minor units.",
         "input_schema": {
             "type": "object",
             "required": ["buyer_agent_id", "buyer_email", "tier_id", "monthly_budget_cap"],
@@ -121,6 +133,10 @@ AP2_SELLER_MCP_TOOLS = [
                     "type": "object",
                     "description": "Optional buyer-signed AP2 Intent Mandate (vct: ap2.mandate.intent.1). If omitted, seller creates a seller-attested intent mandate on buyer's behalf.",
                 },
+                "checkout_jwt": {
+                    "type": "string",
+                    "description": "Optional merchant Checkout JWT to renegotiate or inspect.",
+                },
             },
         },
     },
@@ -148,11 +164,23 @@ AP2_SELLER_MCP_TOOLS = [
     },
     {
         "name": "purchase_subscription",
-        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Provide offer_id (recommended from next_action) or tier_id + agreed_monthly_rate + mandate_proof_hash.",
+        "description": "Binds a verified AP2 v0.2 Mandate Chain (Checkout + Payment SD-JWTs) or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Returns merchant-signed Checkout Receipt and Payment Receipt.",
         "input_schema": {
             "type": "object",
             "required": ["buyer_email"],
             "properties": {
+                "checkout_mandate_chain": {
+                    "type": "string",
+                    "description": "AP2 v0.2 Checkout Mandate presentation chain (open mandate + closed mandate ~~ delimited SD-JWT tokens).",
+                },
+                "payment_mandate_chain": {
+                    "type": "string",
+                    "description": "AP2 v0.2 Payment Mandate presentation chain (open mandate + closed mandate ~~ delimited SD-JWT tokens).",
+                },
+                "checkout_jwt": {
+                    "type": "string",
+                    "description": "Merchant-signed Checkout JWT returned during negotiation.",
+                },
                 "offer_id": {
                     "type": "string",
                     "description": "Merchant offer_id returned in Cart Mandate and next_action (e.g. 'off_ap2_batch_49_...'). Automatically resolves and binds all pre-verified terms without rate tampering risk.",
@@ -422,6 +450,12 @@ class SellerAgent:
             negotiation_id=negotiation_id,
             category=category,
         )
+        chk_record = create_merchant_checkout(
+            tier_id=tier_id,
+            monthly_price=amount,
+            contractor_email=email,
+            order_id=offer_id,
+        )
         auth_entry = {
             "tier_id": tier_id,
             "amount": amount,
@@ -434,6 +468,9 @@ class SellerAgent:
             "mandate_proof_hash": proof_hash,
             "ap2_mandate": ap2_mandate,
             "ap2_cart_mandate": ap2_cart,
+            "checkout_jwt": chk_record["checkout_jwt"],
+            "checkout_hash": chk_record["checkout_hash"],
+            "order_id": chk_record["order_id"],
         }
         register_authorized_mandate(proof_hash, auth_entry)
         register_authorized_mandate(offer_id, auth_entry)
@@ -445,6 +482,9 @@ class SellerAgent:
             "ap2_mandate": ap2_mandate,
             "ap2_cart_mandate": ap2_cart,
             "offer_expires_at": ap2_cart.get("offer_expires_at"),
+            "checkout_jwt": chk_record["checkout_jwt"],
+            "checkout_hash": chk_record["checkout_hash"],
+            "order_id": chk_record["order_id"],
         }
 
     async def negotiate_tier_terms(
@@ -616,6 +656,8 @@ class SellerAgent:
                 "agreed_monthly_rate": standard_price,
                 "mandate_proof_hash": issued["hash"],
                 "buyer_email": email,
+                "checkout_jwt": issued["checkout_jwt"],
+                "checkout_hash": issued["checkout_hash"],
             }
 
             next_action = {
@@ -636,6 +678,9 @@ class SellerAgent:
                 "mandate_proof_hash": issued["hash"],
                 "ap2_intent_mandate": issued["ap2_mandate"],
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
+                "checkout_jwt": issued["checkout_jwt"],
+                "checkout_hash": issued["checkout_hash"],
+                "order_id": issued["order_id"],
                 "offer_expires_at": issued["offer_expires_at"],
                 "next_action": next_action,
                 "workload_tasks_per_month": workload_tasks,
@@ -684,12 +729,21 @@ class SellerAgent:
             )
             down_hash = issued["hash"]
             remaining_after_down = round(monthly_budget_cap - 49.99, 2)
+            counter_checkout = create_merchant_counter_offer(
+                requested_tier_id=tier_id,
+                counter_tier_id=down_tier_id,
+                counter_price=49.99,
+                budget_cap=monthly_budget_cap,
+                contractor_email=email,
+            )
             next_action_params = {
                 "offer_id": issued["offer_id"],
                 "tier_id": down_tier_id,
                 "agreed_monthly_rate": 49.99,
                 "mandate_proof_hash": down_hash,
                 "buyer_email": email,
+                "checkout_jwt": counter_checkout["checkout_jwt"],
+                "checkout_hash": counter_checkout["checkout_hash"],
             }
 
             next_action = {
@@ -720,6 +774,11 @@ class SellerAgent:
                 "mandate_proof_hash": down_hash,
                 "ap2_intent_mandate": issued["ap2_mandate"],
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
+                "checkout_jwt": counter_checkout["checkout_jwt"],
+                "checkout_hash": counter_checkout["checkout_hash"],
+                "order_id": counter_checkout["order_id"],
+                "counter_offer_checkout_jwt": counter_checkout["checkout_jwt"],
+                "counter_offer_checkout_hash": counter_checkout["checkout_hash"],
                 "offer_expires_at": issued["offer_expires_at"],
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": remaining_after_down,
@@ -776,41 +835,89 @@ class SellerAgent:
         contractor_email: Optional[str] = None,
         offer_id: Optional[str] = None,
         buyer_email: Optional[str] = None,
+        checkout_mandate_chain: Optional[str] = None,
+        payment_mandate_chain: Optional[str] = None,
+        checkout_jwt: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Tool implementation: Binds verified AP2 Intent Mandate or AP2 Cart Mandate to PayPal Recurring Vault.
+        Tool implementation: Binds verified AP2 Intent Mandate, AP2 Cart Mandate, or AP2 v0.2 Mandate Chain
+        to PayPal Recurring Vault.
         Cryptographically verifies the mandate proof against tier, rate, and buyer identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
         if not contractor_email and buyer_email:
             contractor_email = buyer_email
 
-        # Resolve parameters from offer_id if caller omitted them
-        if offer_id and not (tier_id and agreed_monthly_rate and mandate_proof_hash):
-            auth_lookup = get_authorized_mandate(offer_id)
-            if auth_lookup:
-                tier_id = tier_id or auth_lookup.get("tier_id")
-                agreed_monthly_rate = agreed_monthly_rate if agreed_monthly_rate is not None else auth_lookup.get("amount")
-                mandate_proof_hash = mandate_proof_hash or auth_lookup.get("mandate_proof_hash") or auth_lookup.get("proof_hash") or offer_id
-                contractor_email = contractor_email or auth_lookup.get("contractor_email")
+        verified_chk_receipt = None
+        verified_pay_receipt = None
 
-        # 1. Anti-Tamper & Identity Verification (always runs, even for replays)
-        valid, reason = verify_authorized_mandate(
-            proof_hash=mandate_proof_hash,
-            tier_id=tier_id,
-            agreed_rate=agreed_monthly_rate,
-            contractor_email=contractor_email,
-            offer_id=offer_id,
-        )
-        if not valid:
-            logger.warning(f"[SECURITY] Mandate verification failed for {tier_id}: {reason}")
-            return {
-                "status": "REJECTED",
-                "error": "MANDATE_SECURITY_BREACH",
-                "reason": reason,
-                "message": f"Purchase rejected: {reason}",
-            }
+        # 0. AP2 v0.2 Mandate Chain Verification
+        if checkout_mandate_chain and payment_mandate_chain:
+            chk_jwt = checkout_jwt
+            if not chk_jwt and offer_id:
+                auth_lookup = get_authorized_mandate(offer_id)
+                if auth_lookup:
+                    chk_jwt = auth_lookup.get("checkout_jwt")
+
+            ap2_verify_res = verify_ap2_chains(
+                checkout_mandate_token=checkout_mandate_chain,
+                payment_mandate_token=payment_mandate_chain,
+                checkout_jwt=chk_jwt,
+            )
+            if not ap2_verify_res.get("valid"):
+                err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
+                err_desc = ap2_verify_res.get("error_description", "Mandate chain verification failed")
+                logger.warning(f"[AP2_VERIFIER] Purchase rejected: {err_code} - {err_desc}")
+                return {
+                    "status": "REJECTED",
+                    "error": err_code,
+                    "reason": err_desc,
+                    "message": f"Purchase rejected: {err_desc}",
+                    "checkout_receipt": ap2_verify_res.get("checkout_receipt"),
+                    "payment_receipt": ap2_verify_res.get("payment_receipt"),
+                }
+            tier_id = ap2_verify_res.get("tier_id") or tier_id
+            agreed_monthly_rate = ap2_verify_res.get("monthly_price", agreed_monthly_rate)
+            verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
+            verified_pay_receipt = ap2_verify_res.get("payment_receipt")
+            mandate_proof_hash = mandate_proof_hash or ap2_verify_res.get("checkout_hash")
+        else:
+            # Resolve parameters from offer_id if caller omitted them
+            if offer_id and not (tier_id and agreed_monthly_rate and mandate_proof_hash):
+                auth_lookup = get_authorized_mandate(offer_id)
+                if auth_lookup:
+                    tier_id = tier_id or auth_lookup.get("tier_id")
+                    agreed_monthly_rate = agreed_monthly_rate if agreed_monthly_rate is not None else auth_lookup.get("amount")
+                    mandate_proof_hash = mandate_proof_hash or auth_lookup.get("mandate_proof_hash") or auth_lookup.get("proof_hash") or offer_id
+                    contractor_email = contractor_email or auth_lookup.get("contractor_email")
+
+            # 1. Anti-Tamper & Identity Verification (always runs, even for replays)
+            valid, reason = verify_authorized_mandate(
+                proof_hash=mandate_proof_hash,
+                tier_id=tier_id,
+                agreed_rate=agreed_monthly_rate,
+                contractor_email=contractor_email,
+                offer_id=offer_id,
+            )
+            if not valid:
+                logger.warning(f"[SECURITY] Mandate verification failed for {tier_id}: {reason}")
+                ref = mandate_proof_hash or offer_id or "unknown_ref"
+                err_code = ERR_INVALID_CREDENTIAL if "signature" in reason.lower() else ERR_INVALID_MANDATE
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=offer_id or "unknown_order",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=err_code,
+                    error_description=reason,
+                )
+                return {
+                    "status": "REJECTED",
+                    "error": "MANDATE_SECURITY_BREACH",
+                    "reason": reason,
+                    "message": f"Purchase rejected: {reason}",
+                    "checkout_receipt": err_receipt,
+                }
 
         # 1b. Price integrity: a subscription settles only at its tier's catalog price
         plan = resolve_plan(tier_id) if tier_id else None
@@ -821,19 +928,39 @@ class SellerAgent:
             or round(agreed_monthly_rate, 2) != round(plan["monthly_price"], 2)
         ):
             logger.warning(f"[SECURITY] Purchase rate does not match catalog price for tier '{tier_id}'")
+            ref = mandate_proof_hash or offer_id or "unknown_ref"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description="RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
+            )
             return {
                 "status": "REJECTED",
                 "error": "RATE_TAMPERING_DETECTED",
                 "reason": "RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
                 "message": "Purchase rejected: agreed_monthly_rate must equal the catalog price of the requested tier.",
+                "checkout_receipt": err_receipt,
             }
 
         # 2. Idempotency Check: a verified replay returns the existing subscription
         cache_key = offer_id or mandate_proof_hash
         if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
             cached = _COMPLETED_SUBSCRIPTIONS[cache_key]
-            if isinstance(cached, dict) and cached.get("status") == "ACTIVE":
+            if isinstance(cached, dict):
+                c_status = str(cached.get("status", "")).upper()
+                if c_status in ("ACTIVE", "ACTIVE_STREAMING", "APPROVAL_PENDING", "PENDING", "PENDING_DEPOSIT"):
+                    return cached
+                if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_ALREADY_REDEEMED",
+                        "reason": "Mandate already redeemed; negotiate again.",
+                        "message": "Purchase rejected: mandate already redeemed; negotiate again.",
+                    }
                 return cached
+            return cached
 
         # Mandates issued without an email are locked to their first redeemer
         if mandate_proof_hash and contractor_email:
@@ -871,6 +998,17 @@ class SellerAgent:
                 f"[SECURITY] Purchase budget breach: rate ${agreed_monthly_rate:.2f}/mo exceeds "
                 f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
             )
+            ref = mandate_proof_hash or offer_id or "unknown_ref"
+            err_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=(
+                    f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
+                    f"${effective_available:.2f} (budget cap: ${cap:.2f})."
+                ),
+            )
             return {
                 "status": "REJECTED",
                 "error": "BUDGET_EXHAUSTED",
@@ -881,6 +1019,7 @@ class SellerAgent:
                 "monthly_budget_cap": round(cap, 2),
                 "monthly_cap_remaining": round(remaining_before, 2),
                 "active_subscription_id": old_sub_id,
+                "payment_receipt": err_receipt,
             }
 
         # 3. Invoke PayPal Gateway
@@ -1067,6 +1206,20 @@ class SellerAgent:
             "subscriber_name": contractor_name,
             "business_entity": business_entity,
         }
+        if not verified_chk_receipt:
+            ref = mandate_proof_hash or offer_id or f"ref_{uuid.uuid4().hex[:8]}"
+            verified_chk_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Success",
+            )
+            verified_pay_receipt = create_payment_receipt_jwt(
+                payment_id=sub_id,
+                closed_mandate_reference=ref,
+                status="Success",
+            )
+        response["checkout_receipt"] = verified_chk_receipt
+        response["payment_receipt"] = verified_pay_receipt
         plan_obj = resolve_plan(tier_id, profile="ap2")
         if plan_obj and "workload_tasks_per_month" in plan_obj:
             response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]

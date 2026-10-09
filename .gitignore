@@ -69,6 +69,8 @@ htmlcov/
 *.db
 *.db-wal
 *.db-shm
+*.bak
+*.db.bak
 
 # ==========================================
 # IDEs & Editor Files

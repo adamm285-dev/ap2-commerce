@@ -831,7 +831,9 @@ class SellerAgent:
         # 2. Idempotency Check: a verified replay returns the existing subscription
         cache_key = offer_id or mandate_proof_hash
         if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
-            return _COMPLETED_SUBSCRIPTIONS[cache_key]
+            cached = _COMPLETED_SUBSCRIPTIONS[cache_key]
+            if isinstance(cached, dict) and cached.get("status") == "ACTIVE":
+                return cached
 
         # Mandates issued without an email are locked to their first redeemer
         if mandate_proof_hash and contractor_email:
@@ -919,7 +921,7 @@ class SellerAgent:
                     break
 
         # Mark old subscription as REPLACED (Plan Change Model)
-        if old_sub_id and old_sub:
+        if old_sub_id and old_sub and old_sub_id != sub_id:
             if sub_status == "ACTIVE":
                 old_sub["status"] = "REPLACED"
                 old_sub["replaced_by"] = sub_id

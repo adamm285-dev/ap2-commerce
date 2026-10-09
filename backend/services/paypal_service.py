@@ -375,7 +375,7 @@ class PayPalService:
         brand_name = "AP2 Autonomous Node Network"
 
         if self.mock_mode:
-            seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
+            seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}:{uuid.uuid4().hex[:6]}"
             stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
             sub_id = f"I-A2A-VAULT-{stable_int:07d}"
             payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-AP2-BUYER"

@@ -1,7 +1,8 @@
 openapi: 3.1.0
 info:
-  title: FieldSmith Pro Agentic Commerce & AP2 API
-  description: Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Trade Contractors
+  title: AP2 Autonomous Agent Commerce & Compute API
+  description: Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo
+    Trade Contractors
   version: 1.0.0
 paths:
   /m2m/payloads/latest:
@@ -87,14 +88,13 @@ paths:
     get:
       tags:
       - Model Context Protocol
-      summary: Mcp Get Endpoint
-      description: 'Handles GET requests to /mcp.
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
 
-        If Accept header requests text/event-stream, opens the SSE stream with the
-        standard MCP handshake.
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
 
-        Otherwise returns a machine-readable JSON status of the FastMCP server.'
-      operationId: mcp_get_endpoint_mcp_get
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
+      operationId: mcp_jsonrpc_endpoint_mcp_get
       responses:
         '200':
           description: Successful Response
@@ -109,9 +109,126 @@ paths:
 
         Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
 
-        and invoke FieldSmith telephony capabilities, mandate evaluation, and line
-        provisioning.'
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
       operationId: mcp_jsonrpc_endpoint_mcp_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/agent/mcp:
+    get:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
+
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
+
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
+      operationId: mcp_jsonrpc_endpoint_api_agent_mcp_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
+
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
+
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
+      operationId: mcp_jsonrpc_endpoint_api_agent_mcp_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /a2a/mcp:
+    get:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
+
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
+
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
+      operationId: mcp_jsonrpc_endpoint_a2a_mcp_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      tags:
+      - Model Context Protocol
+      summary: Mcp Jsonrpc Endpoint
+      description: 'Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
+
+        Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
+
+        and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.'
+      operationId: mcp_jsonrpc_endpoint_a2a_mcp_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /.well-known/mcp.json:
+    get:
+      tags:
+      - Discovery
+      summary: Well Known Mcp Discovery
+      description: Machine-readable Model Context Protocol discovery catalog.
+      operationId: well_known_mcp_discovery__well_known_mcp_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /agents.json:
+    get:
+      tags:
+      - Discovery
+      summary: Agents Json Discovery
+      description: Agent discovery manifest specifying autonomous endpoints and capabilities.
+      operationId: agents_json_discovery_agents_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /.well-known/llms.txt:
+    get:
+      tags:
+      - Discovery
+      summary: Llms Txt Discovery
+      description: Machine-readable llms.txt context document for autonomous LLM agents.
+      operationId: llms_txt_discovery__well_known_llms_txt_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /llms.txt:
+    get:
+      tags:
+      - Discovery
+      summary: Llms Txt Discovery
+      description: Machine-readable llms.txt context document for autonomous LLM agents.
+      operationId: llms_txt_discovery_llms_txt_get
       responses:
         '200':
           description: Successful Response
@@ -124,9 +241,8 @@ paths:
       - MCP Wire Protocol
       summary: Mcp Wire Stream
       description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
-        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
-        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
-        \ /mcp\n\n`."
+        \    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard\
+        \ MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`."
       operationId: mcp_wire_stream_m2m_sse_get
       responses:
         '200':
@@ -140,9 +256,8 @@ paths:
       - MCP Wire Protocol
       summary: Mcp Wire Stream
       description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
-        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
-        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
-        \ /mcp\n\n`."
+        \    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard\
+        \ MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`."
       operationId: mcp_wire_stream_api_mcp_sse_get
       responses:
         '200':
@@ -157,9 +272,8 @@ paths:
       - MCP Wire Protocol
       summary: Mcp Wire Stream
       description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
-        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
-        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
-        \ /mcp\n\n`."
+        \    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard\
+        \ MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`."
       operationId: mcp_wire_stream_mcp_sse_get
       responses:
         '200':
@@ -174,9 +288,8 @@ paths:
       - MCP Wire Protocol
       summary: Mcp Wire Stream
       description: "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n\
-        \    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits\
-        \ the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata:\
-        \ /mcp\n\n`."
+        \    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard\
+        \ MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`."
       operationId: mcp_wire_stream_sse_get
       responses:
         '200':
@@ -217,9 +330,11 @@ paths:
       summary: Verify Tamper Endpoint
       description: 'Live anti-tamper verification endpoint.
 
-        Tests whether the supplied payload matches its HMAC-SHA256 signature,
+        Tests whether the supplied payload matches its signature,
 
-        checks budget caps, and verifies timestamp drift.'
+        checks budget caps, and verifies timestamp drift.
+
+        Never returns expected signatures or leaks secrets.'
       operationId: verify_tamper_endpoint_api_crypto_verify_tamper_post
       requestBody:
         content:
@@ -244,7 +359,8 @@ paths:
       tags:
       - Anti-Tamper & Cryptography
       summary: Generate Proof Endpoint
-      description: Generates a canonical HMAC-SHA256 mandate proof for given parameters.
+      description: Generates a canonical mandate proof for given parameters using
+        the demo tamper key.
       operationId: generate_proof_endpoint_api_crypto_generate_proof_post
       requestBody:
         content:
@@ -269,14 +385,29 @@ paths:
       tags:
       - Anti-Tamper & Cryptography
       summary: Get Sample Proof
-      description: Returns a ready-to-test authentic proof for Marcus Miller.
+      description: Returns a ready-to-test authentic proof using the demo tamper key.
+        Profile-aware (ap2 vs default).
       operationId: get_sample_proof_api_crypto_sample_proof_get
+      parameters:
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          default: default
+          title: Profile
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/copilot/chat:
     post:
       tags:
@@ -284,8 +415,8 @@ paths:
       summary: Copilot Chat Endpoint
       description: 'Contractor AI Copilot conversational engine.
 
-        Ingests messages from the contractor, diagnoses call leaks, queries FieldSmith
-        Seller MCP,
+        Ingests messages from the contractor, diagnoses call leaks, queries AP2 Seller
+        MCP,
 
         and returns conversational responses and proposed A2A actions.'
       operationId: copilot_chat_endpoint_api_copilot_chat_post
@@ -393,10 +524,10 @@ paths:
   /api/agent/provision:
     post:
       tags:
-      - Telephony Provisioning
+      - Compute Node Provisioning
       summary: Provision Line Endpoint
-      description: Provisions a dedicated 10DLC telephone DID anchored to verified
-        PayPal subscriber identity.
+      description: Provisions a dedicated autonomous compute node endpoint anchored
+        to verified PayPal subscriber identity.
       operationId: provision_line_endpoint_api_agent_provision_post
       requestBody:
         content:
@@ -449,43 +580,101 @@ paths:
       tags:
       - Enterprise Fleet Ledger
       summary: Get Fleet Ledger Endpoint
-      description: Returns the persistent enterprise fleet ledger for AG Grid and
+      description: 'Returns the persistent enterprise fleet ledger for AG Grid and
         AG Studio.
+
+        Public requests return masked PII for privacy; only requests carrying ADMIN_API_KEY
+        are unmasked
+
+        (the `unmasked` query flag is accepted for compatibility but grants nothing
+        on its own).
+
+        When profile=''ap2'', returns the AP2 autonomous agent seller deck dataset
+        (Demo data).'
       operationId: get_fleet_ledger_endpoint_api_fleet_ledger_get
+      parameters:
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          default: default
+          title: Profile
+      - name: unmasked
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Unmasked
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/fleet/stats:
     get:
       tags:
       - Enterprise Fleet Ledger
       summary: Get Fleet Stats Endpoint
       description: Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV,
-        Trade Breakdown).
+        Capability/Trade Breakdown).
       operationId: get_fleet_stats_endpoint_api_fleet_stats_get
+      parameters:
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          default: default
+          title: Profile
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/fleet/schedule:
     get:
       tags:
       - Bryntum Dispatch Scheduler
       summary: Get Fleet Schedule Endpoint
-      description: Returns dynamic resources and shift/appointment events for Bryntum
-        Dispatch Scheduler.
+      description: Returns dynamic resources and shift/appointment/renewal events
+        for Bryntum Dispatch Scheduler.
       operationId: get_fleet_schedule_endpoint_api_fleet_schedule_get
+      parameters:
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          default: default
+          title: Profile
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/mcp/zapier-sync:
     post:
       tags:
@@ -569,7 +758,9 @@ paths:
         agent''s Ed25519 public key.
 
         Requires cryptographic challenge-response signature verification guaranteeing
-        key ownership.'
+        key ownership.
+
+        Enforces key reservation, collision protection, and single-use challenge consumption.'
       operationId: register_buyer_key_endpoint_api_agent_keys_register_post
       requestBody:
         content:
@@ -595,7 +786,8 @@ paths:
       tags:
       - Autonomous Buyer Onboarding
       summary: List Registered Buyer Keys Endpoint
-      description: Lists registered autonomous buyer agent keys from SQLite WAL.
+      description: Lists registered buyer agent keys. Contractor emails and entities
+        are returned to admins only.
       operationId: list_registered_buyer_keys_endpoint_api_agent_keys_registry_get
       responses:
         '200':
@@ -630,6 +822,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/paypal/simulate-approval/{subscription_id}:
+    post:
+      tags:
+      - PayPal Orders
+      summary: Simulate Paypal Approval
+      description: 'Simulates buyer approval for a PayPal Sandbox subscription.
+
+        Transitions status from APPROVAL_PENDING to ACTIVE and marks PayPal Vault
+        as VAULT_BOUND.
+
+        Strictly restricted to sandbox and mock environments and requires administrative
+        authorization.'
+      operationId: simulate_paypal_approval_api_paypal_simulate_approval__subscription_id__post
+      parameters:
+      - name: subscription_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subscription Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/paypal/webhook:
     post:
       tags:
@@ -653,7 +877,8 @@ paths:
         (HTTP or stdio).
 
         Returns the step-by-step audit log, cryptographic proof, and back-office payloads.
-        Requires administrative authorization (X-Admin-Key or Authorization Bearer header).'
+
+        Requires administrative authorization.'
       operationId: run_external_buyer_agent_endpoint_api_harness_run_buyer_agent_post
       requestBody:
         content:
@@ -783,8 +1008,8 @@ components:
           title: Allowedtiers
           description: Permitted subscription tiers
           default:
-          - solo-starter
-          - fieldsmith-pro
+          - ap2-batch
+          - ap2-gateway
       type: object
       required:
       - kid
@@ -887,19 +1112,19 @@ components:
           - type: string
           - type: 'null'
           title: Contractor Name
-          default: Marcus Miller
+          default: Nexus Autonomous Buyer
         business_entity:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Entity
-          default: Miller Custom Flooring LLC
+          default: Nexus Autonomous Systems Corp
         trade_vertical:
           anyOf:
           - type: string
           - type: 'null'
           title: Trade Vertical
-          default: Tile & Custom Flooring
+          default: Autonomous Compute & Worker Nodes
         area_code:
           anyOf:
           - type: string
@@ -926,16 +1151,35 @@ components:
       properties:
         leadId:
           type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.:\-]+$
           title: Leadid
         territoryZone:
           type: string
+          maxLength: 64
+          minLength: 1
           title: Territoryzone
         slotStartIso:
           type: string
+          maxLength: 40
+          minLength: 10
           title: Slotstartiso
         paypalTransactionId:
           type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.:\-]+$
           title: Paypaltransactionid
+        profile:
+          type: string
+          enum:
+          - ap2
+          - default
+          title: Profile
+          description: 'Profile mode: ''ap2'' for compute workloads or ''default''
+            for trades'
+          default: default
       type: object
       required:
       - leadId
@@ -971,13 +1215,13 @@ components:
           - type: string
           - type: 'null'
           title: Contractor Id
-          default: contractor_marcus_863
+          default: agent:acme-procure
         business_name:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Name
-          default: Miller Custom Flooring LLC
+          default: Acme Autonomous Systems LLC
         monthly_cap_usd:
           anyOf:
           - type: number
@@ -1010,17 +1254,23 @@ components:
       properties:
         amount:
           type: number
+          maximum: 10000.0
+          exclusiveMinimum: 0.0
           title: Amount
         currency:
           type: string
+          pattern: ^USD$
           title: Currency
           default: USD
         description:
           type: string
+          maxLength: 127
+          minLength: 1
           title: Description
         custom_id:
           anyOf:
           - type: string
+            maxLength: 127
           - type: 'null'
           title: Custom Id
       type: object
@@ -1079,14 +1329,22 @@ components:
           type: string
           title: Status
         assignedDid:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Assigneddid
         carrier:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Carrier
+          default: Dual-Transport FastMCP (RFC 8032)
         routingState:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Routingstate
+          default: ACTIVE_COMPUTE_NODE
         subscriptionId:
           type: string
           title: Subscriptionid
@@ -1106,12 +1364,35 @@ components:
           - type: string
           - type: 'null'
           title: Retainedfromsubscription
+        complianceNote:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Compliancenote
+          default: Compute node active immediately upon mandate settlement.
+        endpoint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoint
+        nodeId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nodeid
+        nodeType:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nodetype
+        workloadTasksPerMonth:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Workloadtaskspermonth
       type: object
       required:
       - status
-      - assignedDid
-      - carrier
-      - routingState
       - subscriptionId
       title: ProvisionResponse
     QuoteRequest:
@@ -1180,25 +1461,25 @@ components:
           - type: string
           - type: 'null'
           title: Contractor Name
-          default: Marcus Miller
+          default: Nexus Autonomous Buyer
         business_entity:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Entity
-          default: Miller Custom Flooring LLC
+          default: Nexus Autonomous Systems Corp
         contractor_email:
           anyOf:
           - type: string
           - type: 'null'
           title: Contractor Email
-          default: marcus@millercustomfloors.com
+          default: agent-alpha@nexus-systems.io
         trade_id:
           anyOf:
           - type: string
           - type: 'null'
           title: Trade Id
-          default: flooring-tile
+          default: ap2-gateway
         budget_cap:
           anyOf:
           - type: number
@@ -1237,6 +1518,7 @@ components:
           title: Buyeragentid
         amount:
           type: number
+          exclusiveMinimum: 0.0
           title: Amount
         recurrence:
           $ref: '#/components/schemas/RecurrenceType'
@@ -1246,6 +1528,7 @@ components:
         monthlyBudgetCap:
           anyOf:
           - type: number
+            minimum: 0.0
           - type: 'null'
           title: Monthlybudgetcap
           default: 100.0
@@ -1316,6 +1599,11 @@ components:
           - type: string
           - type: 'null'
           title: Tierid
+        planId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Planid
         ap2IntentMandate:
           anyOf:
           - additionalProperties: true
@@ -1428,19 +1716,19 @@ components:
           - type: string
           - type: 'null'
           title: Customername
-          default: Marcus Miller
+          default: Acme Autonomous Systems LLC
         customerPhone:
           anyOf:
           - type: string
           - type: 'null'
           title: Customerphone
-          default: +1 (863) 267-8902
+          default: +1 (800) 555-0199
         propertyAddress:
           anyOf:
           - type: string
           - type: 'null'
           title: Propertyaddress
-          default: Lakeland, FL
+          default: Cloud Execution Region us-east-1
         depositAmount:
           anyOf:
           - type: number
@@ -1458,25 +1746,25 @@ components:
           - type: string
           - type: 'null'
           title: Contractorname
-          default: Marcus Miller
+          default: Acme Autonomous Systems LLC
         businessEntity:
           anyOf:
           - type: string
           - type: 'null'
           title: Businessentity
-          default: Miller Custom Flooring LLC
+          default: Acme Autonomous Systems LLC
         allocatedDid:
           anyOf:
           - type: string
           - type: 'null'
           title: Allocateddid
-          default: +1 (863) 267-8902
+          default: mcp+https://gateway-01.acme-systems.io/agents/gateway
         tradeVertical:
           anyOf:
           - type: string
           - type: 'null'
           title: Tradevertical
-          default: Tile & Custom Flooring
+          default: Dedicated AI Service Gateway
         monthlySubscriptionFee:
           anyOf:
           - type: number
@@ -1494,7 +1782,7 @@ components:
           - type: string
           - type: 'null'
           title: Contractoremail
-          default: marcus@millercustomfloors.com
+          default: agent@acme-systems.io
         mandateProofHash:
           anyOf:
           - type: string
@@ -1566,8 +1854,3 @@ components:
       - googleCalendarEventId
       - status
       title: ZapierSyncResponse
-servers:
-- url: https://api.fieldsmith.pro
-  description: Production Cloud Gateway (Google Cloud us-east1)
-- url: http://localhost:8001
-  description: Local Sandbox Development Server

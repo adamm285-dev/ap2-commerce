@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "FieldSmith Pro Agentic Commerce & AP2 API",
+    "title": "AP2 Autonomous Agent Commerce & Compute API",
     "description": "Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Trade Contractors",
     "version": "1.0.0"
   },
@@ -119,9 +119,9 @@
         "tags": [
           "Model Context Protocol"
         ],
-        "summary": "Mcp Get Endpoint",
-        "description": "Handles GET requests to /mcp.\nIf Accept header requests text/event-stream, opens the SSE stream with the standard MCP handshake.\nOtherwise returns a machine-readable JSON status of the FastMCP server.",
-        "operationId": "mcp_get_endpoint_mcp_get",
+        "summary": "Mcp Jsonrpc Endpoint",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
+        "operationId": "mcp_jsonrpc_endpoint_mcp_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -138,8 +138,164 @@
           "Model Context Protocol"
         ],
         "summary": "Mcp Jsonrpc Endpoint",
-        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke FieldSmith telephony capabilities, mandate evaluation, and line provisioning.",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
         "operationId": "mcp_jsonrpc_endpoint_mcp_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/mcp": {
+      "get": {
+        "tags": [
+          "Model Context Protocol"
+        ],
+        "summary": "Mcp Jsonrpc Endpoint",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
+        "operationId": "mcp_jsonrpc_endpoint_api_agent_mcp_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Model Context Protocol"
+        ],
+        "summary": "Mcp Jsonrpc Endpoint",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
+        "operationId": "mcp_jsonrpc_endpoint_api_agent_mcp_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/a2a/mcp": {
+      "get": {
+        "tags": [
+          "Model Context Protocol"
+        ],
+        "summary": "Mcp Jsonrpc Endpoint",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
+        "operationId": "mcp_jsonrpc_endpoint_a2a_mcp_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Model Context Protocol"
+        ],
+        "summary": "Mcp Jsonrpc Endpoint",
+        "description": "Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.\nAllows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover\nand invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.",
+        "operationId": "mcp_jsonrpc_endpoint_a2a_mcp_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/mcp.json": {
+      "get": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Well Known Mcp Discovery",
+        "description": "Machine-readable Model Context Protocol discovery catalog.",
+        "operationId": "well_known_mcp_discovery__well_known_mcp_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents.json": {
+      "get": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Agents Json Discovery",
+        "description": "Agent discovery manifest specifying autonomous endpoints and capabilities.",
+        "operationId": "agents_json_discovery_agents_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/llms.txt": {
+      "get": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Llms Txt Discovery",
+        "description": "Machine-readable llms.txt context document for autonomous LLM agents.",
+        "operationId": "llms_txt_discovery__well_known_llms_txt_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Llms Txt Discovery",
+        "description": "Machine-readable llms.txt context document for autonomous LLM agents.",
+        "operationId": "llms_txt_discovery_llms_txt_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -158,7 +314,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_m2m_sse_get",
         "responses": {
           "200": {
@@ -178,7 +334,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_api_mcp_sse_get",
         "responses": {
           "200": {
@@ -199,7 +355,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_mcp_sse_get",
         "responses": {
           "200": {
@@ -220,7 +376,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the FieldSmith FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_sse_get",
         "responses": {
           "200": {
@@ -280,7 +436,7 @@
           "Anti-Tamper & Cryptography"
         ],
         "summary": "Verify Tamper Endpoint",
-        "description": "Live anti-tamper verification endpoint.\nTests whether the supplied payload matches its HMAC-SHA256 signature,\nchecks budget caps, and verifies timestamp drift.",
+        "description": "Live anti-tamper verification endpoint.\nTests whether the supplied payload matches its signature,\nchecks budget caps, and verifies timestamp drift.\nNever returns expected signatures or leaks secrets.",
         "operationId": "verify_tamper_endpoint_api_crypto_verify_tamper_post",
         "requestBody": {
           "content": {
@@ -320,7 +476,7 @@
           "Anti-Tamper & Cryptography"
         ],
         "summary": "Generate Proof Endpoint",
-        "description": "Generates a canonical HMAC-SHA256 mandate proof for given parameters.",
+        "description": "Generates a canonical mandate proof for given parameters using the demo tamper key.",
         "operationId": "generate_proof_endpoint_api_crypto_generate_proof_post",
         "requestBody": {
           "content": {
@@ -360,14 +516,36 @@
           "Anti-Tamper & Cryptography"
         ],
         "summary": "Get Sample Proof",
-        "description": "Returns a ready-to-test authentic proof for Marcus Miller.",
+        "description": "Returns a ready-to-test authentic proof using the demo tamper key. Profile-aware (ap2 vs default).",
         "operationId": "get_sample_proof_api_crypto_sample_proof_get",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Profile"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -380,7 +558,7 @@
           "Contractor Copilot"
         ],
         "summary": "Copilot Chat Endpoint",
-        "description": "Contractor AI Copilot conversational engine.\nIngests messages from the contractor, diagnoses call leaks, queries FieldSmith Seller MCP,\nand returns conversational responses and proposed A2A actions.",
+        "description": "Contractor AI Copilot conversational engine.\nIngests messages from the contractor, diagnoses call leaks, queries AP2 Seller MCP,\nand returns conversational responses and proposed A2A actions.",
         "operationId": "copilot_chat_endpoint_api_copilot_chat_post",
         "requestBody": {
           "content": {
@@ -543,10 +721,10 @@
     "/api/agent/provision": {
       "post": {
         "tags": [
-          "Telephony Provisioning"
+          "Compute Node Provisioning"
         ],
         "summary": "Provision Line Endpoint",
-        "description": "Provisions a dedicated 10DLC telephone DID anchored to verified PayPal subscriber identity.",
+        "description": "Provisions a dedicated autonomous compute node endpoint anchored to verified PayPal subscriber identity.",
         "operationId": "provision_line_endpoint_api_agent_provision_post",
         "requestBody": {
           "content": {
@@ -630,14 +808,46 @@
           "Enterprise Fleet Ledger"
         ],
         "summary": "Get Fleet Ledger Endpoint",
-        "description": "Returns the persistent enterprise fleet ledger for AG Grid and AG Studio.",
+        "description": "Returns the persistent enterprise fleet ledger for AG Grid and AG Studio.\nPublic requests return masked PII for privacy; only requests carrying ADMIN_API_KEY are unmasked\n(the `unmasked` query flag is accepted for compatibility but grants nothing on its own).\nWhen profile='ap2', returns the AP2 autonomous agent seller deck dataset (Demo data).",
         "operationId": "get_fleet_ledger_endpoint_api_fleet_ledger_get",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Profile"
+            }
+          },
+          {
+            "name": "unmasked",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Unmasked"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -650,14 +860,36 @@
           "Enterprise Fleet Ledger"
         ],
         "summary": "Get Fleet Stats Endpoint",
-        "description": "Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV, Trade Breakdown).",
+        "description": "Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV, Capability/Trade Breakdown).",
         "operationId": "get_fleet_stats_endpoint_api_fleet_stats_get",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Profile"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -670,14 +902,36 @@
           "Bryntum Dispatch Scheduler"
         ],
         "summary": "Get Fleet Schedule Endpoint",
-        "description": "Returns dynamic resources and shift/appointment events for Bryntum Dispatch Scheduler.",
+        "description": "Returns dynamic resources and shift/appointment/renewal events for Bryntum Dispatch Scheduler.",
         "operationId": "get_fleet_schedule_endpoint_api_fleet_schedule_get",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Profile"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -796,7 +1050,7 @@
           "Autonomous Buyer Onboarding"
         ],
         "summary": "Register Buyer Key Endpoint",
-        "description": "Dynamically registers and trusts an external autonomous buyer agent's Ed25519 public key.\nRequires cryptographic challenge-response signature verification guaranteeing key ownership.",
+        "description": "Dynamically registers and trusts an external autonomous buyer agent's Ed25519 public key.\nRequires cryptographic challenge-response signature verification guaranteeing key ownership.\nEnforces key reservation, collision protection, and single-use challenge consumption.",
         "operationId": "register_buyer_key_endpoint_api_agent_keys_register_post",
         "requestBody": {
           "content": {
@@ -838,7 +1092,7 @@
           "Autonomous Buyer Onboarding"
         ],
         "summary": "List Registered Buyer Keys Endpoint",
-        "description": "Lists registered autonomous buyer agent keys from SQLite WAL.",
+        "description": "Lists registered buyer agent keys. Contractor emails and entities are returned to admins only.",
         "operationId": "list_registered_buyer_keys_endpoint_api_agent_keys_registry_get",
         "responses": {
           "200": {
@@ -896,6 +1150,47 @@
         }
       }
     },
+    "/api/paypal/simulate-approval/{subscription_id}": {
+      "post": {
+        "tags": [
+          "PayPal Orders"
+        ],
+        "summary": "Simulate Paypal Approval",
+        "description": "Simulates buyer approval for a PayPal Sandbox subscription.\nTransitions status from APPROVAL_PENDING to ACTIVE and marks PayPal Vault as VAULT_BOUND.\nStrictly restricted to sandbox and mock environments and requires administrative authorization.",
+        "operationId": "simulate_paypal_approval_api_paypal_simulate_approval__subscription_id__post",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subscription Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/paypal/webhook": {
       "post": {
         "tags": [
@@ -922,7 +1217,7 @@
           "External Buyer Harness"
         ],
         "summary": "Run External Buyer Agent Endpoint",
-        "description": "Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).\nReturns the step-by-step audit log, cryptographic proof, and back-office payloads.\nRequires administrative authorization (X-Admin-Key or Authorization Bearer header).",
+        "description": "Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).\nReturns the step-by-step audit log, cryptographic proof, and back-office payloads.\nRequires administrative authorization.",
         "operationId": "run_external_buyer_agent_endpoint_api_harness_run_buyer_agent_post",
         "requestBody": {
           "content": {
@@ -1111,8 +1406,8 @@
             "title": "Allowedtiers",
             "description": "Permitted subscription tiers",
             "default": [
-              "solo-starter",
-              "fieldsmith-pro"
+              "ap2-batch",
+              "ap2-gateway"
             ]
           }
         },
@@ -1251,7 +1546,7 @@
               }
             ],
             "title": "Contractor Name",
-            "default": "Marcus Miller"
+            "default": "Nexus Autonomous Buyer"
           },
           "business_entity": {
             "anyOf": [
@@ -1263,7 +1558,7 @@
               }
             ],
             "title": "Business Entity",
-            "default": "Miller Custom Flooring LLC"
+            "default": "Nexus Autonomous Systems Corp"
           },
           "trade_vertical": {
             "anyOf": [
@@ -1275,7 +1570,7 @@
               }
             ],
             "title": "Trade Vertical",
-            "default": "Tile & Custom Flooring"
+            "default": "Autonomous Compute & Worker Nodes"
           },
           "area_code": {
             "anyOf": [
@@ -1324,19 +1619,39 @@
         "properties": {
           "leadId": {
             "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:\\-]+$",
             "title": "Leadid"
           },
           "territoryZone": {
             "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
             "title": "Territoryzone"
           },
           "slotStartIso": {
             "type": "string",
+            "maxLength": 40,
+            "minLength": 10,
             "title": "Slotstartiso"
           },
           "paypalTransactionId": {
             "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:\\-]+$",
             "title": "Paypaltransactionid"
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "ap2",
+              "default"
+            ],
+            "title": "Profile",
+            "description": "Profile mode: 'ap2' for compute workloads or 'default' for trades",
+            "default": "default"
           }
         },
         "type": "object",
@@ -1388,7 +1703,7 @@
               }
             ],
             "title": "Contractor Id",
-            "default": "contractor_marcus_863"
+            "default": "agent:acme-procure"
           },
           "business_name": {
             "anyOf": [
@@ -1400,7 +1715,7 @@
               }
             ],
             "title": "Business Name",
-            "default": "Miller Custom Flooring LLC"
+            "default": "Acme Autonomous Systems LLC"
           },
           "monthly_cap_usd": {
             "anyOf": [
@@ -1458,21 +1773,27 @@
         "properties": {
           "amount": {
             "type": "number",
+            "maximum": 10000.0,
+            "exclusiveMinimum": 0.0,
             "title": "Amount"
           },
           "currency": {
             "type": "string",
+            "pattern": "^USD$",
             "title": "Currency",
             "default": "USD"
           },
           "description": {
             "type": "string",
+            "maxLength": 127,
+            "minLength": 1,
             "title": "Description"
           },
           "custom_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 127
               },
               {
                 "type": "null"
@@ -1564,16 +1885,39 @@
             "title": "Status"
           },
           "assignedDid": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Assigneddid"
           },
           "carrier": {
-            "type": "string",
-            "title": "Carrier"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier",
+            "default": "Dual-Transport FastMCP (RFC 8032)"
           },
           "routingState": {
-            "type": "string",
-            "title": "Routingstate"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routingstate",
+            "default": "ACTIVE_COMPUTE_NODE"
           },
           "subscriptionId": {
             "type": "string",
@@ -1612,14 +1956,67 @@
               }
             ],
             "title": "Retainedfromsubscription"
+          },
+          "complianceNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compliancenote",
+            "default": "Compute node active immediately upon mandate settlement."
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          },
+          "nodeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodeid"
+          },
+          "nodeType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodetype"
+          },
+          "workloadTasksPerMonth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workloadtaskspermonth"
           }
         },
         "type": "object",
         "required": [
           "status",
-          "assignedDid",
-          "carrier",
-          "routingState",
           "subscriptionId"
         ],
         "title": "ProvisionResponse"
@@ -1718,7 +2115,7 @@
               }
             ],
             "title": "Contractor Name",
-            "default": "Marcus Miller"
+            "default": "Nexus Autonomous Buyer"
           },
           "business_entity": {
             "anyOf": [
@@ -1730,7 +2127,7 @@
               }
             ],
             "title": "Business Entity",
-            "default": "Miller Custom Flooring LLC"
+            "default": "Nexus Autonomous Systems Corp"
           },
           "contractor_email": {
             "anyOf": [
@@ -1742,7 +2139,7 @@
               }
             ],
             "title": "Contractor Email",
-            "default": "marcus@millercustomfloors.com"
+            "default": "agent-alpha@nexus-systems.io"
           },
           "trade_id": {
             "anyOf": [
@@ -1754,7 +2151,7 @@
               }
             ],
             "title": "Trade Id",
-            "default": "flooring-tile"
+            "default": "ap2-gateway"
           },
           "budget_cap": {
             "anyOf": [
@@ -1827,6 +2224,7 @@
           },
           "amount": {
             "type": "number",
+            "exclusiveMinimum": 0.0,
             "title": "Amount"
           },
           "recurrence": {
@@ -1839,7 +2237,8 @@
           "monthlyBudgetCap": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -1975,6 +2374,17 @@
               }
             ],
             "title": "Tierid"
+          },
+          "planId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planid"
           },
           "ap2IntentMandate": {
             "anyOf": [
@@ -2159,7 +2569,7 @@
               }
             ],
             "title": "Customername",
-            "default": "Marcus Miller"
+            "default": "Acme Autonomous Systems LLC"
           },
           "customerPhone": {
             "anyOf": [
@@ -2171,7 +2581,7 @@
               }
             ],
             "title": "Customerphone",
-            "default": "+1 (863) 267-8902"
+            "default": "+1 (800) 555-0199"
           },
           "propertyAddress": {
             "anyOf": [
@@ -2183,7 +2593,7 @@
               }
             ],
             "title": "Propertyaddress",
-            "default": "Lakeland, FL"
+            "default": "Cloud Execution Region us-east-1"
           },
           "depositAmount": {
             "anyOf": [
@@ -2219,7 +2629,7 @@
               }
             ],
             "title": "Contractorname",
-            "default": "Marcus Miller"
+            "default": "Acme Autonomous Systems LLC"
           },
           "businessEntity": {
             "anyOf": [
@@ -2231,7 +2641,7 @@
               }
             ],
             "title": "Businessentity",
-            "default": "Miller Custom Flooring LLC"
+            "default": "Acme Autonomous Systems LLC"
           },
           "allocatedDid": {
             "anyOf": [
@@ -2243,7 +2653,7 @@
               }
             ],
             "title": "Allocateddid",
-            "default": "+1 (863) 267-8902"
+            "default": "mcp+https://gateway-01.acme-systems.io/agents/gateway"
           },
           "tradeVertical": {
             "anyOf": [
@@ -2255,7 +2665,7 @@
               }
             ],
             "title": "Tradevertical",
-            "default": "Tile & Custom Flooring"
+            "default": "Dedicated AI Service Gateway"
           },
           "monthlySubscriptionFee": {
             "anyOf": [
@@ -2291,7 +2701,7 @@
               }
             ],
             "title": "Contractoremail",
-            "default": "marcus@millercustomfloors.com"
+            "default": "agent@acme-systems.io"
           },
           "mandateProofHash": {
             "anyOf": [
@@ -2423,15 +2833,5 @@
         "title": "ZapierSyncResponse"
       }
     }
-  },
-  "servers": [
-    {
-      "url": "https://api.fieldsmith.pro",
-      "description": "Production Cloud Gateway (Google Cloud us-east1)"
-    },
-    {
-      "url": "http://localhost:8001",
-      "description": "Local Sandbox Development Server"
-    }
-  ]
+  }
 }

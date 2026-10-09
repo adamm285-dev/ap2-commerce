@@ -1,13 +1,13 @@
 {
   "mcpServers": {
-    "fieldsmith-pro-seller": {
+    "ap2-seller-node": {
       "command": "python",
       "args": ["-m", "backend.mcp_server"],
       "env": {
         "PYTHONPATH": "."
       }
     },
-    "fieldsmith-pro-http": {
+    "ap2-seller-http": {
       "url": "http://127.0.0.1:8001/mcp",
       "transport": "http"
     }

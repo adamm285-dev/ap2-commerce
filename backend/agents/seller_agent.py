@@ -1,6 +1,6 @@
 """
-Seller Agent (FieldSmith Pro MCP Server).
-Exposes the merchant capability catalog and executes autonomous trade commitments.
+Seller Agent (AP2 Autonomous Seller MCP Server).
+Exposes the merchant capability catalog and executes autonomous compute commitments.
 Can be queried programmatically by any Model Context Protocol (MCP) compliant client or Buyer Agent.
 Conforms to FIDO / AP2 Intent Mandate specifications.
 """
@@ -15,10 +15,7 @@ import datetime
 import logging
 from typing import Dict, Any, List, Optional
 from ..models import (
-    QuoteRequest,
     SpendingMandateRequest,
-    ProvisionRequest,
-    DispatchLockRequest,
     ZapierSyncRequest,
     RecurrenceType,
 )
@@ -38,10 +35,10 @@ from ..services.paypal_service import paypal_service
 from ..services.plan_catalog import (
     PLANS,
     TIER_ALIASES,
+    PUBLIC_AP2_TIER_ALIASES,
     QUOTA_UNIT,
     QUOTA_UNIT_DEFINITION,
     INCLUDED_ON_ALL_PLANS,
-    SUPPORTED_TRADES,
     ACTIVATION,
     TRUST_SIGNALS,
     resolve_plan,
@@ -52,7 +49,6 @@ from ..services.plan_catalog import (
     get_quota_unit,
     get_quota_unit_definition,
     get_included_on_all_plans,
-    get_supported_trades,
     get_activation,
     get_trust_signals,
     get_seller_profile,
@@ -60,7 +56,6 @@ from ..services.plan_catalog import (
     plan_summary,
     public_plan,
 )
-from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 from ..services.crypto_mandate import (
     verify_mandate_proof,
@@ -72,166 +67,7 @@ from ..config import settings
 
 logger = logging.getLogger("seller_agent")
 
-# Trades Profile MCP Tool Declarations (FieldSmith Telephony)
-TRADES_SELLER_MCP_TOOLS = [
-    {
-        "name": "get_service_catalog",
-        "description": "Returns the FieldSmith plan catalog with buyer context: plans and quotas, capabilities included on every plan, supported trades with their intake focus, activation requirements, and guarantee and policy links.",
-        "input_schema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "inspect_subscription_tiers",
-        "description": "Inspects FieldSmith Pro commercial SaaS subscription tiers ($49.99 Solo Starter, $79.99 FieldSmith Pro, $179.99 Fleet Dispatch), screened-call quotas, and features.",
-        "input_schema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "negotiate_tier_terms",
-        "description": "Evaluates buyer budget cap against desired FieldSmith SaaS tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Solo Starter at $49.99/mo) with a signed AP2 Intent Mandate.",
-        "input_schema": {
-            "type": "object",
-            "required": ["buyer_agent_id", "contractor_email", "tier_id", "monthly_budget_cap"],
-            "properties": {
-                "buyer_agent_id": {
-                    "type": "string",
-                    "description": "Unique identifier of the Buyer Agent",
-                },
-                "contractor_email": {
-                    "type": "string",
-                    "description": "Contractor PayPal billing email. The issued mandate is bound to this email and can only be redeemed by it.",
-                },
-                "tier_id": {
-                    "type": "string",
-                    "description": "Desired FieldSmith SaaS subscription tier ('solo-starter' at $49.99, 'fieldsmith-pro' at $79.99, 'pro-dispatch' at $179.99)",
-                },
-                "monthly_budget_cap": {
-                    "type": "number",
-                    "description": "Strict maximum monthly budget cap authorized by the contractor's mandate",
-                },
-                "proposed_price": {
-                    "type": "number",
-                    "description": "Optional buyer-proposed target monthly price for counter-negotiation",
-                },
-                "recurrence": {
-                    "type": "string",
-                    "enum": ["monthly", "annual", "one_time"],
-                    "default": "monthly",
-                    "description": "Billing cadence",
-                },
-                "category": {
-                    "type": "string",
-                    "default": "TELEPHONY_AI_SCREENER",
-                    "description": "Authorized spending category",
-                },
-                "buyer_intent_mandate": {
-                    "type": "object",
-                    "description": "Optional buyer-signed AP2 Intent Mandate (vct: ap2.mandate.intent.1). If omitted, seller creates a seller-attested intent mandate on buyer's behalf.",
-                },
-            },
-        },
-    },
-    {
-        "name": "evaluate_spending_mandate",
-        "description": "Validates buyer agent programmatic budget caps and generates signed mandate proof tokens.",
-        "input_schema": {
-            "type": "object",
-            "required": ["buyer_agent_id", "amount", "recurrence", "category", "monthly_budget_cap"],
-            "properties": {
-                "buyer_agent_id": {"type": "string", "description": "Unique ID of the Buyer Agent"},
-                "amount": {"type": "number", "description": "Proposed asking price per billing cycle"},
-                "recurrence": {
-                    "type": "string",
-                    "enum": ["one_time", "monthly", "annual"],
-                    "description": "Billing recurrence cadence",
-                },
-                "category": {"type": "string", "description": "Spending category"},
-                "monthly_budget_cap": {
-                    "type": "number",
-                    "description": "Strict maximum monthly budget authorized by the buyer mandate",
-                },
-            },
-        },
-    },
-    {
-        "name": "purchase_subscription",
-        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Provide offer_id (recommended from next_action) or tier_id + agreed_monthly_rate + mandate_proof_hash.",
-        "input_schema": {
-            "type": "object",
-            "required": ["contractor_email"],
-            "properties": {
-                "offer_id": {
-                    "type": "string",
-                    "description": "Merchant offer_id returned in Cart Mandate and next_action (e.g. 'off_solo_starter_49_...'). Automatically resolves and binds all pre-verified terms without rate tampering risk.",
-                },
-                "contractor_email": {
-                    "type": "string",
-                    "description": "Contractor PayPal billing email; must match the email the mandate was negotiated for.",
-                },
-                "tier_id": {
-                    "type": "string",
-                    "description": "Optional if offer_id is provided. Subscription tier ID (e.g. 'solo-starter', 'fieldsmith-pro', 'pro-dispatch').",
-                },
-                "agreed_monthly_rate": {
-                    "type": "number",
-                    "description": "Optional if offer_id is provided. Agreed monthly subscription rate.",
-                },
-                "mandate_proof_hash": {
-                    "type": "string",
-                    "description": "Optional if offer_id is provided. mandate_proof_hash returned by negotiate_tier_terms.",
-                },
-            },
-        },
-    },
-    {
-        "name": "provision_telecom_line",
-        "description": "Allocates a dedicated local 10DLC telephone DID upon verified PayPal subscription. Restricted strictly to licensed US contractors (NANP +1 3-digit area code).",
-        "input_schema": {
-            "type": "object",
-            "required": ["subscription_id", "contractor_email"],
-            "properties": {
-                "subscription_id": {"type": "string", "description": "Verified PayPal subscription ID"},
-                "contractor_email": {"type": "string", "description": "Contractor notification email"},
-                "area_code": {"type": "string", "default": "863", "description": "Target NPA area code (3-digit NANP e.g. 863, 813, 214)"},
-                "simulate_exhaustion": {"type": "boolean", "default": False, "description": "Test LATA failover"},
-            },
-        },
-    },
-    {
-        "name": "dispatch_zapier_mcp",
-        "description": "Executes downline multi-app back-office action chain into QuickBooks Online, Jobber, and Google Workspace.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "workflow_type": {"type": "string", "default": "a2a_onboarding"},
-                "contractor_name": {"type": "string"},
-                "business_entity": {"type": "string"},
-                "allocated_did": {"type": "string"},
-                "trade_vertical": {"type": "string"},
-                "monthly_subscription_fee": {"type": "number"},
-                "paypal_subscription_id": {"type": "string"},
-                "contractor_email": {"type": "string"},
-                "mandate_proof_hash": {"type": "string"},
-                "webhook_url": {"type": "string"},
-            },
-        },
-    },
-    {
-        "name": "get_subscription_details",
-        "description": "Retrieves the live status, plan information, next billing date, and subscriber details of a PayPal subscription. Aligns with official PayPal AI-Toolkit subscription schema.",
-        "input_schema": {
-            "type": "object",
-            "required": ["subscription_id"],
-            "properties": {
-                "subscription_id": {
-                    "type": "string",
-                    "description": "PayPal Subscription ID (e.g. 'I-...' or 'I-A2A-VAULT-...')",
-                },
-            },
-        },
-    },
-]
-
 # AP2 Profile MCP Tool Declarations (Autonomous Compute & Worker Node Network)
-# Strictly zero forbidden words (flooring, roofing, plumb, towing, contractor, telephony, screened, 10DLC, receptionist, DID)
 AP2_SELLER_MCP_TOOLS = [
     {
         "name": "get_service_catalog",
@@ -388,31 +224,7 @@ AP2_SELLER_MCP_TOOLS = [
     },
 ]
 
-
-class _SellerMcpToolsProxy(list):
-    def __iter__(self):
-        tools = TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
-        return iter(tools)
-
-    def __len__(self):
-        tools = TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
-        return len(tools)
-
-    def __getitem__(self, idx):
-        tools = TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
-        return tools[idx]
-
-    def __eq__(self, other):
-        tools = TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
-        return tools == other
-
-    def __repr__(self):
-        tools = TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
-        return repr(tools)
-
-
-SELLER_MCP_TOOLS = _SellerMcpToolsProxy()
-
+SELLER_MCP_TOOLS = AP2_SELLER_MCP_TOOLS
 
 from ..database import SubscriptionsDictProxy, ActiveContractorSubscriptionsProxy
 
@@ -422,8 +234,8 @@ _ACTIVE_CONTRACTOR_SUBSCRIPTIONS = ActiveContractorSubscriptionsProxy()
 
 def reconcile_contractor_ledger(contractor_email: str) -> float:
     """
-    Reconciles the contractor's ledger commitment strictly from subscription state:
-    commitment = the rate of the contractor's one ACTIVE subscription.
+    Reconciles the buyer's ledger commitment strictly from subscription state:
+    commitment = the rate of the buyer's one ACTIVE subscription.
     Pending, replaced, cancelled, and suspended plans contribute 0.0 to commitment.
     Returns the active monthly commitment.
     """
@@ -431,7 +243,7 @@ def reconcile_contractor_ledger(contractor_email: str) -> float:
         return 0.0
     norm_email = contractor_email.strip().lower()
 
-    # Find the contractor's active subscription
+    # Find the contractor/buyer active subscription
     active_sub = None
     active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email)
     if active_sub_id and active_sub_id in _COMPLETED_SUBSCRIPTIONS:
@@ -443,7 +255,7 @@ def reconcile_contractor_ledger(contractor_email: str) -> float:
     if not active_sub:
         for v in _COMPLETED_SUBSCRIPTIONS.values():
             if isinstance(v, dict) and v.get("status") == "ACTIVE":
-                cand_email = (v.get("contractor_email") or "").strip().lower()
+                cand_email = (v.get("buyer_email") or v.get("contractor_email") or "").strip().lower()
                 if cand_email == norm_email:
                     active_sub = v
                     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = v.get("subscription_id")
@@ -466,7 +278,7 @@ def reconcile_contractor_ledger(contractor_email: str) -> float:
 
 
 def _mask_email(email: Optional[str]) -> Optional[str]:
-    """Masks a contractor email for responses that any caller can request."""
+    """Masks an email for responses that any caller can request."""
     if not email or "@" not in email:
         return email
     local, _, domain = email.partition("@")
@@ -475,17 +287,16 @@ def _mask_email(email: Optional[str]) -> Optional[str]:
 
 def resolve_tier_from_paypal_plan(plan_id: Optional[str]) -> tuple[str, float]:
     """Maps a PayPal billing plan_id to its canonical tier_id and agreed monthly rate."""
-    prof = get_seller_profile()
     if not plan_id:
-        return ("fieldsmith-pro", 79.99) if prof == "trades" else ("ap2-gateway", 79.99)
+        return ("ap2-gateway", 79.99)
     p = plan_id.lower()
-    if plan_id == getattr(settings, "paypal_plan_id_solo", "P-FLSMITH-SOLO-STARTER") or "solo" in p or "starter" in p or "batch" in p:
-        return ("solo-starter", 49.99) if prof == "trades" else ("ap2-batch", 49.99)
-    elif plan_id == getattr(settings, "paypal_plan_id_dispatch", "P-FLSMITH-DISPATCH") or "dispatch" in p or "cluster" in p:
-        return ("pro-dispatch", 179.99) if prof == "trades" else ("ap2-cluster", 179.99)
-    elif plan_id == getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO") or "pro" in p or "gateway" in p:
-        return ("fieldsmith-pro", 79.99) if prof == "trades" else ("ap2-gateway", 79.99)
-    return ("fieldsmith-pro", 79.99) if prof == "trades" else ("ap2-gateway", 79.99)
+    if plan_id == getattr(settings, "paypal_plan_id_solo", "P-AP2-BATCH-WORKER") or "batch" in p or "solo" in p or "starter" in p:
+        return ("ap2-batch", 49.99)
+    elif plan_id == getattr(settings, "paypal_plan_id_dispatch", "P-AP2-CLUSTER-NODE") or "cluster" in p or "dispatch" in p:
+        return ("ap2-cluster", 179.99)
+    elif plan_id == getattr(settings, "paypal_plan_id_pro", "P-AP2-SERVICE-GATEWAY") or "gateway" in p or "pro" in p:
+        return ("ap2-gateway", 79.99)
+    return ("ap2-gateway", 79.99)
 
 
 class SellerAgent:
@@ -496,7 +307,7 @@ class SellerAgent:
     def agent_name(self) -> str:
         if self._custom_name:
             return self._custom_name
-        return "FieldSmith Pro Seller MCP" if get_seller_profile() == "trades" else "AP2 Autonomous Seller MCP"
+        return "AP2 Autonomous Seller MCP"
 
     @agent_name.setter
     def agent_name(self, value: str):
@@ -504,25 +315,10 @@ class SellerAgent:
 
     def list_mcp_tools(self) -> List[Dict[str, Any]]:
         """Returns the MCP tool definitions for agent tool-use discovery."""
-        return TRADES_SELLER_MCP_TOOLS if get_seller_profile() == "trades" else AP2_SELLER_MCP_TOOLS
+        return SELLER_MCP_TOOLS
 
     async def get_service_catalog(self) -> Dict[str, Any]:
         """Tool implementation: Returns the plan catalog with buyer context for intent matching."""
-        prof = get_seller_profile()
-        if prof == "trades":
-            return {
-                "provider": self.agent_name,
-                "currency": "USD",
-                "quota_unit": get_quota_unit("trades"),
-                "quota_unit_definition": get_quota_unit_definition("trades"),
-                "plans": [public_plan(plan) for plan in get_plans("trades")],
-                "included_on_all_plans": get_included_on_all_plans("trades"),
-                "supported_trades": get_supported_trades("trades"),
-                "trades_note": "Every trade is supported on every plan. Pick a plan by call volume and crew size, not by trade.",
-                "tier_id_aliases": get_tier_aliases("trades"),
-                "activation": get_activation("trades"),
-                "trust_signals": get_trust_signals("trades"),
-            }
         return {
             "provider": self.agent_name,
             "currency": "USD",
@@ -555,25 +351,6 @@ class SellerAgent:
 
     async def inspect_subscription_tiers(self) -> Dict[str, Any]:
         """Tool implementation: Returns subscription tiers, quotas, and pricing parameters."""
-        prof = get_seller_profile()
-        if prof == "trades":
-            subscription_plans = []
-            for plan in get_plans("trades"):
-                entry = public_plan(plan)
-                entry["is_negotiable"] = False
-                entry["tier_id_aliases"] = [alias for alias, target in get_tier_aliases("trades").items() if target == plan["tier_id"]]
-                subscription_plans.append(entry)
-            return {
-                "provider": self.agent_name,
-                "currency": "USD",
-                "protocol_support": ["AP2", "MCP"],
-                "service_description": "FieldSmith Pro AI Telephony & Voice Dispatch Receptionist SaaS for Field Service Contractors",
-                "quota_unit": get_quota_unit("trades"),
-                "quota_unit_definition": get_quota_unit_definition("trades"),
-                "billing_period": "monthly",
-                "subscription_plans": subscription_plans,
-                "included_on_all_plans": get_included_on_all_plans("trades"),
-            }
         subscription_plans = []
         for plan in get_plans():
             entry = public_plan(plan)
@@ -688,9 +465,8 @@ class SellerAgent:
         Autonomously negotiates down-tier counter-offers with verifiable AP2 cryptographic mandate proof hashes.
         Accepts optional buyer_intent_mandate signed by the buyer agent; falls back to seller-attested intent mandate.
         """
-        prof = get_seller_profile()
         if category is None:
-            category = "autonomous-node-service" if prof == "ap2" else "TELEPHONY_AI_SCREENER"
+            category = "autonomous-node-service"
 
         if not contractor_email and buyer_email:
             contractor_email = buyer_email
@@ -698,11 +474,7 @@ class SellerAgent:
         plan = resolve_plan(tier_id)
         if plan is None:
             available = ", ".join(f"'{p['tier_id']}' (${p['monthly_price']:.2f}/mo)" for p in PLANS)
-            reason_msg = (
-                f"Unknown tier_id '{tier_id}'. Available FieldSmith tiers: {available}."
-                if prof == "trades"
-                else f"Unknown tier_id '{tier_id}'. Available tiers: {available}."
-            )
+            reason_msg = f"Unknown tier_id '{tier_id}'. Available tiers: {available}."
             return {
                 "status": "REJECTED",
                 "error": "UNKNOWN_TIER",
@@ -713,7 +485,6 @@ class SellerAgent:
             }
 
         standard_price = plan["monthly_price"]
-        screened_calls = plan.get("screened_calls_per_month")
         workload_tasks = plan.get("workload_tasks_per_month", 125)
 
         if not contractor_email and buyer_intent_mandate and isinstance(buyer_intent_mandate, dict):
@@ -746,18 +517,17 @@ class SellerAgent:
                 contractor_email = str(payer_in_mandate).strip().lower()
 
         if not contractor_email or "@" not in contractor_email:
-            email_field = "contractor_email" if prof == "trades" else "buyer_email"
             return {
                 "status": "REJECTED",
                 "approved": False,
                 "original_request_approved": False,
                 "tier_id": tier_id,
-                "error": f"{email_field.upper()}_REQUIRED",
-                "reason": f"{email_field} is required; the issued AP2 mandate is bound to it.",
+                "error": "BUYER_EMAIL_REQUIRED",
+                "reason": "buyer_email is required; the issued AP2 mandate is bound to it.",
             }
 
         email = contractor_email.strip().lower()
-        # Saved caps come only from key registration or a mandate signed by the contractor's own
+        # Saved caps come only from key registration or a mandate signed by the buyer's own
         # registered key; any other cap applies to this negotiation only and cannot exceed the saved cap.
         signing_kid = buyer_intent_mandate.get("kid") if isinstance(buyer_intent_mandate, dict) else None
         if signed_cap is not None and signing_kid and get_buyer_key_email(signing_kid) == email:
@@ -772,7 +542,7 @@ class SellerAgent:
             active_sub_id = None
         if not active_sub_id and email:
             for s in reversed(list(_COMPLETED_SUBSCRIPTIONS.values())):
-                if isinstance(s, dict) and s.get("contractor_email", "").strip().lower() == email:
+                if isinstance(s, dict) and (s.get("buyer_email", "").strip().lower() == email or s.get("contractor_email", "").strip().lower() == email):
                     if s.get("status") == "ACTIVE":
                         active_sub_id = s.get("subscription_id")
                         active_sub = s
@@ -780,12 +550,12 @@ class SellerAgent:
 
         def norm_plan(p: Optional[str]) -> str:
             p = (p or "").lower().replace("-", "").replace("_", "")
-            if "solo" in p or "batch" in p:
-                return "solo-starter" if prof == "trades" else "ap2-batch"
-            if ("pro" in p and "dispatch" not in p and "fleet" not in p) or "gateway" in p:
-                return "fieldsmith-pro" if prof == "trades" else "ap2-gateway"
-            if "dispatch" in p or "fleet" in p or "cluster" in p:
-                return "pro-dispatch" if prof == "trades" else "ap2-cluster"
+            if "batch" in p or "solo" in p:
+                return "ap2-batch"
+            if "gateway" in p or ("pro" in p and "dispatch" not in p and "cluster" not in p):
+                return "ap2-gateway"
+            if "cluster" in p or "dispatch" in p:
+                return "ap2-cluster"
             return p
 
         req_norm = norm_plan(tier_id)
@@ -796,7 +566,6 @@ class SellerAgent:
             logger.info(
                 f"[A2A_SELLER] Subscriber {email} already subscribed to active plan {active_sub_id} ({active_sub.get('tier_id')})"
             )
-            entity_label = "Contractor" if prof == "trades" else "Buyer"
             return {
                 "status": "ALREADY_SUBSCRIBED",
                 "approved": False,
@@ -808,7 +577,7 @@ class SellerAgent:
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "agreed_monthly_rate": active_sub.get("agreed_monthly_rate"),
                 "reason": (
-                    f"{entity_label} '{email}' is already actively subscribed to '{tier_id}' "
+                    f"Buyer '{email}' is already actively subscribed to '{tier_id}' "
                     f"(Subscription: {active_sub_id}). No new offer or subscription required."
                 ),
             }
@@ -846,11 +615,8 @@ class SellerAgent:
                 "tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
                 "mandate_proof_hash": issued["hash"],
+                "buyer_email": email,
             }
-            if prof == "trades":
-                next_action_params["contractor_email"] = email
-            else:
-                next_action_params["buyer_email"] = email
 
             next_action = {
                 "type": "tool_call",
@@ -872,12 +638,9 @@ class SellerAgent:
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
                 "offer_expires_at": issued["offer_expires_at"],
                 "next_action": next_action,
+                "workload_tasks_per_month": workload_tasks,
                 "reason": f"Plan '{tier_id}' at ${standard_price:.2f}/mo approved within ${monthly_budget_cap:.2f}/mo cap.",
             }
-            if prof == "trades":
-                res_approved["screened_calls_per_month"] = screened_calls
-            else:
-                res_approved["workload_tasks_per_month"] = workload_tasks
 
             if active_sub_id:
                 res_approved["replaces_subscription_id"] = active_sub_id
@@ -889,16 +652,15 @@ class SellerAgent:
         effective_available = round(remaining_now + existing_sub, 2)
 
         if monthly_budget_cap >= 49.99 and effective_available >= 49.99:
-            down_tier_id = "solo-starter" if prof == "trades" else "ap2-batch"
-            down_tier_title = "FieldSmith Solo Starter" if prof == "trades" else "High-Throughput Batch Worker"
+            down_tier_id = "ap2-batch"
+            down_tier_title = "High-Throughput Batch Worker"
 
-            # Guard 2: If contractor/buyer is already on minimum tier, they already hold the best plan within budget
+            # Guard 2: If buyer is already on minimum tier, they already hold the best plan within budget
             if active_sub and current_norm == down_tier_id:
                 logger.info(
                     f"[A2A_SELLER] Subscriber {email} requested {tier_id} (${standard_price:.2f}), cap ${monthly_budget_cap:.2f}, "
                     f"already on best viable plan {active_sub_id} ({down_tier_id})"
                 )
-                entity_label = "Contractor" if prof == "trades" else "Buyer"
                 return {
                     "status": "NO_BETTER_OFFER",
                     "approved": False,
@@ -911,7 +673,7 @@ class SellerAgent:
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
                     "reason": (
                         f"Requested tier '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                        f"{entity_label} is already subscribed to the highest viable plan within budget ('{active_sub.get('tier_id')}' at ${active_sub.get('agreed_monthly_rate', 49.99):.2f}/mo, Subscription: {active_sub_id}). "
+                        f"Buyer is already subscribed to the highest viable plan within budget ('{active_sub.get('tier_id')}' at ${active_sub.get('agreed_monthly_rate', 49.99):.2f}/mo, Subscription: {active_sub_id}). "
                         f"No better offer available under current budget cap."
                     ),
                 }
@@ -927,11 +689,8 @@ class SellerAgent:
                 "tier_id": down_tier_id,
                 "agreed_monthly_rate": 49.99,
                 "mandate_proof_hash": down_hash,
+                "buyer_email": email,
             }
-            if prof == "trades":
-                next_action_params["contractor_email"] = email
-            else:
-                next_action_params["buyer_email"] = email
 
             next_action = {
                 "type": "tool_call",
@@ -939,20 +698,12 @@ class SellerAgent:
                 "parameters": next_action_params,
             }
 
-            if prof == "trades":
-                counter_reason = (
-                    f"Requested FieldSmith plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                    f"Counter-offer available: Down-tier to '{get_plan('solo-starter', profile='trades')['title']}' at {plan_summary('solo-starter', profile='trades')}, "
-                    f"leaving ${remaining_after_down:.2f} in your monthly software budget. "
-                    f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
-                )
-            else:
-                counter_reason = (
-                    f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                    f"Counter-offer available: Down-tier to '{get_plan('ap2-batch', profile='ap2')['title']}' at {plan_summary('ap2-batch', profile='ap2')}, "
-                    f"leaving ${remaining_after_down:.2f} in your monthly budget. "
-                    f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
-                )
+            counter_reason = (
+                f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
+                f"Counter-offer available: Down-tier to '{get_plan('ap2-batch')['title']}' at {plan_summary('ap2-batch')}, "
+                f"leaving ${remaining_after_down:.2f} in your monthly budget. "
+                f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
+            )
 
             res_counter = {
                 "status": "COUNTER_OFFER",
@@ -980,11 +731,7 @@ class SellerAgent:
             return res_counter
 
         # 3. Budget below minimum viable tier ($49.99)
-        min_tier_name = (
-            "FieldSmith Solo Starter at $49.99/mo"
-            if prof == "trades"
-            else "High-Throughput Batch Worker at $49.99/mo"
-        )
+        min_tier_name = "High-Throughput Batch Worker at $49.99/mo"
         rejection = {
             "status": "REJECTED",
             "approved": False,
@@ -1033,7 +780,7 @@ class SellerAgent:
     ) -> Dict[str, Any]:
         """
         Tool implementation: Binds verified AP2 Intent Mandate or AP2 Cart Mandate to PayPal Recurring Vault.
-        Cryptographically verifies the mandate proof against tier, rate, and contractor identity.
+        Cryptographically verifies the mandate proof against tier, rate, and buyer identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
         if not contractor_email and buyer_email:
@@ -1094,7 +841,7 @@ class SellerAgent:
         buyer_id = auth.get("buyer_agent_id", "unknown")
         norm_email = contractor_email.strip().lower() if contractor_email else None
 
-        # Plan Change Model: Check for active existing subscription for this contractor
+        # Plan Change Model: Check for active existing subscription for this buyer
         old_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) if norm_email else None
         old_sub = _COMPLETED_SUBSCRIPTIONS.get(old_sub_id) if old_sub_id else None
         old_rate = 0.0
@@ -1134,12 +881,12 @@ class SellerAgent:
                 "active_subscription_id": old_sub_id,
             }
 
-        # 3. Invoke PayPal Gateway (calls real PayPal Sandbox in live mode; deterministic in mock mode)
+        # 3. Invoke PayPal Gateway
         paypal_result = await paypal_service.create_subscription(
             tier_id=tier_id,
             agreed_monthly_rate=agreed_monthly_rate,
-            contractor_email=contractor_email or "marcus@millercustomfloors.com",
-            contractor_name="Marcus Miller",
+            contractor_email=contractor_email or "buyer-agent@autonomous-procurement.org",
+            contractor_name="Autonomous Buyer Agent",
             offer_id=offer_id,
             mandate_proof_hash=mandate_proof_hash,
         )
@@ -1179,12 +926,11 @@ class SellerAgent:
                 old_sub["replaced_at"] = created_time
                 old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
             else:
-                # Keep old subscription ACTIVE while new plan awaits buyer authorization in PayPal
                 old_sub["pending_replacement"] = sub_id
                 old_sub["pending_replacement_tier"] = tier_id
                 old_sub["pending_replacement_at"] = created_time
 
-        # Reconcile contractor active pointer and ledger commitment strictly from active subscription state
+        # Reconcile buyer active pointer and ledger commitment
         if norm_email:
             if sub_status == "ACTIVE":
                 _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
@@ -1218,14 +964,13 @@ class SellerAgent:
             agent_id=buyer_id, cap=cap, contractor_email=contractor_email
         )
 
-        # Return the exact signed mandate issued at negotiation, unchanged
         ap2_mandate = auth.get("ap2_mandate")
         if ap2_mandate is None:
             ap2_mandate = build_ap2_intent_mandate(
                 buyer_agent_id=buyer_id,
                 amount=agreed_monthly_rate,
                 recurrence="monthly",
-                category="TELEPHONY_AI_SCREENER",
+                category="autonomous-node-service",
                 tier_id=tier_id or "*",
                 contractor_email=contractor_email,
                 negotiation_id=negotiation_id,
@@ -1243,7 +988,6 @@ class SellerAgent:
             }
         ]
 
-        prof = get_seller_profile()
         if sub_status == "APPROVAL_PENDING":
             next_action = {
                 "type": "human_approval_required",
@@ -1257,27 +1001,16 @@ class SellerAgent:
             vault_authorized = False
             customer_present = True
         else:
-            if prof == "trades":
-                next_action = {
-                    "type": "tool_call",
-                    "tool": "provision_telecom_line",
-                    "parameters": {
-                        "subscription_id": sub_id,
-                        "contractor_email": contractor_email,
-                        "area_code": "863",
-                    },
-                }
-            else:
-                clean_node_type = "batch" if "batch" in (tier_id or "") else ("cluster" if "cluster" in (tier_id or "") else "gateway")
-                next_action = {
-                    "type": "tool_call",
-                    "tool": "provision_compute_node",
-                    "parameters": {
-                        "subscription_id": sub_id,
-                        "buyer_email": contractor_email,
-                        "node_type": clean_node_type,
-                    },
-                }
+            clean_node_type = "batch" if "batch" in (tier_id or "") else ("cluster" if "cluster" in (tier_id or "") else "gateway")
+            next_action = {
+                "type": "tool_call",
+                "tool": "provision_compute_node",
+                "parameters": {
+                    "subscription_id": sub_id,
+                    "buyer_email": contractor_email,
+                    "node_type": clean_node_type,
+                },
+            }
             msg = f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate."
             vault_status = "VAULT_BOUND"
             vault_authorized = True
@@ -1288,15 +1021,10 @@ class SellerAgent:
         cart_id = auth.get("ap2_cart_mandate", {}).get("cart_id") if isinstance(auth.get("ap2_cart_mandate"), dict) else None
         traceable_proof = f"mandate:{mandate_id or 'none'}|cart:{cart_id or 'none'}|hash:{mandate_proof_hash or offer_id}"
 
-        plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile=prof)
-        if prof == "trades":
-            product_id = "PROD-FIELDSMITH-A2A-TELEPHONY"
-            contractor_name = "Marcus Miller"
-            business_entity = "Miller Custom Flooring LLC"
-        else:
-            product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
-            contractor_name = "Autonomous Buyer Agent"
-            business_entity = "Autonomous Compute Network"
+        plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile="ap2")
+        product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
+        contractor_name = "Autonomous Buyer Agent"
+        business_entity = "Autonomous Compute Network"
 
         response = {
             "status": sub_status,
@@ -1332,18 +1060,14 @@ class SellerAgent:
             "ap2_cart_mandate": auth.get("ap2_cart_mandate"),
             "next_action": next_action,
             "message": msg,
+            "buyer_email": contractor_email,
+            "contractor_email": contractor_email,
+            "subscriber_name": contractor_name,
+            "business_entity": business_entity,
         }
-        if prof == "trades":
-            response["contractor_email"] = contractor_email
-            response["contractor_name"] = contractor_name
-            response["business_entity"] = business_entity
-        else:
-            response["buyer_email"] = contractor_email
-            response["subscriber_name"] = contractor_name
-            response["business_entity"] = business_entity
-            plan_obj = resolve_plan(tier_id, profile="ap2")
-            if plan_obj and "workload_tasks_per_month" in plan_obj:
-                response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]
+        plan_obj = resolve_plan(tier_id, profile="ap2")
+        if plan_obj and "workload_tasks_per_month" in plan_obj:
+            response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]
         if approval_url:
             response["approval_url"] = approval_url
         if old_sub_id:
@@ -1380,7 +1104,8 @@ class SellerAgent:
                 "plan_id": sub.get("plan_id"),
                 "tier_id": sub.get("tier_id"),
                 "agreed_monthly_rate": sub.get("agreed_monthly_rate"),
-                "contractor_email": _mask_email(sub.get("contractor_email")),
+                "buyer_email": _mask_email(sub.get("buyer_email") or sub.get("contractor_email")),
+                "contractor_email": _mask_email(sub.get("contractor_email") or sub.get("buyer_email")),
                 "create_time": sub.get("create_time"),
                 "next_billing_time": sub.get("next_billing_time"),
                 "paypal_vault_status": sub.get("paypal_vault_status"),
@@ -1399,7 +1124,7 @@ class SellerAgent:
     async def provision_compute_node(
         self,
         subscription_id: str,
-        buyer_email: str,
+        buyer_email: Optional[str] = None,
         node_type: str = "gateway",
         contractor_email: Optional[str] = None,
         **kwargs: Any,
@@ -1437,6 +1162,14 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_CAPTURED",
                 "reason": f"Subscription '{subscription_id}' is APPROVAL_PENDING. Buyer must authorize payment in PayPal before node provisioning.",
+                "approval_url": sub.get("approval_url"),
+            }
+
+        if sub.get("status") == "REPLACED":
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_SUPERSEDED",
+                "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
             }
 
         if sub_status != "ACTIVE":
@@ -1446,11 +1179,12 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' is not active (current status: {sub_status or 'UNKNOWN'}).",
             }
 
-        if sub.get("status") == "REPLACED":
+        country = (sub.get("subscriber_country_code") or "US").upper()
+        if country != "US":
             return {
                 "status": "REJECTED",
-                "error": "SUBSCRIPTION_SUPERSEDED",
-                "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
+                "error": "US_DOMESTIC_ONLY",
+                "reason": f"Compute node provisioning is strictly restricted to US entities (found '{country}').",
             }
 
         owner_email = sub.get("buyer_email") or sub.get("contractor_email")
@@ -1494,6 +1228,9 @@ class SellerAgent:
             "node_id": node_id,
             "node_type": clean_node_type,
             "endpoint": endpoint,
+            "assigned_did": endpoint,
+            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "routing_state": "ACTIVE_COMPUTE_NODE",
             "workload_tasks_per_month": workload_tasks,
             "next_action": {
                 "type": "tool_call",
@@ -1512,214 +1249,40 @@ class SellerAgent:
             },
         }
 
-    async def calculate_quote(
-        self,
-        trade_id: str,
-        square_footage: float,
-        material_type: str,
-        postal_code: str,
-    ) -> Dict[str, Any]:
-        """Deprecated legacy method retained for backwards compatibility."""
-        waste = round(square_footage * 1.10, 1)
-        deposit = 250.00 if square_footage >= 500 else 150.00
-        return {
-            "trade_id": trade_id,
-            "waste_allowance_sq_ft": waste,
-            "required_deposit": deposit,
-            "labor_estimate": f"${square_footage * 4.00:.2f} - ${square_footage * 5.50:.2f}",
-            "postal_code": postal_code,
-            "deprecated": True,
-        }
-
-    async def provision_telecom_line(
-        self,
-        subscription_id: str,
-        contractor_email: str,
-        area_code: str = "863",
-        simulate_exhaustion: bool = False,
-    ) -> Dict[str, Any]:
-        """Tool implementation: Executes KYC-verified DID allocation with automated LATA failover."""
-        # 0. US-Domestic Only (NANP) Validation
-        area_code_str = str(area_code).strip()
-        if not re.match(r"^[2-9]\d{2}$", area_code_str) or area_code_str.endswith("11"):
-            return {
-                "status": "REJECTED",
-                "error": "US_DOMESTIC_ONLY",
-                "reason": f"FieldSmith Pro services are strictly restricted to licensed US contractors (NANP +1). Invalid US area code: '{area_code}'.",
-            }
-
-        # 1. Validate that the PayPal subscription exists and has been captured
-        sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id.strip())
-        if not sub:
-            try:
-                remote_sub = await paypal_service.verify_subscription(subscription_id.strip())
-                if remote_sub and not remote_sub.get("mock_mode"):
-                    remote_status = remote_sub.get("status", "ACTIVE")
-                    tier_id, rate = resolve_tier_from_paypal_plan(remote_sub.get("plan_id"))
-                    subscriber_data = remote_sub.get("subscriber") or {}
-                    shipping_addr = subscriber_data.get("shipping_address") or {}
-                    addr = shipping_addr.get("address") or subscriber_data.get("address") or {}
-                    country = (
-                        addr.get("country_code")
-                        or subscriber_data.get("country_code")
-                        or remote_sub.get("country_code")
-                        or "US"
-                    )
-                    sub = {
-                        "subscription_id": subscription_id.strip(),
-                        "status": remote_status,
-                        "contractor_email": subscriber_data.get("email_address", contractor_email),
-                        "tier_id": tier_id,
-                        "agreed_monthly_rate": rate,
-                        "plan_id": remote_sub.get("plan_id"),
-                        "subscriber_country_code": country,
-                        "subscriber": subscriber_data,
-                    }
-                    _COMPLETED_SUBSCRIPTIONS[subscription_id.strip()] = sub
-            except Exception as e:
-                logger.warning(f"Could not verify remote PayPal subscription {subscription_id}: {e}")
-
-        if not sub:
-            return {
-                "status": "REJECTED",
-                "error": "SUBSCRIPTION_NOT_FOUND",
-                "reason": f"Subscription '{subscription_id}' does not exist or has not been activated in PayPal Vault. Call purchase_subscription first.",
-            }
-
-        # 1.5 Validate payment approval and active status
-        sub_status = sub.get("status")
-        if sub_status == "APPROVAL_PENDING":
-            return {
-                "status": "REJECTED",
-                "error": "PAYMENT_APPROVAL_PENDING",
-                "reason": f"Subscription '{subscription_id}' is pending buyer approval in PayPal. It must be approved before telecom provisioning can proceed.",
-                "approval_url": sub.get("approval_url"),
-            }
-        elif sub_status in ["CANCELLED", "SUSPENDED", "PAYMENT_FAILED"]:
-            return {
-                "status": "REJECTED",
-                "error": f"SUBSCRIPTION_{sub_status}",
-                "reason": f"Subscription '{subscription_id}' is {sub_status}. Telecom provisioning is blocked for inactive subscriptions.",
-            }
-        elif sub_status == "REPLACED":
-            return {
-                "status": "REJECTED",
-                "error": "SUBSCRIPTION_SUPERSEDED",
-                "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
-            }
-
-        # 2. Validate US-Domestic subscriber entity
-        subscriber_country = (
-            sub.get("subscriber_country_code")
-            or sub.get("country_code")
-            or (sub.get("subscriber", {}).get("shipping_address", {}).get("address", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
-            or (sub.get("subscriber", {}).get("address", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
-            or (sub.get("subscriber", {}).get("country_code") if isinstance(sub.get("subscriber"), dict) else None)
-        )
-        if subscriber_country and str(subscriber_country).strip().upper() != "US":
-            return {
-                "status": "REJECTED",
-                "error": "US_DOMESTIC_ONLY",
-                "reason": f"FieldSmith Pro services are strictly restricted to US entities. Payer country '{subscriber_country}' is not supported.",
-            }
-
-        # 3. Identity anti-theft: Ensure contractor_email matches the subscription owner
-        owner_email = sub.get("contractor_email", "")
-        if owner_email and contractor_email.strip().lower() != owner_email.strip().lower():
-            return {
-                "status": "REJECTED",
-                "error": "IDENTITY_MISMATCH_DETECTED",
-                "reason": f"Subscription '{subscription_id}' belongs to '{owner_email}', cannot be provisioned for '{contractor_email}'.",
-            }
-
-        req = ProvisionRequest(
-            subscriptionId=subscription_id,
-            contractorEmail=contractor_email,
-            areaCode=area_code,
-            simulateExhaustion=simulate_exhaustion,
-        )
-
-        # Check if this contractor has an existing DID to retain (from replaced sub or contractor history)
-        replaces_sub_id = sub.get("replaces_subscription_id")
-        retained_did = None
-        if replaces_sub_id:
-            old_sub = _COMPLETED_SUBSCRIPTIONS.get(replaces_sub_id)
-            if old_sub:
-                retained_did = old_sub.get("allocated_did") or old_sub.get("assigned_did")
-        if not retained_did and contractor_email:
-            retained_did = telnyx_provisioner.get_contractor_did(contractor_email)
-
-        if retained_did:
-            res = telnyx_provisioner.retain_did(req, retained_did, replaces_subscription_id=replaces_sub_id)
-        else:
-            res = await telnyx_provisioner.provision_did(req, simulate_exhaustion=simulate_exhaustion)
-        res_dict = res.model_dump(by_alias=True)
-
-        # Accurately resolve assigned DID from Telnyx response
-        allocated_did = res.assigned_did or res_dict.get("assignedDid") or res_dict.get("assigned_did")
-        sub["allocated_did"] = allocated_did
-        sub["assigned_did"] = allocated_did
-        _COMPLETED_SUBSCRIPTIONS[subscription_id]["allocated_did"] = allocated_did
-        _COMPLETED_SUBSCRIPTIONS[subscription_id]["assigned_did"] = allocated_did
-        if contractor_email:
-            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[contractor_email.strip().lower()] = subscription_id
-        res_dict["status"] = res.status
-        res_dict["assignedDid"] = allocated_did
-        res_dict["assigned_did"] = allocated_did
-        res_dict["allocatedDid"] = allocated_did
-        res_dict["allocated_did"] = allocated_did
-        if replaces_sub_id:
-            res_dict["retained_from_subscription"] = replaces_sub_id
-            res_dict["retainedFromSubscription"] = replaces_sub_id
-
-        # Dynamically populate downline parameters from the verified subscription
-        tier_id = sub.get("tier_id", "solo-starter")
-        monthly_fee = sub.get("agreed_monthly_rate", 49.99)
-        contractor_name = sub.get("contractor_name", "Marcus Miller")
-        business_entity = sub.get("business_entity", "Miller Custom Flooring LLC")
-        proof = sub.get("traceable_proof") or sub.get("mandate_proof_hash") or f"mandate:{subscription_id}"
-        trade_vertical = "Tile & Custom Flooring" if "floor" in tier_id or "solo" in tier_id else "Commercial Field Services"
-
-        res_dict["next_action"] = {
-            "type": "tool_call",
-            "tool": "dispatch_zapier_mcp",
-            "parameters": {
-                "workflow_type": "a2a_onboarding",
-                "contractor_name": contractor_name,
-                "business_entity": business_entity,
-                "allocated_did": allocated_did,
-                "trade_vertical": trade_vertical,
-                "monthly_subscription_fee": monthly_fee,
-                "paypal_subscription_id": subscription_id,
-                "contractor_email": contractor_email,
-                "mandate_proof_hash": proof,
-            },
-        }
-        return res_dict
-
     async def dispatch_zapier_mcp(
         self,
         workflow_type: str = "a2a_onboarding",
-        contractor_name: str = "Marcus Miller",
-        business_entity: str = "Miller Custom Flooring LLC",
-        allocated_did: str = "+1 (863) 267-8902",
-        trade_vertical: str = "Tile & Custom Flooring",
+        subscriber_name: Optional[str] = None,
+        business_entity: Optional[str] = None,
+        node_endpoint: Optional[str] = None,
+        service_vertical: Optional[str] = None,
         monthly_subscription_fee: float = 79.99,
         paypal_subscription_id: str = "I-AUTONOMOUS-8902",
-        contractor_email: str = "marcus@millercustomfloors.com",
+        buyer_email: Optional[str] = None,
         mandate_proof_hash: Optional[str] = None,
         webhook_url: Optional[str] = None,
+        contractor_name: Optional[str] = None,
+        contractor_email: Optional[str] = None,
+        allocated_did: Optional[str] = None,
+        trade_vertical: Optional[str] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Tool implementation: Dispatches downline business automation through Zapier MCP."""
+        sub_name = subscriber_name or contractor_name or "Autonomous Buyer Agent"
+        biz_entity = business_entity or "Autonomous Node Network"
+        endpoint = node_endpoint or allocated_did or "mcp+https://gateway-01.acme-systems.io/agents/gateway"
+        vertical = service_vertical or trade_vertical or "Autonomous Compute"
+        email = buyer_email or contractor_email or "buyer-agent@autonomous-procurement.org"
+
         req = ZapierSyncRequest(
             workflowType=workflow_type,
-            contractorName=contractor_name,
-            businessEntity=business_entity,
-            allocatedDid=allocated_did,
-            tradeVertical=trade_vertical,
+            contractorName=sub_name,
+            businessEntity=biz_entity,
+            allocatedDid=endpoint,
+            tradeVertical=vertical,
             monthlySubscriptionFee=monthly_subscription_fee,
             paypalSubscriptionId=paypal_subscription_id,
-            contractorEmail=contractor_email,
+            contractorEmail=email,
             mandateProofHash=mandate_proof_hash,
             webhookUrl=webhook_url,
         )

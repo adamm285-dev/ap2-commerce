@@ -88,10 +88,10 @@ def is_rejected(result):
 @finding("AUD-01")
 @pytest.mark.parametrize("rate", [0.01, 179.98, 0.0])
 def test_purchase_rejects_rate_below_signed_offer(rate):
-    neg = negotiate("pro-dispatch", "aud01@example.com", 200)
+    neg = negotiate("ap2-cluster", "aud01@example.com", 200)
     assert neg["status"] == "APPROVED"
     res = tool("purchase_subscription", {
-        "offer_id": neg["offer_id"], "tier_id": "pro-dispatch",
+        "offer_id": neg["offer_id"], "tier_id": "ap2-cluster",
         "agreed_monthly_rate": rate, "mandate_proof_hash": neg["mandate_proof_hash"],
         "contractor_email": "aud01@example.com",
     })
@@ -99,9 +99,9 @@ def test_purchase_rejects_rate_below_signed_offer(rate):
 
 
 def test_purchase_rejects_rate_above_signed_offer():
-    neg = negotiate("fieldsmith-pro", "aud01b@example.com", 100)
+    neg = negotiate("ap2-gateway", "aud01b@example.com", 100)
     res = tool("purchase_subscription", {
-        "offer_id": neg["offer_id"], "tier_id": "fieldsmith-pro",
+        "offer_id": neg["offer_id"], "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 80.00, "mandate_proof_hash": neg["mandate_proof_hash"],
         "contractor_email": "aud01b@example.com",
     })
@@ -109,10 +109,10 @@ def test_purchase_rejects_rate_above_signed_offer():
 
 
 def test_purchase_rejects_tier_upgrade_on_down_tier_offer():
-    neg = negotiate("pro-dispatch", "aud01c@example.com", 60)
+    neg = negotiate("ap2-cluster", "aud01c@example.com", 60)
     assert neg["status"] == "COUNTER_OFFER"
     res = tool("purchase_subscription", {
-        "offer_id": neg["offer_id"], "tier_id": "pro-dispatch",
+        "offer_id": neg["offer_id"], "tier_id": "ap2-cluster",
         "agreed_monthly_rate": 49.99, "mandate_proof_hash": neg["mandate_proof_hash"],
         "contractor_email": "aud01c@example.com",
     })
@@ -120,7 +120,7 @@ def test_purchase_rejects_tier_upgrade_on_down_tier_offer():
 
 
 def test_legitimate_counter_offer_purchase_still_works():
-    neg = negotiate("pro-dispatch", "aud01d@example.com", 60)
+    neg = negotiate("ap2-cluster", "aud01d@example.com", 60)
     res = tool("purchase_subscription", {
         "offer_id": neg["offer_id"], "contractor_email": "aud01d@example.com",
     })
@@ -133,18 +133,18 @@ def test_legitimate_counter_offer_purchase_still_works():
 def test_wildcard_spending_mandate_cannot_buy_below_catalog(amount):
     ev = tool("evaluate_spending_mandate", {
         "buyer_agent_id": "aud02", "amount": amount, "monthly_budget_cap": 100,
-        "category": "telephony-ai-screener",
+        "category": "autonomous-node-service",
     })
     proof = ev.get("mandateProofHash") or ""
     res = tool("purchase_subscription", {
-        "tier_id": "pro-dispatch", "agreed_monthly_rate": amount,
+        "tier_id": "ap2-cluster", "agreed_monthly_rate": amount,
         "mandate_proof_hash": proof, "contractor_email": "aud02@example.com",
     })
     assert is_rejected(res), res
 
 
 def test_cart_mandate_one_cent_tamper_breaks_signature():
-    neg = negotiate("fieldsmith-pro", "aud17@example.com", 100)
+    neg = negotiate("ap2-gateway", "aud17@example.com", 100)
     cart = dict(neg["ap2_cart_mandate"])
     assert verify_ap2_cart_mandate(cart)
     cart["amount"] = {"value": "80.00", "currency_code": "USD"}
@@ -155,14 +155,14 @@ def test_cart_mandate_one_cent_tamper_breaks_signature():
 
 
 def test_offer_bound_to_email_cannot_be_redeemed_by_other_email():
-    neg = negotiate("fieldsmith-pro", "owner18@example.com", 100)
+    neg = negotiate("ap2-gateway", "owner18@example.com", 100)
     res = tool("purchase_subscription", {"offer_id": neg["offer_id"], "contractor_email": "thief@example.com"})
     assert is_rejected(res)
 
 
 def test_unknown_mandate_hash_rejected():
     res = tool("purchase_subscription", {
-        "tier_id": "solo-starter", "agreed_monthly_rate": 49.99,
+        "tier_id": "ap2-batch", "agreed_monthly_rate": 49.99,
         "mandate_proof_hash": "f" * 64, "contractor_email": "nobody@example.com",
     })
     assert is_rejected(res)
@@ -170,7 +170,7 @@ def test_unknown_mandate_hash_rejected():
 
 @finding("AUD-03")
 def test_seller_attested_mandate_is_not_accepted_as_buyer_signed():
-    neg = negotiate("pro-dispatch", "victim03@example.com", 900)
+    neg = negotiate("ap2-cluster", "victim03@example.com", 900)
     issued = neg["ap2_intent_mandate"]
     assert issued.get("public_key") != DEFAULT_BUYER_PUBLIC_KEY_HEX
     ok, code, _ = validate_buyer_intent_mandate(issued, contractor_email="victim03@example.com")
@@ -188,7 +188,7 @@ def test_unregistered_buyer_key_mandate_rejected():
     forged = sign_ap2_intent_mandate({
         "vct": "ap2.mandate.intent.1", "kid": "never-registered-kid", "attestation": "buyer_signed",
         "payer": {"email": "aud16@example.com"}, "amount": {"value": "500.00", "currency_code": "USD"},
-        "category": "TELEPHONY_AI_SCREENER", "expires_at": time.time() + 3600,
+        "category": "autonomous-node-service", "expires_at": time.time() + 3600,
     }, private_key_hex=priv)
     ok, code, _ = validate_buyer_intent_mandate(forged, contractor_email="aud16@example.com")
     assert not ok and code == "UNTRUSTED_BUYER_KEY"
@@ -198,11 +198,11 @@ def test_unregistered_buyer_key_mandate_rejected():
 def test_verify_tamper_rejects_self_signed_payload_with_embedded_key():
     attacker = ed25519.Ed25519PrivateKey.generate()
     payload = {
-        "vct": "ap2.mandate.intent.1", "contractor_id": "contractor_marcus_863",
-        "business_name": "Miller Custom Flooring LLC", "monthly_cap_usd": 100,
+        "vct": "ap2.mandate.intent.1", "contractor_id": "buyer_node_863",
+        "business_name": "AP2 Node Network LLC", "monthly_cap_usd": 100,
         "agreed_price_usd": 0.01, "nonce": "aud04", "timestamp": int(time.time()),
         "public_key": attacker.public_key().public_bytes_raw().hex(),
-        "kid": "marcus-buyer-ed25519-v1",
+        "kid": "ap2-buyer-ed25519-v1",
     }
     sig = attacker.sign(json.dumps(canonicalize_mandate_payload(payload), sort_keys=True).encode()).hex()
     res = client.post("/api/crypto/verify-tamper", json={"payload": payload, "signature": sig})
@@ -229,17 +229,17 @@ def test_verify_tamper_plus_one_cent_and_drift():
 
 
 def test_budget_cap_clamps_to_solo_starter_and_rejects_below_floor():
-    counter = negotiate("fieldsmith-pro", "aud-cap@example.com", 60)
+    counter = negotiate("ap2-gateway", "aud-cap@example.com", 60)
     assert counter["status"] == "COUNTER_OFFER" and counter["counter_offer_amount"] == 49.99
-    floor = negotiate("fieldsmith-pro", "aud-floor@example.com", 49.98)
+    floor = negotiate("ap2-gateway", "aud-floor@example.com", 49.98)
     assert floor["status"] == "REJECTED" and floor["error"] == "BUDGET_EXHAUSTED"
 
 
 @finding("AUD-09")
 @pytest.mark.parametrize("args", [
-    {"buyer_agent_id": "a", "amount": "nan", "monthly_budget_cap": 100, "category": "telephony-ai-screener"},
-    {"buyer_agent_id": "a", "amount": 500, "monthly_budget_cap": "inf", "category": "telephony-ai-screener"},
-    {"buyer_agent_id": "a", "amount": -1, "monthly_budget_cap": 100, "category": "telephony-ai-screener"},
+    {"buyer_agent_id": "a", "amount": "nan", "monthly_budget_cap": 100, "category": "autonomous-node-service"},
+    {"buyer_agent_id": "a", "amount": 500, "monthly_budget_cap": "inf", "category": "autonomous-node-service"},
+    {"buyer_agent_id": "a", "amount": -1, "monthly_budget_cap": 100, "category": "autonomous-node-service"},
 ])
 def test_nonfinite_or_negative_spending_params_rejected(args):
     res = mcp_raw({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "evaluate_spending_mandate", "arguments": args}})
@@ -251,7 +251,7 @@ def test_nonfinite_or_negative_spending_params_rejected(args):
 def test_rest_spending_mandate_rejects_negative_amount():
     res = client.post("/api/agent/spending-mandate/evaluate", json={
         "buyerAgentId": "a", "amount": -10, "recurrence": "monthly",
-        "category": "telephony-ai-screener", "monthlyBudgetCap": 100,
+        "category": "autonomous-node-service", "monthlyBudgetCap": 100,
     })
     assert res.status_code == 422
 
@@ -259,8 +259,8 @@ def test_rest_spending_mandate_rejects_negative_amount():
 @finding("AUD-14")
 def test_unsigned_negotiation_caps_are_per_negotiation():
     # Copilot demo flow: same contractor at $60 then $100 still works, and nothing is saved
-    assert negotiate("fieldsmith-pro", "aud14-demo@example.com", 60)["status"] == "COUNTER_OFFER"
-    assert negotiate("fieldsmith-pro", "aud14-demo@example.com", 100)["status"] == "APPROVED"
+    assert negotiate("ap2-gateway", "aud14-demo@example.com", 60)["status"] == "COUNTER_OFFER"
+    assert negotiate("ap2-gateway", "aud14-demo@example.com", 100)["status"] == "APPROVED"
     assert ledger.get_saved_cap("aud14-demo@example.com") is None
 
 
@@ -268,7 +268,7 @@ def test_unsigned_negotiation_caps_are_per_negotiation():
 def test_saved_registration_cap_binds_other_agents():
     res, _, _ = _register_key("audit-kid-14", "aud14@example.com", cap=60)
     assert res.status_code == 201
-    raised = negotiate("pro-dispatch", "aud14@example.com", 5000, agent="other-agent")
+    raised = negotiate("ap2-cluster", "aud14@example.com", 5000, agent="other-agent")
     assert raised["status"] == "COUNTER_OFFER" and raised["monthly_budget_cap"] == 60
     assert ledger.get_saved_cap("aud14@example.com") == 60
 
@@ -287,11 +287,11 @@ def test_only_the_contractors_own_key_can_change_saved_cap():
 
     def signed_negotiation(kid, priv, cap):
         mandate = build_buyer_intent_mandate(
-            buyer_agent_id=kid, amount=cap, recurrence="monthly", category="TELEPHONY_AI_SCREENER",
-            tier_id="pro-dispatch", contractor_email="aud14b@example.com", private_key_hex=priv, kid=kid,
+            buyer_agent_id=kid, amount=cap, recurrence="monthly", category="autonomous-node-service",
+            tier_id="ap2-cluster", contractor_email="aud14b@example.com", private_key_hex=priv, kid=kid,
         )
         return tool("negotiate_tier_terms", {
-            "tier_id": "pro-dispatch", "buyer_agent_id": kid, "contractor_email": "aud14b@example.com",
+            "tier_id": "ap2-cluster", "buyer_agent_id": kid, "contractor_email": "aud14b@example.com",
             "monthly_budget_cap": cap, "buyer_intent_mandate": mandate,
         })
 
@@ -365,7 +365,7 @@ def test_key_challenge_is_single_use_and_expires():
 def test_registered_kid_cannot_be_overwritten_and_reserved_kids_blocked():
     assert _register_key("audit-kid-overwrite", "first@example.com")[0].status_code == 201
     assert _register_key("audit-kid-overwrite", "second@example.com")[0].status_code == 409
-    assert _register_key("marcus-buyer-ed25519-v1", "x@example.com")[0].status_code == 403
+    assert _register_key("ap2-buyer-ed25519-v1", "x@example.com")[0].status_code == 403
 
 
 @finding("AUD-11")
@@ -379,7 +379,7 @@ def test_key_challenge_store_is_bounded(monkeypatch):
 
 @finding("AUD-07")
 def test_wire_frames_redact_contractor_identity_and_offer_tokens():
-    neg = negotiate("fieldsmith-pro", "wire07@example.com", 100)
+    neg = negotiate("ap2-gateway", "wire07@example.com", 100)
     for path in ("/api/mcp/frames", "/m2m/frames"):
         blob = json.dumps(client.get(path).json()["frames"])
         assert "wire07@example.com" not in blob
@@ -389,7 +389,7 @@ def test_wire_frames_redact_contractor_identity_and_offer_tokens():
 
 @finding("AUD-08")
 def test_subscription_details_do_not_leak_email():
-    neg = negotiate("fieldsmith-pro", "details08@example.com", 100)
+    neg = negotiate("ap2-gateway", "details08@example.com", 100)
     sub = tool("purchase_subscription", {"offer_id": neg["offer_id"], "contractor_email": "details08@example.com"})
     details = tool("get_subscription_details", {"subscription_id": sub["subscription_id"]})
     assert details.get("contractor_email") != "details08@example.com"
@@ -455,7 +455,7 @@ def test_create_order_rejects_out_of_range(body):
 
 
 def test_create_order_accepts_normal_deposit():
-    res = client.post("/api/paypal/create-order", json={"amount": 149.0, "currency": "USD", "description": "Estimate deposit"})
+    res = client.post("/api/paypal/create-order", json={"amount": 149.0, "currency": "USD", "description": "Compute node deposit"})
     assert res.status_code == 200
 
 
@@ -520,7 +520,7 @@ def test_jsonrpc_batch_is_supported():
 
 
 def test_tool_param_injection_strings_are_inert():
-    res = negotiate("pro-dispatch", "' OR 1=1;--@example.com", 200)
+    res = negotiate("ap2-cluster", "' OR 1=1;--@example.com", 200)
     assert res.get("status") in ("APPROVED", "REJECTED")
     stats = client.get("/api/fleet/stats")
     assert stats.status_code == 200

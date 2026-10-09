@@ -1,5 +1,5 @@
 """
-Tests for FieldSmith Pro MCP (Model Context Protocol) Server.
+Tests for AP2 Autonomous Compute MCP (Model Context Protocol) Server.
 Verifies JSON-RPC 2.0 initialize, tools/list, and tools/call endpoints.
 """
 
@@ -22,7 +22,7 @@ async def test_mcp_initialize():
     assert resp["jsonrpc"] == "2.0"
     assert resp["id"] == 1
     assert "capabilities" in resp["result"]
-    assert resp["result"]["serverInfo"]["name"] == "fieldsmith-pro-a2a-seller"
+    assert resp["result"]["serverInfo"]["name"] == "ap2-seller-node"
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,7 @@ async def test_mcp_tools_list():
     tool_names = [t["name"] for t in tools]
     assert "get_service_catalog" in tool_names
     assert "evaluate_spending_mandate" in tool_names
-    assert "provision_telecom_line" in tool_names
+    assert "provision_compute_node" in tool_names
     assert "dispatch_zapier_mcp" in tool_names
 
 
@@ -58,7 +58,7 @@ async def test_mcp_tools_call_catalog():
     assert resp["id"] == 3
     assert not resp["result"]["isError"]
     content = resp["result"]["content"][0]["text"]
-    assert "flooring-tile" in content
+    assert "ap2-gateway" in content
     assert "79.99" in content
 
 
@@ -71,10 +71,10 @@ async def test_mcp_tools_call_mandate():
         "params": {
             "name": "evaluate_spending_mandate",
             "arguments": {
-                "buyer_agent_id": "marcus-buyer-01",
+                "buyer_agent_id": "nexus-buyer-01",
                 "amount": 79.99,
                 "recurrence": "monthly",
-                "category": "TELEPHONY_AI_SCREENER",
+                "category": "autonomous-node-service",
                 "monthly_budget_cap": 100.00,
             },
         },

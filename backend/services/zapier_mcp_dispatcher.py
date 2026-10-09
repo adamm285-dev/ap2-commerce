@@ -1,9 +1,8 @@
 """
 Zapier Model Context Protocol (MCP) & Back-Office Export Dispatcher.
-Executes downstream action chains into Jobber CRM, QuickBooks Online (QBO),
-and Google Calendar following verified PayPal A2A subscription capture.
-Integrates authentic Jobber GraphQL/REST schema formatting, QBO API v3 Purchase
-generation, and HMAC-signed webhook dispatches.
+Executes downstream action chains into QuickBooks Online (QBO)
+and enterprise webhooks following verified PayPal A2A subscription capture.
+Integrates authentic QBO API v3 Purchase generation and HMAC-signed webhook dispatches.
 """
 
 import uuid
@@ -12,7 +11,6 @@ from typing import Dict, Any, List, Optional
 import httpx
 from ..config import settings
 from ..models import ZapierSyncRequest, ZapierSyncResponse
-from .backoffice.jobber_exporter import jobber_exporter
 from .backoffice.qbo_exporter import qbo_exporter
 from .backoffice.webhook_dispatcher import webhook_dispatcher
 
@@ -29,8 +27,8 @@ class ZapierMcpDispatcher:
         self, request: ZapierSyncRequest
     ) -> ZapierSyncResponse:
         """
-        Dispatches automated workflow through Jobber, QuickBooks Online, and external webhooks.
-        Formats authentic Jobber GraphQL/REST mutations and QBO v3 Purchase objects.
+        Dispatches automated workflow through QuickBooks Online and external webhooks.
+        Formats authentic QBO v3 Purchase objects and HMAC-signed webhook dispatches.
         """
         is_a2a = request.workflow_type == "a2a_onboarding"
 
@@ -38,28 +36,18 @@ class ZapierMcpDispatcher:
         target_webhook = request.webhook_url or self.webhook_export_url or ""
 
         if is_a2a:
-            contractor = request.contractor_name or "Marcus Miller"
-            entity = request.business_entity or "Miller Custom Flooring LLC"
+            contractor = request.contractor_name or "Nexus Autonomous Systems Corp"
+            entity = request.business_entity or "Nexus Autonomous Systems Corp"
             fee = request.monthly_subscription_fee or 79.99
-            did = request.allocated_did or "+1 (863) 267-8902"
+            did = request.allocated_did or "mcp+https://gateway-01.acme-systems.io/mcp"
             sub_id = request.paypal_subscription_id or "I-AUTONOMOUS-8902"
-            vertical = request.trade_vertical or "Tile & Custom Flooring"
-            email = request.contractor_email or "marcus@millercustomfloors.com"
+            vertical = request.trade_vertical or "Dedicated AI Service Gateway"
+            email = request.contractor_email or "agent-alpha@nexus-systems.io"
             proof_hash = request.mandate_proof_hash or "HMAC-MANDATE-VERIFIED-01"
 
-            # 1. Format authentic Jobber export package
-            jobber_pkg = jobber_exporter.export_full_jobber_package(
-                contractor_name=contractor,
-                business_entity=entity,
-                contractor_email=email,
-                allocated_did=did,
-                trade_vertical=vertical,
-                monthly_fee=fee,
-                paypal_subscription_id=sub_id,
-                mandate_proof_hash=proof_hash,
-            )
+            jobber_pkg = {"status": "SKIPPED", "service": "QBO_ONLY"}
 
-            # 2. Format authentic QuickBooks Online export package
+            # 1. Format authentic QuickBooks Online export package
             qbo_pkg = qbo_exporter.export_full_qbo_package(
                 contractor_name=contractor,
                 business_entity=entity,
@@ -72,12 +60,12 @@ class ZapierMcpDispatcher:
             )
 
             qbo_id = f"QBO-EXP-{uuid.uuid4().hex[:6].upper()}"
-            jobber_id = f"JOB-ROUTING-{uuid.uuid4().hex[:6].upper()}"
+            jobber_id = f"AP2-EXP-{uuid.uuid4().hex[:6].upper()}"
             jobber_pkg["jobber_routing_id"] = jobber_id
             qbo_pkg["purchase_id"] = qbo_id
             gcal_id = f"gcal_briefing_{uuid.uuid4().hex[:10]}"
 
-            # 3. Webhook / Catch-Hook dispatch
+            # 2. Webhook / Catch-Hook dispatch
             export_bundle = {
                 "event": "a2a.subscription.provisioned",
                 "contractor": {
@@ -103,7 +91,7 @@ class ZapierMcpDispatcher:
                 event_type="a2a.subscription.provisioned",
             )
 
-            # 4. Record artifacts in M2M Audit Store for 1-click in-UI judge inspection
+            # 3. Record artifacts in M2M Audit Store for in-UI judge inspection
             try:
                 from ..api.m2m_audit import record_m2m_artifacts
                 record_m2m_artifacts(
@@ -121,10 +109,10 @@ class ZapierMcpDispatcher:
                 f"[Zapier MCP A2A] 1. QuickBooks Online: Generated authentic QBO v3 Purchase payload: {qbo_id} (${fee:.2f}/mo) for {contractor} ({entity}) mapped to Account 6300 (Software & SaaS). Attached PayPal Sub: {sub_id}"
             )
             logger.info(
-                f"[Zapier MCP A2A] 2. Jobber CRM: Generated authentic GraphQL & REST Client/Job mutations for {did} into {entity} telephony routing. Configured FieldSmith AI Voice Screener webhook for trade '{vertical}'."
+                f"[Zapier MCP A2A] 2. ERP Dispatch: Provisioned AP2 compute node at {did} for {entity} ({vertical})."
             )
             logger.info(
-                f"[Zapier MCP A2A] 3. Google Workspace: Scheduled daily 6:30 AM Executive Morning Dispatch Briefing ({gcal_id}) for {email}."
+                f"[Zapier MCP A2A] 3. Calendar Service: Scheduled node health audit ({gcal_id}) for {email}."
             )
             if dispatch_res.get("dispatched"):
                 logger.info(
@@ -144,19 +132,19 @@ class ZapierMcpDispatcher:
                 webhook_status_code=dispatch_res.get("status_code"),
             )
 
-        # Homeowner lead workflow
-        jobber_id = f"JOB-{uuid.uuid4().hex[:6].upper()}"
+        # General lead workflow fallback
+        jobber_id = f"AP2-{uuid.uuid4().hex[:6].upper()}"
         qbo_id = f"QBO-INV-{uuid.uuid4().hex[:6].upper()}"
         gcal_id = f"gcal_evt_{uuid.uuid4().hex[:10]}"
 
         logger.info(
-            f"[Zapier MCP MOCK] 1. Created Jobber Quote: {jobber_id} for {request.customer_name}"
+            f"[Zapier MCP MOCK] 1. Created AP2 Record: {jobber_id} for {request.customer_name}"
         )
         logger.info(
             f"[Zapier MCP MOCK] 2. Created QuickBooks Draft Invoice: {qbo_id} (Credit ${request.deposit_amount:.2f})"
         )
         logger.info(
-            f"[Zapier MCP MOCK] 3. Scheduled Google Calendar Appointment: {gcal_id} at {request.property_address}"
+            f"[Zapier MCP MOCK] 3. Scheduled Appointment: {gcal_id} at {request.property_address}"
         )
 
         return ZapierSyncResponse(

@@ -19,7 +19,7 @@ class QboExporter:
         self.default_expense_account_name = "Dues & Subscriptions: Software & SaaS"
         self.default_clearing_account_id = "99"
         self.default_clearing_account_name = "PayPal Clearing Account"
-        self.vendor_name = "FieldSmith Pro Inc."
+        self.vendor_name = "AP2 Autonomous Node Network Inc."
         self.vendor_id = "101"
 
     def format_purchase_expense_payload(
@@ -36,30 +36,30 @@ class QboExporter:
     ) -> Dict[str, Any]:
         """
         Generates an authentic QuickBooks Online API v3 Purchase (Expense) payload.
-        Maps the recurring $89.00/mo fee to Software & SaaS COGS/Expense account.
+        Maps the recurring compute fee to Software & SaaS COGS/Expense account.
         """
         date_str = txn_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        doc_number = f"FS-A2A-{paypal_subscription_id[-6:] if len(paypal_subscription_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
+        doc_number = f"AP2-A2A-{paypal_subscription_id[-6:] if len(paypal_subscription_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
 
         if monthly_fee <= 50.00:
-            plan_line_desc = f"FieldSmith Solo Starter AI Voice Screener ({trade_vertical}) — Autonomous Recurring Subscription"
-            memo_plan = f"Plan: Solo Starter (${monthly_fee:.2f}/mo)"
+            plan_line_desc = f"AP2 High-Throughput Batch Worker ({trade_vertical}) — Autonomous Recurring Subscription"
+            memo_plan = f"Plan: High-Throughput Batch Worker (${monthly_fee:.2f}/mo)"
         elif monthly_fee > 100.00:
-            plan_line_desc = f"FieldSmith Pro Fleet Dispatch AI Screener ({trade_vertical}) — Autonomous Recurring Subscription"
-            memo_plan = f"Plan: Fleet Dispatch (${monthly_fee:.2f}/mo)"
+            plan_line_desc = f"AP2 Enterprise Cluster Node ({trade_vertical}) — Autonomous Recurring Subscription"
+            memo_plan = f"Plan: Enterprise Cluster Node (${monthly_fee:.2f}/mo)"
         else:
             plan_line_desc = (
-                f"FieldSmith Pro AI Telephony & Dispatch Screener "
+                f"AP2 Dedicated AI Service Gateway "
                 f"({trade_vertical}) — Autonomous Recurring Subscription"
             )
-            memo_plan = f"Monthly: ${monthly_fee:.2f} USD"
+            memo_plan = f"Plan: Dedicated AI Service Gateway (${monthly_fee:.2f}/mo)"
 
         private_memo = (
-            f"FieldSmith Pro Autonomous A2A Commerce Protocol.\n"
+            f"AP2 Autonomous Commerce Protocol Node.\n"
             f"PayPal Sub: {paypal_subscription_id} | {memo_plan}\n"
-            f"Dedicated DID: {allocated_did} | Vertical: {trade_vertical}\n"
+            f"Endpoint: {allocated_did} | Vertical: {trade_vertical}\n"
             f"Mandate Proof Hash: {mandate_proof_hash}\n"
-            f"Carrier FCC Attestation: STIR/SHAKEN Class A (Telnyx LLC)\n"
+            f"Carrier RFC Attestation: Dual-Transport FastMCP (RFC 8032)\n"
             f"Purchaser: {contractor_name} ({business_entity})"
         )
 
@@ -108,7 +108,7 @@ class QboExporter:
 
     def format_vendor_payload(self) -> Dict[str, Any]:
         """
-        Generates an authentic QuickBooks Online API v3 Vendor creation payload for FieldSmith Pro Inc.
+        Generates an authentic QuickBooks Online API v3 Vendor creation payload for AP2 Autonomous Node Network Inc.
         """
         return {
             "Vendor": {
@@ -116,19 +116,19 @@ class QboExporter:
                 "CompanyName": self.vendor_name,
                 "PrintOnCheckName": self.vendor_name,
                 "PrimaryEmailAddr": {
-                    "Address": "billing@fieldsmith.pro",
+                    "Address": "billing@autonomous-procurement.org",
                 },
                 "WebAddr": {
-                    "URI": "https://fieldsmith.pro",
+                    "URI": "https://ap2-commerce.org",
                 },
                 "PrimaryPhone": {
-                    "FreeFormNumber": "+1 (863) 802-6000",
+                    "FreeFormNumber": "+1 (800) 555-0199",
                 },
                 "BillAddr": {
-                    "Line1": "FieldSmith Pro Inc.",
-                    "City": "Lakeland",
-                    "CountrySubDivisionCode": "FL",
-                    "PostalCode": "33801",
+                    "Line1": "AP2 Autonomous Node Network Inc.",
+                    "City": "San Francisco",
+                    "CountrySubDivisionCode": "CA",
+                    "PostalCode": "94105",
                     "Country": "USA",
                 },
                 "TaxIdentifier": "XX-XXX8902",

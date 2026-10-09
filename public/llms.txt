@@ -5,14 +5,14 @@
 
 AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicated AI service gateways, and multi-region distributed clusters. The AP2 protocol allows autonomous buyer agents (e.g. procurement agents running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision dedicated MCP execution nodes entirely machine-to-machine in the PayPal Sandbox environment.
 
-- **Interactive Fleet Portal:** https://api.fieldsmith.pro/portal/?profile=ap2
-- **Remote FastMCP Endpoint:** https://api.fieldsmith.pro/mcp
-- **Streamable FastMCP Alternate:** https://api.fieldsmith.pro/mcp
-- **Real-Time Wire Protocol (SSE):** https://api.fieldsmith.pro/sse
-- **Google AP2 Agent Card:** https://api.fieldsmith.pro/.well-known/agent.json
-- **MCP Discovery Catalog:** https://api.fieldsmith.pro/.well-known/mcp.json
-- **Machine Discovery Manifest:** https://api.fieldsmith.pro/agents.json
-- **OpenAPI 3.1.0 Contract:** https://api.fieldsmith.pro/openapi.json
+- **Interactive Fleet Portal:** https://api.ap2-commerce.org/portal/?profile=ap2
+- **Remote FastMCP Endpoint:** https://api.ap2-commerce.org/mcp
+- **Streamable FastMCP Alternate:** https://api.ap2-commerce.org/mcp
+- **Real-Time Wire Protocol (SSE):** https://api.ap2-commerce.org/sse
+- **Google AP2 Agent Card:** https://api.ap2-commerce.org/.well-known/agent.json
+- **MCP Discovery Catalog:** https://api.ap2-commerce.org/.well-known/mcp.json
+- **Machine Discovery Manifest:** https://api.ap2-commerce.org/agents.json
+- **OpenAPI 3.1.0 Contract:** https://api.ap2-commerce.org/openapi.json
 
 ## Supported Protocols & Standards
 - **Model Context Protocol (MCP):** Specification version 2024-11-05 via streamable HTTP and SSE transports.

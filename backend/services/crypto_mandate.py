@@ -1,7 +1,7 @@
 """
 Dynamic Asymmetric Ed25519 & HMAC Cryptographic Mandate Verification Engine.
 Conforms to the FIDO Alliance / AP2 (Agent Payments Protocol) Intent Mandate specification.
-Binds contractor identity, business entity, monthly spending caps, and agreed rates
+Binds buyer principal identity, compute authority, monthly spending caps, and agreed rates
 into canonical JSON payloads with strict drift and budget policy verification.
 """
 
@@ -29,7 +29,7 @@ if not _raw_secret or not _raw_secret.strip():
     raise RuntimeError("CRITICAL SECURITY ERROR: A2A_MANDATE_SECRET environment variable is missing.")
 SECRET_KEY = _raw_secret.encode("utf-8")
 # Isolated demo secret for anti-tamper educational UI simulation (never used to authorize live spending)
-DEMO_TAMPER_SECRET = b"demo-anti-tamper-key-fieldsmith-hackathon-only"
+DEMO_TAMPER_SECRET = b"demo-anti-tamper-key-ap2-hackathon-only"
 
 def _load_or_generate_key(env_var_names: list) -> Tuple[ed25519.Ed25519PrivateKey, str, str]:
     """Loads a 32-byte Ed25519 private key from environment variables, or generates a secure random key."""
@@ -63,8 +63,8 @@ _env_buyer_pub = os.getenv("A2A_BUYER_PUBLIC_KEY") or getattr(settings, "a2a_buy
 if _env_buyer_pub and len(_env_buyer_pub.strip()) == 64:
     DEFAULT_BUYER_PUBLIC_KEY_HEX = _env_buyer_pub.strip().lower()
 
-DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
-DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
+DEFAULT_SELLER_KID = "ap2-seller-ed25519-v1"
+DEFAULT_BUYER_KID = "ap2-buyer-ed25519-v1"
 
 # Ephemeral key for the public anti-tamper playground; never registered or trusted for purchases
 _DEMO_TAMPER_KEY = ed25519.Ed25519PrivateKey.generate()
@@ -79,9 +79,9 @@ from ..database import BuyerKeysProxy
 REGISTERED_BUYER_KEYS = BuyerKeysProxy()
 for _default_kid in [
     DEFAULT_BUYER_KID,
-    "marcus-buyer-ed25519-v1",
+    "ap2-buyer-ed25519-v1",
     "buyer-agent-01",
-    "marcus-buyer",
+    "ap2-buyer",
     "claude-desktop-buyer",
 ]:
     if _default_kid not in REGISTERED_BUYER_KEYS or REGISTERED_BUYER_KEYS[_default_kid] == "a0" * 32:

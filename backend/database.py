@@ -1,9 +1,9 @@
 """
-Persistent SQLite Database Engine for FieldSmith Pro A2A Commerce.
+Persistent SQLite Database Engine for AP2 Autonomous Agent Commerce Node.
 Survives process restarts across subscriptions, mandates, ledger commitments,
 processed webhook event IDs, and registered buyer public keys.
 Thread-safe with SQLite WAL mode and busy_timeout=5000ms.
-Conforms to SPEC-001 v1.4.1 and Milestone M-032 Criterion 1.
+Conforms to SPEC-001 v1.4.1.
 """
 
 import os
@@ -22,16 +22,12 @@ from .config import settings, get_db_path
 logger = logging.getLogger("a2a_database")
 
 _DEFAULT_BUYER_KIDS = {
-    "seller-agent-fieldsmith",
-    "buyer-agent-001",
-    "contractor_marcus_863",
-    "buyer-marcus-01",
-    "test-agent-001",
-    "fieldsmith-seller-ed25519-v1",
-    "marcus-buyer-ed25519-v1",
+    "ap2-seller-ed25519-v1",
+    "ap2-buyer-ed25519-v1",
     "buyer-agent-01",
-    "marcus-buyer",
+    "buyer-agent-001",
     "claude-desktop-buyer",
+    "test-agent-001",
 }
 
 
@@ -79,7 +75,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 buyer_agent_id TEXT,
                 subscriber_country_code TEXT DEFAULT 'US',
                 assigned_did TEXT,
-                carrier TEXT DEFAULT 'Telnyx',
+                carrier TEXT DEFAULT 'Dual-Transport FastMCP (RFC 8032)',
                 routing_state TEXT,
                 replaced_by TEXT,
                 mandate_proof_hash TEXT,
@@ -200,7 +196,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
                         INSERT OR IGNORE INTO buyer_keys (kid, public_key_hex, contractor_email, business_name, registered_at)
                         VALUES (?, ?, ?, ?, ?)
                         """,
-                        (kid, buyer_pub, "marcus@millercustomfloors.com", "Miller Custom Flooring LLC", now_iso),
+                        (kid, buyer_pub, "agent-alpha@nexus-systems.io", "Nexus Autonomous Systems Corp", now_iso),
                     )
     finally:
         conn.close()
@@ -258,13 +254,13 @@ def save_subscription(sub: Dict[str, Any], db_path: Optional[Path] = None) -> No
                     (sub.get("contractor_email") or "").strip().lower(),
                     sub.get("contractor_name"),
                     sub.get("business_entity"),
-                    sub.get("tier_id", "solo-starter"),
+                    sub.get("tier_id", "ap2-gateway"),
                     float(sub.get("agreed_monthly_rate") or 0.0),
                     sub.get("plan_id"),
                     sub.get("buyer_agent_id"),
                     sub.get("subscriber_country_code", "US"),
                     sub.get("assigned_did"),
-                    sub.get("carrier", "Telnyx"),
+                    sub.get("carrier", "Dual-Transport FastMCP (RFC 8032)"),
                     sub.get("routing_state"),
                     sub.get("replaced_by"),
                     sub.get("mandate_proof_hash"),
@@ -948,14 +944,14 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
                 (
                     slot_id,
                     slot_data.get("lead_id"),
-                    slot_data.get("contractor_id", "contractor_marcus_863"),
-                    slot_data.get("territory_zone", "Zone 2 - South Lakeland"),
+                    slot_data.get("contractor_id", "buyer_agent_alpha_01"),
+                    slot_data.get("territory_zone", "Zone 1 - US East"),
                     slot_data.get("slot_start_iso", "2026-10-02 14:00"),
                     slot_data.get("slot_end_iso", "2026-10-02 15:15"),
-                    slot_data.get("caller_name", "Bill Layton"),
-                    slot_data.get("project_scope", "600 sq ft hardwood flooring in kitchen"),
+                    slot_data.get("caller_name", "Nexus Autonomous Buyer"),
+                    slot_data.get("project_scope", "Dedicated AI Service Gateway Compute Node Provisioning"),
                     slot_data.get("deposit_payment_id", slot_data.get("paypal_transaction_id", "PAY-DEP-9921")),
-                    slot_data.get("crew_assigned", "Crew B - Custom Tile & Precision Master"),
+                    slot_data.get("crew_assigned", "Cluster Node 01"),
                     now_iso,
                 ),
             )
@@ -975,233 +971,6 @@ def list_dispatch_slots(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
 
 
 # --- Enterprise Fleet Ledger & Dynamic Telemetry ---
-
-FLEET_SEEDED_SUBSCRIPTIONS = [
-    {
-        "id": "TXN-9021",
-        "timestamp": "2026-10-02 02:14:22",
-        "buyer_agent": "AutonomousBuyerAgent-Marcus-Tile",
-        "contractor_name": "Marcus Miller",
-        "trade_vertical": "Tile & Flooring",
-        "service_plan": "AI Screener Pro (1 Dedicated Line)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "AWAITING_PAYPAL_TOKEN",
-        "kyc_status": "PENDING_KYC_VERIFICATION",
-        "kyc_legal_entity": "Miller Custom Flooring LLC",
-        "allocated_did": "AWAITING_DEPOSIT",
-        "tcpa_guard": "PENDING ACTIVATION",
-        "status": "PENDING_DEPOSIT",
-        "email": "marcus@millercustomfloors.com",
-    },
-    {
-        "id": "TXN-9022",
-        "timestamp": "2026-10-02 01:45:10",
-        "buyer_agent": "AutonomousBuyerAgent-Dave-Plumbing",
-        "contractor_name": "Dave Vance",
-        "trade_vertical": "Emergency Plumbing",
-        "service_plan": "AI Screener Dispatch (GPS + Deposit)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-PL782MK110Q9",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Vance Rapid Drain & Plumbing Inc",
-        "allocated_did": "+1 (863) 356-7801",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "dave@vanceplumbing.com",
-    },
-    {
-        "id": "TXN-9023",
-        "timestamp": "2026-10-01 23:18:44",
-        "buyer_agent": "AutonomousBuyerAgent-Elena-Roofing",
-        "contractor_name": "Elena Rostova",
-        "trade_vertical": "Roofing & Storm",
-        "service_plan": "AI Screener Commercial (Photo Scope)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-RF994ZZ331A8",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Apex Storm & Roofing Specialists",
-        "allocated_did": "+1 (863) 356-7802",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "elena@apexroofing.com",
-    },
-    {
-        "id": "TXN-9024",
-        "timestamp": "2026-10-01 21:02:15",
-        "buyer_agent": "AutonomousBuyerAgent-Hank-Towing",
-        "contractor_name": "Hank Schrader",
-        "trade_vertical": "Towing & Roadside",
-        "service_plan": "AI Screener Dispatch (24/7 Roadside)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-TW551PP882B4",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Schrader Heavy Duty Towing LLC",
-        "allocated_did": "+1 (863) 356-7803",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "hank@schradertowing.com",
-    },
-    {
-        "id": "TXN-9025",
-        "timestamp": "2026-10-01 19:30:00",
-        "buyer_agent": "AutonomousBuyerAgent-Sam-HVAC",
-        "contractor_name": "Samira Khan",
-        "trade_vertical": "HVAC & Mechanical",
-        "service_plan": "AI Screener Pro (Seasonal Dispatch)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-HV119CC447T1",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Khan Climate & Cooling Co",
-        "allocated_did": "+1 (863) 356-7804",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "samira@khanclimate.com",
-    },
-    {
-        "id": "TXN-9026",
-        "timestamp": "2026-10-01 16:11:58",
-        "buyer_agent": "AutonomousBuyerAgent-Pamela-Accounting",
-        "contractor_name": "Pamela Green",
-        "trade_vertical": "Contractor Tax & Bookkeeping",
-        "service_plan": "AI Screener Receptionist (Sole Prop)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-TX882GG990W3",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Express 1040 Inc",
-        "allocated_did": "+1 (863) 356-7805",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "pamela@express1040.com",
-    },
-    {
-        "id": "TXN-9027",
-        "timestamp": "2026-10-01 14:05:32",
-        "buyer_agent": "AutonomousBuyerAgent-Carlos-Roofing",
-        "contractor_name": "Carlos Mendez",
-        "trade_vertical": "Roofing & Storm",
-        "service_plan": "AI Screener Commercial (Storm Triage)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-RF771MM220K1",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Mendez Hurricane Roofing Corp",
-        "allocated_did": "+1 (863) 356-7806",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "carlos@mendezroofing.com",
-    },
-    {
-        "id": "TXN-9028",
-        "timestamp": "2026-10-01 11:42:19",
-        "buyer_agent": "AutonomousBuyerAgent-Wyatt-Towing",
-        "contractor_name": "Wyatt Earp",
-        "trade_vertical": "Towing & Roadside",
-        "service_plan": "AI Screener Dispatch (24/7 Heavy Duty)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-TW449EE881V9",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Tombstone 24/7 Heavy Wrecker LLC",
-        "allocated_did": "+1 (863) 356-7807",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "wyatt@tombstonewrecker.com",
-    },
-    {
-        "id": "TXN-9029",
-        "timestamp": "2026-10-01 09:15:40",
-        "buyer_agent": "AutonomousBuyerAgent-Brett-Tile",
-        "contractor_name": "Brett Sterling",
-        "trade_vertical": "Tile & Flooring",
-        "service_plan": "AI Screener Pro (Commercial Stone)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-FL662SS331B2",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Sterling Master Tile & Stone LLC",
-        "allocated_did": "+1 (863) 356-7808",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "brett@sterlingtile.com",
-    },
-    {
-        "id": "TXN-9030",
-        "timestamp": "2026-10-01 08:30:12",
-        "buyer_agent": "AutonomousBuyerAgent-Tariq-Plumbing",
-        "contractor_name": "Tariq Al-Mansoor",
-        "trade_vertical": "Emergency Plumbing",
-        "service_plan": "AI Screener Dispatch (Hydro-Jetting)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-PL551AA994M7",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Lakeland Hydro-Jetting & Drain Services",
-        "allocated_did": "+1 (863) 356-7809",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "tariq@lakelandhydro.com",
-    },
-    {
-        "id": "TXN-9031",
-        "timestamp": "2026-09-30 22:50:04",
-        "buyer_agent": "AutonomousBuyerAgent-Sarah-HVAC",
-        "contractor_name": "Sarah Jenkins",
-        "trade_vertical": "HVAC & Mechanical",
-        "service_plan": "AI Screener Pro (24/7 Compressor Failover)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-HV882JJ115X4",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Citrus State HVAC Pros LLC",
-        "allocated_did": "+1 (863) 356-7810",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "sarah@citrushvac.com",
-    },
-    {
-        "id": "TXN-9032",
-        "timestamp": "2026-09-30 20:18:27",
-        "buyer_agent": "AutonomousBuyerAgent-Declan-Roofing",
-        "contractor_name": "Declan Brooks",
-        "trade_vertical": "Roofing & Storm",
-        "service_plan": "AI Screener Commercial (Industrial Metal)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-RF331DD772Z8",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Brooks Commercial Metal Roofing Inc",
-        "allocated_did": "+1 (863) 356-7811",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "declan@brooksmetalroofing.com",
-    },
-    {
-        "id": "TXN-9033",
-        "timestamp": "2026-09-30 18:04:55",
-        "buyer_agent": "AutonomousBuyerAgent-Mateo-Plumbing",
-        "contractor_name": "Mateo Rossi",
-        "trade_vertical": "Emergency Plumbing",
-        "service_plan": "AI Screener Dispatch (Slab Leak Camera)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-PL224RR661K3",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Suncoast Pipe & Slab Leak Detection",
-        "allocated_did": "+1 (863) 356-7812",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "mateo@suncoastpipe.com",
-    },
-    {
-        "id": "TXN-9034",
-        "timestamp": "2026-09-30 15:22:10",
-        "buyer_agent": "AutonomousBuyerAgent-Brandon-Roofing",
-        "contractor_name": "Brandon Cole",
-        "trade_vertical": "Roofing & Storm",
-        "service_plan": "AI Screener Commercial (Insurance Restoration)",
-        "monthly_amount": 79.99,
-        "paypal_sub_id": "I-RF118CC559W2",
-        "kyc_status": "VERIFIED (PayPal Identity Bound)",
-        "kyc_legal_entity": "Ridgeview Roofing & Restoration Inc",
-        "allocated_did": "+1 (863) 356-7813",
-        "tcpa_guard": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-        "status": "ACTIVE_STREAMING",
-        "email": "brandon@ridgeviewroofing.com",
-    },
-]
 
 AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
     {
@@ -1458,12 +1227,14 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
     },
 ]
 
+FLEET_SEEDED_SUBSCRIPTIONS = AP2_FLEET_SEEDED_SUBSCRIPTIONS
+
 
 def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
     """
-    Seeds the 14 fleet contractor subscriptions into SQLite if they are not already present.
-    Marcus Miller (TXN-9021) is seeded as PENDING_DEPOSIT.
-    The remaining 13 contractors are seeded as ACTIVE with assigned 10DLC DIDs.
+    Seeds the 14 fleet node subscriptions into SQLite if they are not already present.
+    Batch Worker Alpha (TXN-AP2-9021) is seeded as PENDING_DEPOSIT.
+    The remaining 13 nodes are seeded as ACTIVE with assigned MCP endpoints.
     Returns the count of seeded subscriptions.
     """
     conn = get_connection(db_path)
@@ -1491,19 +1262,23 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
             "initial_txn_id": item["id"],
         }
 
+        monthly_amt = float(item["monthly_amount"])
+        tier_id = "ap2-gateway" if monthly_amt == 79.99 else ("ap2-batch" if monthly_amt == 49.99 else "ap2-cluster")
+        plan_id = "P-AP2-SERVICE-GATEWAY" if monthly_amt == 79.99 else ("P-AP2-BATCH-WORKER" if monthly_amt == 49.99 else "P-AP2-CLUSTER-NODE")
+
         sub_record = {
             "subscription_id": sub_id,
             "status": "ACTIVE" if is_active else "PENDING_DEPOSIT",
             "contractor_email": norm_email,
             "contractor_name": item["contractor_name"],
             "business_entity": item["kyc_legal_entity"],
-            "tier_id": "fieldsmith-pro",
-            "agreed_monthly_rate": float(item["monthly_amount"]),
-            "plan_id": "P-FLSMITH-PRO",
+            "tier_id": tier_id,
+            "agreed_monthly_rate": monthly_amt,
+            "plan_id": plan_id,
             "buyer_agent_id": item["buyer_agent"],
             "assigned_did": item["allocated_did"] if is_active else None,
-            "carrier": "Telnyx",
-            "routing_state": "FL",
+            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "routing_state": "CLOUD",
             "subscriber_country_code": "US",
             "offer_id": item["id"],
             "paypal_vault_status": "VAULT_BOUND" if is_active else "AWAITING_PAYPAL_TOKEN",
@@ -1560,197 +1335,102 @@ def _mask_sub_id(sub_id: Optional[str]) -> str:
 def get_fleet_ledger(
     db_path: Optional[Path] = None,
     mask_pii: bool = False,
-    profile: str = "default",
+    profile: str = "ap2",
 ) -> List[Dict[str, Any]]:
     """
     Returns the dynamic enterprise fleet ledger formatted for AG Grid and AG Studio.
-    When profile='ap2', returns the AP2 autonomous agent seller deck dataset (Demo data).
-    When profile='default', seeds and returns the 14 fleet contractor records from SQLite.
-    Dynamically elevates Marcus Miller to ACTIVE_STREAMING if a subscription has been provisioned.
-    Masks PII (phone, name, PayPal ID) when mask_pii=True for public endpoints.
+    Serves the AP2 autonomous agent seller deck dataset (Demo data).
+    Masks PII when mask_pii=True for public endpoints.
     """
-    if (profile or "").strip().lower() == "ap2":
-        conn = get_connection(db_path)
-        active_sub = None
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT * FROM subscriptions 
-                WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
-                  AND (
-                    contractor_email = 'agent-alpha@nexus-systems.io'
-                    OR buyer_agent_id LIKE 'AutonomousBuyerAgent%'
-                    OR buyer_agent_id LIKE 'BuyerAgent%'
-                    OR buyer_agent_id = 'buyer_agent_alpha_01'
-                    OR contractor_name LIKE '%Nexus%'
-                    OR contractor_name LIKE '%Acme%'
-                    OR (tier_id = 'SOLO' AND contractor_email LIKE '%nexus%')
-                  )
-                ORDER BY updated_at DESC, created_at DESC
-                LIMIT 1
-                """
-            )
-            active_sub = cur.fetchone()
-        except Exception:
-            pass
-        finally:
-            conn.close()
-
-        if not active_sub:
-            try:
-                from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
-                for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
-                    c_email = (s_data.get("contractor_email") or "").lower()
-                    b_id = (s_data.get("buyer_agent_id") or "").lower()
-                    c_name = (s_data.get("contractor_name") or "").lower()
-                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and (
-                        c_email == "agent-alpha@nexus-systems.io"
-                        or "buyeragent" in b_id
-                        or "nexus" in c_name
-                        or "acme" in c_name
-                    ):
-                        active_sub = s_data
-                        break
-            except Exception:
-                pass
-
-        result = []
-        for item in AP2_FLEET_SEEDED_SUBSCRIPTIONS:
-            is_pending_batch = item["id"] == "TXN-AP2-9021"
-            if is_pending_batch and active_sub:
-                status = "ACTIVE_STREAMING"
-                is_active = True
-                sub_id = active_sub.get("subscription_id") or "I-AP2-SUB-9021"
-                assigned = active_sub.get("assigned_did") or active_sub.get("allocated_did") or active_sub.get("mcp_endpoint")
-                if assigned and str(assigned).startswith("mcp+https://"):
-                    display_endpoint = str(assigned)
-                else:
-                    display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
-                kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
-                anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
-            else:
-                status = item["status"]
-                is_active = status in ["ACTIVE", "ACTIVE_STREAMING"]
-                sub_id = item["paypal_sub_id"]
-                display_endpoint = item["allocated_did"]
-                kyc_status = item["kyc_status"]
-                anti_tamper = None
-
-            display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
-            entry = {
-                "id": item["id"],
-                "timestamp": item["timestamp"],
-                "buyer_agent": item["buyer_agent"],
-                "contractor_name": item["buyer_agent"],
-                "principal_entity": item["principal_entity"],
-                "trade_vertical": item["trade_vertical"],
-                "service_plan": item["service_plan"],
-                "monthly_amount": float(item["monthly_amount"]),
-                "paypal_sub_id": display_sub_id,
-                "kyc_status": kyc_status,
-                "kyc_legal_entity": item["kyc_legal_entity"],
-                "allocated_did": display_endpoint,
-                "tcpa_guard": item["tcpa_guard"],
-                "status": status,
-                "data_source": "Demo data",
-            }
-            if anti_tamper:
-                entry["anti_tamper_hash"] = anti_tamper
-            result.append(entry)
-        return result
-
-    seed_fleet_subscriptions_if_empty(db_path=db_path)
-
     conn = get_connection(db_path)
+    active_sub = None
     try:
         cur = conn.cursor()
         cur.execute(
             """
             SELECT * FROM subscriptions 
-            ORDER BY 
-                CASE WHEN status IN ('ACTIVE', 'ACTIVE_STREAMING') THEN 1 ELSE 0 END DESC,
-                CASE WHEN assigned_did IS NOT NULL THEN 1 ELSE 0 END DESC,
-                updated_at DESC, 
-                created_at DESC
+            WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
+              AND (
+                contractor_email = 'agent-alpha@nexus-systems.io'
+                OR buyer_agent_id LIKE 'AutonomousBuyerAgent%'
+                OR buyer_agent_id LIKE 'BuyerAgent%'
+                OR buyer_agent_id = 'buyer_agent_alpha_01'
+                OR contractor_name LIKE '%Nexus%'
+                OR contractor_name LIKE '%Acme%'
+                OR (tier_id = 'SOLO' AND contractor_email LIKE '%nexus%')
+              )
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
             """
         )
-        rows = cur.fetchall()
-
-        cur.execute(
-            "SELECT subscription_id FROM active_contractor_subscriptions WHERE contractor_email = ?",
-            ("marcus@millercustomfloors.com",),
-        )
-        active_marcus_ptr = cur.fetchone()
-        active_marcus_sub_id = active_marcus_ptr["subscription_id"] if active_marcus_ptr else None
+        active_sub = cur.fetchone()
+    except Exception:
+        pass
     finally:
         conn.close()
 
+    if not active_sub:
+        try:
+            from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+            for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
+                c_email = (s_data.get("contractor_email") or "").lower()
+                b_id = (s_data.get("buyer_agent_id") or "").lower()
+                c_name = (s_data.get("contractor_name") or "").lower()
+                if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and (
+                    c_email == "agent-alpha@nexus-systems.io"
+                    or "buyeragent" in b_id
+                    or "nexus" in c_name
+                    or "acme" in c_name
+                ):
+                    active_sub = s_data
+                    break
+        except Exception:
+            pass
+
     result = []
-    seen_contractor_emails = set()
-
-    for r in rows:
-        email = (r.get("contractor_email") or "").strip().lower()
-        if email and email in seen_contractor_emails:
-            continue
-        sub_id = r.get("subscription_id")
-        raw_json = r.get("raw_details_json")
-        details = {}
-        if raw_json:
-            try:
-                parsed = json.loads(raw_json)
-                details = parsed.get("raw_details", {}) or parsed
-            except Exception:
-                details = {}
-
-        is_active = r.get("status") in ["ACTIVE", "ACTIVE_STREAMING"]
-
-        # Check if Marcus Miller has been dynamically upgraded or provisioned
-        if email == "marcus@millercustomfloors.com":
-            if active_marcus_sub_id or is_active:
-                is_active = True
-                assigned_did = r.get("assigned_did") or "+1 (863) 267-8902"
-                status_str = "ACTIVE_STREAMING"
-                kyc_status = "VERIFIED (PayPal Identity Bound)"
-                tcpa_guard = "100% INBOUND ONLY (ZERO ROBOCALLS)"
+    for item in AP2_FLEET_SEEDED_SUBSCRIPTIONS:
+        is_pending_batch = item["id"] == "TXN-AP2-9021"
+        if is_pending_batch and active_sub:
+            status = "ACTIVE_STREAMING"
+            is_active = True
+            sub_id = active_sub.get("subscription_id") or "I-AP2-SUB-9021"
+            assigned = active_sub.get("assigned_did") or active_sub.get("allocated_did") or active_sub.get("mcp_endpoint")
+            if assigned and str(assigned).startswith("mcp+https://"):
+                display_endpoint = str(assigned)
             else:
-                assigned_did = "AWAITING_DEPOSIT"
-                status_str = "PENDING_DEPOSIT"
-                kyc_status = "PENDING_KYC_VERIFICATION"
-                tcpa_guard = "PENDING ACTIVATION"
+                display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
+            kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
+            anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
         else:
-            status_str = "ACTIVE_STREAMING" if is_active else "PENDING_DEPOSIT"
-            assigned_did = r.get("assigned_did") or ("+1 (863) 356-7801" if is_active else "AWAITING_DEPOSIT")
-            kyc_status = details.get("kyc_status") or ("VERIFIED (PayPal Identity Bound)" if is_active else "PENDING_KYC_VERIFICATION")
-            tcpa_guard = details.get("tcpa_guard") or "100% INBOUND ONLY (ZERO ROBOCALLS)"
+            status = item["status"]
+            is_active = status in ["ACTIVE", "ACTIVE_STREAMING"]
+            sub_id = item["paypal_sub_id"]
+            display_endpoint = item["allocated_did"]
+            kyc_status = item["kyc_status"]
+            anti_tamper = None
 
-        monthly_amt = float(r.get("agreed_monthly_rate") or 79.99)
-        txn_id = details.get("initial_txn_id") or r.get("offer_id") or f"TXN-{sub_id[-4:]}"
-
-        display_name = _mask_name(r.get("contractor_name")) if mask_pii else (r.get("contractor_name") or "Marcus Miller")
         display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
-        display_did = _mask_phone(assigned_did) if mask_pii else assigned_did
-
-        result.append({
-            "id": txn_id,
-            "timestamp": r.get("updated_at") or r.get("created_at") or "2026-10-02 02:14:22",
-            "buyer_agent": details.get("buyer_agent") or f"AutonomousBuyerAgent-{(r.get('contractor_name') or 'Agent').split()[0]}",
-            "contractor_name": display_name,
-            "trade_vertical": details.get("trade_vertical") or "Tile & Flooring",
-            "service_plan": details.get("service_plan") or f"AI Screener Pro (${monthly_amt:.2f}/mo)",
-            "monthly_amount": monthly_amt,
+        entry = {
+            "id": item["id"],
+            "timestamp": item["timestamp"],
+            "buyer_agent": item["buyer_agent"],
+            "contractor_name": item["buyer_agent"],
+            "principal_entity": item["principal_entity"],
+            "trade_vertical": item["trade_vertical"],
+            "service_plan": item["service_plan"],
+            "monthly_amount": float(item["monthly_amount"]),
             "paypal_sub_id": display_sub_id,
             "kyc_status": kyc_status,
-            "kyc_legal_entity": r.get("business_entity") or "Miller Custom Flooring LLC",
-            "allocated_did": display_did,
-            "tcpa_guard": tcpa_guard,
-            "status": status_str,
+            "kyc_legal_entity": item["kyc_legal_entity"],
+            "allocated_did": display_endpoint,
+            "tcpa_guard": item["tcpa_guard"],
+            "status": status,
             "data_source": "Demo data",
-        })
-        seen_contractor_emails.add(email)
-
+        }
+        if anti_tamper:
+            entry["anti_tamper_hash"] = anti_tamper
+        result.append(entry)
     return result
-
 
 def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") -> Dict[str, Any]:
     """Computes real-time fleet aggregates and KPIs from the persistent SQLite database or AP2 dataset."""
@@ -1784,516 +1464,202 @@ def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") ->
         t["monthly_settlement"] = round(t["monthly_settlement"], 2)
         t["annualized_gmv"] = round(t["monthly_settlement"] * 12, 2)
 
-    is_ap2 = (profile or "").strip().lower() == "ap2"
     return {
         "total_mrr": round(total_mrr, 2),
         "active_lines": active_lines,
         "total_subscribers": total_subscribers,
         "annualized_gmv": annualized_gmv,
         "mandates_cleared": mandates_cleared,
-        "compliance_guard": "100% Ed25519 Mandate Verified (Anti-Tamper Strict)" if is_ap2 else "100% Policy Enforced (Zero Robocalls)",
-        "carrier_resporg": "Dual-Transport FastMCP (RFC 8032)" if is_ap2 else "Telnyx TCR CITNRYD",
+        "compliance_guard": "100% Ed25519 Mandate Verified (Anti-Tamper Strict)",
+        "carrier_resporg": "Dual-Transport FastMCP (RFC 8032)",
         "trade_breakdown": list(trade_counts.values()),
     }
 
 
-def get_fleet_schedule(db_path: Optional[Path] = None, profile: str = "default") -> Dict[str, Any]:
-    """Returns resources and realistic timeline events for Bryntum Dispatch Scheduler."""
-    if (profile or "").strip().lower() == "ap2":
-        ledger_items = get_fleet_ledger(db_path=db_path, profile="ap2")
-        resources = []
-        for idx, item in enumerate(ledger_items):
-            node_id = f"node-{idx + 1}"
-            resources.append({
-                "id": node_id,
-                "name": item["buyer_agent"],
-                "entity": item["kyc_legal_entity"],
-                "trade": item["trade_vertical"],
-                "did": item["allocated_did"],
-                "status": item["status"],
-            })
-
-        events = [
-            {
-                "id": "evt-ap2-01",
-                "resourceId": "node-1",
-                "name": "Mandate Ingestion: Nexus Autonomous • High-Throughput Batch Worker",
-                "startDate": "2026-10-02 08:30",
-                "endDate": "2026-10-02 09:45",
-                "eventColor": "orange",
-                "iconCls": "b-fa b-fa-clock",
-                "depositStatus": "AWAITING DEPOSIT / MANDATE",
-                "paypalTxn": "TXN-AP2-9021",
-            },
-            {
-                "id": "evt-ap2-02",
-                "resourceId": "node-2",
-                "name": "Mandate Renewal: Apex Enterprise • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 10:00",
-                "endDate": "2026-10-02 11:15",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-key",
-                "depositStatus": "RENEWAL CONFIRMED - ED25519",
-                "paypalTxn": "I-BW452NX993L2",
-            },
-            {
-                "id": "evt-ap2-03",
-                "resourceId": "node-3",
-                "name": "SLA Verification: Sentinel Code • Enterprise Cluster Node",
-                "startDate": "2026-10-02 11:30",
-                "endDate": "2026-10-02 12:45",
-                "eventColor": "purple",
-                "iconCls": "b-fa b-fa-shield-check",
-                "depositStatus": "SLA VERIFIED (99.99%)",
-                "paypalTxn": "I-SC994ZZ331A8",
-            },
-            {
-                "id": "evt-ap2-04",
-                "resourceId": "node-4",
-                "name": "Key Rotation: Vanguard Machine • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 13:00",
-                "endDate": "2026-10-02 14:15",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-sync",
-                "depositStatus": "RFC 8032 RE-VERIFIED",
-                "paypalTxn": "I-VG551PP882B4",
-            },
-            {
-                "id": "evt-ap2-05",
-                "resourceId": "node-5",
-                "name": "Quota Refresh: Cortex Labs • High-Throughput Batch Worker",
-                "startDate": "2026-10-02 14:30",
-                "endDate": "2026-10-02 15:45",
-                "eventColor": "cyan",
-                "iconCls": "b-fa b-fa-microchip",
-                "depositStatus": "125 OPS QUOTA PROVISIONED",
-                "paypalTxn": "I-CX119CC447T1",
-            },
-            {
-                "id": "evt-ap2-06",
-                "resourceId": "node-6",
-                "name": "Cluster Health Audit: Hyperion • Enterprise Cluster Node",
-                "startDate": "2026-10-02 16:00",
-                "endDate": "2026-10-02 17:15",
-                "eventColor": "purple",
-                "iconCls": "b-fa b-fa-server",
-                "depositStatus": "HARDWARE ENCLAVE BOUND",
-                "paypalTxn": "I-HY882GG990W3",
-            },
-            {
-                "id": "evt-ap2-07",
-                "resourceId": "node-7",
-                "name": "Mandate Settlement: Vector Semantic • High-Throughput Batch Worker",
-                "startDate": "2026-10-02 09:15",
-                "endDate": "2026-10-02 10:30",
-                "eventColor": "cyan",
-                "iconCls": "b-fa b-fa-file-invoice",
-                "depositStatus": "QBO #6300 SYNCED",
-                "paypalTxn": "I-VT771MM220K1",
-            },
-            {
-                "id": "evt-ap2-08",
-                "resourceId": "node-8",
-                "name": "Gateway Latency Audit: DeepFlow • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 10:45",
-                "endDate": "2026-10-02 12:00",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-bolt",
-                "depositStatus": "SUB-350MS LATENCY PASS",
-                "paypalTxn": "I-DF449EE881V9",
-            },
-            {
-                "id": "evt-ap2-09",
-                "resourceId": "node-9",
-                "name": "Failover Simulation: Meridian Cloud • Enterprise Cluster Node",
-                "startDate": "2026-10-02 13:30",
-                "endDate": "2026-10-02 14:45",
-                "eventColor": "purple",
-                "iconCls": "b-fa b-fa-network-wired",
-                "depositStatus": "MULTI-REGION DRIFT 0MS",
-                "paypalTxn": "I-MR662SS331B2",
-            },
-            {
-                "id": "evt-ap2-10",
-                "resourceId": "node-10",
-                "name": "Mandate Renewal: Cyberdyne • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 15:00",
-                "endDate": "2026-10-02 16:15",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-key",
-                "depositStatus": "VAULT MIT ACTIVE",
-                "paypalTxn": "I-CD551AA994M7",
-            },
-            {
-                "id": "evt-ap2-11",
-                "resourceId": "node-11",
-                "name": "Batch Worker Scaling: OmniModel • High-Throughput Batch Worker",
-                "startDate": "2026-10-02 08:00",
-                "endDate": "2026-10-02 09:15",
-                "eventColor": "cyan",
-                "iconCls": "b-fa b-fa-microchip",
-                "depositStatus": "BATCH ENCLAVE ACTIVE",
-                "paypalTxn": "I-OM882JJ115X4",
-            },
-            {
-                "id": "evt-ap2-12",
-                "resourceId": "node-12",
-                "name": "Gateway Cert Renewal: Prisma • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 11:15",
-                "endDate": "2026-10-02 12:30",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-lock",
-                "depositStatus": "TLS 1.3 CERT BOUND",
-                "paypalTxn": "I-PR331DD772Z8",
-            },
-            {
-                "id": "evt-ap2-13",
-                "resourceId": "node-13",
-                "name": "Auto-Debit Settlement: QuantScale • High-Throughput Batch Worker",
-                "startDate": "2026-10-02 14:00",
-                "endDate": "2026-10-02 15:15",
-                "eventColor": "cyan",
-                "iconCls": "b-fa b-fa-dollar-sign",
-                "depositStatus": "SETTLED ($49.99)",
-                "paypalTxn": "I-QS224RR661K3",
-            },
-            {
-                "id": "evt-ap2-14",
-                "resourceId": "node-14",
-                "name": "Mandate Health Check: Apex Reasoning • Dedicated AI Service Gateway",
-                "startDate": "2026-10-02 16:30",
-                "endDate": "2026-10-02 17:45",
-                "eventColor": "blue",
-                "iconCls": "b-fa b-fa-check-double",
-                "depositStatus": "HEALTHY (0 ERRORS)",
-                "paypalTxn": "I-AR118CC559W2",
-            },
-        ]
-        return {
-            "resources": resources,
-            "events": events,
-        }
-
-    ledger_items = get_fleet_ledger(db_path=db_path)
-    slots = list_dispatch_slots(db_path=db_path)
-
-    # Sort key spotlight crews to the top so dispatchers immediately see core trade operations
-    spotlight_names = ["Marcus Miller", "Dave Vance", "Elena Rostova", "Hank Schrader"]
-    spotlight_items = [i for name in spotlight_names for i in ledger_items if i["contractor_name"] == name]
-    other_items = [i for i in ledger_items if i["contractor_name"] not in spotlight_names]
-    ordered_items = spotlight_items + other_items
-
+def get_fleet_schedule(db_path: Optional[Path] = None, profile: str = "ap2") -> Dict[str, Any]:
+    """Returns resources and realistic timeline events for Bryntum Dispatch Scheduler in AP2 mode."""
+    ledger_items = get_fleet_ledger(db_path=db_path, profile="ap2")
     resources = []
-    events = []
-
-    # Realistic appointment fixtures across trade verticals for all 14 contractors
-    staggered_schedule_fixtures = {
-        "Marcus Miller": [
-            {
-                "id": "appt-marcus-1",
-                "name": "Intake: Mrs. Henderson • Master Bath Travertine",
-                "start": "2026-10-02 08:30",
-                "end": "2026-10-02 09:45",
-                "color": "cyan",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-8831",
-            },
-            {
-                "id": "appt-marcus-2",
-                "name": "Consultation: Oakridge Estates • Kitchen LVP Remodel",
-                "start": "2026-10-02 10:30",
-                "end": "2026-10-02 11:45",
-                "color": "blue",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-8842",
-            },
-            {
-                "id": "appt-marcus-3",
-                "name": "Inspection: Highland Park • Hardwood Moisture Scan",
-                "start": "2026-10-02 15:30",
-                "end": "2026-10-02 16:45",
-                "color": "purple",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-8859",
-            },
-        ],
-        "Dave Vance": [
-            {
-                "id": "appt-dave-1",
-                "name": "Emergency: Lakeland Medical • Main Sewer Jetting",
-                "start": "2026-10-02 08:00",
-                "end": "2026-10-02 09:30",
-                "color": "red",
-                "icon": "b-fa b-fa-exclamation-triangle",
-                "deposit": "PAID $250.00 MOBILIZATION",
-                "txn": "TXN-DEP-7712",
-            },
-            {
-                "id": "appt-dave-2",
-                "name": "Diagnostic: Oak Creek Estates • Tankless Water Heater",
-                "start": "2026-10-02 10:45",
-                "end": "2026-10-02 12:15",
-                "color": "green",
-                "icon": "b-fa b-fa-wrench",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-7725",
-            },
-            {
-                "id": "appt-dave-3",
-                "name": "Certification: Cypress Landing • Commercial Backflow",
-                "start": "2026-10-02 14:00",
-                "end": "2026-10-02 15:30",
-                "color": "blue",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $125.00 DEPOSIT",
-                "txn": "TXN-DEP-7738",
-            },
-        ],
-        "Elena Rostova": [
-            {
-                "id": "appt-elena-1",
-                "name": "Drone Scan: Oak Creek HOA • Roof Hail Damage",
-                "start": "2026-10-02 09:00",
-                "end": "2026-10-02 10:30",
-                "color": "cyan",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $75.00 DEPOSIT",
-                "txn": "TXN-DEP-9910",
-            },
-            {
-                "id": "appt-elena-2",
-                "name": "Commercial Bid: Ridgeview Church • TPO Membrane Sealing",
-                "start": "2026-10-02 12:00",
-                "end": "2026-10-02 13:30",
-                "color": "purple",
-                "icon": "b-fa b-fa-shield-alt",
-                "deposit": "PAID $350.00 DEPOSIT",
-                "txn": "TXN-DEP-9924",
-            },
-            {
-                "id": "appt-elena-3",
-                "name": "Emergency: North Lakeland Plaza • Wind Damage Tarping",
-                "start": "2026-10-02 15:15",
-                "end": "2026-10-02 16:45",
-                "color": "red",
-                "icon": "b-fa b-fa-exclamation-triangle",
-                "deposit": "PAID $300.00 EMERGENCY",
-                "txn": "TXN-DEP-9937",
-            },
-        ],
-        "Hank Schrader": [
-            {
-                "id": "appt-hank-1",
-                "name": "Tow: I-4 Westbound MM 32 • Flatbed Highway Recovery",
-                "start": "2026-10-02 08:15",
-                "end": "2026-10-02 09:45",
-                "color": "red",
-                "icon": "b-fa b-fa-truck",
-                "deposit": "PAID $200.00 TOW DEPOSIT",
-                "txn": "TXN-DEP-5501",
-            },
-            {
-                "id": "appt-hank-2",
-                "name": "Off-Road: Polk Parkway MM 10 • Winch-Out Mud Recovery",
-                "start": "2026-10-02 11:30",
-                "end": "2026-10-02 13:00",
-                "color": "blue",
-                "icon": "b-fa b-fa-truck",
-                "deposit": "PAID $175.00 DEPOSIT",
-                "txn": "TXN-DEP-5518",
-            },
-            {
-                "id": "appt-hank-3",
-                "name": "Transport: Bartow Highway • Box Truck Heavy Axle Lift",
-                "start": "2026-10-02 14:30",
-                "end": "2026-10-02 16:00",
-                "color": "green",
-                "icon": "b-fa b-fa-truck",
-                "deposit": "PAID $225.00 DEPOSIT",
-                "txn": "TXN-DEP-5532",
-            },
-        ],
-        "Brandon Cole": [
-            {
-                "id": "appt-brandon-1",
-                "name": "Inspection: Citrus Ridge • Commercial TPO Assessment",
-                "start": "2026-10-02 09:15",
-                "end": "2026-10-02 10:45",
-                "color": "blue",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-3310",
-            },
-        ],
-        "Mateo Rossi": [
-            {
-                "id": "appt-mateo-1",
-                "name": "Intake: Lake Morton • Herringbone Tile Scope",
-                "start": "2026-10-02 11:00",
-                "end": "2026-10-02 12:30",
-                "color": "cyan",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-3320",
-            },
-        ],
-        "Declan Brooks": [
-            {
-                "id": "appt-declan-1",
-                "name": "Emergency: Cleveland Heights • Hydro-Jet Line",
-                "start": "2026-10-02 13:00",
-                "end": "2026-10-02 14:30",
-                "color": "red",
-                "icon": "b-fa b-fa-exclamation-triangle",
-                "deposit": "PAID $250.00 MOBILIZATION",
-                "txn": "TXN-DEP-3330",
-            },
-        ],
-        "Sarah Jenkins": [
-            {
-                "id": "appt-sarah-1",
-                "name": "Diagnostic: Carillon Lakes • Heat Pump Capacitor",
-                "start": "2026-10-02 08:30",
-                "end": "2026-10-02 10:00",
-                "color": "green",
-                "icon": "b-fa b-fa-wrench",
-                "deposit": "PAID $125.00 DEPOSIT",
-                "txn": "TXN-DEP-3340",
-            },
-        ],
-        "Tariq Al-Mansoor": [
-            {
-                "id": "appt-tariq-1",
-                "name": "Inspection: Grasslands HOA • 200A Panel Upgrade",
-                "start": "2026-10-02 14:00",
-                "end": "2026-10-02 15:30",
-                "color": "purple",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-3350",
-            },
-        ],
-        "Brett Sterling": [
-            {
-                "id": "appt-brett-1",
-                "name": "Tow: County Line Rd • Ditch Winch-Out",
-                "start": "2026-10-02 10:00",
-                "end": "2026-10-02 11:30",
-                "color": "red",
-                "icon": "b-fa b-fa-truck",
-                "deposit": "PAID $175.00 DEPOSIT",
-                "txn": "TXN-DEP-3360",
-            },
-        ],
-        "Wyatt Earp": [
-            {
-                "id": "appt-wyatt-1",
-                "name": "Reroof Scope: Southgate Plaza • Metal Reroof",
-                "start": "2026-10-02 13:30",
-                "end": "2026-10-02 15:00",
-                "color": "blue",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $200.00 DEPOSIT",
-                "txn": "TXN-DEP-3370",
-            },
-        ],
-        "Carlos Mendez": [
-            {
-                "id": "appt-carlos-1",
-                "name": "Intake: Imperial Lakes • Luxury Vinyl Plank",
-                "start": "2026-10-02 09:00",
-                "end": "2026-10-02 10:15",
-                "color": "cyan",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-3380",
-            },
-        ],
-        "Pamela Green": [
-            {
-                "id": "appt-pamela-1",
-                "name": "Diagnostic: Edgewood • Tankless Flush & Filter",
-                "start": "2026-10-02 15:00",
-                "end": "2026-10-02 16:30",
-                "color": "green",
-                "icon": "b-fa b-fa-wrench",
-                "deposit": "PAID $125.00 DEPOSIT",
-                "txn": "TXN-DEP-3390",
-            },
-        ],
-        "Samira Khan": [
-            {
-                "id": "appt-samira-1",
-                "name": "Service: Beacon Hill • Ductwork Airflow Balance",
-                "start": "2026-10-02 11:30",
-                "end": "2026-10-02 13:00",
-                "color": "blue",
-                "icon": "b-fa b-fa-calendar-check",
-                "deposit": "PAID $150.00 DEPOSIT",
-                "txn": "TXN-DEP-3400",
-            },
-        ],
-    }
-
-    for idx, item in enumerate(ordered_items):
-        crew_id = f"crew-{idx + 1}"
-        is_active = item["status"] == "ACTIVE_STREAMING"
-        name = item["contractor_name"]
-
+    for idx, item in enumerate(ledger_items):
+        node_id = f"node-{idx + 1}"
         resources.append({
-            "id": crew_id,
-            "name": name,
+            "id": node_id,
+            "name": item["buyer_agent"],
             "entity": item["kyc_legal_entity"],
             "trade": item["trade_vertical"],
             "did": item["allocated_did"],
-            "status": "ACTIVE_10DLC_BOUND" if is_active else "PENDING_SUBSCRIPTION",
+            "status": item["status"],
         })
 
-        # Add Marcus Miller's 75-minute afternoon dispatch slot
-        # When pending subscription: orange 'Awaiting PayPal' slot. When active: green active slot.
-        if name == "Marcus Miller":
-            events.append({
-                "id": f"line-shift-{item['id']}",
-                "resourceId": crew_id,
-                "name": f"AI Voice Screener Active • DID: {item['allocated_did']} [KYC BOUND]" if is_active else "AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)",
-                "startDate": "2026-10-02 13:00",
-                "endDate": "2026-10-02 14:15",
-                "eventColor": "green" if is_active else "orange",
-                "iconCls": "b-fa b-fa-check-circle" if is_active else "b-fa b-fa-clock",
-                "depositStatus": f"ACTIVE (${item['monthly_amount']:.2f}/MO)" if is_active else "AWAITING PAYPAL ($79.99/MO)",
-                "paypalTxn": item["paypal_sub_id"],
-            })
+    events = [
+        {
+            "id": "evt-ap2-01",
+            "resourceId": "node-1",
+            "name": "Mandate Ingestion: Nexus Autonomous • High-Throughput Batch Worker",
+            "startDate": "2026-10-02 08:30",
+            "endDate": "2026-10-02 09:45",
+            "eventColor": "orange",
+            "iconCls": "b-fa b-fa-clock",
+            "depositStatus": "AWAITING DEPOSIT / MANDATE",
+            "paypalTxn": "TXN-AP2-9021",
+        },
+        {
+            "id": "evt-ap2-02",
+            "resourceId": "node-2",
+            "name": "Mandate Renewal: Apex Enterprise • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 10:00",
+            "endDate": "2026-10-02 11:15",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-key",
+            "depositStatus": "RENEWAL CONFIRMED - ED25519",
+            "paypalTxn": "I-BW452NX993L2",
+        },
+        {
+            "id": "evt-ap2-03",
+            "resourceId": "node-3",
+            "name": "SLA Verification: Sentinel Code • Enterprise Cluster Node",
+            "startDate": "2026-10-02 11:30",
+            "endDate": "2026-10-02 12:45",
+            "eventColor": "purple",
+            "iconCls": "b-fa b-fa-shield-check",
+            "depositStatus": "SLA VERIFIED (99.99%)",
+            "paypalTxn": "I-SC994ZZ331A8",
+        },
+        {
+            "id": "evt-ap2-04",
+            "resourceId": "node-4",
+            "name": "Key Rotation: Vanguard Machine • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 13:00",
+            "endDate": "2026-10-02 14:15",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-sync",
+            "depositStatus": "RFC 8032 RE-VERIFIED",
+            "paypalTxn": "I-VG551PP882B4",
+        },
+        {
+            "id": "evt-ap2-05",
+            "resourceId": "node-5",
+            "name": "Quota Refresh: Cortex Labs • High-Throughput Batch Worker",
+            "startDate": "2026-10-02 14:30",
+            "endDate": "2026-10-02 15:45",
+            "eventColor": "cyan",
+            "iconCls": "b-fa b-fa-microchip",
+            "depositStatus": "125 OPS QUOTA PROVISIONED",
+            "paypalTxn": "I-CX119CC447T1",
+        },
+        {
+            "id": "evt-ap2-06",
+            "resourceId": "node-6",
+            "name": "Cluster Health Audit: Hyperion • Enterprise Cluster Node",
+            "startDate": "2026-10-02 16:00",
+            "endDate": "2026-10-02 17:15",
+            "eventColor": "purple",
+            "iconCls": "b-fa b-fa-server",
+            "depositStatus": "HARDWARE ENCLAVE BOUND",
+            "paypalTxn": "I-HY882GG990W3",
+        },
+        {
+            "id": "evt-ap2-07",
+            "resourceId": "node-7",
+            "name": "Mandate Settlement: Vector Semantic • High-Throughput Batch Worker",
+            "startDate": "2026-10-02 09:15",
+            "endDate": "2026-10-02 10:30",
+            "eventColor": "cyan",
+            "iconCls": "b-fa b-fa-file-invoice",
+            "depositStatus": "QBO #6300 SYNCED",
+            "paypalTxn": "I-VT771MM220K1",
+        },
+        {
+            "id": "evt-ap2-08",
+            "resourceId": "node-8",
+            "name": "Gateway Latency Audit: DeepFlow • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 10:45",
+            "endDate": "2026-10-02 12:00",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-bolt",
+            "depositStatus": "SUB-350MS LATENCY PASS",
+            "paypalTxn": "I-DF449EE881V9",
+        },
+        {
+            "id": "evt-ap2-09",
+            "resourceId": "node-9",
+            "name": "Failover Simulation: Meridian Cloud • Enterprise Cluster Node",
+            "startDate": "2026-10-02 13:30",
+            "endDate": "2026-10-02 14:45",
+            "eventColor": "purple",
+            "iconCls": "b-fa b-fa-network-wired",
+            "depositStatus": "MULTI-REGION DRIFT 0MS",
+            "paypalTxn": "I-MR662SS331B2",
+        },
+        {
+            "id": "evt-ap2-10",
+            "resourceId": "node-10",
+            "name": "Mandate Renewal: Cyberdyne • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 15:00",
+            "endDate": "2026-10-02 16:15",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-key",
+            "depositStatus": "VAULT MIT ACTIVE",
+            "paypalTxn": "I-CD551AA994M7",
+        },
+        {
+            "id": "evt-ap2-11",
+            "resourceId": "node-11",
+            "name": "Batch Worker Scaling: OmniModel • High-Throughput Batch Worker",
+            "startDate": "2026-10-02 08:00",
+            "endDate": "2026-10-02 09:15",
+            "eventColor": "cyan",
+            "iconCls": "b-fa b-fa-microchip",
+            "depositStatus": "BATCH ENCLAVE ACTIVE",
+            "paypalTxn": "I-OM882JJ115X4",
+        },
+        {
+            "id": "evt-ap2-12",
+            "resourceId": "node-12",
+            "name": "Gateway Cert Renewal: Prisma • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 11:15",
+            "endDate": "2026-10-02 12:30",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-lock",
+            "depositStatus": "TLS 1.3 CERT BOUND",
+            "paypalTxn": "I-PR331DD772Z8",
+        },
+        {
+            "id": "evt-ap2-13",
+            "resourceId": "node-13",
+            "name": "Auto-Debit Settlement: QuantScale • High-Throughput Batch Worker",
+            "startDate": "2026-10-02 14:00",
+            "endDate": "2026-10-02 15:15",
+            "eventColor": "cyan",
+            "iconCls": "b-fa b-fa-dollar-sign",
+            "depositStatus": "SETTLED ($49.99)",
+            "paypalTxn": "I-QS224RR661K3",
+        },
+        {
+            "id": "evt-ap2-14",
+            "resourceId": "node-14",
+            "name": "Mandate Health Check: Apex Reasoning • Dedicated AI Service Gateway",
+            "startDate": "2026-10-02 16:30",
+            "endDate": "2026-10-02 17:45",
+            "eventColor": "blue",
+            "iconCls": "b-fa b-fa-check-double",
+            "depositStatus": "HEALTHY (0 ERRORS)",
+            "paypalTxn": "I-AR118CC559W2",
+        },
+    ]
 
-        # Add staggered jobsite appointment events for this crew
-        if name in staggered_schedule_fixtures:
-            for appt in staggered_schedule_fixtures[name]:
-                events.append({
-                    "id": appt["id"],
-                    "resourceId": crew_id,
-                    "name": appt["name"],
-                    "startDate": appt["start"],
-                    "endDate": appt["end"],
-                    "eventColor": appt["color"],
-                    "iconCls": appt["icon"],
-                    "depositStatus": appt["deposit"],
-                    "paypalTxn": appt["txn"],
-                })
-
-    # Add locked territory appointment slots (assigned to Crew 1 - Marcus Miller)
-    for slot in slots:
+    slots = list_dispatch_slots(db_path=db_path)
+    for s in slots:
         events.append({
-            "id": f"slot-{slot.get('slot_id')}",
-            "resourceId": "crew-1",
-            "name": f"Takeoff: {slot.get('caller_name') or 'Customer'} • {slot.get('project_scope') or 'Jobsite Estimate'} ({slot.get('territory_zone', 'Zone 2')})",
-            "startDate": slot.get("slot_start_iso") or "2026-10-02 13:00",
-            "endDate": slot.get("slot_end_iso") or "2026-10-02 14:15",
+            "id": f"slot-{s.get('slot_id', 'dynamic')}",
+            "resourceId": "node-1",
+            "name": f"Takeoff: {s.get('project_scope', 'Compute Node')} ({s.get('territory_zone', 'Cluster')})",
+            "startDate": s.get("slot_start_iso", "2026-10-02 14:00"),
+            "endDate": s.get("slot_end_iso", "2026-10-02 15:15"),
             "eventColor": "blue",
             "iconCls": "b-fa b-fa-calendar-check",
-            "depositStatus": "DEPOSIT VERIFIED ($250.00)",
-            "paypalTxn": slot.get("deposit_payment_id") or "PAY-DEP-9921",
+            "depositStatus": f"DEPOSIT VERIFIED ({s.get('deposit_payment_id', 'PAY-DEP-9921')})",
+            "paypalTxn": s.get("deposit_payment_id", "PAY-DEP-9921"),
         })
 
     return {

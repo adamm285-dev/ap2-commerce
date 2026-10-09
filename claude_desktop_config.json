@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "fieldsmith-pro-a2a-seller": {
+    "ap2-seller-node": {
       "command": "python",
       "args": [
         "-m",

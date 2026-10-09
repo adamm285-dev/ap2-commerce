@@ -1,6 +1,6 @@
 """
 PayPal Vault Merchant-Initiated Transaction (MIT) Gateway.
-Enables headless, off-session payments for usage overages (telecom minutes, after-hours screening)
+Enables headless, off-session payments for usage overages (compute burst, high-throughput workload tasks)
 without interactive contractor prompt re-authentication.
 """
 
@@ -60,7 +60,7 @@ def execute_headless_mit_capture(
                             "currency_code": currency,
                             "value": amount_usd,
                         },
-                        "description": f"FieldSmith Pro Telecom Overage Settlement ({reference_id})",
+                        "description": f"AP2 Autonomous Compute Workload Overage Settlement ({reference_id})",
                     }
                 ],
             }

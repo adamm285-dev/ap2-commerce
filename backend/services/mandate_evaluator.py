@@ -28,14 +28,12 @@ from .crypto_mandate import (
     is_trusted_buyer_key,
 )
 
-TRADES_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
-AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"  # backward compat
+TRADES_PAYEE_ID = "PAYEE-AP2-AUTONOMOUS-COMPUTE"
+AP2_PAYEE_ID = "PAYEE-AP2-AUTONOMOUS-COMPUTE"
 
 
 def get_payee_id() -> str:
-    if get_seller_profile() == "trades":
-        return TRADES_PAYEE_ID
-    return "PAYEE-AP2-AUTONOMOUS-COMPUTE"
+    return AP2_PAYEE_ID
 
 
 AP2_INTENT_MANDATE_TTL_SEC = 31536000  # 1 year (365 days) standing monthly authorization
@@ -44,6 +42,9 @@ AP2_OFFER_TTL_SEC = AP2_CART_OFFER_TTL_SEC
 AP2_MANDATE_TTL_SEC = AP2_INTENT_MANDATE_TTL_SEC
 
 ALLOWED_CATEGORIES = {
+    "autonomous-node-service",
+    "compute-node-service",
+    "autonomous-compute",
     "contractor-dispatch-ai",
     "telephony-screener",
     "telephony-ai-screener",
@@ -51,7 +52,6 @@ ALLOWED_CATEGORIES = {
     "trade-software",
     "job-deposit",
     "emergency-towing",
-    "autonomous-node-service",
 }
 
 DEFAULT_MONTHLY_CAP = 100.00
@@ -602,9 +602,8 @@ def evaluate_spending_mandate(
     if request.amount > cap or request.amount > effective_available:
         # Check if dynamic counter-offer tier is viable within contractor's budget
         if effective_available >= 49.99 and cap >= 49.99:
-            prof = get_seller_profile()
-            down_tier = "solo-starter" if prof == "trades" else "ap2-batch"
-            down_tier_title = "Solo Starter" if prof == "trades" else "High-Throughput Batch Worker"
+            down_tier = "ap2-batch"
+            down_tier_title = "High-Throughput Batch Worker"
             # Generate pre-signed counter-offer token for down-tier at $49.99
             counter_hash = sign_mandate_token(
                 agent_id=request.buyer_agent_id,
@@ -628,7 +627,7 @@ def evaluate_spending_mandate(
                 authorized_amount=0.0,
                 monthly_cap_remaining=remaining,
                 mandate_proof_hash=counter_hash,
-                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: {down_tier_title} ({quota_label(down_tier, profile=prof)}) at $49.99/mo.",
+                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: {down_tier_title} ({quota_label(down_tier, profile='ap2')}) at $49.99/mo.",
                 counter_offer_available=True,
                 counter_offer_tier=down_tier_title,
                 counter_offer_tier_id=down_tier,
@@ -656,8 +655,7 @@ def evaluate_spending_mandate(
     )
 
     # Asymmetric Ed25519 AP2 Proof
-    prof = get_seller_profile()
-    biz_name = "FieldSmith Telephony Subscriber" if prof == "trades" else "Autonomous Compute Subscriber"
+    biz_name = "Autonomous Compute Subscriber"
     asym_proof = generate_dynamic_mandate_proof(
         contractor_id=request.buyer_agent_id,
         business_name=biz_name,
@@ -700,13 +698,13 @@ def evaluate_spending_mandate(
     projected_remaining = round(remaining - request.amount, 2)
 
     if abs(request.amount - 49.99) < 0.05:
-        agreed_tier_id = "solo-starter"
+        agreed_tier_id = "ap2-batch"
         agreed_plan_id = settings.paypal_plan_id_solo
     elif abs(request.amount - 179.99) < 0.05:
-        agreed_tier_id = "pro-dispatch"
+        agreed_tier_id = "ap2-cluster"
         agreed_plan_id = settings.paypal_plan_id_dispatch
     else:
-        agreed_tier_id = "fieldsmith-pro"
+        agreed_tier_id = "ap2-gateway"
         agreed_plan_id = settings.paypal_plan_id_pro
 
     return SpendingMandateResponse(

@@ -71,7 +71,7 @@ def test_mcp_post_jsonrpc_tools_call():
     assert init_res.status_code == 200
     init_data = init_res.json()
     assert init_data["result"]["protocolVersion"] == "2024-11-05"
-    assert init_data["result"]["serverInfo"]["name"] == "fieldsmith-pro-a2a-seller"
+    assert init_data["result"]["serverInfo"]["name"] == "ap2-seller-node"
 
     # 2. tools/list
     tools_res = client.post(
@@ -87,7 +87,7 @@ def test_mcp_post_jsonrpc_tools_call():
     assert "negotiate_tier_terms" in tool_names
     assert "evaluate_spending_mandate" in tool_names
     assert "purchase_subscription" in tool_names
-    assert "provision_telecom_line" in tool_names
+    assert "provision_compute_node" in tool_names
     assert "dispatch_zapier_mcp" in tool_names
     assert "get_subscription_details" in tool_names
 
@@ -118,7 +118,7 @@ def test_mcp_post_jsonrpc_tools_call():
                 "arguments": {
                     "buyer_agent_id": "buyer-remote-test",
                     "contractor_email": "contractor.remote@example.com",
-                    "tier_id": "solo-starter",
+                    "tier_id": "ap2-batch",
                     "monthly_budget_cap": 60.00,
                 },
             },
@@ -131,60 +131,48 @@ def test_mcp_post_jsonrpc_tools_call():
 
 
 @pytest.mark.asyncio
-async def test_provision_us_domestic_nanp_validation():
-    """Verify that provision_telecom_line strictly enforces 3-digit NANP US area codes."""
-    sub_id = "I-TEST-US-DOMESTIC-01"
-    contractor_email = "us.contractor@fieldsmith.pro"
+async def test_provision_compute_node_mcp_endpoint():
+    """Verify that provision_compute_node allocates a dedicated FastMCP compute endpoint."""
+    sub_id = "I-TEST-COMPUTE-NODE-01"
+    contractor_email = "node.buyer@nexus-systems.io"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": contractor_email,
-        "tier_id": "solo-starter",
-        "agreed_monthly_rate": 49.99,
+        "tier_id": "ap2-gateway",
+        "agreed_monthly_rate": 79.99,
         "subscriber_country_code": "US",
     }
 
-    # 1. Valid US NANP area codes succeed
-    for valid_ac in ["863", "813", "214", "305", "415", "212"]:
-        res = await seller_agent.provision_telecom_line(
-            subscription_id=sub_id,
-            contractor_email=contractor_email,
-            area_code=valid_ac,
-        )
-        assert res["status"] in ["ALLOCATED", "RETAINED"]
-        assert res["assigned_did"].startswith("+1")
-
-    # 2. Invalid or non-NANP area codes are strictly rejected
-    invalid_codes = ["123", "020", "+44", "99", "abc", "1863", "86", "0", "011", "911", ""]
-    for bad_ac in invalid_codes:
-        res = await seller_agent.provision_telecom_line(
-            subscription_id=sub_id,
-            contractor_email=contractor_email,
-            area_code=bad_ac,
-        )
-        assert res["status"] == "REJECTED"
-        assert res["error"] == "US_DOMESTIC_ONLY"
-        assert "NANP +1" in res["reason"]
+    res = await seller_agent.provision_compute_node(
+        subscription_id=sub_id,
+        buyer_email=contractor_email,
+        node_type="gateway",
+    )
+    assert res["status"] == "PROVISIONED"
+    assert res["endpoint"].startswith("mcp+https://gateway-01.acme-systems.io/agents/node-gateway-")
+    assert res["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
+    assert res["routing_state"] == "ACTIVE_COMPUTE_NODE"
 
 
 @pytest.mark.asyncio
 async def test_provision_foreign_subscriber_rejected():
-    """Verify that provision_telecom_line rejects non-US subscriber accounts."""
+    """Verify that provision_compute_node rejects non-US subscriber accounts."""
     sub_id = "I-TEST-FOREIGN-SUB-01"
     contractor_email = "foreign.agent@example.co.uk"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": contractor_email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "subscriber_country_code": "GB",
     }
 
-    res = await seller_agent.provision_telecom_line(
+    res = await seller_agent.provision_compute_node(
         subscription_id=sub_id,
-        contractor_email=contractor_email,
-        area_code="863",
+        buyer_email=contractor_email,
+        node_type="batch",
     )
     assert res["status"] == "REJECTED"
     assert res["error"] == "US_DOMESTIC_ONLY"
@@ -192,30 +180,28 @@ async def test_provision_foreign_subscriber_rejected():
     assert "GB" in res["reason"]
 
 
-def test_rest_provision_endpoint_us_domestic_error_code():
-    """POST /api/agent/provision rejects invalid area codes with HTTP 403 US_DOMESTIC_ONLY."""
-    sub_id = "I-TEST-REST-US-01"
-    contractor_email = "rest.us@fieldsmith.pro"
+def test_rest_provision_endpoint_success_and_error():
+    """POST /api/agent/provision allocates compute nodes for active subscriptions."""
+    sub_id = "I-TEST-REST-COMPUTE-01"
+    contractor_email = "rest.buyer@nexus-systems.io"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": contractor_email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "subscriber_country_code": "US",
     }
 
-    # International area code via REST
     res = client.post(
         "/api/agent/provision",
         json={
             "subscription_id": sub_id,
             "contractor_email": contractor_email,
-            "area_code": "+44",
         },
     )
-    assert res.status_code == 403
-    data = res.json()["detail"]
-    assert data["status"] == "REJECTED"
-    assert data["error"] == "US_DOMESTIC_ONLY"
-    assert "NANP +1" in data["reason"]
+    assert res.status_code == 201
+    data = res.json()
+    assert data["status"] in ("ALLOCATED", "PROVISIONED")
+    assert data["endpoint"].startswith("mcp+https://")
+    assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"

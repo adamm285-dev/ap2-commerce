@@ -48,14 +48,14 @@ def test_subscription_persistence_across_connections(persist_db: Path):
     sub_data = {
         "subscription_id": "I-PERSIST-TEST-001",
         "status": "ACTIVE",
-        "contractor_email": "marcus@millerflooring.com",
-        "contractor_name": "Marcus Miller",
-        "business_entity": "Miller Custom Flooring LLC",
-        "tier_id": "fieldsmith-pro",
+        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_name": "Autonomous Compute Buyer",
+        "business_entity": "Nexus Autonomous Systems Corp",
+        "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
-        "plan_id": "P-FLSMITH-FIELDSMITH_PRO",
-        "assigned_did": "+18635558225",
-        "carrier": "Telnyx",
+        "plan_id": "P-AP2-SERVICE-GATEWAY",
+        "assigned_did": "mcp+https://gateway-01.ap2.market",
+        "carrier": "Nexus FastMCP",
         "routing_state": "FL",
         "subscriber_country_code": "US",
         "paypal_vault_status": "VAULT_BOUND",
@@ -76,9 +76,9 @@ def test_subscription_persistence_across_connections(persist_db: Path):
     
     assert hydrated["subscription_id"] == "I-PERSIST-TEST-001"
     assert hydrated["status"] == "ACTIVE"
-    assert hydrated["contractor_email"] == "marcus@millerflooring.com"
+    assert hydrated["contractor_email"] == "agent-alpha@nexus-systems.io"
     assert hydrated["agreed_monthly_rate"] == 79.99
-    assert hydrated["assigned_did"] == "+18635558225"
+    assert hydrated["assigned_did"] == "mcp+https://gateway-01.ap2.market"
     assert hydrated["vault_billing_authorized"] is True
     assert hydrated["vault_customer_present"] is False
     assert hydrated["jobber_payload"]["client_id"] == "jobber_client_99"
@@ -93,7 +93,7 @@ def test_subscription_aliases_and_in_place_mutations(persist_db: Path):
         "subscription_id": "I-MAIN-SUB-77",
         "status": "ACTIVE",
         "contractor_email": "alias@contractor.com",
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     # Save under primary ID and under offer alias
@@ -125,7 +125,7 @@ def test_mandate_persistence_and_email_locking(persist_db: Path):
     mandate_proxy[token] = {
         "proof_hash": token,
         "offer_id": "offer_token_456",
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "amount": 49.99,
         "buyer_agent_id": "buyer-test-01",
         "monthly_budget_cap": 80.00,
@@ -177,7 +177,7 @@ def test_contractor_budget_and_spend_commitments(persist_db: Path):
         "SUBSCRIPTION_PURCHASE",
         contractor_email=email,
         agent_id="buyer-agent-99",
-        metadata={"tier": "fieldsmith-pro"},
+        metadata={"tier": "ap2-gateway"},
         db_path=db_file,
     )
     

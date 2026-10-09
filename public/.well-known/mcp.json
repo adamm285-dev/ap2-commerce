@@ -2,10 +2,10 @@
   "name": "AP2 Autonomous Seller Node",
   "version": "1.0.0",
   "description": "Autonomous Agent Payments Protocol (AP2) commerce protocol and execution node provisioning for high-throughput batch workers, dedicated AI service gateways, and distributed cluster nodes.",
-  "agent_instructions": "https://api.fieldsmith.pro/portal/llms.txt",
+  "agent_instructions": "https://api.ap2-commerce.org/portal/llms.txt",
   "mcp_server": {
-    "url": "https://api.fieldsmith.pro/mcp",
-    "sse_url": "https://api.fieldsmith.pro/sse",
+    "url": "https://api.ap2-commerce.org/mcp",
+    "sse_url": "https://api.ap2-commerce.org/sse",
     "transport": "streamable_http",
     "protocol": "2024-11-05",
     "tools": [

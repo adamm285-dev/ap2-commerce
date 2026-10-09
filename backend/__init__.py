@@ -1,1 +1,1 @@
-"""FieldSmith Pro A2A Commerce & Multi-Agent Backend Package."""
+"""AP2 Autonomous Agent Commerce & Compute Backend Package."""

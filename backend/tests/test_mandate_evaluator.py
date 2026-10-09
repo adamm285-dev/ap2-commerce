@@ -121,7 +121,7 @@ def test_mandate_counter_offer_exposes_real_plan_id():
     assert res.counter_offer_amount == 49.99
     assert res.counter_offer_plan_id == settings.paypal_plan_id_solo
     assert res.plan_id == settings.paypal_plan_id_solo
-    assert res.tier_id == "solo-starter"
+    assert res.tier_id == "ap2-batch"
 
 
 def test_mandate_approved_exposes_tier_and_plan_id():
@@ -136,7 +136,7 @@ def test_mandate_approved_exposes_tier_and_plan_id():
     res_gw = evaluate_spending_mandate(req_gateway)
     assert res_gw.approved is True
     assert res_gw.plan_id == settings.paypal_plan_id_pro
-    assert res_gw.tier_id == "fieldsmith-pro"
+    assert res_gw.tier_id == "ap2-gateway"
 
     req_cluster = SpendingMandateRequest(
         buyerAgentId="agent-cl-test",
@@ -148,7 +148,7 @@ def test_mandate_approved_exposes_tier_and_plan_id():
     res_cl = evaluate_spending_mandate(req_cluster)
     assert res_cl.approved is True
     assert res_cl.plan_id == settings.paypal_plan_id_dispatch
-    assert res_cl.tier_id == "pro-dispatch"
+    assert res_cl.tier_id == "ap2-cluster"
 
 
 def test_every_evaluator_tier_id_exists_in_plan_catalog_plans():

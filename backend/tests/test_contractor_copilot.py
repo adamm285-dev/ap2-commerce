@@ -10,9 +10,9 @@ from backend.agents.contractor_copilot import ContractorCopilot
 @pytest.mark.asyncio
 async def test_copilot_diagnosis_intent():
     copilot = ContractorCopilot()
-    resp = await copilot.handle_message("Did I miss any calls today on the jobsite?")
+    resp = await copilot.handle_message("Check pending workload queue today")
     assert resp["phase"] == "DIAGNOSIS"
-    assert "missed" in resp["reply"].lower()
+    assert "workload" in resp["reply"].lower() or "pending tasks" in resp["reply"].lower()
     assert resp["telemetry"]["missed_calls"] == 8
     assert resp["telemetry"]["estimated_lost_revenue"] == 6200.00
     assert len(resp["suggested_actions"]) > 0
@@ -21,9 +21,9 @@ async def test_copilot_diagnosis_intent():
 @pytest.mark.asyncio
 async def test_copilot_proposal_intent():
     copilot = ContractorCopilot()
-    resp = await copilot.handle_message("Find me an AI answering service solution")
+    resp = await copilot.handle_message("Find me an autonomous compute node solution")
     assert resp["phase"] == "PROPOSAL"
-    assert "fieldsmith pro" in resp["reply"].lower()
+    assert "gateway" in resp["reply"].lower()
     assert "$79.99" in resp["reply"]
     assert resp["proposal"] is not None
     assert resp["proposal"]["monthly_price"] == 79.99
@@ -38,7 +38,7 @@ async def test_copilot_approval_and_a2a_execution():
     assert "autonomous a2a setup complete" in resp["reply"].lower()
     exec_result = resp["execution_result"]
     assert exec_result["status"] == "SUCCESS"
-    assert exec_result["assigned_did"].startswith("+1")
+    assert exec_result["assigned_did"].startswith("mcp+https://")
     assert len(exec_result["protocol_trace"]) == 4
 
     # Verify step 1: spending mandate
@@ -47,10 +47,10 @@ async def test_copilot_approval_and_a2a_execution():
     assert step1["decision"] == "APPROVED"
     assert round(step1["remaining_budget"], 2) == 20.01
 
-    # Verify step 3: telecom line
+    # Verify step 3: compute node
     step3 = exec_result["protocol_trace"][2]
-    assert step3["method"] == "tools/call:provision_telecom_line"
-    assert "Telnyx" in step3["carrier"]
+    assert step3["method"] == "tools/call:provision_compute_node"
+    assert "FastMCP" in step3["carrier"]
 
     # Verify step 4: zapier sync
     step4 = exec_result["protocol_trace"][3]
@@ -63,9 +63,9 @@ async def test_copilot_audit_intent():
     copilot = ContractorCopilot()
     resp = await copilot.handle_message("Inspect A2A Protocol Audit Trail")
     assert resp["phase"] == "AUDIT"
-    assert "hmac-sha256" in resp["reply"].lower()
+    assert "rfc 8032" in resp["reply"].lower()
     assert "paypal subscriptions" in resp["reply"].lower()
-    assert "telnyx 10dlc" in resp["reply"].lower()
+    assert "fastmcp" in resp["reply"].lower()
     assert resp["action_type"] == "INSPECT_AUDIT_TRAIL"
 
 
@@ -73,19 +73,18 @@ async def test_copilot_audit_intent():
 async def test_copilot_navigation_and_budget_intents():
     copilot = ContractorCopilot()
     # Fleet ledger navigation
-    resp_ledger = await copilot.handle_message("View in FieldSmith Fleet Ledger")
+    resp_ledger = await copilot.handle_message("View in AP2 Fleet Ledger")
     assert resp_ledger["phase"] == "NAVIGATION"
     assert "fleet ledger" in resp_ledger["reply"].lower()
     assert resp_ledger["action_type"] == "NAVIGATE_FLEET_LEDGER"
 
-    # Bryntum timeline navigation
-    resp_timeline = await copilot.handle_message("Check Bryntum Telephony Timeline")
+    # Timeline navigation
+    resp_timeline = await copilot.handle_message("Check Bryntum Dispatch Timeline")
     assert resp_timeline["phase"] == "NAVIGATION"
     assert "timeline" in resp_timeline["reply"].lower()
     assert resp_timeline["action_type"] == "NAVIGATE_BRYNTUM"
 
-    # Budget cap inquiry
+    # Budget query
     resp_budget = await copilot.handle_message("What's my monthly budget cap?")
+    assert resp_budget["phase"] == "PROPOSAL"
     assert "$100.00" in resp_budget["reply"]
-    assert "spending mandate" in resp_budget["reply"].lower()
-

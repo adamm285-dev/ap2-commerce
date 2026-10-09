@@ -4,7 +4,7 @@ import os
 os.environ.setdefault("A2A_MANDATE_SECRET", "ci_test_mandate_secret_key_32_chars_long")
 os.environ.setdefault("ADMIN_API_KEY", "ci_admin_secret_token_key_for_testing")
 os.environ.setdefault("MOCK_EXTERNAL_APIS", "true")
-os.environ.setdefault("A2A_SELLER_PROFILE", "trades")
+os.environ.setdefault("A2A_SELLER_PROFILE", "ap2")
 os.environ["TESTING"] = "1"
 import tempfile
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
@@ -14,7 +14,6 @@ os.environ["A2A_DB_PATH"] = f"{_base}_{_worker}.db"
 import pytest
 from ..config import settings
 from ..services.paypal_service import paypal_service
-from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 
 
@@ -41,7 +40,6 @@ def configure_mock_mode_for_unit_tests(monkeypatch):
     if not settings.admin_api_key or not settings.admin_api_key.strip():
         monkeypatch.setattr(settings, "admin_api_key", "ci_admin_secret_token_key_for_testing")
     monkeypatch.setattr(paypal_service, "mock_mode", True)
-    monkeypatch.setattr(telnyx_provisioner, "mock_mode", True)
     monkeypatch.setattr(zapier_mcp_dispatcher, "mock_mode", True)
 
 
@@ -55,10 +53,6 @@ def isolate_database_for_each_test():
     from ..services.mandate_evaluator import ledger
     from ..server import clear_processed_webhooks
 
-    reset_all_data()
-    ledger.reset()
-    clear_processed_webhooks()
-    yield
     reset_all_data()
     ledger.reset()
     clear_processed_webhooks()

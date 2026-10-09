@@ -1,8 +1,8 @@
 """
-Contractor AI Copilot (Buyer-Side Agent Reasoner).
-Represents the contractor's personal AI assistant (Grok / ChatGPT persona).
-Ingests carrier call logs, diagnoses revenue leaks, queries FieldSmith's Seller MCP server,
-and orchestrates autonomous A2A execution upon a single human approval.
+AP2 Node Operations Copilot (Buyer-Side Agent Reasoner).
+Represents the autonomous enterprise buyer's operations copilot.
+Ingests compute workload telemetry, diagnoses pipeline capacity, queries AP2 Seller MCP server,
+and orchestrates autonomous A2A execution upon human approval.
 """
 
 import json
@@ -17,14 +17,16 @@ logger = logging.getLogger("contractor_copilot")
 
 
 class ContractorCopilot:
+    """Autonomous Operations Copilot managing compute node procurement and fleet telemetry."""
+
     def __init__(
         self,
-        contractor_name: str = "Marcus Miller",
-        business_entity: str = "Miller Custom Flooring LLC",
-        trade_vertical: str = "Tile & Custom Flooring",
-        area_code: str = "863",
+        contractor_name: str = "Nexus Autonomous Buyer",
+        business_entity: str = "Nexus Autonomous Systems Corp",
+        trade_vertical: str = "Dedicated AI Service Gateway",
+        area_code: str = "US",
         budget_cap: float = 100.00,
-        contractor_email: str = "marcus@millercustomfloors.com",
+        contractor_email: str = "agent-alpha@nexus-systems.io",
         simulate_exhaustion: bool = False,
     ):
         self.contractor_name = contractor_name
@@ -37,38 +39,36 @@ class ContractorCopilot:
         self.session_id = f"copilot-{uuid.uuid4().hex[:8]}"
 
     def get_call_leakage_telemetry(self) -> Dict[str, Any]:
-        """Ingests carrier call logs and calculates uncaptured revenue."""
-        fixture_path = Path(__file__).resolve().parent.parent / "data" / "call_logs_fixture.json"
-        if fixture_path.exists():
-            with open(fixture_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+        """Calculates workload demand telemetry and pipeline capacity constraints."""
         return {
             "contractor_name": self.contractor_name,
             "business_entity": self.business_entity,
-            "telephony_carrier": "Verizon Wireless (Personal Cell)",
-            "total_inbound_calls": 24,
+            "cluster_provider": "AP2 Autonomous Node Network",
+            "total_tasks": 240,
+            "queued_tasks": 80,
+            "pending_tasks": 8,
             "missed_calls": 8,
-            "missed_call_rate": "33.3%",
+            "queue_rate": "33.3%",
             "estimated_lost_revenue": 6200.00,
             "recent_missed_leads": [
                 {
-                    "caller_name": "Sarah Jenkins",
-                    "caller_phone": "+1 (863) 555-0199",
+                    "caller_name": "Nexus High-Throughput Worker",
+                    "caller_phone": "mcp+https://batch-01.acme-systems.io/mcp",
                     "estimated_job_value": 3250.00,
-                    "voicemail_transcript": "Hi Marcus, calling about getting 650 square feet of porcelain tile installed in our master bath.",
+                    "voicemail_transcript": "Queued 125 batch synthesis jobs awaiting gateway execution.",
                 },
                 {
-                    "caller_name": "David Vance",
-                    "caller_phone": "+1 (863) 555-0144",
+                    "caller_name": "Enterprise Cluster Node",
+                    "caller_phone": "mcp+https://cluster-01.acme-systems.io/mcp",
                     "estimated_job_value": 1800.00,
-                    "voicemail_transcript": "Hey Miller Flooring, looking to demo existing linoleum and lay down 12x24 slate in our kitchen.",
+                    "voicemail_transcript": "Dedicated AI service gateway needed to route reasoning queries.",
                 },
             ],
         }
 
     async def handle_message(self, user_message: str) -> Dict[str, Any]:
         """
-        Processes a message from the contractor, evaluates intent,
+        Processes a message from the operator, evaluates intent,
         and returns the conversational reply, suggested quick replies, and telemetry.
         """
         msg = user_message.lower().strip()
@@ -79,31 +79,29 @@ class ContractorCopilot:
 
         # Priority 1: Approval / Execution
         if any(w in msg for w in ["approve", "setup", "activate", "execute", "go ahead", "do it"]) or msg in ["yes", "yep", "yeah", "ok", "okay"]:
-            # Trigger autonomous execution cycle
             exec_result = await self.execute_autonomous_a2a_cycle()
-            did = exec_result.get("assigned_did", "+1 (863) 267-8902")
+            did = exec_result.get("assigned_did", "mcp+https://gateway-01.acme-systems.io/mcp")
             qbo = exec_result.get("zapier_sync", {}).get("qbo_draft_invoice_id", "QBO-EXP-9921")
-            jobber = exec_result.get("zapier_sync", {}).get("jobber_quote_id", "JOB-ROUTING-8812")
             sub_price = 79.99
             if exec_result.get("protocol_trace") and len(exec_result["protocol_trace"]) > 0:
                 sub_price = exec_result["protocol_trace"][0].get("authorized_amount", 79.99)
 
             reply = (
                 f"🎉 **Autonomous A2A Setup Complete!**\n\n"
-                f"I negotiated the agreement with FieldSmith's Seller Agent and executed your recurring **${sub_price:.2f}/mo PayPal subscription**.\n\n"
-                f"• **Dedicated Business DID**: `{did}` (Bound to {self.business_entity})\n"
-                f"• **TCPA Protection**: 100% Inbound Locked (Zero robocalls)\n"
-                f"• **Jobber CRM**: Connected and routing to your schedule ({jobber})\n"
+                f"I negotiated the agreement with the AP2 Seller Node and executed your recurring **${sub_price:.2f}/mo PayPal subscription**.\n\n"
+                f"• **Dedicated Compute Endpoint**: `{did}` (Bound to {self.business_entity})\n"
+                f"• **RFC 8032 Security**: 100% Ed25519 Cryptographic Dual Mandates\n"
+                f"• **ERP Automation**: Provisioned and active on cluster schedule\n"
                 f"• **QuickBooks Online**: Monthly software subscription expense recorded ({qbo})\n\n"
-                f"You're completely live! Any missed calls will now be automatically answered, scoped, and booked while you stay focused on your tile jobs."
+                f"You're completely live! Workload tasks will now be automatically routed and executed under your spending mandate."
             )
             return {
                 "reply": reply,
                 "phase": "COMPLETED",
                 "telemetry": telemetry,
                 "suggested_actions": [
-                    "View in FieldSmith Fleet Ledger",
-                    "Check Bryntum Telephony Timeline",
+                    "View in AP2 Fleet Ledger",
+                    "Check Bryntum Dispatch Timeline",
                     "Inspect A2A Protocol Audit Trail",
                 ],
                 "execution_result": exec_result,
@@ -111,7 +109,6 @@ class ContractorCopilot:
 
         # Priority 2: Discovery & Proposal
         if any(w in msg for w in ["find", "solution", "service", "answering", "fix", "options", "what can we do", "recommend"]):
-            # Query FieldSmith Seller MCP catalog over JSON-RPC 2.0
             catalog_resp = await process_mcp_request({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -123,20 +120,19 @@ class ContractorCopilot:
                 raw_text = catalog_resp["result"]["content"][0]["text"]
                 catalog = json.loads(raw_text)
 
-            flooring_tier_id = catalog.get("tier_id_aliases", {}).get("flooring-tile", "fieldsmith-pro")
             tier = next(
-                (p for p in catalog.get("plans", []) if p["tier_id"] == flooring_tier_id),
-                {"title": "FieldSmith Pro", "monthly_price": 79.99},
+                (p for p in catalog.get("plans", []) if p["tier_id"] == "ap2-gateway"),
+                {"title": "Dedicated AI Service Gateway", "monthly_price": 79.99},
             )
             price = tier["monthly_price"]
 
             reply = (
-                f"I queried the autonomous trade registry and found **FieldSmith Pro** (Seller Agent MCP).\n\n"
-                f"• **Plan**: {tier['title']} AI Screener\n"
+                f"I queried the autonomous registry and found **AP2 Autonomous Node Network** (Seller Node MCP).\n\n"
+                f"• **Plan**: {tier['title']}\n"
                 f"• **Cost**: **${price:.2f}/month** (Auto-debit via PayPal Subscriptions)\n"
                 f"• **Budget Mandate**: Your pre-approved company spending limit is **${self.budget_cap:.2f}/mo** (Leaves **${(self.budget_cap - price):.2f}/mo** remaining)\n"
-                f"• **What it does**: Provisions a dedicated local 10DLC number (+1 {self.area_code}...), screens homeowners sub-500ms, calculates tile square footage, and syncs directly into your Jobber CRM & QuickBooks.\n\n"
-                f"**Ready for your single approval:** Shall I negotiate the A2A agreement and activate your line for **{self.business_entity}**?"
+                f"• **What it does**: Provisions a dedicated mcp+https endpoint, provides 450 workload tasks/month, and syncs directly into QuickBooks Online.\n\n"
+                f"**Ready for your single approval:** Shall I negotiate the A2A agreement and provision your node for **{self.business_entity}**?"
             )
             return {
                 "reply": reply,
@@ -144,16 +140,14 @@ class ContractorCopilot:
                 "telemetry": telemetry,
                 "suggested_actions": [
                     f"Approve Setup (${price:.2f}/mo via PayPal)",
-                    "Change local area code",
                     "Review spending mandate",
                 ],
                 "proposal": {
-                    "provider": "FieldSmith Pro",
+                    "provider": "AP2 Autonomous Node Network",
                     "plan": tier["title"],
                     "monthly_price": price,
                     "budget_cap": self.budget_cap,
                     "business_entity": self.business_entity,
-                    "area_code": self.area_code,
                     "payment_channel": "PayPal Subscriptions",
                 },
             }
@@ -162,10 +156,10 @@ class ContractorCopilot:
         if any(w in msg for w in ["audit", "inspect", "protocol", "trail", "trace", "proof", "hmac", "m2m", "evidence"]):
             reply = (
                 f"🛡️ **A2A Protocol Cryptographic Audit Trail Verified:**\n\n"
-                f"• **Step 1: Mandate Evaluation (RFC-7807)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog. Sealed via 64-char HMAC-SHA256 signature (`X-FieldSmith-Signature`).\n"
+                f"• **Step 1: Mandate Evaluation (RFC 8032)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog. Sealed via Ed25519 dual-key signatures and HMAC-SHA256 integrity.\n"
                 f"• **Step 2: PayPal Subscriptions Rails**: Authenticated recurring billing agreement (`I-AUTONOMOUS-8902`) with PayPal Vault merchant-initiated tokenization for zero off-session human intervention.\n"
-                f"• **Step 3: Telnyx 10DLC Binding**: Dedicated local 10DLC DID provisioned with STIR/SHAKEN Level A attestation, 100% inbound lockdown, and strict inbound screening defense.\n"
-                f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to Jobber GraphQL v2 (`JOB-ROUTING-8812`) and QuickBooks Online API v3 expense in Account 6300 (`QBO-EXP-9921`).\n\n"
+                f"• **Step 3: Dual-Transport FastMCP Binding**: Dedicated mcp+https compute endpoint provisioned with Dual-Transport FastMCP (RFC 8032).\n"
+                f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to QuickBooks Online API v3 expense in Account 6300 (`QBO-EXP-9921`).\n\n"
                 f"You can review the live JSON-RPC 2.0 frames in the right panel or click **Back-Office Payloads** in the top bar for raw artifacts."
             )
             return {
@@ -173,8 +167,8 @@ class ContractorCopilot:
                 "phase": "AUDIT",
                 "telemetry": telemetry,
                 "suggested_actions": [
-                    "View in FieldSmith Fleet Ledger",
-                    "Check Bryntum Telephony Timeline",
+                    "View in AP2 Fleet Ledger",
+                    "Check Bryntum Dispatch Timeline",
                     "Test Cryptographic Anti-Tamper (+1¢)",
                     "View Back-Office Payloads",
                 ],
@@ -185,12 +179,12 @@ class ContractorCopilot:
         # Priority 4: Fleet Ledger / Mission Control Navigation
         if any(w in msg for w in ["fleet", "ledger"]):
             reply = (
-                f"📊 **FieldSmith Enterprise Fleet Ledger Command Center:**\n\n"
-                f"The **Fleet Ledger** provides real-time enterprise telemetry across all active trade subscribers:\n"
-                f"• **Active Lines**: 14 Carrier-bound 10DLC lines across Central Florida\n"
+                f"📊 **AP2 Enterprise Fleet Ledger Command Center:**\n\n"
+                f"The **Fleet Ledger** provides real-time enterprise telemetry across all active node subscribers:\n"
+                f"• **Active Nodes**: 14 Verified FastMCP nodes across North America\n"
                 f"• **MRR**: $1,119.86/mo tracked via PayPal Subscriptions\n"
-                f"• **TCPA Shield Rate**: 99.8% robocall interception (1,420 scams filtered)\n"
-                f"• **Net Revenue Recovered**: $85,850.00 across 5 trade verticals\n\n"
+                f"• **Mandate Verification Rate**: 100% Ed25519 cryptographic integrity\n"
+                f"• **Annualized GMV**: $13,438.32 across 3 compute tiers\n\n"
                 f"Select the **AG Studio Fleet Ledger** tab in the top navigation to view the live command center dashboard and interactive analytics."
             )
             return {
@@ -199,19 +193,19 @@ class ContractorCopilot:
                 "telemetry": telemetry,
                 "suggested_actions": [
                     "Inspect A2A Protocol Audit Trail",
-                    "Check Bryntum Telephony Timeline",
+                    "Check Bryntum Dispatch Timeline",
                     "Did I miss any calls today?",
                 ],
                 "proposal": None,
                 "action_type": "NAVIGATE_FLEET_LEDGER",
             }
 
-        # Priority 5: Bryntum Telephony Timeline Navigation
+        # Priority 5: Bryntum Timeline Navigation
         if any(w in msg for w in ["bryntum", "timeline", "dispatch", "calendar", "schedule"]):
             reply = (
-                f"📅 **Bryntum Telephony Fleet Timeline:**\n\n"
-                f"The Bryntum timeline maps live call dispatching, interactive contractor schedule slots, and incoming customer triage in real time. "
-                f"Marcus Miller's line (`+1 ({self.area_code}) 267-8902`) is scheduled for 100% inbound AI voice intake.\n\n"
+                f"📅 **Bryntum Node Dispatch Timeline:**\n\n"
+                f"The Bryntum timeline maps live workload scheduling, resource allocations, and incoming task requests in real time. "
+                f"The dedicated gateway node is scheduled for active streaming.\n\n"
                 f"Select the **Bryntum Telephony Fleet Timeline** tab in the top navigation to view the dispatch calendar."
             )
             return {
@@ -220,7 +214,7 @@ class ContractorCopilot:
                 "telemetry": telemetry,
                 "suggested_actions": [
                     "Inspect A2A Protocol Audit Trail",
-                    "View in FieldSmith Fleet Ledger",
+                    "View in AP2 Fleet Ledger",
                     "Did I miss any calls today?",
                 ],
                 "proposal": None,
@@ -233,9 +227,9 @@ class ContractorCopilot:
                 f"💼 **Contractor Spending Mandate Policy:**\n\n"
                 f"• **Authorized Entity**: {self.business_entity}\n"
                 f"• **Pre-Approved Monthly Cap**: **${self.budget_cap:.2f}/mo**\n"
-                f"• **Standard AI Voice Screener**: **$79.99/mo** (Leaves **${(self.budget_cap - 79.99):.2f}/mo** headroom)\n"
-                f"• **Enforcement**: Cryptographic HMAC-SHA256 signature verification. "
-                f"Any charge exceeding ${self.budget_cap:.2f} is blocked at the gateway with `401 Signature Mismatch: Budget Policy Violated`."
+                f"• **Dedicated AI Service Gateway**: **$79.99/mo** (Leaves **${(self.budget_cap - 79.99):.2f}/mo** headroom)\n"
+                f"• **Enforcement**: Cryptographic Ed25519 signature verification. "
+                f"Any charge exceeding ${self.budget_cap:.2f} is blocked at the gateway."
             )
             return {
                 "reply": reply,
@@ -254,10 +248,9 @@ class ContractorCopilot:
             reply = (
                 f"📄 **Back-Office Artifact Inspector:**\n\n"
                 f"Every autonomous transaction generates authentic downline settlement payloads:\n"
-                f"• **Jobber GraphQL v2**: Client creation mutation (`JOB-CLIENT-8812`) & Job intake routing (`JOB-ROUTING-8812`)\n"
-                f"• **QuickBooks Online API v3**: Purchase expense memo (`QBO-EXP-9921`) categorized to Account 6300 (Software & Telephony)\n"
-                f"• **HMAC Cryptographic Proof**: Signature `X-FieldSmith-Signature` validating exact parameters\n\n"
-                f"Click **Back-Office Payloads** in the top bar to inspect the raw JSON and GraphQL structures."
+                f"• **QuickBooks Online API v3**: Purchase expense memo (`QBO-EXP-9921`) categorized to Account 6300 (Software & SaaS)\n"
+                f"• **Ed25519 Cryptographic Proof**: Dual mandate authorization validating exact parameters\n\n"
+                f"Click **Back-Office Payloads** in the top bar to inspect the raw JSON structures."
             )
             return {
                 "reply": reply,
@@ -265,29 +258,20 @@ class ContractorCopilot:
                 "telemetry": telemetry,
                 "suggested_actions": [
                     "Inspect A2A Protocol Audit Trail",
-                    "View in FieldSmith Fleet Ledger",
+                    "View in AP2 Fleet Ledger",
                     "Test Cryptographic Anti-Tamper (+1¢)",
                 ],
                 "proposal": None,
                 "action_type": "OPEN_INSPECTOR",
             }
 
-        # Priority 8: Check missed calls / leakage diagnosis
-        if any(w in msg for w in ["miss", "call", "buzz", "ring", "check", "today", "leak", "lost"]):
-            lead_summary = ""
-            if leads:
-                lead_summary = (
-                    f"\n\n**Recent High-Value Voicemails Detected:**\n"
-                    f"• **{leads[0]['caller_name']}**: *\"{leads[0]['voicemail_transcript'][:70]}...\"* (Est. **${leads[0]['estimated_job_value']:,.2f}**)\n"
-                    f"• **{leads[1]['caller_name']}**: *\"{leads[1]['voicemail_transcript'][:70]}...\"* (Est. **${leads[1]['estimated_job_value']:,.2f}**)"
-                )
-
+        # Priority 8: Workload queue / diagnosis
+        if any(w in msg for w in ["miss", "call", "buzz", "ring", "check", "today", "leak", "lost", "task", "queue"]):
             reply = (
-                f"Hey {self.contractor_name.split()[0]}, I analyzed your Verizon carrier log from the past 7 days. "
-                f"You missed **{missed} out of 24 incoming calls** ({telemetry.get('missed_call_rate', '33.3%')}) "
-                f"while on jobsites, representing an estimated **${loss:,.2f} in lost revenue**.{lead_summary}\n\n"
-                f"Because you're laying tile, you can't pick up mortar-handed. "
-                f"Would you like me to find an autonomous AI voice screener that answers your trade calls 24/7?"
+                f"Hey {self.contractor_name.split()[0]}, I analyzed your workload pipeline telemetry. "
+                f"You have **{missed} pending tasks** ({telemetry.get('queue_rate', '33.3%')}) "
+                f"awaiting compute capacity, representing an estimated **${loss:,.2f} in deferred output**.\n\n"
+                f"Would you like me to find an autonomous compute node to execute your workloads 24/7?"
             )
             return {
                 "reply": reply,
@@ -305,8 +289,8 @@ class ContractorCopilot:
         return {
             "reply": (
                 f"Hi {self.contractor_name.split()[0]}, I'm your AI Business Copilot. "
-                f"I monitor your jobsite call logs and enforce your company spending limits. "
-                f"You can ask me: *\"Did I miss any calls today?\"* or *\"How much revenue am I losing on jobsites?\"*"
+                f"I monitor your compute workloads and enforce your company spending limits. "
+                f"You can ask me: *\"Did I miss any calls today?\"* or *\"What's my monthly budget cap?\"*"
             ),
             "phase": "IDLE",
             "telemetry": telemetry,
@@ -321,10 +305,10 @@ class ContractorCopilot:
     async def execute_autonomous_a2a_cycle(self) -> Dict[str, Any]:
         """
         Executes the genuine machine-to-machine exchange through the MCP Server:
-        1. Mandate evaluation & HMAC-SHA256 signature
+        1. Mandate evaluation & Ed25519 signature
         2. PayPal subscription token authorization
-        3. Local DID line allocation via Telnyx
-        4. Downline Zapier sync into Jobber & QBO
+        3. Dedicated compute node endpoint provisioning
+        4. Downline Zapier sync into QBO
         """
         protocol_trace: List[Dict[str, Any]] = []
 
@@ -340,7 +324,7 @@ class ContractorCopilot:
                     "buyer_agent_id": f"buyer-{self.contractor_name.split()[0].lower()}",
                     "amount": 79.99,
                     "recurrence": "monthly",
-                    "category": "TELEPHONY_AI_SCREENER",
+                    "category": "autonomous-node-service",
                     "monthly_budget_cap": self.budget_cap,
                 },
             },
@@ -349,7 +333,7 @@ class ContractorCopilot:
         mandate_data = json.loads(mandate_resp["result"]["content"][0]["text"])
         approved = mandate_data.get("approved", False)
         monthly_price = 79.99
-        tier_title = self.trade_vertical
+        tier_title = "Dedicated AI Service Gateway"
 
         # Check for autonomous counter-offer if $79.99 exceeds budget cap
         if not approved:
@@ -367,7 +351,7 @@ class ContractorCopilot:
                             "buyer_agent_id": f"buyer-{self.contractor_name.split()[0].lower()}",
                             "amount": counter_amount,
                             "recurrence": "monthly",
-                            "category": "TELEPHONY_AI_SCREENER",
+                            "category": "autonomous-node-service",
                             "monthly_budget_cap": self.budget_cap,
                         },
                     },
@@ -403,7 +387,7 @@ class ContractorCopilot:
             "contractor_name": self.contractor_name,
             "business_entity": self.business_entity,
             "agreed_monthly_rate": monthly_price,
-            "tier_id": getattr(self, "tier_id", getattr(self, "trade_vertical", "fieldsmith-pro")),
+            "tier_id": "ap2-gateway" if monthly_price == 79.99 else ("ap2-batch" if monthly_price == 49.99 else "ap2-cluster"),
             "mandate_proof_hash": proof_hash,
         }
         protocol_trace.append({
@@ -412,45 +396,42 @@ class ContractorCopilot:
             "protocol": "PayPal Subscriptions v1",
             "action": "AUTHORIZE_BILLING_AGREEMENT",
             "subscription_id": sub_id,
-            "plan_id": "P-5ML4271244454362WXNWU5NQ",
+            "plan_id": "P-AP2-SERVICE-GATEWAY",
             "monthly_amount": monthly_price,
             "payer_entity": self.business_entity,
         })
 
-        # Step 3: Local DID Telecom Line Provisioning
+        # Step 3: Compute Node Endpoint Provisioning
         t3 = datetime.now(timezone.utc).isoformat()
+        tier_target = "ap2-gateway" if monthly_price == 79.99 else ("ap2-batch" if monthly_price == 49.99 else "ap2-cluster")
         prov_req = {
             "jsonrpc": "2.0",
             "id": 102,
             "method": "tools/call",
             "params": {
-                "name": "provision_telecom_line",
+                "name": "provision_compute_node",
                 "arguments": {
                     "subscription_id": sub_id,
                     "contractor_email": self.contractor_email,
-                    "area_code": self.area_code,
-                    "simulate_exhaustion": self.simulate_exhaustion,
+                    "tier_id": tier_target,
                 },
             },
         }
         prov_resp = await process_mcp_request(prov_req)
         prov_data = json.loads(prov_resp["result"]["content"][0]["text"])
-        assigned_did = prov_data.get("assignedDid") or prov_data.get("assigned_did", f"+1 ({self.area_code}) 267-8902")
+        assigned_did = prov_data.get("mcp_endpoint") or prov_data.get("assigned_did") or "mcp+https://gateway-01.acme-systems.io/mcp"
         protocol_trace.append({
             "step": 3,
             "timestamp": t3,
             "protocol": "MCP JSON-RPC 2.0",
-            "method": "tools/call:provision_telecom_line",
+            "method": "tools/call:provision_compute_node",
             "assigned_did": assigned_did,
-            "carrier": prov_data.get("carrier", "Telnyx LLC"),
-            "routing_state": "ACTIVE_10DLC_BOUND",
-            "tcpa_status": "100% INBOUND ONLY (ZERO ROBOCALLS)",
-            "lata_failover_active": prov_data.get("lata_failover_active", False) or prov_data.get("lataFailoverActive", False),
-            "lata_id": prov_data.get("lata_id") or prov_data.get("lataId"),
-            "allocated_area_code": prov_data.get("allocated_area_code") or prov_data.get("allocatedAreaCode"),
+            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "routing_state": "ACTIVE_COMPUTE_NODE",
+            "tcpa_status": "100% ED25519 SIGNED MANDATE",
         })
 
-        # Step 4: Downline Zapier MCP Dispatch (Jobber + QBO)
+        # Step 4: Downline Zapier MCP Dispatch (QBO)
         t4 = datetime.now(timezone.utc).isoformat()
         zap_req = {
             "jsonrpc": "2.0",
@@ -479,9 +460,7 @@ class ContractorCopilot:
             "protocol": "MCP JSON-RPC 2.0",
             "method": "tools/call:dispatch_zapier_mcp",
             "qbo_expense_id": zap_data.get("qbo_draft_invoice_id") or zap_data.get("qboDraftInvoiceId"),
-            "jobber_routing_id": zap_data.get("jobber_quote_id") or zap_data.get("jobberQuoteId"),
             "gcal_event_id": zap_data.get("google_calendar_event_id") or zap_data.get("googleCalendarEventId"),
-            "jobber_export": zap_data.get("jobber_payload") or zap_data.get("jobberPayload"),
             "qbo_export": zap_data.get("qbo_payload") or zap_data.get("qboPayload"),
             "status": "COMPLETED",
         })

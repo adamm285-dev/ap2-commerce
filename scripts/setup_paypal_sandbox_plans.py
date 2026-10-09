@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-FieldSmith Pro — PayPal Sandbox Product & Billing Plans Provisioner
-===================================================================
-Automates creation of the FieldSmith Pro Catalog Product and the 3 subscription
-billing plans (Solo Starter $49.99, FieldSmith Pro $79.99, Pro Dispatch $179.99)
+AP2 Autonomous Commerce — PayPal Sandbox Product & Billing Plans Provisioner
+============================================================================
+Automates creation of the AP2 Catalog Product and the 3 subscription
+billing plans (AP2 Batch Worker $49.99, AP2 Service Gateway $79.99, AP2 Cluster Node $179.99)
 on PayPal Developer Sandbox.
 
 Outputs ready-to-paste environment variables for .env:
@@ -55,12 +55,12 @@ async def get_sandbox_token(client: httpx.AsyncClient, client_id: str, client_se
 
 
 async def create_catalog_product(client: httpx.AsyncClient, token: str, base_url: str) -> str:
-    """Creates the FieldSmith Pro SaaS Catalog Product."""
+    """Creates the AP2 Autonomous Compute Network Catalog Product."""
     payload = {
-        "name": "FieldSmith Pro A2A Telephony",
-        "description": "Multi-trade AI receptionist & screener phone line with AP2 agent-to-agent commerce.",
+        "name": "AP2 Autonomous Compute Network",
+        "description": "Autonomous Agent Payments Protocol (AP2) compute node provisioning and service gateways.",
         "type": "SERVICE",
-        "category": "TELECOMMUNICATION_SERVICES",
+        "category": "COMPUTER_SOFTWARE",
     }
     res = await client.post(
         f"{base_url}/v1/catalogs/products",
@@ -127,7 +127,7 @@ async def main():
     base_url = settings.paypal_base_url.rstrip("/")
 
     print(f"\n{BOLD}{CYAN}══════════════════════════════════════════════════════════════════════{RESET}")
-    print(f"{BOLD}{CYAN}  FieldSmith Pro — PayPal Sandbox Billing Plans Provisioner{RESET}")
+    print(f"{BOLD}{CYAN}  AP2 Autonomous Commerce — PayPal Sandbox Billing Plans Provisioner{RESET}")
     print(f"{BOLD}{CYAN}══════════════════════════════════════════════════════════════════════{RESET}\n")
 
     is_dry_run = args.dry_run or not client_id or not client_secret
@@ -140,14 +140,14 @@ async def main():
             print(f"{YELLOW}[DRY-RUN] Simulating plan creation as requested.{RESET}\n")
 
         # Deterministic simulated plan IDs
-        sim_solo = "P-FLSMITH-SOLO-STARTER"
-        sim_pro = "P-FLSMITH-PRO"
-        sim_dispatch = "P-FLSMITH-DISPATCH"
+        sim_solo = "P-AP2-BATCH-WORKER"
+        sim_pro = "P-AP2-SERVICE-GATEWAY"
+        sim_dispatch = "P-AP2-CLUSTER-NODE"
 
-        print(f"{GREEN}✓ Simulated Catalog Product:{RESET} PROD-FIELDSMITH-A2A-TELEPHONY")
-        print(f"{GREEN}✓ Plan 1:{RESET} FieldSmith Solo Starter ($49.99/mo)  --> {BOLD}{sim_solo}{RESET}")
-        print(f"{GREEN}✓ Plan 2:{RESET} FieldSmith Pro ($79.99/mo)           --> {BOLD}{sim_pro}{RESET}")
-        print(f"{GREEN}✓ Plan 3:{RESET} FieldSmith Pro Dispatch ($179.99/mo)  --> {BOLD}{sim_dispatch}{RESET}\n")
+        print(f"{GREEN}✓ Simulated Catalog Product:{RESET} PROD-AP2-AUTONOMOUS-COMPUTE")
+        print(f"{GREEN}✓ Plan 1:{RESET} AP2 Batch Worker ($49.99/mo)       --> {BOLD}{sim_solo}{RESET}")
+        print(f"{GREEN}✓ Plan 2:{RESET} AP2 Service Gateway ($79.99/mo)     --> {BOLD}{sim_pro}{RESET}")
+        print(f"{GREEN}✓ Plan 3:{RESET} AP2 Cluster Node ($179.99/mo)       --> {BOLD}{sim_dispatch}{RESET}\n")
 
         print(f"{CYAN}Configuration to paste into your .env file:{RESET}")
         print(f"--------------------------------------------------")
@@ -166,7 +166,7 @@ async def main():
             print(f"  {RED}✗ Authentication failed: {e}{RESET}")
             return 1
 
-        print(f"{CYAN}[2/4] Creating Catalog Product 'FieldSmith Pro A2A Telephony'...{RESET}")
+        print(f"{CYAN}[2/4] Creating Catalog Product 'AP2 Autonomous Compute Network'...{RESET}")
         try:
             product_id = await create_catalog_product(client, token, base_url)
             print(f"  {GREEN}✓ Product Created:{RESET} {BOLD}{product_id}{RESET}")
@@ -178,27 +178,27 @@ async def main():
         try:
             solo_id = await create_billing_plan(
                 client, token, base_url, product_id,
-                name="FieldSmith Solo Starter",
-                description="Dedicated 10DLC phone line with 125 AI screened calls/mo & spam shield.",
+                name="AP2 Batch Worker",
+                description="High-throughput batch worker compute node with 125 operations/mo.",
                 monthly_price=49.99,
             )
-            print(f"  {GREEN}✓ Solo Starter ($49.99/mo):{RESET} {BOLD}{solo_id}{RESET}")
+            print(f"  {GREEN}✓ Batch Worker ($49.99/mo):{RESET} {BOLD}{solo_id}{RESET}")
 
             pro_id = await create_billing_plan(
                 client, token, base_url, product_id,
-                name="FieldSmith Pro",
-                description="Dedicated line with 450 AI screened calls/mo, multi-crew dispatch & priority support.",
+                name="AP2 Service Gateway",
+                description="Dedicated AI service gateway compute node with 450 operations/mo.",
                 monthly_price=79.99,
             )
-            print(f"  {GREEN}✓ FieldSmith Pro ($79.99/mo):{RESET} {BOLD}{pro_id}{RESET}")
+            print(f"  {GREEN}✓ Service Gateway ($79.99/mo):{RESET} {BOLD}{pro_id}{RESET}")
 
             dispatch_id = await create_billing_plan(
                 client, token, base_url, product_id,
-                name="FieldSmith Pro Dispatch",
-                description="Dedicated line with 1,200 AI screened calls/mo, unlimited crew members & routing.",
+                name="AP2 Cluster Node",
+                description="Enterprise cluster compute node with 1,200 operations/mo.",
                 monthly_price=179.99,
             )
-            print(f"  {GREEN}✓ Pro Dispatch ($179.99/mo):{RESET} {BOLD}{dispatch_id}{RESET}")
+            print(f"  {GREEN}✓ Cluster Node ($179.99/mo):{RESET} {BOLD}{dispatch_id}{RESET}")
         except Exception as e:
             print(f"  {RED}✗ Plan creation failed: {e}{RESET}")
             return 1

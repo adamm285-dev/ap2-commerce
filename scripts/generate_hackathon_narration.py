@@ -1,5 +1,5 @@
 """
-Generates high-fidelity voiceover narration for the FieldSmith Pro PayPal AI Hackathon demo video.
+Generates high-fidelity voiceover narration for the AP2 Autonomous Commerce PayPal AI Hackathon demo video.
 Uses Google Gemini Live (gemini-3.8-live) with the canonical 'Sulafat' voice,
 tuned for an articulate, confident, tech-founder presentation tone.
 Generates individual act MP3s and concatenates into master_narration_2min.mp3.
@@ -22,38 +22,37 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ACT_SCRIPTS = {
     "act1_problem": (
-        "Every day, solo trade contractors like custom tile setters and emergency plumbers "
-        "lose over $6,200 a month in uncaptured revenue from missed calls while operating machinery "
-        "or driving on jobsites. They don't have time for 15-field web forms or SaaS onboarding fatigue. "
-        "FieldSmith Pro solves this with an Autonomous Agent-to-Agent Commerce protocol built on PayPal."
+        "Every day, autonomous software agents and developer teams hit severe compute capacity bottlenecks. "
+        "Procuring specialized execution nodes still requires manual credit card forms, API dashboard logins, "
+        "and human onboarding fatigue. AP2 Autonomous Commerce solves this with an Autonomous Agent-to-Agent "
+        "Commerce protocol built on PayPal Subscriptions and Vault."
     ),
     "act2_buyer_agent": (
-        "Meet Marcus Miller's Autonomous Buyer Agent. When Marcus is busy, his agent inspects "
-        "telephony call leaks, verifies his local spending mandate cap of $100 a month, and "
-        "negotiates directly with FieldSmith's Seller Agent over Model Context Protocol. "
-        "Once approved, the agent issues a cryptographic HMAC proof and delegates a recurring "
-        "$89-a-month PayPal subscription with verified KYC identity, instantly allocating a "
-        "dedicated Telnyx business line."
+        "Meet an autonomous buyer agent needing dedicated compute. The agent evaluates its pre-approved "
+        "spending mandate cap of $100 a month and negotiates directly with the AP2 Seller Node over Model Context Protocol. "
+        "Once approved, the agent issues an Ed25519 cryptographic proof and executes a recurring "
+        "$79.99-a-month PayPal subscription with verified KYC identity, instantly provisioning a "
+        "dedicated FastMCP compute endpoint."
     ),
     "act3_bryntum_agstudio": (
-        "In our operations deck, Bryntum Scheduler visualizes telephony fleet readiness across "
-        "four Florida territory zones. Notice Marcus Miller's card dynamically mutates in place "
-        "from amber awaiting payment to vibrant green line active upon payment confirmation. "
+        "In our operations deck, Bryntum Scheduler visualizes compute node allocation across "
+        "regional workload zones. Notice the subscriber node dynamically mutates in place "
+        "from amber awaiting payment to vibrant green node active upon payment confirmation. "
         "Meanwhile, AG Studio version 3 embeds high-density analytics, allowing fleet managers "
-        "to toggle between View and Edit modes, customize visual reports, and track recovered "
-        "revenue by trade vertical."
+        "to toggle between View and Edit modes, customize visual reports, and reconcile over "
+        "$13,400 in ARR across 14 autonomous nodes."
     ),
     "act4_zapier_mcp": (
         "Once PayPal verifies the payment, our Zapier Model Context Protocol bridge fires an "
-        "autonomous downline action chain: logging the recurring software expense into QuickBooks Online, "
-        "routing the new Telnyx phone line into Jobber CRM, and scheduling Marcus's daily 6:30 AM "
-        "Executive Dispatch briefing on Google Calendar — eliminating evening paperwork entirely."
+        "autonomous downline action chain: logging the recurring software expense into QuickBooks Online "
+        "general ledger Account 6300, routing the node endpoint into operational systems, and scheduling "
+        "the morning node health audit on Google Calendar — eliminating manual bookkeeping entirely."
     ),
     "act5_kyc_telecom": (
-        "Crucially, every phone line is legally anchored to verified PayPal subscriber identity — "
-        "ensuring 100% inbound protection with zero autodialer abuse. "
-        "With 17 automated tests, complete OpenAPI 3.1 specifications for APIMatic SDK generation, "
-        "and zero human friction, this is FieldSmith Pro. Built for the PayPal AI Hackathon."
+        "Crucially, every compute node allocation is cryptographically anchored to verified PayPal subscriber identity — "
+        "ensuring mathematical non-repudiation with RFC 8032 Ed25519 dual mandates. "
+        "With 233 automated tests, complete OpenAPI 3.1 specifications for SDK generation, "
+        "and zero human friction, this is AP2 Autonomous Commerce. Built for the PayPal AI Hackathon."
     ),
 }
 

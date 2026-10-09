@@ -183,23 +183,22 @@ def main():
     details_fake_res = post_rpc(client, details_fake_req)
     log_entry("8. TOOL: get_subscription_details (NOT FOUND)", details_fake_cmd, json.dumps(details_fake_res, indent=2))
 
-    # 9. provision_telecom_line (Hidden in AP2 mode -> -32601)
-    telecom_req = {
+    # 9. unregistered_tool_call (Unregistered Tool -> -32601)
+    unreg_req = {
         "jsonrpc": "2.0",
         "id": 9,
         "method": "tools/call",
         "params": {
-            "name": "provision_telecom_line",
+            "name": "unregistered_tool_call",
             "arguments": {
                 "subscription_id": sub_id,
-                "contractor_email": "audit.buyer@acme-systems.io",
-                "area_code": "863",
+                "buyer_email": "audit.buyer@acme-systems.io",
             },
         },
     }
-    telecom_cmd = f"curl -s -X POST {SERVER_URL} -H 'Content-Type: application/json' -d '{json.dumps(telecom_req)}'"
-    telecom_res = post_rpc(client, telecom_req)
-    log_entry("9. TOOL: provision_telecom_line (HIDDEN IN AP2 -> -32601)", telecom_cmd, json.dumps(telecom_res, indent=2))
+    unreg_cmd = f"curl -s -X POST {SERVER_URL} -H 'Content-Type: application/json' -d '{json.dumps(unreg_req)}'"
+    unreg_res = post_rpc(client, unreg_req)
+    log_entry("9. TOOL: unregistered_tool_call (NOT FOUND -> -32601)", unreg_cmd, json.dumps(unreg_res, indent=2))
 
     print(f"\n[DONE] All audit queries completed successfully! Output saved to: {LOG_FILE}")
 

@@ -17,17 +17,16 @@ client = TestClient(app)
 def test_compliance_note_in_provision_response():
     resp = ProvisionResponse(
         status="ALLOCATED",
-        assignedDid="+18635550100",
-        carrier="Telnyx",
-        routingState="ACTIVE",
+        endpoint="mcp+https://gateway-01.acme-systems.io/mcp",
+        carrier="Dual-Transport FastMCP (RFC 8032)",
+        routingState="ACTIVE_COMPUTE_NODE",
         subscriptionId="I-TEST-SUB-01",
     )
     assert resp.compliance_note is not None
-    assert "Voice routing active immediately" in resp.compliance_note
-    assert "A2P 10DLC messaging active upon campaign vetting" in resp.compliance_note
+    assert "Compute node active immediately" in resp.compliance_note
     dumped = resp.model_dump(by_alias=True)
     assert "complianceNote" in dumped
-    assert "Voice routing active immediately" in dumped["complianceNote"]
+    assert "Compute node active immediately" in dumped["complianceNote"]
 
 
 def test_llms_txt_endpoints():
@@ -36,10 +35,7 @@ def test_llms_txt_endpoints():
         assert res.status_code == 200
         assert "text/plain" in res.headers["content-type"]
         text = res.text
-        assert (
-            "FieldSmith Pro A2A Autonomous Commerce Protocol" in text
-            or "AP2 Autonomous Seller Node Protocol" in text
-        )
+        assert "AP2 Autonomous Seller Node Protocol" in text
         assert "PayPal Sandbox demo for the PayPal AI Hackathon" in text
         assert "FastMCP Tools Catalog" in text
         assert "Dynamic Buyer Key Registration" in text

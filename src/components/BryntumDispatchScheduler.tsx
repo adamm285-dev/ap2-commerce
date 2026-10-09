@@ -74,7 +74,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
           { name: 'get_service_catalog', description: 'Lists available seller capabilities and pricing' },
           { name: 'negotiate_tier_terms', description: 'Evaluates buyer budget and generates counter-offers' },
           { name: 'purchase_subscription', description: 'Initiates PayPal subscription and locks mandate' },
-          { name: 'provision_telecom_line', description: 'Provisions dedicated enclave worker endpoint' },
+          { name: 'provision_compute_node', description: 'Provisions dedicated enclave worker endpoint' },
           { name: 'dispatch_zapier_mcp', description: 'Triggers CloudEvents v1.0 & QBO GL 6300 sync' },
         ],
       },

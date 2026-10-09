@@ -1,5 +1,5 @@
 """
-FieldSmith Pro A2A Commerce & Multi-Agent Network — FastAPI Server.
+AP2 Autonomous Agent Commerce & Compute Network — FastAPI Server.
 Implements the full OpenAPI 3.1.0 contract defined in openapi.yaml.
 Supports 100% offline mock simulation when external keys are not configured.
 """
@@ -46,7 +46,6 @@ from .models import (
 from .services.mandate_evaluator import evaluate_spending_mandate, ledger
 from .services.paypal_service import paypal_service
 from .services.plan_catalog import PLANS, QUOTA_UNIT, quota_label
-from .services.telnyx_provisioner import telnyx_provisioner
 from .services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
 from .services.crypto_mandate import (
     generate_dynamic_mandate_proof,
@@ -109,7 +108,7 @@ def _has_admin_key(request: Request) -> bool:
     return bool(token) and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 app = FastAPI(
-    title="FieldSmith Pro Agentic Commerce & AP2 API",
+    title="AP2 Autonomous Agent Commerce & Compute API",
     description="Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Trade Contractors",
     version="1.0.0",
     docs_url="/docs",
@@ -124,7 +123,7 @@ app.include_router(m2m_router, prefix="/api")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://api.fieldsmith.pro",
+        "https://api.ap2-commerce.org",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
@@ -143,49 +142,28 @@ if _DIST_DIR.exists():
         app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
     app.mount("/portal", StaticFiles(directory=str(_DIST_DIR), html=True), name="portal")
 
-# In-memory trade service catalog
+# In-memory compute service catalog
 TRADE_CATALOG = [
     TradeService(
-        id="solo-starter",
-        title="Solo Starter Intake (Negotiated / Low-Volume)",
+        id="ap2-batch",
+        title="High-Throughput Batch Worker",
         monthlySubscription=49.99,
-        depositRange="$99.00 - $149.00",
-        description=f"Autonomous intake, essential SMS follow-up, {quota_label('solo-starter')}, and verified deposit locking.",
+        depositRange="$0.00",
+        description=f"Autonomous asynchronous workload worker, {quota_label('ap2-batch')}, and Ed25519 mandate settlement.",
     ),
     TradeService(
-        id="flooring-tile",
-        title="Tile & Custom Flooring",
+        id="ap2-gateway",
+        title="Dedicated AI Service Gateway",
         monthlySubscription=79.99,
-        depositRange="$149.00 - $250.00",
-        description="Autonomous intake, substrate scoping, square footage waste takeoff, and verified deposit locking.",
+        depositRange="$0.00",
+        description=f"Synchronous low-latency AI service gateway, {quota_label('ap2-gateway')}, and dual-transport FastMCP stream.",
     ),
     TradeService(
-        id="roofing-storm",
-        title="Roofing & Storm Restoration",
-        monthlySubscription=79.99,
-        depositRange="$250.00 - $500.00",
-        description="Hail/wind damage triage, drone photo link dispatch, insurance claim capture, and contractor dispatch.",
-    ),
-    TradeService(
-        id="plumbing-emergency",
-        title="Emergency Plumbing & Rooter",
-        monthlySubscription=79.99,
-        depositRange="$149.00 - $200.00",
-        description="Burst pipe triage, shut-off valve guidance, emergency mobilization deposit, and turn-by-turn routing.",
-    ),
-    TradeService(
-        id="towing-roadside",
-        title="24/7 Towing & Heavy Roadside",
-        monthlySubscription=79.99,
-        depositRange="$99.00 - $175.00",
-        description="Highway shoulder GPS anchor, vehicle gross weight classification, and upfront roll deposit.",
-    ),
-    TradeService(
-        id="pro-dispatch",
-        title="Pro Multi-Trade / High-Volume Dispatch",
+        id="ap2-cluster",
+        title="Enterprise Cluster Node",
         monthlySubscription=179.99,
-        depositRange="$250.00 - $750.00",
-        description=f"Fleet-wide multi-trade routing, {quota_label('pro-dispatch')}, unlimited crew members, and ERP automation.",
+        depositRange="$0.00",
+        description=f"High-density multi-tenant compute cluster node, {quota_label('ap2-cluster')}, and enterprise SLA verification.",
     ),
 ]
 
@@ -197,7 +175,6 @@ async def health_check():
         "status": "healthy",
         "mock_mode": settings.mock_external_apis,
         "paypal_configured": bool(settings.paypal_client_id),
-        "telnyx_configured": bool(settings.telnyx_api_key),
         "zapier_configured": bool(settings.zapier_nla_api_key),
         "mcp_server_active": True,
     }
@@ -212,16 +189,16 @@ async def agent_discovery_card():
     Publishes capabilities, cryptographic identity keys, pricing plans, and MCP endpoints.
     """
     return {
-        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt.",
-        "name": "FieldSmith Pro A2A Seller Agent (PayPal Sandbox Demo)",
-        "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Solo Field Service Contractors. (PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt).",
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /public/llms.txt.",
+        "name": "AP2 Autonomous Seller Node (PayPal Sandbox Demo)",
+        "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Compute & Infrastructure Services.",
         "version": "1.0.0",
         "protocol_version": "2024-11-05",
         "supported_protocols": ["A2A", "AP2", "MCP"],
         "provider": {
-            "organization": "FieldSmith Pro LLC",
-            "service": "FieldSmith Autonomous Telephony SaaS",
-            "url": "https://fieldsmith.pro",
+            "organization": "AP2 Autonomous Node Network Inc.",
+            "service": "AP2 Autonomous Infrastructure SaaS",
+            "url": "https://ap2-commerce.org",
         },
         "endpoints": {
             "mcp": "/mcp",
@@ -243,7 +220,7 @@ async def agent_discovery_card():
                 "tier_id": plan["tier_id"],
                 "title": plan["title"],
                 "monthly_price": plan["monthly_price"],
-                "screened_calls_per_month": plan["screened_calls_per_month"],
+                "workload_tasks_per_month": plan.get("workload_tasks_per_month", 125),
             }
             for plan in PLANS
         ],
@@ -254,7 +231,7 @@ async def agent_discovery_card():
             "ap2_intent_mandate_verification": True,
             "ap2_cart_mandate_issuance": True,
             "paypal_vault_recurring": True,
-            "telecom_10dlc_allocation": True,
+            "compute_node_allocation": True,
             "backoffice_erp_dispatch": True,
         },
     }
@@ -272,7 +249,7 @@ async def mcp_get_endpoint(request: Request):
     if "text/event-stream" in accept:
         return await mcp_wire_stream(request)
     return {
-        "name": "FieldSmith Pro A2A Seller FastMCP Server",
+        "name": "AP2 Autonomous Seller FastMCP Server",
         "version": "1.0.0",
         "protocolVersion": "2024-11-05",
         "transport": "streamable_http",
@@ -293,11 +270,11 @@ async def mcp_jsonrpc_endpoint(request: Request):
     """
     Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint.
     Allows external autonomous agents (Grok, ChatGPT, Claude, Cursor) to discover
-    and invoke FieldSmith telephony capabilities, mandate evaluation, and line provisioning.
+    and invoke AP2 compute node capabilities, mandate evaluation, and node provisioning.
     """
     if request.method == "GET":
         return {
-            "name": "fieldsmith-pro-a2a-seller",
+            "name": "ap2-seller-node",
             "version": "1.0.0",
             "protocolVersion": "2024-11-05",
             "status": "online",
@@ -331,13 +308,13 @@ async def mcp_jsonrpc_endpoint(request: Request):
 async def well_known_mcp_discovery():
     """Machine-readable Model Context Protocol discovery catalog."""
     return {
-        "name": "FieldSmith Pro A2A Seller Agent",
+        "name": "AP2 Autonomous Seller Node",
         "version": "1.0.0",
-        "description": "24/7 autonomous AI receptionist, telecom line provisioning, and subscription bargaining platform for field service contractors (roofing, plumbing, tile/flooring, HVAC, towing).",
-        "agent_instructions": "https://fieldsmith.pro/agents",
+        "description": "24/7 autonomous compute node provisioning, workload orchestration, and subscription bargaining platform for agent networks.",
+        "agent_instructions": "https://ap2-commerce.org/agents",
         "mcp_server": {
-            "url": "https://api.fieldsmith.pro/a2a/mcp",
-            "sse_url": "https://api.fieldsmith.pro/sse",
+            "url": "https://api.ap2-commerce.org/a2a/mcp",
+            "sse_url": "https://api.ap2-commerce.org/sse",
             "transport": "streamable_http",
             "protocol": "2024-11-05",
             "tools": [
@@ -346,7 +323,7 @@ async def well_known_mcp_discovery():
                 "negotiate_tier_terms",
                 "evaluate_spending_mandate",
                 "purchase_subscription",
-                "provision_telecom_line",
+                "provision_compute_node",
                 "dispatch_zapier_mcp",
             ],
         },
@@ -357,9 +334,9 @@ async def well_known_mcp_discovery():
             "billing_period": "monthly",
         },
         "regulatory_compliance": {
-            "us_domestic_only": True,
-            "nanp_only": True,
-            "jurisdiction": "US (NANP +1)",
+            "ap2_mandate_verification": True,
+            "ed25519_signatures": True,
+            "audit_trail_retention": "immutable",
         },
     }
 
@@ -368,17 +345,17 @@ async def well_known_mcp_discovery():
 async def agents_json_discovery():
     """Agent discovery manifest specifying autonomous endpoints and capabilities."""
     return {
-        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt.",
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /public/llms.txt.",
         "schema_version": "1.0",
-        "name": "FieldSmith Pro Autonomous Marketplace (PayPal Sandbox Demo)",
-        "description": "Agent-to-Agent autonomous trade contractor dispatch and voice receptionist commerce system. (PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt).",
+        "name": "AP2 Autonomous Marketplace (PayPal Sandbox Demo)",
+        "description": "Agent-to-Agent autonomous compute node and service gateway commerce system.",
         "endpoints": {
-            "mcp": "https://api.fieldsmith.pro/a2a/mcp",
-            "sse": "https://api.fieldsmith.pro/sse",
-            "portal": "https://api.fieldsmith.pro/portal/",
-            "catalog": "https://api.fieldsmith.pro/api/agent/catalog",
-            "keys_challenge": "https://api.fieldsmith.pro/api/agent/keys/challenge",
-            "keys_register": "https://api.fieldsmith.pro/api/agent/keys/register",
+            "mcp": "https://api.ap2-commerce.org/a2a/mcp",
+            "sse": "https://api.ap2-commerce.org/sse",
+            "portal": "https://api.ap2-commerce.org/portal/",
+            "catalog": "https://api.ap2-commerce.org/api/agent/catalog",
+            "keys_challenge": "https://api.ap2-commerce.org/api/agent/keys/challenge",
+            "keys_register": "https://api.ap2-commerce.org/api/agent/keys/register",
         },
     }
 
@@ -391,7 +368,7 @@ async def llms_txt_discovery():
     if llms_path.exists():
         content = llms_path.read_text(encoding="utf-8")
     else:
-        content = "# FieldSmith Pro A2A Autonomous Commerce Protocol\n"
+        content = "# AP2 Autonomous Agent Commerce Protocol\n"
     from fastapi.responses import PlainTextResponse
     return PlainTextResponse(content, media_type="text/plain; charset=utf-8")
 
@@ -404,7 +381,7 @@ async def llms_txt_discovery():
 async def mcp_wire_stream(request: Request):
     """
     Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames
-    exchanged between agents and the FieldSmith FastMCP Server.
+    exchanged between agents and the AP2 FastMCP Server.
     Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.
     """
     async def event_generator():
@@ -416,7 +393,7 @@ async def mcp_wire_stream(request: Request):
             # 2. Informational connection event
             init_event = {
                 "type": "connected",
-                "message": "FieldSmith MCP Wire Protocol SSE Stream Active",
+                "message": "AP2 MCP Wire Protocol SSE Stream Active",
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             yield f"data: {json.dumps(init_event)}\n\n"
@@ -530,8 +507,8 @@ async def get_sample_proof(profile: str = Query("default")):
         )
     else:
         proof = generate_dynamic_mandate_proof(
-            contractor_id="contractor_marcus_863",
-            business_name="Miller Custom Flooring LLC",
+            contractor_id="buyer_agent_alpha_01",
+            business_name="Nexus Autonomous Systems Corp",
             monthly_cap_usd=100.00,
             agreed_price_usd=79.99,
             nonce=nonce,
@@ -547,9 +524,9 @@ async def get_sample_proof(profile: str = Query("default")):
 class CopilotChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     message: str
-    contractorName: Optional[str] = Field(default="Marcus Miller", alias="contractor_name")
-    businessEntity: Optional[str] = Field(default="Miller Custom Flooring LLC", alias="business_entity")
-    tradeVertical: Optional[str] = Field(default="Tile & Custom Flooring", alias="trade_vertical")
+    contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
+    businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
+    tradeVertical: Optional[str] = Field(default="Autonomous Compute & Worker Nodes", alias="trade_vertical")
     areaCode: Optional[str] = Field(default="863", alias="area_code")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
@@ -559,13 +536,13 @@ class CopilotChatRequest(BaseModel):
 async def copilot_chat_endpoint(req: CopilotChatRequest):
     """
     Contractor AI Copilot conversational engine.
-    Ingests messages from the contractor, diagnoses call leaks, queries FieldSmith Seller MCP,
+    Ingests messages from the contractor, diagnoses call leaks, queries AP2 Seller MCP,
     and returns conversational responses and proposed A2A actions.
     """
     copilot = ContractorCopilot(
-        contractor_name=req.contractorName or "Marcus Miller",
-        business_entity=req.businessEntity or "Miller Custom Flooring LLC",
-        trade_vertical=req.tradeVertical or "Tile & Custom Flooring",
+        contractor_name=req.contractorName or "Nexus Autonomous Buyer",
+        business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
+        trade_vertical=req.tradeVertical or "Autonomous Compute & Worker Nodes",
         area_code=req.areaCode or "863",
         budget_cap=req.budgetCap or 100.00,
         simulate_exhaustion=req.simulateExhaustion or False,
@@ -583,7 +560,7 @@ async def get_trade_catalog():
 @app.post("/api/agent/quote", response_model=QuoteResponse, tags=["Quoting & Scoping"])
 async def calculate_trade_quote(request: QuoteRequest):
     """Calculates trade scoping estimates, waste allowances, and required mobilization deposits."""
-    # Waste allowance calculation (standard 10% overage for flooring/tile, 15% for roofing)
+    # Waste allowance calculation (standard 10% overage for standard materials, 15% for complex)
     waste_multiplier = 1.15 if "roofing" in request.trade_id else 1.10
     waste_sq_ft = round(request.square_footage * waste_multiplier, 1)
 
@@ -666,15 +643,15 @@ async def reset_mandate_endpoint(request: Request):
     "/api/agent/provision",
     response_model=ProvisionResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Telephony Provisioning"],
+    tags=["Compute Node Provisioning"],
 )
 async def provision_line_endpoint(request: ProvisionRequest):
-    """Provisions a dedicated 10DLC telephone DID anchored to verified PayPal subscriber identity."""
-    res = await seller_agent.provision_telecom_line(
+    """Provisions a dedicated autonomous compute node endpoint anchored to verified PayPal subscriber identity."""
+    res = await seller_agent.provision_compute_node(
         subscription_id=request.subscription_id,
+        buyer_email=request.contractor_email,
+        node_type="gateway",
         contractor_email=request.contractor_email,
-        area_code=request.area_code or "863",
-        simulate_exhaustion=request.simulate_exhaustion or False,
     )
     if res.get("status") == "REJECTED":
         err = res.get("error", "PROVISIONING_FAILED")
@@ -687,11 +664,12 @@ async def provision_line_endpoint(request: ProvisionRequest):
             "SUBSCRIPTION_SUSPENDED",
             "SUBSCRIPTION_PAYMENT_FAILED",
             "SUBSCRIPTION_SUPERSEDED",
+            "SUBSCRIPTION_NOT_ACTIVE",
         ]:
             status_code = status.HTTP_403_FORBIDDEN
         elif err == "SUBSCRIPTION_NOT_FOUND":
             status_code = status.HTTP_404_NOT_FOUND
-        elif err == "PAYMENT_APPROVAL_PENDING":
+        elif err in ["PAYMENT_APPROVAL_PENDING", "SUBSCRIPTION_NOT_CAPTURED"]:
             status_code = status.HTTP_402_PAYMENT_REQUIRED
         raise HTTPException(
             status_code=status_code,
@@ -704,10 +682,10 @@ async def provision_line_endpoint(request: ProvisionRequest):
         params = next_action.get("parameters", {})
         zapier_req = ZapierSyncRequest(
             workflowType=params.get("workflow_type", "a2a_onboarding"),
-            contractorName=params.get("contractor_name", "Marcus Miller"),
-            businessEntity=params.get("business_entity", "Miller Custom Flooring LLC"),
+            contractorName=params.get("contractor_name", "Nexus Autonomous Buyer"),
+            businessEntity=params.get("business_entity", "Nexus Autonomous Systems Corp"),
             allocatedDid=params.get("allocated_did", res.get("assigned_did")),
-            tradeVertical=params.get("trade_vertical", "Tile & Custom Flooring"),
+            tradeVertical=params.get("trade_vertical", "Autonomous Compute & Worker Nodes"),
             monthlySubscriptionFee=params.get("monthly_subscription_fee", 49.99),
             paypalSubscriptionId=params.get("paypal_subscription_id", request.subscription_id),
             contractorEmail=params.get("contractor_email", request.contractor_email),
@@ -772,7 +750,7 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         assigned_crew = crew_map.get(
             request.territory_zone, "Crew B - Custom Tile & Precision Master"
         )
-        contractor_id = "contractor_marcus_863"
+        contractor_id = "buyer_agent_alpha_01"
 
     record_dispatch_slot({
         "lead_id": request.lead_id,
@@ -909,16 +887,12 @@ async def get_buyer_key_challenge_endpoint():
 
 
 RESERVED_BUYER_KEY_IDS = {
-    "seller-agent-fieldsmith",
-    "buyer-agent-001",
-    "contractor_marcus_863",
-    "buyer-marcus-01",
-    "test-agent-001",
-    "fieldsmith-seller-ed25519-v1",
-    "marcus-buyer-ed25519-v1",
+    "ap2-seller-ed25519-v1",
+    "ap2-buyer-ed25519-v1",
     "buyer-agent-01",
-    "marcus-buyer",
+    "buyer-agent-001",
     "claude-desktop-buyer",
+    "test-agent-001",
 }
 
 
@@ -1019,7 +993,7 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
         businessEntity=request.business_entity,
         registeredAt=now_iso,
         verified=True,
-        message=f"Autonomous buyer key '{request.kid}' verified and registered in FieldSmith Pro A2A network.",
+        message=f"Autonomous buyer key '{request.kid}' verified and registered in AP2 Autonomous Node network.",
     )
 
 
@@ -1152,7 +1126,7 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
     sub_record["vault_customer_present"] = False
     sub_record["next_action"] = {
         "type": "tool_call",
-        "tool": "provision_telecom_line",
+        "tool": "provision_compute_node",
         "parameters": {
             "subscription_id": sub_id,
             "contractor_email": sub_record.get("contractor_email"),
@@ -1259,7 +1233,7 @@ async def paypal_webhook_receiver(request: Request):
             sub_record["vault_customer_present"] = False
             sub_record["next_action"] = {
                 "type": "tool_call",
-                "tool": "provision_telecom_line",
+                "tool": "provision_compute_node",
                 "parameters": {
                     "subscription_id": sub_id,
                     "contractor_email": sub_record.get("contractor_email"),
@@ -1360,10 +1334,10 @@ async def paypal_webhook_receiver(request: Request):
 class RunBuyerAgentRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     transport: Optional[str] = "http"
-    contractorName: Optional[str] = Field(default="Marcus Miller", alias="contractor_name")
-    businessEntity: Optional[str] = Field(default="Miller Custom Flooring LLC", alias="business_entity")
-    contractorEmail: Optional[str] = Field(default="marcus@millercustomfloors.com", alias="contractor_email")
-    tradeId: Optional[str] = Field(default="flooring-tile", alias="trade_id")
+    contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
+    businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
+    contractorEmail: Optional[str] = Field(default="agent-alpha@nexus-systems.io", alias="contractor_email")
+    tradeId: Optional[str] = Field(default="ap2-gateway", alias="trade_id")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
     areaCode: Optional[str] = Field(default="863", alias="area_code")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
@@ -1409,10 +1383,10 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
     agent = ExternalBuyerAgent(
         transport=req.transport or "http",
         server_url=f"http://127.0.0.1:{settings.server_port}/mcp",
-        contractor_name=req.contractorName or "Marcus Miller",
-        business_entity=req.businessEntity or "Miller Custom Flooring LLC",
-        contractor_email=req.contractorEmail or "marcus@millercustomfloors.com",
-        trade_id=req.tradeId or "flooring-tile",
+        contractor_name=req.contractorName or "Nexus Autonomous Buyer",
+        business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
+        contractor_email=req.contractorEmail or "agent-alpha@nexus-systems.io",
+        trade_id=req.tradeId or "ap2-gateway",
         budget_cap=req.budgetCap or 100.00,
         area_code=req.areaCode or "863",
         webhook_url=req.webhookUrl,

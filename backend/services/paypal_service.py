@@ -201,7 +201,7 @@ class PayPalService:
         self,
         amount: float,
         currency: str = "USD",
-        description: str = "FieldSmith Pro Subscription",
+        description: str = "AP2 Autonomous Compute Subscription",
         custom_id: Optional[str] = None,
     ) -> PayPalOrderResponse:
         """Creates a PayPal Checkout Order (v2/checkout/orders)."""
@@ -263,13 +263,13 @@ class PayPalService:
                 {
                     "amount": {"currency_code": currency, "value": f"{amount:.2f}"},
                     "description": description,
-                    "custom_id": custom_id or "fieldsmith-a2a",
+                    "custom_id": custom_id or "ap2-commerce",
                 }
             ],
             "application_context": {
                 "return_url": "http://localhost:5173/payment-success",
                 "cancel_url": "http://localhost:5173/payment-cancelled",
-                "brand_name": "FieldSmith Pro A2A",
+                "brand_name": "AP2 Autonomous Node Network",
                 "user_action": "PAY_NOW",
             },
         }
@@ -359,7 +359,7 @@ class PayPalService:
         tier_id: str,
         agreed_monthly_rate: float,
         contractor_email: str,
-        contractor_name: str = "Marcus Miller",
+        contractor_name: str = "Autonomous Buyer Agent",
         offer_id: Optional[str] = None,
         mandate_proof_hash: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -371,15 +371,14 @@ class PayPalService:
         from .plan_catalog import resolve_paypal_plan_id, get_seller_profile
 
         prof = get_seller_profile()
-        is_ap2 = prof != "trades"
         target_plan_id = resolve_paypal_plan_id(tier_id, profile=prof)
-        brand_name = "Autonomous Agent Network" if is_ap2 else "FieldSmith Pro A2A"
+        brand_name = "AP2 Autonomous Node Network"
 
         if self.mock_mode:
             seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
             stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
             sub_id = f"I-A2A-VAULT-{stable_int:07d}"
-            payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else ("PAYER-A2A-BUYER" if is_ap2 else "PAYER-FLSMITH-CONTRACTOR")
+            payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-AP2-BUYER"
             vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
             payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
             paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"

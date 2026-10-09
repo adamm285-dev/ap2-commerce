@@ -1,5 +1,5 @@
 """
-Configuration settings for the FieldSmith Pro A2A Commerce & Multi-Agent Backend.
+Configuration settings for the AP2 Autonomous Commerce & Multi-Agent Backend.
 Loads environment variables safely from .env with fallback to mock mode when keys are omitted.
 """
 
@@ -21,8 +21,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Seller Profile: 'ap2' (default for AP2 standalone open-source / hackathon) or 'trades' (FieldSmith trades telephony)
-    a2a_seller_profile: Literal["ap2", "trades"] = Field(default="ap2", alias="A2A_SELLER_PROFILE")
+    # App & Seller Name
+    app_name: str = Field(default="AP2 Autonomous Commerce Node", alias="APP_NAME")
+    seller_name: str = Field(default="AP2 Autonomous Node Network", alias="SELLER_NAME")
+
+    # Seller Profile: 'ap2' for AP2 standalone open-source / hackathon repository
+    a2a_seller_profile: Literal["ap2"] = Field(default="ap2", alias="A2A_SELLER_PROFILE")
 
     # Server network settings
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
@@ -38,14 +42,6 @@ class Settings(BaseSettings):
     paypal_base_url: str = Field(
         default="https://api-m.sandbox.paypal.com", alias="PAYPAL_BASE_URL"
     )
-
-    # Telnyx Telephony & 10DLC (Optional)
-    telnyx_api_key: str = Field(default="", alias="TELNYX_API_KEY")
-    telnyx_messaging_profile_id: str = Field(
-        default="", alias="TELNYX_MESSAGING_PROFILE_ID"
-    )
-    # Live Telnyx Ordering Safety Breaker (Defaults to False; orders must be explicitly enabled)
-    enable_live_telnyx_orders: bool = Field(default=False, alias="ENABLE_LIVE_TELNYX_ORDERS")
 
     # Zapier Model Context Protocol / NLA (Optional)
     zapier_nla_api_key: str = Field(default="", alias="ZAPIER_NLA_API_KEY")
@@ -71,9 +67,9 @@ class Settings(BaseSettings):
     admin_api_key: str = Field(default="", alias="ADMIN_API_KEY")
 
     # PayPal Recurring Billing Plan IDs (optional overrides for live sandbox plans)
-    paypal_plan_id_solo: str = Field(default="P-FLSMITH-SOLO-STARTER", alias="PAYPAL_PLAN_ID_SOLO")
-    paypal_plan_id_pro: str = Field(default="P-FLSMITH-PRO", alias="PAYPAL_PLAN_ID_PRO")
-    paypal_plan_id_dispatch: str = Field(default="P-FLSMITH-DISPATCH", alias="PAYPAL_PLAN_ID_DISPATCH")
+    paypal_plan_id_solo: str = Field(default="P-AP2-BATCH-WORKER", alias="PAYPAL_PLAN_ID_SOLO")
+    paypal_plan_id_pro: str = Field(default="P-AP2-SERVICE-GATEWAY", alias="PAYPAL_PLAN_ID_PRO")
+    paypal_plan_id_dispatch: str = Field(default="P-AP2-CLUSTER-NODE", alias="PAYPAL_PLAN_ID_DISPATCH")
 
     # Persistent SQLite database path (defaults to backend/data/a2a_commerce.db)
     a2a_db_path: str = Field(default="", alias="A2A_DB_PATH")
@@ -97,11 +93,3 @@ def get_db_path() -> Path:
 # Automatically force mock mode if required keys are missing
 if not settings.paypal_client_id or not settings.paypal_client_secret:
     settings.mock_external_apis = True
-
-# Fail fast at startup if critical mandate signing secret is missing
-if not settings.a2a_mandate_secret or not settings.a2a_mandate_secret.strip():
-    raise RuntimeError(
-        "CRITICAL SECURITY CONFIGURATION ERROR: A2A_MANDATE_SECRET is missing. "
-        "A secure random secret must be configured in .env."
-    )
-

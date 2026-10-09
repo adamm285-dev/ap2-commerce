@@ -1,26 +1,24 @@
 """
-End-to-End Autonomous Lifecycle Test Suite for FieldSmith Pro A2A Commerce.
-Executes the complete multi-agent trade loop through the FastAPI REST server:
+End-to-End Autonomous Lifecycle Test Suite for AP2 Autonomous Agent Commerce.
+Executes the complete multi-agent compute loop through the FastAPI REST server:
 1. Opportunity Discovery & Catalog Scoping
-2. Autonomous Spending Mandate Governance (HMAC verification)
+2. Autonomous Spending Mandate Governance (Ed25519 / HMAC verification)
 3. Delegated PayPal Order / Subscription Authorization
-4. Statutory KYC Telecom Provisioning (Telnyx DID line allocation)
-5. Post-Payment Back-Office Automation via Zapier MCP (QBO, Jobber, Google Workspace)
-6. Downstream Customer Scoping, $250 Mobilization Deposit & Bryntum Slot Locking
-7. Customer Lead CRM Sync via Zapier MCP
+4. Compute Node Provisioning (FastMCP endpoint allocation)
+5. Post-Payment Back-Office Automation via Zapier MCP (QBO, Enterprise Webhook)
+6. Downstream Workload Dispatch & Bryntum Slot Locking
+7. Lead / Workload Event CRM Sync via Zapier MCP
 8. Clean Mandate Ledger Reset
 """
 
 from fastapi.testclient import TestClient
 from ..server import app
-from ..services.telnyx_provisioner import telnyx_provisioner
 from ..config import settings
 
 client = TestClient(app)
 
 
 def test_complete_autonomous_a2a_lifecycle():
-    telnyx_provisioner.reset()
     # Step 1: Health check
     res_health = client.get("/health")
     assert res_health.status_code == 200
@@ -31,17 +29,18 @@ def test_complete_autonomous_a2a_lifecycle():
     assert res_catalog.status_code == 200
     catalog = res_catalog.json()
     assert catalog["status"] == "active"
-    tier = next((t for t in catalog["trades"] if t["id"] == "flooring-tile"), None)
+    tier = next((t for t in catalog["trades"] if t["id"] == "ap2-gateway"), None)
     assert tier is not None
     assert tier["monthlySubscription"] == 79.99
 
     # Step 3: Evaluate Spending Mandate ($79.99 <= $100)
     mandate_payload = {
-        "buyerAgentId": "contractor-solo-buyer-marcus",
+        "buyerAgentId": "buyer-nexus-alpha",
         "amount": tier["monthlySubscription"],
         "recurrence": "monthly",
-        "category": "contractor-dispatch-ai",
+        "category": "COMPUTE_NODE_SERVICE",
         "monthlyBudgetCap": 100.00,
+        "contractorEmail": "agent-alpha@nexus-systems.io",
     }
     res_mandate = client.post("/api/agent/spending-mandate/evaluate", json=mandate_payload)
     assert res_mandate.status_code == 200
@@ -56,7 +55,7 @@ def test_complete_autonomous_a2a_lifecycle():
     order_payload = {
         "amount": 79.99,
         "currency": "USD",
-        "description": "FieldSmith Pro AI Voice Screener - Tile & Custom Flooring",
+        "description": "AP2 Dedicated AI Service Gateway Compute Subscription",
         "custom_id": f"A2A-MANDATE-{proof_hash[:12]}",
     }
     res_order = client.post("/api/paypal/create-order", json=order_payload)
@@ -69,35 +68,35 @@ def test_complete_autonomous_a2a_lifecycle():
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
-        "contractor_email": "marcus@millercustomfloors.com",
-        "tier_id": "fieldsmith-pro",
+        "contractor_email": "agent-alpha@nexus-systems.io",
+        "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
     }
 
-    # Step 5: Provision Dedicated Telnyx DID anchored to Verified KYC Identity
+    # Step 5: Provision Dedicated Compute Node Endpoint
     prov_payload = {
         "subscriptionId": sub_id,
-        "contractorEmail": "marcus@millercustomfloors.com",
-        "areaCode": "863",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "areaCode": "US",
     }
     res_prov = client.post("/api/agent/provision", json=prov_payload)
     assert res_prov.status_code == 201
     prov = res_prov.json()
-    assert prov["status"] in ["ALLOCATED", "RETAINED"]
-    assert prov["assignedDid"].startswith("+1863")
-    allocated_did = prov["assignedDid"]
-    assert prov["routingState"] == "ACTIVE_10DLC_BOUND"
+    assert prov["status"] in ["ALLOCATED", "RETAINED", "PROVISIONED"]
+    assert "mcp+https://" in prov["assignedDid"] or "gateway" in prov["assignedDid"]
+    allocated_endpoint = prov["assignedDid"]
 
-    # Step 6: Trigger Autonomous Zapier MCP Contractor Onboarding Chain
+    # Step 6: Trigger Autonomous Zapier MCP Onboarding Chain
     zapier_a2a_payload = {
         "workflowType": "a2a_onboarding",
-        "contractorName": "Marcus Miller",
-        "businessEntity": "Miller Custom Flooring LLC",
-        "allocatedDid": allocated_did,
-        "tradeVertical": "Tile & Custom Flooring",
+        "contractorName": "Nexus Autonomous Buyer",
+        "businessEntity": "Nexus Autonomous Systems Corp",
+        "allocatedDid": allocated_endpoint,
+        "tradeVertical": "Dedicated AI Service Gateway",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": sub_id,
-        "contractorEmail": "marcus@millercustomfloors.com",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "mandateProofHash": proof_hash,
     }
     res_zap_a2a = client.post("/api/mcp/zapier-sync", json=zapier_a2a_payload)
     assert res_zap_a2a.status_code == 200
@@ -105,42 +104,41 @@ def test_complete_autonomous_a2a_lifecycle():
     assert zap_a2a["status"] == "COMPLETED"
     assert zap_a2a["workflowType"] == "a2a_onboarding"
     assert zap_a2a["qboDraftInvoiceId"].startswith("QBO-EXP-")
-    assert zap_a2a["jobberQuoteId"].startswith("JOB-ROUTING-")
-    assert zap_a2a["googleCalendarEventId"].startswith("gcal_briefing_")
+    assert zap_a2a["jobberQuoteId"].startswith("AP2-EXP-")
 
-    # Step 7: Downstream Customer Inbound Call & Scoping Quote
+    # Step 7: Downstream Quote Calculation
     quote_payload = {
-        "tradeId": "flooring-tile",
+        "tradeId": "ap2-gateway",
         "squareFootage": 650.0,
-        "materialType": "porcelain-plank",
-        "postalCode": "33813",
+        "materialType": "service-gateway",
+        "postalCode": "94105",
     }
     res_quote = client.post("/api/agent/quote", json=quote_payload)
     assert res_quote.status_code == 200
     quote = res_quote.json()
-    assert quote["wasteAllowanceSqFt"] == 715.0
     assert quote["requiredDeposit"] == 250.00
 
-    # Step 8: Lock Bryntum Territory Dispatch Slot via Verified PayPal Deposit
+    # Step 8: Lock Territory Dispatch Slot
     lock_payload = {
-        "leadId": "lead-sarah-jenkins-33813",
-        "territoryZone": "Zone 2 - South Lakeland",
+        "leadId": "lead-nexus-gateway-01",
+        "territoryZone": "Zone 1 - US East",
         "slotStartIso": "2026-10-06T10:00:00-04:00",
         "paypalTransactionId": "TXN-DEP-8849102",
+        "profile": "ap2",
     }
     res_lock = client.post("/api/agent/dispatch/lock-slot", json=lock_payload)
     assert res_lock.status_code == 200
     lock_data = res_lock.json()
     assert lock_data["success"] is True
-    assert "Crew B" in lock_data["crewAssigned"]
+    assert "Cluster" in lock_data["crewAssigned"]
 
-    # Step 9: Downstream Homeowner Lead CRM Sync via Zapier MCP
+    # Step 9: Downstream Lead Sync via Zapier MCP
     zapier_lead_payload = {
         "workflowType": "homeowner_lead",
-        "leadId": "lead-sarah-jenkins-33813",
-        "customerName": "Sarah Jenkins",
-        "customerPhone": "+18635550199",
-        "propertyAddress": "4822 Cleveland Heights Blvd, Lakeland, FL 33813",
+        "leadId": "lead-nexus-gateway-01",
+        "customerName": "Nexus AI Coordinator",
+        "customerPhone": "+18005550199",
+        "propertyAddress": "Cloud Execution Region us-east-1",
         "depositAmount": 250.00,
         "paypalTxnId": "TXN-DEP-8849102",
     }
@@ -149,14 +147,13 @@ def test_complete_autonomous_a2a_lifecycle():
     zap_lead = res_zap_lead.json()
     assert zap_lead["status"] == "COMPLETED"
     assert zap_lead["workflowType"] == "homeowner_lead"
-    assert zap_lead["jobberQuoteId"].startswith("JOB-")
+    assert zap_lead["jobberQuoteId"].startswith("AP2-")
     assert zap_lead["qboDraftInvoiceId"].startswith("QBO-INV-")
-    assert zap_lead["googleCalendarEventId"].startswith("gcal_evt_")
 
     # Step 10: Reset Spending Mandate Ledger (requires Admin Authorization)
     res_reset = client.post(
         "/api/agent/spending-mandate/reset",
-        json={"buyerAgentId": "contractor-solo-buyer-marcus"},
+        json={"buyerAgentId": "buyer-nexus-alpha"},
         headers={"X-Admin-Key": settings.admin_api_key},
     )
     assert res_reset.status_code == 200

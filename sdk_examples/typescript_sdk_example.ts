@@ -1,15 +1,15 @@
 /**
  * APIMatic Generated SDK Integration Example (TypeScript / Node.js).
  * Demonstrates how an autonomous Buyer Agent or third-party web service integrates
- * with FieldSmith Pro's A2A Commerce Protocol using the auto-generated TypeScript SDK.
+ * with AP2 Autonomous Commerce Protocol using the auto-generated TypeScript SDK.
  * Conforms 100% to openapi.yaml (OpenAPI 3.1.0).
  */
 
-export interface TradeService {
+export interface ComputeService {
   id: string;
   title: string;
   monthlySubscription: number;
-  depositRange: string;
+  workloadQuota: number;
 }
 
 export interface MandateResult {
@@ -21,13 +21,12 @@ export interface MandateResult {
 
 export interface ProvisionResult {
   status: string;
-  assignedDid: string;
+  endpoint: string;
   carrier: string;
-  routingState: string;
   subscriptionId: string;
 }
 
-export class FieldSmithA2AClient {
+export class AP2CommerceClient {
   private baseUrl: string;
 
   constructor(baseUrl: string = 'http://127.0.0.1:8001') {
@@ -40,7 +39,7 @@ export class FieldSmithA2AClient {
     return res.json();
   }
 
-  async getTradeCatalog(): Promise<{ status: string; trades: TradeService[] }> {
+  async getServiceCatalog(): Promise<{ status: string; trades: ComputeService[] }> {
     const res = await fetch(`${this.baseUrl}/api/agent/catalog`);
     if (!res.ok) throw new Error(`Catalog inquiry failed: ${res.statusText}`);
     return res.json();
@@ -60,7 +59,7 @@ export class FieldSmithA2AClient {
         buyerAgentId: params.buyerAgentId,
         amount: params.amount,
         recurrence: params.recurrence || 'monthly',
-        category: params.category || 'contractor-dispatch-ai',
+        category: params.category || 'autonomous-compute',
         monthlyBudgetCap: params.monthlyBudgetCap ?? 100.0,
       }),
     });
@@ -68,10 +67,9 @@ export class FieldSmithA2AClient {
     return res.json();
   }
 
-  async provisionContractorLine(params: {
+  async provisionComputeNode(params: {
     subscriptionId: string;
     contractorEmail: string;
-    areaCode?: string;
   }): Promise<ProvisionResult> {
     const res = await fetch(`${this.baseUrl}/api/agent/provision`, {
       method: 'POST',
@@ -79,10 +77,9 @@ export class FieldSmithA2AClient {
       body: JSON.stringify({
         subscriptionId: params.subscriptionId,
         contractorEmail: params.contractorEmail,
-        areaCode: params.areaCode || '863',
       }),
     });
-    if (!res.ok) throw new Error(`DID provisioning failed: ${res.statusText}`);
+    if (!res.ok) throw new Error(`Compute node provisioning failed: ${res.statusText}`);
     return res.json();
   }
 
@@ -101,13 +98,13 @@ export class FieldSmithA2AClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workflowType: params.workflowType || 'a2a_onboarding',
-        contractorName: params.contractorName || 'Marcus Miller',
-        businessEntity: params.businessEntity || 'Miller Custom Flooring LLC',
-        allocatedDid: params.allocatedDid || '+1 (863) 802-6000',
-        tradeVertical: params.tradeVertical || 'Tile & Custom Flooring',
-        monthlySubscriptionFee: params.monthlyFee || 89.0,
+        contractorName: params.contractorName || 'Autonomous Compute Buyer',
+        businessEntity: params.businessEntity || 'Nexus Autonomous Systems Corp',
+        allocatedDid: params.allocatedDid || 'mcp+https://gateway-01.ap2.market',
+        tradeVertical: params.tradeVertical || 'Autonomous Cloud Compute',
+        monthlySubscriptionFee: params.monthlyFee || 79.99,
         paypalSubscriptionId: params.paypalSubId || 'I-AUTONOMOUS-8902',
-        contractorEmail: params.contractorEmail || 'marcus@millercustomfloors.com',
+        contractorEmail: params.contractorEmail || 'agent-alpha@nexus-systems.io',
       }),
     });
     if (!res.ok) throw new Error(`Zapier MCP sync failed: ${res.statusText}`);
@@ -123,33 +120,21 @@ async function runTypeScriptAgent() {
   console.log('🚀 Running APIMatic TypeScript SDK Integration Demo');
   console.log('=======================================================\n');
 
-  const client = new FieldSmithA2AClient();
+  const client = new AP2CommerceClient();
 
   const health = await client.checkHealth();
   console.log(`1. Health Check: ${health.status} (Mock: ${health.mock_mode})`);
 
-  const catalog = await client.getTradeCatalog();
-  const trade = catalog.trades[0];
-  console.log(`2. Catalog Inquiry: Selected '${trade.title}' at $${trade.monthlySubscription}/mo`);
+  const catalog = await client.getServiceCatalog();
+  const service = catalog.trades[0];
+  console.log(`2. Catalog Inquiry: Selected '${service.title}' at $${service.monthlySubscription}/mo`);
 
   const mandate = await client.evaluateSpendingMandate({
     buyerAgentId: 'agent-ts-buyer-01',
-    amount: trade.monthlySubscription,
+    amount: service.monthlySubscription,
     monthlyBudgetCap: 100.0,
   });
   console.log(`3. Mandate Check: Approved=${mandate.approved} (Proof: ${mandate.mandateProofHash.substring(0, 16)}...)`);
-
-  const prov = await client.provisionContractorLine({
-    subscriptionId: `I-TS-SUB-${mandate.mandateProofHash.substring(0, 8).toUpperCase()}`,
-    contractorEmail: 'marcus@millercustomfloors.com',
-  });
-  console.log(`4. Line Provisioned: ${prov.assignedDid} (${prov.carrier})`);
-
-  const zap = await client.triggerZapierMcpSync({
-    allocatedDid: prov.assignedDid,
-    paypalSubId: `I-TS-SUB-${mandate.mandateProofHash.substring(0, 8).toUpperCase()}`,
-  });
-  console.log(`5. Zapier MCP Dispatched: QBO=${zap.qboDraftInvoiceId}, Jobber=${zap.jobberQuoteId}`);
 
   console.log('\n✅ APIMatic TypeScript SDK Client Verified Successfully!\n');
 }

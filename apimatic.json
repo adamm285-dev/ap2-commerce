@@ -1,39 +1,39 @@
 {
   "apimaticVersion": "3.1.0",
   "project": {
-    "name": "FieldSmith Pro A2A Commerce SDK",
-    "description": "Autonomous Agent-to-Agent Commerce Protocol for Solo Trade Contractors",
+    "name": "AP2 Autonomous Commerce SDK",
+    "description": "Autonomous Agent-to-Agent Commerce Protocol for Compute Nodes and Service Gateways",
     "version": "1.0.0",
-    "company": "FieldSmith Pro Technologies",
-    "copyright": "Copyright (c) 2026 FieldSmith Pro Technologies. All rights reserved.",
+    "company": "AP2 Autonomous Marketplace",
+    "copyright": "Copyright (c) 2026 AP2 Autonomous Marketplace. All rights reserved.",
     "license": "MIT",
     "repositoryUrl": "https://github.com/adamm285-dev/ap2-commerce"
   },
   "portal": {
-    "title": "FieldSmith Pro A2A Developer Portal",
+    "title": "AP2 Autonomous Commerce Developer Portal",
     "brandColor": "#0284c7",
-    "favicon": "https://fieldsmith.pro/favicon.png",
+    "favicon": "https://api.ap2-commerce.org/favicon.png",
     "enableTryIt": true,
     "enableApiExploration": true
   },
   "codegen": {
     "python": {
-      "packageName": "fieldsmith_a2a_sdk",
-      "clientClassName": "FieldSmithA2AClient",
-      "pypiPackage": "fieldsmith-a2a-sdk"
+      "packageName": "ap2_commerce_sdk",
+      "clientClassName": "AP2CommerceClient",
+      "pypiPackage": "ap2-commerce-sdk"
     },
     "typescript": {
-      "packageName": "@fieldsmith/a2a-sdk",
-      "clientClassName": "FieldSmithA2AClient",
-      "npmPackage": "@fieldsmith/a2a-sdk"
+      "packageName": "@ap2/commerce-sdk",
+      "clientClassName": "AP2CommerceClient",
+      "npmPackage": "@ap2/commerce-sdk"
     },
     "go": {
-      "packageName": "fieldsmitha2a",
-      "modulePath": "github.com/adamm285-dev/fieldsmith-a2a-go"
+      "packageName": "ap2commerce",
+      "modulePath": "github.com/adamm285-dev/ap2-commerce-go"
     }
   },
   "environments": {
-    "production": "https://api.fieldsmith.pro",
+    "production": "https://api.ap2-commerce.org",
     "sandbox": "http://localhost:8001"
   }
 }

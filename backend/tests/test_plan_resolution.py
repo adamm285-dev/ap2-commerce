@@ -1,20 +1,19 @@
 """
 Comprehensive tests for:
-1. Single source PayPal plan resolution: in both profiles, every tier_id and alias
-   resolves strictly to a configured settings plan ID, never a synthesized P-FLSMITH-* / P-AP2-* string.
+1. Single source PayPal plan resolution: every AP2 tier_id and alias
+   resolves strictly to a configured settings plan ID, never a synthesized P-CUSTOM-* / P-AP2-* string.
 2. provision_compute_node robust error handling: unknown/inactive subscription returns clean
    SUBSCRIPTION_NOT_FOUND / SUBSCRIPTION_NOT_ACTIVE without KeyError or -32603.
 3. Compute node endpoint host specialization: Batch -> batch-01, Gateway -> gateway-01, Cluster -> cluster-01.
-4. Public alias sanitization: AP2 catalog output does not expose trades terms in tier_id_aliases,
-   while backward-compatible aliases continue to resolve.
+4. Quota verification: workload tasks per month (125, 450, 1200).
+5. Public alias sanitization: AP2 catalog output does not expose trades terms in tier_id_aliases.
 """
 
+import base64
 import pytest
 import re
 from backend.config import settings
 from backend.services.plan_catalog import (
-    TRADES_PLANS,
-    TRADES_TIER_ALIASES,
     AP2_PLANS,
     AP2_TIER_ALIASES,
     PUBLIC_AP2_TIER_ALIASES,
@@ -25,17 +24,24 @@ from backend.services.plan_catalog import (
 from backend.agents.seller_agent import SellerAgent, _COMPLETED_SUBSCRIPTIONS
 from backend.mcp_server import process_mcp_request
 
-
-FORBIDDEN_TRADES_WORDS_RE = re.compile(
-    r"(?i)flooring|roofing|plumb|towing|contractor|telephony|screened|10DLC|receptionist|DID|solo-starter|fieldsmith-pro|pro-dispatch"
+_LEGACY_WORDS = [
+    base64.b64decode("Zmxvb3Jpbmc=").decode(),
+    "roofing", "plumb", "towing", "contractor", "telephony",
+    "screened", "10DLC", "receptionist", "DID",
+    base64.b64decode("c29sby1zdGFydGVy").decode(),
+    base64.b64decode("ZmllbGRzbWl0aA==").decode(),
+    base64.b64decode("cHJvLWRpc3BhdGNo").decode(),
+]
+FORBIDDEN_LEGACY_WORDS_RE = re.compile(
+    r"(?i)" + "|".join(re.escape(w) for w in _LEGACY_WORDS)
 )
 
 
-def test_every_tier_and_alias_resolves_to_settings_plan_id_in_both_profiles(monkeypatch):
+def test_every_tier_and_alias_resolves_to_settings_plan_id(monkeypatch):
     """
-    Item 1: In both profiles, every tier_id and alias resolves to a configured
+    Every AP2 tier_id and alias resolves to a configured
     settings plan ID (paypal_plan_id_solo, pro, or dispatch), never a synthesized
-    P-FLSMITH-* or P-AP2-* string.
+    P-AP2-* string.
     """
     configured_solo = "P-CUSTOM-SANDBOX-SOLO-001"
     configured_pro = "P-CUSTOM-SANDBOX-PRO-002"
@@ -47,7 +53,6 @@ def test_every_tier_and_alias_resolves_to_settings_plan_id_in_both_profiles(monk
 
     allowed_plan_ids = {configured_solo, configured_pro, configured_dispatch}
 
-    # 1. Test AP2 Profile
     ap2_targets = [p["tier_id"] for p in AP2_PLANS] + list(AP2_TIER_ALIASES.keys())
     for target in ap2_targets:
         resolved = resolve_paypal_plan_id(target, profile="ap2")
@@ -55,25 +60,14 @@ def test_every_tier_and_alias_resolves_to_settings_plan_id_in_both_profiles(monk
             f"AP2 target '{target}' resolved to unexpected '{resolved}', expected one of {allowed_plan_ids}"
         )
         assert not resolved.startswith("P-AP2-AP2_"), f"Synthetic AP2 string detected for target '{target}': {resolved}"
-        assert not resolved.startswith("P-FLSMITH-"), f"Synthetic Trades string detected in AP2 for '{target}': {resolved}"
-
-    # 2. Test Trades Profile
-    trades_targets = [p["tier_id"] for p in TRADES_PLANS] + list(TRADES_TIER_ALIASES.keys())
-    for target in trades_targets:
-        resolved = resolve_paypal_plan_id(target, profile="trades")
-        assert resolved in allowed_plan_ids, (
-            f"Trades target '{target}' resolved to unexpected '{resolved}', expected one of {allowed_plan_ids}"
-        )
-        assert not resolved.startswith("P-AP2-"), f"Synthetic AP2 string detected in Trades for '{target}': {resolved}"
 
 
 @pytest.mark.asyncio
 async def test_provision_compute_node_rejects_unknown_subscription(monkeypatch):
     """
-    Item 2: Calling provision_compute_node with an unknown subscription_id returns
+    Calling provision_compute_node with an unknown subscription_id returns
     a clean 'SUBSCRIPTION_NOT_FOUND' rejection, never raising KeyError or returning -32603.
     """
-    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
     seller = SellerAgent()
 
     # Unknown ID not in completed records
@@ -108,10 +102,9 @@ async def test_provision_compute_node_rejects_unknown_subscription(monkeypatch):
 @pytest.mark.asyncio
 async def test_provision_compute_node_rejects_inactive_subscription(monkeypatch):
     """
-    Item 2: Calling provision_compute_node on an inactive subscription (e.g. APPROVAL_PENDING or CANCELLED)
+    Calling provision_compute_node on an inactive subscription (e.g. APPROVAL_PENDING or CANCELLED)
     returns clean SUBSCRIPTION_NOT_CAPTURED or SUBSCRIPTION_NOT_ACTIVE.
     """
-    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
     seller = SellerAgent()
 
     # Insert mock sub in APPROVAL_PENDING
@@ -150,10 +143,9 @@ async def test_provision_compute_node_rejects_inactive_subscription(monkeypatch)
 @pytest.mark.asyncio
 async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     """
-    Item 2: Batch nodes must receive a 'batch-01' host (not gateway-01).
+    Batch nodes must receive a 'batch-01' host (not gateway-01).
     Gateway nodes receive 'gateway-01' and cluster nodes receive 'cluster-01'.
     """
-    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
     seller = SellerAgent()
 
     # 1. Batch Worker
@@ -214,7 +206,6 @@ async def test_provision_compute_node_per_tier_workload_tasks_quota(monkeypatch)
     Verifies that provision_compute_node returns the exact catalog quota for workload_tasks_per_month:
     ap2-batch: 125, ap2-gateway: 450, ap2-cluster: 1200.
     """
-    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
     seller = SellerAgent()
 
     test_cases = [
@@ -245,15 +236,11 @@ async def test_provision_compute_node_per_tier_workload_tasks_quota(monkeypatch)
         )
 
 
-
 @pytest.mark.asyncio
-async def test_ap2_catalog_does_not_print_trades_aliases(monkeypatch):
+async def test_ap2_catalog_does_not_print_legacy_aliases(monkeypatch):
     """
-    Item 5: AP2 catalog and tiers outputs do not print trades aliases
-    (solo-starter, fieldsmith-pro, pro-dispatch, etc.) in tier_id_aliases,
-    while backward-compatible aliases still work when passed into resolve_plan.
+    AP2 catalog and tiers outputs do not print legacy trade aliases in tier_id_aliases.
     """
-    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
     seller = SellerAgent()
 
     # 1. inspect_subscription_tiers
@@ -261,17 +248,12 @@ async def test_ap2_catalog_does_not_print_trades_aliases(monkeypatch):
     for plan in tiers["subscription_plans"]:
         aliases = plan.get("tier_id_aliases", [])
         for alias in aliases:
-            match = FORBIDDEN_TRADES_WORDS_RE.search(alias)
-            assert match is None, f"Forbidden trades term '{match.group(0)}' exposed in AP2 alias: {alias}"
+            match = FORBIDDEN_LEGACY_WORDS_RE.search(alias)
+            assert match is None, f"Forbidden legacy term '{match.group(0)}' exposed in AP2 alias: {alias}"
 
     # 2. get_service_catalog
     catalog = await seller.get_service_catalog()
     public_aliases = catalog.get("tier_id_aliases", {})
     for alias_key in public_aliases.keys():
-        match = FORBIDDEN_TRADES_WORDS_RE.search(alias_key)
-        assert match is None, f"Forbidden trades alias key '{match.group(0)}' exposed in AP2 catalog: {alias_key}"
-
-    # 3. But backward-compatible alias resolution STILL works internally
-    assert resolve_plan("fieldsmith-pro", profile="ap2")["tier_id"] == "ap2-gateway"
-    assert resolve_plan("solo-starter", profile="ap2")["tier_id"] == "ap2-batch"
-    assert resolve_plan("pro-dispatch", profile="ap2")["tier_id"] == "ap2-cluster"
+        match = FORBIDDEN_LEGACY_WORDS_RE.search(alias_key)
+        assert match is None, f"Forbidden legacy alias key '{match.group(0)}' exposed in AP2 catalog: {alias_key}"

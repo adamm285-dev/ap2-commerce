@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-FieldSmith Pro — Live Cloud Multi-Agent Stress Testing Harness
-==============================================================
+AP2 Autonomous Commerce — Live Cloud Multi-Agent Stress Testing Harness
+======================================================================
 Launches concurrent autonomous buyer agents against the live cloud deployment
-at https://api.fieldsmith.pro over Model Context Protocol (MCP) and REST APIs.
+at https://api.ap2-commerce.org over Model Context Protocol (MCP) and REST APIs.
 
 Evaluates:
 - High-concurrency MCP JSON-RPC 2.0 tool execution
@@ -34,7 +34,7 @@ from backend.services.crypto_mandate import (
     sign_ed25519_message,
 )
 
-BASE_URL = os.environ.get("TARGET_URL", "https://api.fieldsmith.pro")
+BASE_URL = os.environ.get("TARGET_URL", "https://api.ap2-commerce.org")
 
 # Color formatting
 GREEN = "\033[92m"
@@ -51,18 +51,18 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
     agent = ExternalBuyerAgent(
         transport="http",
         server_url=mcp_endpoint,
-        contractor_name="Elena Vance",
-        business_entity="Vance Custom Tile LLC",
-        contractor_email="elena@vancetile.com",
-        trade_id="flooring-tile",
+        contractor_name="Nexus Autonomous Buyer",
+        business_entity="Nexus Cloud Systems LLC",
+        contractor_email="buyer@nexus-systems.io",
+        trade_id="ap2-gateway",
         budget_cap=120.00,
-        area_code="863",
+        area_code="US",
         verbose=False,
         reset_ledger=False,
     )
     result = await agent.execute_autonomous_procurement()
     elapsed = time.perf_counter() - t0
-    did = result.get("provisioned_did") or result.get("assigned_did")
+    did = result.get("provisioned_did") or result.get("assigned_did") or result.get("endpoint")
     sub_id = result.get("paypal_subscription_id")
     is_success = (
         result.get("status") == "COMPLETED"
@@ -71,10 +71,10 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
         and (str(sub_id).startswith("I-") or str(sub_id).startswith("SUB-"))
     )
     return {
-        "scenario": "Standard Procurement ($120 Cap -> $79.99 Pro)",
+        "scenario": "Standard Procurement ($120 Cap -> $79.99 Gateway)",
         "success": is_success,
         "elapsed_ms": round(elapsed * 1000, 1),
-        "did": did,
+        "endpoint": did,
         "sub_id": sub_id,
     }
 
@@ -87,7 +87,7 @@ async def run_scenario_bargaining_counter_offer(client: httpx.AsyncClient) -> Di
             "buyerAgentId": "stress_buyer_sub_budget",
             "amount": 79.99,
             "recurrence": "monthly",
-            "category": "contractor-dispatch-ai",
+            "category": "autonomous-compute",
             "monthlyBudgetCap": 55.00,
         },
     )
@@ -96,7 +96,7 @@ async def run_scenario_bargaining_counter_offer(client: httpx.AsyncClient) -> Di
     is_counter = data.get("counterOfferAvailable") or data.get("counter_offer_available")
     counter_amt = data.get("counterOfferAmount") or data.get("counter_offer_amount")
     return {
-        "scenario": "Sub-Budget Bargaining ($55 Cap -> $49.99 Solo Starter Counter)",
+        "scenario": "Sub-Budget Bargaining ($55 Cap -> $49.99 Batch Worker Counter)",
         "success": res.status_code == 200 and is_counter is True and counter_amt == 49.99,
         "elapsed_ms": round(elapsed * 1000, 1),
         "counter_amount": counter_amt,
@@ -116,8 +116,8 @@ async def run_scenario_cryptographic_buyer_onboarding(client: httpx.AsyncClient)
         json={
             "kid": f"stress-agent-{uuid_short()}",
             "publicKeyHex": pub,
-            "contractorEmail": "stress_agent@contractorhub.io",
-            "businessEntity": "Apex Commercial Plumbing Inc",
+            "contractorEmail": "stress_agent@nexus-systems.io",
+            "businessEntity": "Apex Autonomous Cloud Corp",
             "challenge": nonce,
             "challengeSignature": sig,
             "monthlyBudgetCap": 200.0,
@@ -149,7 +149,7 @@ async def run_scenario_adversarial_tamper_attack(client: httpx.AsyncClient) -> D
             "kid": f"malicious-counterfeit-agent-{int(time.time())}",
             "publicKeyHex": "0" * 64,
             "contractorEmail": "attacker@evil.org",
-            "businessEntity": "Scam Telemarketers Group",
+            "businessEntity": "Forged Agent Group",
             "challenge": real_challenge,
             "challengeSignature": bad_sig,
         },
@@ -185,7 +185,7 @@ def uuid_short() -> str:
 
 async def run_stress_test_suite():
     print(f"\n{BOLD}{CYAN}══════════════════════════════════════════════════════════════════════{RESET}")
-    print(f"{BOLD}{CYAN}  FIELDSMITH PRO: LIVE CLOUD MULTI-AGENT STRESS TEST SUITE{RESET}")
+    print(f"{BOLD}{CYAN}  AP2 AUTONOMOUS COMMERCE: LIVE CLOUD MULTI-AGENT STRESS TEST SUITE{RESET}")
     print(f"{BOLD}{CYAN}══════════════════════════════════════════════════════════════════════{RESET}")
     print(f"  Target Server: {BOLD}{BASE_URL}{RESET}")
     print(f"  Timestamp:     {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")

@@ -1,5 +1,5 @@
 """
-Pydantic data models for FieldSmith Pro A2A Commerce & Multi-Agent Network.
+Pydantic data models for AP2 Autonomous Agent Commerce Node.
 Maps directly to openapi.yaml schemas.
 """
 
@@ -125,9 +125,9 @@ class ProvisionResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     status: str
-    assigned_did: str = Field(alias="assignedDid")
-    carrier: str
-    routing_state: str = Field(alias="routingState")
+    assigned_did: Optional[str] = Field(default=None, alias="assignedDid")
+    carrier: Optional[str] = "Dual-Transport FastMCP (RFC 8032)"
+    routing_state: Optional[str] = Field(default="ACTIVE_COMPUTE_NODE", alias="routingState")
     subscription_id: str = Field(alias="subscriptionId")
     failover_triggered: Optional[bool] = Field(
         default=False, alias="failoverTriggered"
@@ -137,9 +137,13 @@ class ProvisionResponse(BaseModel):
         default=None, alias="retainedFromSubscription"
     )
     compliance_note: Optional[str] = Field(
-        default="Voice routing active immediately. A2P 10DLC messaging active upon campaign vetting completion (estimated 1-3 business days).",
+        default="Compute node active immediately upon mandate settlement.",
         alias="complianceNote",
     )
+    endpoint: Optional[str] = None
+    node_id: Optional[str] = Field(default=None, alias="nodeId")
+    node_type: Optional[str] = Field(default=None, alias="nodeType")
+    workload_tasks_per_month: Optional[int] = Field(default=None, alias="workloadTasksPerMonth")
 
 
 # --- Territory Dispatch Models ---
@@ -238,7 +242,7 @@ class BuyerKeyRegistrationRequest(BaseModel):
     challenge: str = Field(min_length=10, description="Challenge string provided by /api/agent/keys/challenge")
     challenge_signature: str = Field(alias="challengeSignature", min_length=128, max_length=128, description="128-hex-character Ed25519 challenge signature")
     monthly_budget_cap: Optional[float] = Field(default=100.0, alias="monthlyBudgetCap", description="Monthly spending cap in USD")
-    allowed_tiers: Optional[List[str]] = Field(default=["solo-starter", "fieldsmith-pro"], alias="allowedTiers", description="Permitted subscription tiers")
+    allowed_tiers: Optional[List[str]] = Field(default=["ap2-batch", "ap2-gateway"], alias="allowedTiers", description="Permitted subscription tiers")
 
 
 class BuyerKeyRegistrationResponse(BaseModel):

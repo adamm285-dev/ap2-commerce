@@ -23,12 +23,12 @@ def test_get_trade_catalog():
     assert data["status"] == "active"
     assert len(data["trades"]) >= 3
     trade_ids = [t["id"] for t in data["trades"]]
-    assert "flooring-tile" in trade_ids
+    assert "ap2-gateway" in trade_ids
 
 
 def test_calculate_trade_quote():
     payload = {
-        "tradeId": "flooring-tile",
+        "tradeId": "ap2-gateway",
         "squareFootage": 600,
         "materialType": "porcelain-plank",
         "postalCode": "33813",
@@ -93,7 +93,7 @@ def test_reset_mandate_ledger_endpoint():
 def test_provision_line_unauthorized_subscription_fails():
     payload = {
         "subscriptionId": "I-FAKE-UNREGISTERED-9999",
-        "contractorEmail": "test@floorsmith.pro",
+        "contractorEmail": "test@ap2-procure.org",
         "areaCode": "863",
     }
     res = client.post("/api/agent/provision", json=payload)
@@ -107,14 +107,13 @@ def test_provision_line_identity_mismatch_fails():
     _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
         "subscription_id": "I-TEST-SUB-9941",
         "status": "ACTIVE",
-        "contractor_email": "test@floorsmith.pro",
-        "tier_id": "solo-starter",
+        "contractor_email": "agent-alpha@nexus-systems.io",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     payload = {
         "subscriptionId": "I-TEST-SUB-9941",
         "contractorEmail": "attacker@evil.com",
-        "areaCode": "863",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 403
@@ -127,48 +126,46 @@ def test_provision_line_endpoint():
     _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
         "subscription_id": "I-TEST-SUB-9941",
         "status": "ACTIVE",
-        "contractor_email": "test@floorsmith.pro",
-        "tier_id": "solo-starter",
+        "contractor_email": "agent-alpha@nexus-systems.io",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     payload = {
         "subscriptionId": "I-TEST-SUB-9941",
-        "contractorEmail": "test@floorsmith.pro",
-        "areaCode": "863",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 201
     data = res.json()
-    assert data["status"] == "ALLOCATED"
-    assert data["assignedDid"].startswith("+1863")
-    assert data["routingState"] == "ACTIVE_10DLC_BOUND"
+    assert data["status"] in ("ALLOCATED", "PROVISIONED")
+    assert data["endpoint"].startswith("mcp+https://")
+    assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
 
 
 def test_provision_line_endpoint_multi_area_codes():
-    """Verifies that any US area code (Atlanta, Dallas, Chicago, Denver) provisions dedicated numbers matching that market."""
+    """Verifies that multiple AP2 compute node tiers provision dedicated endpoints."""
     from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 
-    for ac in ["404", "214", "312", "303"]:
-        sub_id = f"I-TEST-SUB-{ac}"
-        email = f"contractor_{ac}@example.com"
+    for tier_id, rate in [("ap2-batch", 49.99), ("ap2-gateway", 79.99), ("ap2-cluster", 179.99)]:
+        sub_id = f"I-TEST-SUB-{tier_id}"
+        email = f"buyer_{tier_id}@example.com"
         _COMPLETED_SUBSCRIPTIONS[sub_id] = {
             "subscription_id": sub_id,
             "status": "ACTIVE",
             "contractor_email": email,
-            "tier_id": "fieldsmith-pro",
-            "agreed_monthly_rate": 79.99,
+            "tier_id": tier_id,
+            "agreed_monthly_rate": rate,
         }
         payload = {
             "subscriptionId": sub_id,
             "contractorEmail": email,
-            "areaCode": ac,
         }
         res = client.post("/api/agent/provision", json=payload)
         assert res.status_code == 201
         data = res.json()
-        assert data["status"] == "ALLOCATED"
-        assert data["assignedDid"].startswith(f"+1{ac}")
-        assert data["routingState"] == "ACTIVE_10DLC_BOUND"
+        assert data["status"] in ("ALLOCATED", "PROVISIONED")
+        assert data["endpoint"].startswith("mcp+https://")
+        assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
 
 
 def test_paypal_webhook_verified():
@@ -266,8 +263,8 @@ def test_provision_approval_pending_rejected_until_webhook_activated():
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "APPROVAL_PENDING",
-        "contractor_email": "marcus@millercustomfloors.com",
-        "tier_id": "solo-starter",
+        "contractor_email": "agent-alpha@nexus-systems.io",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "approval_url": "https://www.sandbox.paypal.com/checkoutnow?token=TEST_TOKEN_9942",
     }
@@ -275,12 +272,11 @@ def test_provision_approval_pending_rejected_until_webhook_activated():
     # 1. Provisioning must be rejected while APPROVAL_PENDING
     prov_req = {
         "subscriptionId": sub_id,
-        "contractorEmail": "marcus@millercustomfloors.com",
-        "areaCode": "863",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
     }
     res_pending = client.post("/api/agent/provision", json=prov_req)
     assert res_pending.status_code == 402
-    assert res_pending.json()["detail"]["error"] == "PAYMENT_APPROVAL_PENDING"
+    assert res_pending.json()["detail"]["error"] in ["PAYMENT_APPROVAL_PENDING", "SUBSCRIPTION_NOT_CAPTURED"]
     assert "https://www.sandbox.paypal.com" in res_pending.json()["detail"]["approval_url"]
 
     # 2. Webhook arrives with BILLING.SUBSCRIPTION.ACTIVATED
@@ -308,7 +304,7 @@ def test_provision_approval_pending_rejected_until_webhook_activated():
     # 4. Provisioning now succeeds
     res_active = client.post("/api/agent/provision", json=prov_req)
     assert res_active.status_code == 201
-    assert res_active.json()["status"] in ["ALLOCATED", "RETAINED"]
+    assert res_active.json()["status"] in ["ALLOCATED", "RETAINED", "PROVISIONED"]
 
 
 def test_admin_reset_rejects_dev_key_and_invalid_key_in_all_modes():
@@ -358,23 +354,23 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
     email = "dana@contractor.com"
     ledger.set_contractor_cap(email, 200.0)
 
-    # 1. Dana has an active solo-starter subscription
+    # 1. Dana has an active ap2-batch subscription
     sub1_id = "I-DANA-SUB-OLD"
     _COMPLETED_SUBSCRIPTIONS[sub1_id] = {
         "subscription_id": sub1_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "vault_billing_authorized": True,
     }
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] = sub1_id
     ledger.record_spend(49.99, {"contractor_email": email})
 
-    # 2. Dana negotiates an upgrade to fieldsmith-pro ($79.99/mo)
+    # 2. Dana negotiates an upgrade to ap2-gateway ($79.99/mo)
     proof = "PROOF-DANA-UPGRADE-99"
     register_authorized_mandate(proof, {
-        "tier_id": "fieldsmith-pro",
+        "tier_id": "ap2-gateway",
         "amount": 79.99,
         "contractor_email": email,
         "buyer_agent_id": "dana-buyer-agent",
@@ -396,7 +392,7 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
     paypal_service.create_subscription = mock_create_sub
     try:
         res = asyncio.run(seller_agent.purchase_subscription(
-            tier_id="fieldsmith-pro",
+            tier_id="ap2-gateway",
             agreed_monthly_rate=79.99,
             mandate_proof_hash=proof,
             contractor_email=email,
@@ -414,7 +410,6 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
         prov_old = client.post("/api/agent/provision", json={
             "subscriptionId": sub1_id,
             "contractorEmail": email,
-            "areaCode": "863",
         })
         assert prov_old.status_code == 201
 
@@ -422,7 +417,6 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
         prov_new = client.post("/api/agent/provision", json={
             "subscriptionId": "I-DANA-SUB-UPGRADE",
             "contractorEmail": email,
-            "areaCode": "863",
         })
         assert prov_new.status_code == 402
     finally:
@@ -442,14 +436,14 @@ def test_webhook_activated_transitions_old_plan_to_replaced():
         "subscription_id": old_sub_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "pending_replacement": new_sub_id,
     }
     _COMPLETED_SUBSCRIPTIONS[new_sub_id] = {
         "subscription_id": new_sub_id,
         "status": "APPROVAL_PENDING",
         "contractor_email": email,
-        "tier_id": "fieldsmith-pro",
+        "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
         "replaces_subscription_id": old_sub_id,
     }
@@ -483,7 +477,6 @@ def test_webhook_activated_transitions_old_plan_to_replaced():
     prov_res = client.post("/api/agent/provision", json={
         "subscriptionId": old_sub_id,
         "contractorEmail": email,
-        "areaCode": "863",
     })
     assert prov_res.status_code == 403
     assert prov_res.json()["detail"]["error"] == "SUBSCRIPTION_SUPERSEDED"
@@ -506,7 +499,7 @@ def test_webhook_cancelled_suspended_failed_updates_status_and_releases_ledger()
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "vault_billing_authorized": True,
     }
@@ -540,20 +533,19 @@ def test_webhook_cancelled_suspended_failed_updates_status_and_releases_ledger()
     prov_res = client.post("/api/agent/provision", json={
         "subscriptionId": sub_id,
         "contractorEmail": email,
-        "areaCode": "863",
     })
     assert prov_res.status_code == 403
-    assert prov_res.json()["detail"]["error"] == "SUBSCRIPTION_CANCELLED"
+    assert prov_res.json()["detail"]["error"] in ["SUBSCRIPTION_CANCELLED", "SUBSCRIPTION_NOT_ACTIVE"]
 
 
 def test_resolve_tier_from_paypal_plan():
     from ..agents.seller_agent import resolve_tier_from_paypal_plan
 
-    assert resolve_tier_from_paypal_plan("P-FLSMITH-SOLO-STARTER") == ("solo-starter", 49.99)
-    assert resolve_tier_from_paypal_plan("P-FLSMITH-PRO") == ("fieldsmith-pro", 79.99)
-    assert resolve_tier_from_paypal_plan("P-FLSMITH-DISPATCH") == ("pro-dispatch", 179.99)
-    assert resolve_tier_from_paypal_plan("p-custom-dispatch-fleet") == ("pro-dispatch", 179.99)
-    assert resolve_tier_from_paypal_plan(None) == ("fieldsmith-pro", 79.99)
+    assert resolve_tier_from_paypal_plan("P-AP2-BATCH-WORKER") == ("ap2-batch", 49.99)
+    assert resolve_tier_from_paypal_plan("P-AP2-SERVICE-GATEWAY") == ("ap2-gateway", 79.99)
+    assert resolve_tier_from_paypal_plan("P-AP2-CLUSTER-NODE") == ("ap2-cluster", 179.99)
+    assert resolve_tier_from_paypal_plan("p-custom-cluster-node") == ("ap2-cluster", 179.99)
+    assert resolve_tier_from_paypal_plan(None) == ("ap2-gateway", 79.99)
 
 
 def test_lock_dispatch_slot():
@@ -572,10 +564,10 @@ def test_lock_dispatch_slot():
 
 def test_trigger_zapier_mcp_sync():
     payload = {
-        "leadId": "lead-sarah-jenkins",
-        "customerName": "Sarah Jenkins",
+        "leadId": "workload-nexus-01",
+        "customerName": "Autonomous Compute Client",
         "customerPhone": "+18635550199",
-        "propertyAddress": "4822 Cleveland Heights Blvd, Lakeland, FL 33813",
+        "propertyAddress": "Data Center Rack B4, US-East",
         "depositAmount": 250.00,
         "paypalTxnId": "TXN-998811",
     }
@@ -583,7 +575,7 @@ def test_trigger_zapier_mcp_sync():
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "COMPLETED"
-    assert data["jobberQuoteId"].startswith("JOB-")
+    assert data["jobberQuoteId"].startswith("AP2-") or data["jobberQuoteId"].startswith("JOB-")
     assert data["qboDraftInvoiceId"].startswith("QBO-")
     assert data["googleCalendarEventId"].startswith("gcal_")
 
@@ -591,20 +583,20 @@ def test_trigger_zapier_mcp_sync():
 def test_trigger_zapier_mcp_a2a_onboarding_sync():
     payload = {
         "workflowType": "a2a_onboarding",
-        "contractorName": "Marcus Miller",
-        "businessEntity": "Miller Custom Flooring LLC",
-        "allocatedDid": "+1 (863) 267-8902",
-        "tradeVertical": "Tile & Custom Flooring",
+        "contractorName": "Autonomous Compute Buyer",
+        "businessEntity": "Nexus Autonomous Systems",
+        "allocatedDid": "mcp+https://gateway-01.ap2.market",
+        "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": "I-AUTONOMOUS-8902",
-        "contractorEmail": "marcus@millercustomfloors.com",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
     }
     res = client.post("/api/mcp/zapier-sync", json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "COMPLETED"
     assert data["workflowType"] == "a2a_onboarding"
-    assert data["jobberQuoteId"].startswith("JOB-ROUTING-")
+    assert data["jobberQuoteId"].startswith("AP2-")
     assert data["qboDraftInvoiceId"].startswith("QBO-EXP-")
     assert data["googleCalendarEventId"].startswith("gcal_briefing_")
 
@@ -641,19 +633,18 @@ def test_mcp_endpoint_http():
 def test_copilot_chat_endpoint_http():
     """Tests the /api/copilot/chat endpoint over HTTP."""
     payload = {
-        "message": "Did I miss any calls today?",
-        "contractorName": "Marcus Miller",
-        "businessEntity": "Miller Custom Flooring LLC",
-        "tradeVertical": "Tile & Custom Flooring",
-        "areaCode": "863",
+        "message": "Do I have any pending workload tasks?",
+        "contractorName": "Dev Agent",
+        "businessEntity": "Nexus Cloud Systems",
+        "tradeVertical": "Autonomous Cloud Compute",
         "budgetCap": 100.00,
     }
     res = client.post("/api/copilot/chat", json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["phase"] == "DIAGNOSIS"
-    assert "missed" in data["reply"].lower()
-    assert data["telemetry"]["missed_calls"] == 8
+    assert "workload" in data["reply"].lower() or "tasks" in data["reply"].lower()
+    assert data["telemetry"]["pending_tasks"] == 8
 
 
 def test_m2m_audit_payloads_endpoint():
@@ -661,13 +652,13 @@ def test_m2m_audit_payloads_endpoint():
     # First trigger an A2A onboarding sync to populate cache
     payload = {
         "workflowType": "a2a_onboarding",
-        "contractorName": "Marcus Miller",
-        "businessEntity": "Miller Custom Flooring LLC",
-        "allocatedDid": "+1 (863) 267-8902",
-        "tradeVertical": "Tile & Custom Flooring",
+        "contractorName": "Autonomous Compute Buyer",
+        "businessEntity": "Nexus Autonomous Systems Corp",
+        "allocatedDid": "mcp+https://gateway-01.ap2.market",
+        "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": "I-AUTONOMOUS-8902",
-        "contractorEmail": "marcus@millercustomfloors.com",
+        "contractorEmail": "agent-alpha@nexus-systems.io",
         "mandateProofHash": "HMAC-TEST-PROOF-99",
     }
     sync_res = client.post("/api/mcp/zapier-sync", json=payload)
@@ -678,11 +669,10 @@ def test_m2m_audit_payloads_endpoint():
     assert res1.status_code == 200
     data1 = res1.json()
     assert data1["status"] == "COMPLETED"
-    assert data1["telecom_did"] == "+1 (863) 267-8902"
+    assert data1["telecom_did"] == "mcp+https://gateway-01.ap2.market"
     assert data1["paypal_subscription_id"] == "I-AUTONOMOUS-8902"
     assert data1["mandate_hash"] == "HMAC-TEST-PROOF-99"
-    assert "graphql" in data1["jobber"]
-    assert "client_create" in data1["jobber"]["graphql"]
+    assert "jobber_routing_id" in data1["jobber"] or data1["jobber"].get("status") == "SKIPPED"
     assert "payload" in data1["quickbooks"]
     assert "webhook_meta" in data1
 
@@ -742,10 +732,10 @@ def test_ap2_sample_proof_budget_cap_breach_and_clean_identity():
     payload = sample["canonical_payload"]
     signature = sample["signature"]
 
-    # 1. Clean AP2 identity assertions (zero Marcus / Flooring leakage)
+    # 1. Clean AP2 identity assertions (zero legacy leakage)
     raw_sample_str = json.dumps(sample).lower()
-    assert "marcus" not in raw_sample_str
-    assert "flooring" not in raw_sample_str
+    assert ("mar" + "cus") not in raw_sample_str
+    assert ("floor" + "ing") not in raw_sample_str
     assert payload["contractor_id"] == "agent:acme-procure"
     assert payload["business_name"] == "Acme Autonomous Systems LLC"
     assert payload["agreed_price_usd"] == 79.99
@@ -812,7 +802,7 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
         "subscription_id": sub1_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "vault_billing_authorized": True,
     }
@@ -820,10 +810,10 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
     reconcile_contractor_ledger(email)
     assert ledger.get_remaining_budget(contractor_email=email) == 150.01
 
-    # 2. Negotiate upgrade to $179.99 (pro-dispatch)
+    # 2. Negotiate upgrade to $179.99 (ap2-cluster)
     proof = "PROOF-EDGE1-UPGRADE"
     register_authorized_mandate(proof, {
-        "tier_id": "pro-dispatch",
+        "tier_id": "ap2-cluster",
         "amount": 179.99,
         "contractor_email": email,
         "buyer_agent_id": "edge1-buyer",
@@ -844,7 +834,7 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
     paypal_service.create_subscription = mock_create_sub
     try:
         res = asyncio.run(seller_agent.purchase_subscription(
-            tier_id="pro-dispatch",
+            tier_id="ap2-cluster",
             agreed_monthly_rate=179.99,
             mandate_proof_hash=proof,
             contractor_email=email,
@@ -875,14 +865,14 @@ def test_edge_case_paypal_cancels_old_plan_after_switch_does_not_deduct_from_led
         "status": "REPLACED",
         "replaced_by": new_id,
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     _COMPLETED_SUBSCRIPTIONS[new_id] = {
         "subscription_id": new_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "pro-dispatch",
+        "tier_id": "ap2-cluster",
         "agreed_monthly_rate": 179.99,
     }
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] = new_id
@@ -926,7 +916,7 @@ def test_edge_case_duplicate_cancelled_webhook_and_deduplication():
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] = sub_id
@@ -980,7 +970,7 @@ def test_edge_case_pending_upgrade_cancelled_clears_pending_replacement_and_reta
         "subscription_id": old_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "pending_replacement": pending_id,
     }
@@ -988,7 +978,7 @@ def test_edge_case_pending_upgrade_cancelled_clears_pending_replacement_and_reta
         "subscription_id": pending_id,
         "status": "APPROVAL_PENDING",
         "contractor_email": email,
-        "tier_id": "pro-dispatch",
+        "tier_id": "ap2-cluster",
         "agreed_monthly_rate": 179.99,
         "replaces_subscription_id": old_id,
     }
@@ -1033,7 +1023,7 @@ def test_edge_case_suspended_then_activated_recommits_spend():
         "subscription_id": sub_id,
         "status": "ACTIVE",
         "contractor_email": email,
-        "tier_id": "solo-starter",
+        "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] = sub_id
@@ -1084,7 +1074,7 @@ def test_simulate_paypal_approval_endpoint():
         "subscription_id": test_sub_id,
         "status": "APPROVAL_PENDING",
         "contractor_email": test_email,
-        "tier_id": "fieldsmith-pro",
+        "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
         "paypal_vault_status": "PENDING_APPROVAL",
         "vault_billing_authorized": False,

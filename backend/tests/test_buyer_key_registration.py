@@ -175,10 +175,10 @@ def test_newly_registered_buyer_key_can_evaluate_mandate():
             "buyerAgentId": kid,
             "amount": 79.99,
             "recurrence": "monthly",
-            "category": "ai-voice-screener",
+            "category": "autonomous-node-service",
             "monthlyBudgetCap": 120.0,
             "contractorEmail": email,
-            "tierId": "fieldsmith-pro",
+            "tierId": "ap2-gateway",
         },
     )
     assert mandate_eval_res.status_code == 200
@@ -197,7 +197,7 @@ def test_rejected_registration_reserved_key_id():
     reg_res = client.post(
         "/api/agent/keys/register",
         json={
-            "kid": "seller-agent-fieldsmith",
+            "kid": "ap2-seller-ed25519-v1",
             "publicKeyHex": pub_hex,
             "contractorEmail": "hacker@evil.com",
             "businessEntity": "Rogue Agent LLC",

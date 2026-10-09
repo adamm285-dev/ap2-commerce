@@ -37,16 +37,13 @@ def reset_ledger():
     from backend.agents.seller_agent import (
         _COMPLETED_SUBSCRIPTIONS,
         _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
-        telnyx_provisioner,
     )
     _COMPLETED_SUBSCRIPTIONS.clear()
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.clear()
-    telnyx_provisioner.reset()
     yield
     ledger.reset()
     _COMPLETED_SUBSCRIPTIONS.clear()
     _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.clear()
-    telnyx_provisioner.reset()
 
 
 @pytest.mark.asyncio
@@ -57,13 +54,13 @@ async def test_dual_sided_ap2_mandates():
     - Seller/Merchant signs Cart Mandate (vct: ap2.mandate.cart.1) with seller Ed25519 key and kid
     """
     neg = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer-01",
-        tier_id="flooring-tile",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert neg["status"] == "COUNTER_OFFER"
-    assert neg["offer_id"].startswith("off_solo_starter_")
+    assert neg["offer_id"].startswith("off_ap2_batch_")
 
     # 1. Buyer Intent Mandate verification
     intent = neg["ap2_intent_mandate"]
@@ -91,14 +88,14 @@ async def test_dual_sided_ap2_mandates():
 async def test_machine_readable_next_action_and_offer_id_binding():
     """
     Verifies autonomous action chaining via machine-readable next_action tool calls:
-    negotiate_tier_terms -> purchase_subscription (via offer_id) -> provision_telecom_line -> dispatch_zapier_mcp
+    negotiate_tier_terms -> purchase_subscription (via offer_id) -> provision_compute_node -> dispatch_zapier_mcp
     """
     # Step 1: Negotiate
     neg = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer-01",
-        tier_id="fieldsmith-pro",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert "next_action" in neg
     next_action_1 = neg["next_action"]
@@ -106,15 +103,14 @@ async def test_machine_readable_next_action_and_offer_id_binding():
     assert next_action_1["tool"] == "purchase_subscription"
     params_1 = next_action_1["parameters"]
     assert params_1["offer_id"] == neg["offer_id"]
-    assert params_1["contractor_email"] == "marcus@millercustomfloors.com"
 
     # Step 2: Purchase using offer_id
     purchase = await seller_agent.purchase_subscription(
         offer_id=params_1["offer_id"],
-        contractor_email=params_1["contractor_email"],
+        contractor_email="buyer@ap2-procure.org",
     )
     assert purchase["status"] == "ACTIVE"
-    assert purchase["tier_id"] == "solo-starter"
+    assert purchase["tier_id"] == "ap2-batch"
     assert purchase["agreed_monthly_rate"] == 49.99
     assert purchase["vault_billing_authorized"] is True
     assert purchase["vault_customer_present"] is False
@@ -123,18 +119,19 @@ async def test_machine_readable_next_action_and_offer_id_binding():
 
     next_action_2 = purchase["next_action"]
     assert next_action_2["type"] == "tool_call"
-    assert next_action_2["tool"] == "provision_telecom_line"
+    assert next_action_2["tool"] == "provision_compute_node"
     params_2 = next_action_2["parameters"]
     assert params_2["subscription_id"] == purchase["subscription_id"]
 
-    # Step 3: Telecom line provisioning
-    telecom = await seller_agent.provision_telecom_line(
+    # Step 3: Compute node provisioning
+    node = await seller_agent.provision_compute_node(
         subscription_id=params_2["subscription_id"],
-        contractor_email=params_2["contractor_email"],
-        area_code="863",
+        buyer_email=params_2.get("buyer_email") or params_2.get("contractor_email") or "buyer@ap2-procure.org",
     )
-    assert "next_action" in telecom
-    next_action_3 = telecom["next_action"]
+    assert node["status"] == "PROVISIONED"
+    assert node["endpoint"].startswith("mcp+https://")
+    assert "next_action" in node
+    next_action_3 = node["next_action"]
     assert next_action_3["type"] == "tool_call"
     assert next_action_3["tool"] == "dispatch_zapier_mcp"
 
@@ -146,10 +143,10 @@ async def test_ttl_alignment_and_offer_expiry():
     are aligned to exactly 1800 seconds (30 minutes).
     """
     neg = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer-ttl",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-ttl",
+        tier_id="ap2-batch",
         monthly_budget_cap=100.00,
-        contractor_email="ttl@contractor.com",
+        contractor_email="ttl@buyer.com",
     )
     intent = neg["ap2_intent_mandate"]
     cart = neg["ap2_cart_mandate"]
@@ -169,15 +166,15 @@ async def test_cumulative_budget_tracking():
     """
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="budget-tracker-agent",
-        tier_id="flooring-tile",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="tracker@contractor.com",
+        contractor_email="tracker@buyer.com",
     )
     assert neg["monthly_cap_remaining"] == 10.01
 
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
-        contractor_email="tracker@contractor.com",
+        contractor_email="tracker@buyer.com",
     )
     assert purchase["monthly_budget_cap"] == 60.00
     assert purchase["monthly_cap_remaining"] == 10.01
@@ -192,7 +189,7 @@ def test_agent_discovery_card_endpoint():
     res = client.get("/.well-known/agent.json")
     assert res.status_code == 200
     data = res.json()
-    assert data["name"].startswith("FieldSmith Pro A2A Seller Agent")
+    assert data["name"].startswith("AP2 Autonomous Seller Node")
     assert "AP2" in data["supported_protocols"]
     assert "A2A" in data["supported_protocols"]
     assert data["authentication"]["seller_kid"] == DEFAULT_SELLER_KID
@@ -208,33 +205,30 @@ def test_agent_discovery_card_endpoint():
 @pytest.mark.asyncio
 async def test_buyer_signed_intent_mandate_acceptance():
     """Verifies that negotiate_tier_terms accepts and binds a buyer-signed AP2 Intent Mandate."""
-    # Buyer generates and Ed25519-signs its own intent mandate
     custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert verify_ap2_intent_mandate(custom_mandate) is True
 
-    # Buyer passes the signed intent mandate to negotiate_tier_terms
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "COUNTER_OFFER"
     assert neg["offer_id"] is not None
     assert neg["ap2_intent_mandate"] == custom_mandate
 
-    # Complete purchase using the merchant offer_id
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert purchase["status"] == "ACTIVE"
     assert purchase["agreed_monthly_rate"] == 49.99
@@ -248,19 +242,18 @@ async def test_tampered_buyer_signed_intent_mandate_rejected():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
-    # Tamper with the payload (signature will no longer match)
     tampered = dict(custom_mandate)
     tampered["amount"] = {"value": "999.00", "currency_code": "USD"}
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=tampered,
     )
     assert neg["status"] == "REJECTED"
@@ -274,16 +267,16 @@ async def test_buyer_signed_intent_mandate_identity_mismatch():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
         contractor_email="attacker@evil.com",
     )
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -297,18 +290,18 @@ async def test_untrusted_buyer_key_rejected():
         buyer_agent_id="hacker-buyer-01",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     custom_mandate["kid"] = "untrusted-rogue-key"
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="hacker-buyer-01",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -322,18 +315,18 @@ async def test_expired_buyer_mandate_rejected():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     custom_mandate["expires_at"] = time.time() - 3600  # Expired 1 hour ago
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -348,16 +341,16 @@ async def test_unauthorized_category_buyer_mandate_rejected():
         amount=60.00,
         recurrence="monthly",
         category="GAMING_VIRTUAL_CURRENCY",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -374,58 +367,56 @@ async def test_signed_cap_overrides_unsigned_param():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,  # Signed cap: $60.00/mo
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
 
     # Caller tries to pass an inflated unsigned monthly_budget_cap of $200.00
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
-        monthly_budget_cap=200.00,  # Unsigned parameter claims $200
-        contractor_email="marcus@millercustomfloors.com",
+        tier_id="ap2-gateway",
+        monthly_budget_cap=200.00,
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
-    # Because signed cap was $60.00, FieldSmith Pro ($79.99) is over budget,
-    # so seller agent issues a COUNTER_OFFER for Solo Starter at $49.99/mo!
     assert neg["status"] == "COUNTER_OFFER"
-    assert neg["counter_offer_tier_id"] == "solo-starter"
-    assert neg["next_action"]["parameters"]["tier_id"] == "solo-starter"
+    assert neg["counter_offer_tier_id"] == "ap2-batch"
+    assert neg["next_action"]["parameters"]["tier_id"] == "ap2-batch"
     assert neg["counter_offer_amount"] == 49.99
     assert neg["monthly_budget_cap"] == 60.00  # Enforced signed cap!
 
 
 @pytest.mark.asyncio
-async def test_provision_telecom_line_subscription_validation():
+async def test_provision_compute_node_subscription_validation():
     """
-    Verifies that provision_telecom_line checks subscription existence and identity binding.
+    Verifies that provision_compute_node checks subscription existence and identity binding.
     """
     # 1. Non-existent subscription ID is rejected
-    res_unknown = await seller_agent.provision_telecom_line(
+    res_unknown = await seller_agent.provision_compute_node(
         subscription_id="SUB-NONEXISTENT-9999",
-        contractor_email="marcus@millercustomfloors.com",
+        buyer_email="buyer@ap2-procure.org",
     )
     assert res_unknown["status"] == "REJECTED"
     assert res_unknown["error"] == "SUBSCRIPTION_NOT_FOUND"
 
     # 2. Existing subscription with mismatched contractor email is rejected
     neg = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert purchase["status"] == "ACTIVE"
     sub_id = purchase["subscription_id"]
 
-    res_mismatch = await seller_agent.provision_telecom_line(
+    res_mismatch = await seller_agent.provision_compute_node(
         subscription_id=sub_id,
-        contractor_email="attacker@evil.com",
+        buyer_email="attacker@evil.com",
     )
     assert res_mismatch["status"] == "REJECTED"
     assert res_mismatch["error"] == "IDENTITY_MISMATCH_DETECTED"
@@ -438,18 +429,18 @@ async def test_missing_expires_at_rejected():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     custom_mandate.pop("expires_at", None)
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -463,18 +454,18 @@ async def test_missing_payer_email_rejected():
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fieldsmith-pro",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-gateway",
+        contractor_email="buyer@ap2-procure.org",
     )
     custom_mandate["payer"] = {}
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fieldsmith-pro",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -482,11 +473,11 @@ async def test_missing_payer_email_rejected():
 
 
 @pytest.mark.asyncio
-async def test_provision_telecom_line_synthetic_id_rejected():
+async def test_provision_compute_node_synthetic_id_rejected():
     """Verifies that arbitrary I-A2A- or I-AUTONOMOUS- IDs cannot bypass provisioning validation."""
-    res_fake = await seller_agent.provision_telecom_line(
+    res_fake = await seller_agent.provision_compute_node(
         subscription_id="I-A2A-0000001",
-        contractor_email="attacker@example.com",
+        buyer_email="attacker@example.com",
     )
     assert res_fake["status"] == "REJECTED"
     assert res_fake["error"] == "SUBSCRIPTION_NOT_FOUND"
@@ -494,28 +485,27 @@ async def test_provision_telecom_line_synthetic_id_rejected():
 
 @pytest.mark.asyncio
 async def test_repo_seed_cannot_forge_mandate():
-    """Verifies that signing with the old hardcoded repo seed is rejected as UNTRUSTED_BUYER_KEY."""
+    """Verifies that signing with an untrusted seed is rejected as UNTRUSTED_BUYER_KEY."""
     import hashlib
     from cryptography.hazmat.primitives.asymmetric import ed25519
-    old_seed = hashlib.sha256(b"fieldsmith_pro_buyer_ed25519_seed_2026").digest()
+    old_seed = hashlib.sha256(b"legacy_untrusted_buyer_seed_2026").digest()
     old_priv = ed25519.Ed25519PrivateKey.from_private_bytes(old_seed)
 
     custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=500.00,
         recurrence="monthly",
-        category="TELEPHONY_AI_SCREENER",
-        tier_id="fleet",
-        contractor_email="marcus@millercustomfloors.com",
+        category="autonomous-node-service",
+        tier_id="ap2-cluster",
+        contractor_email="buyer@ap2-procure.org",
     )
-    # Sign using the old seed private key
     forged = sign_ap2_intent_mandate(custom_mandate, private_key_hex=old_priv.private_bytes_raw().hex())
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="fleet",
+        tier_id="ap2-cluster",
         monthly_budget_cap=500.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
         buyer_intent_mandate=forged,
     )
     assert neg["status"] == "REJECTED"
@@ -525,18 +515,18 @@ async def test_repo_seed_cannot_forge_mandate():
 @pytest.mark.asyncio
 async def test_consecutive_purchases_budget_accounting():
     """
-    Verifies that multiple test purchases for the same contractor maintain
+    Verifies that multiple test purchases for the same buyer maintain
     an accurate active monthly commitment without erroneously deducting down to 0.0.
     """
     neg1 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="solo-starter",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert p1["status"] == "ACTIVE"
     assert p1["monthly_cap_remaining"] == 10.01
@@ -544,9 +534,9 @@ async def test_consecutive_purchases_budget_accounting():
     # Second negotiation for the identical tier returns ALREADY_SUBSCRIBED
     neg2 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
-        tier_id="solo-starter",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert neg2["status"] == "ALREADY_SUBSCRIBED"
     assert neg2["subscription_id"] == p1["subscription_id"]
@@ -554,7 +544,7 @@ async def test_consecutive_purchases_budget_accounting():
     # Replay of the existing offer returns the active subscription idempotently
     p2 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert p2["status"] == "ACTIVE"
     assert p2["monthly_cap_remaining"] == 10.01
@@ -564,21 +554,20 @@ async def test_consecutive_purchases_budget_accounting():
 async def test_rapid_consecutive_offers_retain_isolated_mandates():
     """
     Verifies that when two offers are negotiated rapidly within the same 5-minute window
-    for the same buyer agent and contractor email, each offer retains a unique HMAC proof hash
-    and independent offer_id. Purchasing offer 1 returns offer 1's exact offer_id and cart mandate,
-    guaranteeing that offer 2 did not overwrite offer 1 in the authorized mandate registry.
+    for the same buyer agent and email, each offer retains a unique HMAC proof hash
+    and independent offer_id. Purchasing offer 1 returns offer 1's exact offer_id and cart mandate.
     """
     neg1 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="fieldsmith-pro",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     neg2 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="fieldsmith-pro",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
 
     # Offers must have distinct offer_ids and distinct proof hashes
@@ -588,7 +577,7 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     # Purchase offer 1
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert p1["status"] == "ACTIVE"
     assert p1["offer_id"] == neg1["offer_id"]
@@ -600,7 +589,7 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     # Purchase offer 2 independently
     p2 = await seller_agent.purchase_subscription(
         offer_id=neg2["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert p2["status"] == "ACTIVE"
     assert p2["offer_id"] == neg2["offer_id"]
@@ -616,26 +605,24 @@ async def test_budget_exhausted_machine_readable_rejection():
     the seller agent returns machine-readable error: "BUDGET_EXHAUSTED"
     and identifies the active_subscription_id consuming the budget.
     """
-    # 1. Marcus purchases Solo Starter at $49.99 under a $60 cap
     neg1 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     active_sub_id = p1["subscription_id"]
     assert active_sub_id.startswith("I-A2A-VAULT-")
 
-    # 2. Marcus attempts to negotiate with remaining $10.01 budget cap
     neg_low = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="fieldsmith-pro",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=10.01,
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_email="buyer@ap2-procure.org",
     )
     assert neg_low["status"] == "REJECTED"
     assert neg_low["approved"] is False
@@ -647,16 +634,15 @@ async def test_budget_exhausted_machine_readable_rejection():
 @pytest.mark.asyncio
 async def test_negotiate_same_plan_returns_already_subscribed():
     """
-    Verifies Guard 1: When a contractor is actively subscribed to a tier (e.g., Solo Starter),
-    negotiating for the identical tier returns ALREADY_SUBSCRIBED and the existing subscription_id,
-    preventing unnecessary cancellations and recreations.
+    Verifies Guard 1: When a subscriber is actively subscribed to a tier,
+    negotiating for the identical tier returns ALREADY_SUBSCRIBED and the existing subscription_id.
     """
-    email = "marcus@millercustomfloors.com"
+    email = "buyer@ap2-procure.org"
 
-    # Step 1: Buy Solo Starter
+    # Step 1: Buy Batch Worker
     neg1 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
@@ -668,8 +654,8 @@ async def test_negotiate_same_plan_returns_already_subscribed():
 
     # Step 2: Renegotiate for the identical tier
     neg_same = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
@@ -684,16 +670,16 @@ async def test_negotiate_same_plan_returns_already_subscribed():
 @pytest.mark.asyncio
 async def test_negotiate_counter_offer_guard_no_better_offer():
     """
-    Verifies Guard 2: When Lee is already actively subscribed to Solo Starter ($49.99)
-    with a $60 cap, requesting an upgrade to FieldSmith Pro ($79.99) cannot be afforded,
-    and rather than counter-offering the plan he already holds, the seller returns NO_BETTER_OFFER.
+    Verifies Guard 2: When subscriber is already actively subscribed to Batch Worker ($49.99)
+    with a $60 cap, requesting an upgrade to Service Gateway ($79.99) cannot be afforded,
+    and rather than counter-offering the plan already held, the seller returns NO_BETTER_OFFER.
     """
-    email = "lee@leeflooring.com"
+    email = "subscriber@ap2-procure.org"
 
-    # Step 1: Lee subscribes to Solo Starter
+    # Step 1: Subscribe to Batch Worker
     neg1 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="lee-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-02",
+        tier_id="ap2-batch",
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
@@ -703,38 +689,37 @@ async def test_negotiate_counter_offer_guard_no_better_offer():
     )
     sub1_id = p1["subscription_id"]
 
-    # Step 2: Lee asks for Pro ($79.99) under $60 cap
-    neg_pro = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="lee-buyer",
-        tier_id="fieldsmith-pro",
+    # Step 2: Asks for Gateway ($79.99) under $60 cap
+    neg_gateway = await seller_agent.negotiate_tier_terms(
+        buyer_agent_id="buyer-02",
+        tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
-    assert neg_pro["status"] == "NO_BETTER_OFFER"
-    assert neg_pro["error"] == "NO_BETTER_OFFER"
-    assert neg_pro["current_subscription_id"] == sub1_id
-    assert neg_pro["current_tier_id"] == "solo-starter"
-    assert neg_pro.get("counter_offer_available") is not True
-    assert "already subscribed to the highest viable plan" in neg_pro["reason"]
+    assert neg_gateway["status"] == "NO_BETTER_OFFER"
+    assert neg_gateway["error"] == "NO_BETTER_OFFER"
+    assert neg_gateway["current_subscription_id"] == sub1_id
+    assert neg_gateway["current_tier_id"] == "ap2-batch"
+    assert neg_gateway.get("counter_offer_available") is not True
+    assert "already subscribed to the highest viable plan" in neg_gateway["reason"]
 
 
 @pytest.mark.asyncio
 async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
     """
-    Verifies the complete Plan Change upgrade path (Dana's scenario):
-    1. Dana starts on Solo Starter ($49.99) under $200 cap and provisions phone number.
-    2. Dana upgrades to Fleet Dispatch ($179.99/mo).
-    3. The purchase marks Solo Starter REPLACED and sets replaces_subscription_id.
-    4. Provisioning the new Fleet Dispatch subscription RETAINS Dana's phone number
-       with status: "RETAINED" and retained_from_subscription pointing to the old sub.
-    5. Active contractor spend is $179.99/mo, with $20.01 headroom remaining.
+    Verifies the complete Plan Change upgrade path:
+    1. Subscriber starts on Batch Worker ($49.99) under $200 cap and provisions compute node.
+    2. Subscriber upgrades to Cluster Node ($179.99/mo).
+    3. The purchase marks Batch Worker REPLACED and sets replaces_subscription_id.
+    4. Provisioning the new Cluster Node allocates with cluster quota (1,200 tasks).
+    5. Active spend is $179.99/mo, with $20.01 headroom remaining.
     """
-    email = "dana@customtile.com"
+    email = "dana@ap2-procure.org"
 
-    # Step 1: Initial Solo Starter subscription & provisioning
+    # Step 1: Initial Batch Worker subscription & provisioning
     neg1 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="dana-buyer",
-        tier_id="solo-starter",
+        tier_id="ap2-batch",
         monthly_budget_cap=200.00,
         contractor_email=email,
     )
@@ -744,19 +729,17 @@ async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
     )
     sub1_id = p1["subscription_id"]
 
-    prov1 = await seller_agent.provision_telecom_line(
+    prov1 = await seller_agent.provision_compute_node(
         subscription_id=sub1_id,
-        contractor_email=email,
-        area_code="863",
+        buyer_email=email,
     )
-    assert prov1["status"] == "ALLOCATED"
-    original_did = prov1["assignedDid"]
-    assert original_did.startswith("+1863")
+    assert prov1["status"] == "PROVISIONED"
+    assert prov1["workload_tasks_per_month"] == 125
 
-    # Step 2: Dana negotiates upgrade to Fleet Dispatch ($179.99/mo)
+    # Step 2: Negotiate upgrade to Cluster Node ($179.99/mo)
     neg_upgrade = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="dana-buyer",
-        tier_id="pro-dispatch",
+        tier_id="ap2-cluster",
         monthly_budget_cap=200.00,
         contractor_email=email,
     )
@@ -778,30 +761,28 @@ async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
     assert _COMPLETED_SUBSCRIPTIONS[sub1_id]["replaced_by"] == sub2_id
     assert _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[email] == sub2_id
 
-    # Step 4: Provision new subscription -> Retains original phone line!
-    prov2 = await seller_agent.provision_telecom_line(
+    # Step 4: Provision new subscription -> Allocates Cluster node with 1200 tasks
+    prov2 = await seller_agent.provision_compute_node(
         subscription_id=sub2_id,
-        contractor_email=email,
-        area_code="863",
+        buyer_email=email,
     )
-    assert prov2["status"] == "RETAINED"
-    assert prov2["assignedDid"] == original_did
-    assert prov2["retained_from_subscription"] == sub1_id
-    assert prov2["routingState"] == "ACTIVE_10DLC_BOUND"
+    assert prov2["status"] == "PROVISIONED"
+    assert prov2["node_type"] == "cluster"
+    assert prov2["workload_tasks_per_month"] == 1200
 
 
 @pytest.mark.asyncio
 async def test_provision_rejects_superseded_subscription():
     """
-    Verifies that calling provision_telecom_line with a replaced/superseded subscription
+    Verifies that calling provision_compute_node with a replaced/superseded subscription
     is rejected with SUBSCRIPTION_SUPERSEDED error.
     """
-    email = "marcus@millercustomfloors.com"
+    email = "buyer@ap2-procure.org"
 
     # Buy plan 1
     neg1 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="solo-starter",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-batch",
         monthly_budget_cap=100.00,
         contractor_email=email,
     )
@@ -811,10 +792,10 @@ async def test_provision_rejects_superseded_subscription():
     )
     sub1_id = p1["subscription_id"]
 
-    # Buy plan 2 (upgrade to pro, replaces plan 1)
+    # Buy plan 2 (upgrade to gateway, replaces plan 1)
     neg2 = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer",
-        tier_id="fieldsmith-pro",
+        buyer_agent_id="buyer-01",
+        tier_id="ap2-gateway",
         monthly_budget_cap=100.00,
         contractor_email=email,
     )
@@ -825,19 +806,21 @@ async def test_provision_rejects_superseded_subscription():
     sub2_id = p2["subscription_id"]
 
     # Attempt to provision the replaced plan 1
-    prov_old = await seller_agent.provision_telecom_line(
+    prov_old = await seller_agent.provision_compute_node(
         subscription_id=sub1_id,
-        contractor_email=email,
+        buyer_email=email,
     )
     assert prov_old["status"] == "REJECTED"
     assert prov_old["error"] == "SUBSCRIPTION_SUPERSEDED"
 
     # Provision the active plan 2
-    prov_active = await seller_agent.provision_telecom_line(
+    prov_active = await seller_agent.provision_compute_node(
         subscription_id=sub2_id,
-        contractor_email=email,
+        buyer_email=email,
     )
-    assert prov_active["routingState"] == "ACTIVE_10DLC_BOUND"
+    assert prov_active["status"] == "PROVISIONED"
+    assert prov_active["node_type"] == "gateway"
+    assert prov_active["workload_tasks_per_month"] == 450
 
 
 @pytest.mark.asyncio
@@ -845,20 +828,20 @@ async def test_multiple_rapid_purchases_worst_case_in_process():
     """
     Verifies the worst-case scenario:
     Three offers generated prior to any purchase. When bought in sequence,
-    each replaces the previous one so active contractor spend is ALWAYS <= cap ($49.99 <= $60).
+    each replaces the previous one so active spend is ALWAYS <= cap ($49.99 <= $60).
     """
-    email = "marcus@millercustomfloors.com"
+    email = "buyer@ap2-procure.org"
 
     neg_a = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        buyer_agent_id="buyer-01", tier_id="ap2-batch",
         monthly_budget_cap=60.00, contractor_email=email,
     )
     neg_b = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        buyer_agent_id="buyer-01", tier_id="ap2-batch",
         monthly_budget_cap=60.00, contractor_email=email,
     )
     neg_c = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="marcus-buyer", tier_id="solo-starter",
+        buyer_agent_id="buyer-01", tier_id="ap2-batch",
         monthly_budget_cap=60.00, contractor_email=email,
     )
 
@@ -881,8 +864,3 @@ async def test_multiple_rapid_purchases_worst_case_in_process():
 
     # Active recurring spend is strictly $49.99, within $60 cap
     assert ledger.get_remaining_budget(contractor_email=email, cap=60.00) == 10.01
-
-
-
-
-

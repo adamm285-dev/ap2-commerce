@@ -136,11 +136,11 @@ class BackofficeWebhookDispatcher:
 
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "FieldSmith-Pro-A2A-Backoffice/1.0",
-            "X-FieldSmith-Signature": f"sha256={signature}",
-            "X-FieldSmith-Timestamp": timestamp,
-            "X-FieldSmith-Event": event_type,
-            "X-FieldSmith-Delivery-Id": delivery_id,
+            "User-Agent": "AP2-A2A-Backoffice/1.0",
+            "X-AP2-Signature": f"sha256={signature}",
+            "X-AP2-Timestamp": timestamp,
+            "X-AP2-Event": event_type,
+            "X-AP2-Delivery-Id": delivery_id,
         }
 
         # Dry run / local inspection mode when no live target URL specified

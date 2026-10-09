@@ -17,16 +17,16 @@ async def test_autonomous_a2a_cycle_approved():
     buyer = BuyerAgent(
         agent_id="test-buyer-agent",
         monthly_budget_cap=100.00,
-        contractor_email="test@floorsmith.pro",
+        contractor_email="agent-alpha@nexus-systems.io",
     )
     result = await buyer.run_autonomous_onboarding_cycle(
-        target_trade="flooring-tile"
+        target_trade="ap2-gateway"
     )
 
     assert result["status"] == "ACTIVE_SUBSCRIPTION"
     assert result["monthly_amount"] == 79.99
-    assert result["assigned_did"].startswith("+1863")
-    assert result["subscription_id"].startswith("I-A2A-")
+    assert result["allocated_did"].startswith("mcp+https://")
+    assert result["subscription_id"].startswith("I-")
     assert len(result["mandate_proof"]) == 64
 
 
@@ -35,10 +35,10 @@ async def test_autonomous_a2a_cycle_rejected_on_insufficient_budget():
     buyer = BuyerAgent(
         agent_id="tight-budget-agent",
         monthly_budget_cap=40.00,  # $40 cap < $49.99 minimum tier
-        contractor_email="test@floorsmith.pro",
+        contractor_email="agent-alpha@nexus-systems.io",
     )
     result = await buyer.run_autonomous_onboarding_cycle(
-        target_trade="flooring-tile"
+        target_trade="ap2-gateway"
     )
 
     assert result["status"] == "REJECTED"

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-FieldSmith Pro — Autonomous A2A Commerce Judge Audit Harness
-============================================================
+AP2 Autonomous Commerce — Autonomous A2A Commerce Judge Audit Harness
+====================================================================
 A self-contained, automated evaluation script designed for hackathon judges.
-Executes the full 7-step autonomous agent lifecycle in-memory via FastAPI TestClient
+Executes the full autonomous agent lifecycle in-memory via FastAPI TestClient
 and direct cryptographic verification, requiring ZERO external dependencies or active servers.
 
 Usage:
@@ -16,7 +16,7 @@ import json
 import time
 import uuid
 
-# Ensure a2a_commerce_portal root is on sys.path
+# Ensure portal root is on sys.path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PORTAL_ROOT = os.path.dirname(SCRIPT_DIR)
 if PORTAL_ROOT not in sys.path:
@@ -52,9 +52,8 @@ from backend.services.crypto_mandate import (
     generate_ed25519_keypair,
     sign_ed25519_message,
 )
-from backend.services.telecom_router import allocate_dynamic_did
-from backend.services.backoffice.jobber_exporter import jobber_exporter
 from backend.services.backoffice.qbo_exporter import qbo_exporter
+from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
 
 # Terminal color helpers
 GREEN = "\033[92m"
@@ -64,9 +63,9 @@ RED = "\033[91m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-parser = argparse.ArgumentParser(description="Autonomous Agentic Commerce & AP2 Judge Audit Harness")
-parser.add_argument("--remote", action="store_true", help="Execute checks against live cloud deployment (https://api.fieldsmith.pro)")
-parser.add_argument("--url", type=str, default="https://api.fieldsmith.pro", help="Target API URL")
+parser = argparse.ArgumentParser(description="AP2 Autonomous Agentic Commerce Judge Audit Harness")
+parser.add_argument("--remote", action="store_true", help="Execute checks against live cloud deployment (https://api.ap2-commerce.org)")
+parser.add_argument("--url", type=str, default="https://api.ap2-commerce.org", help="Target API URL")
 args, _ = parser.parse_known_args()
 
 if args.remote or os.environ.get("REMOTE_AUDIT") == "1":
@@ -90,7 +89,7 @@ def print_fail(msg: str):
     sys.exit(1)
 
 def run_judge_audit():
-    print_header("FIELDSMITH PRO: AUTONOMOUS AGENTIC COMMERCE & AP2 JUDGE AUDIT")
+    print_header("AP2 AUTONOMOUS COMMERCE: AGENTIC COMMERCE & AP2 PROTOCOL JUDGE AUDIT")
     print(f"  Target Event: {BOLD}PayPal AI Hackathon 2026{RESET}")
     print(f"  Standard:     {BOLD}Model Context Protocol (MCP 2024-11-05){RESET}")
     print(f"  Payment Rail: {BOLD}PayPal Subscriptions & Vault MIT{RESET}")
@@ -127,14 +126,14 @@ def run_judge_audit():
     print_pass(f"Registered MCP Tools ({len(tools)}): {', '.join(tool_names)}")
 
     # -------------------------------------------------------------------------
-    # CHECK 2: Standard Trade Negotiation ($79.99/mo under $100 cap)
+    # CHECK 2: Standard AP2 Negotiation ($79.99/mo Plan under $100 Cap)
     # -------------------------------------------------------------------------
     print_step(2, "Standard AP2 Negotiation ($79.99/mo Plan under $100 Cap)")
     mandate_req = {
         "buyerAgentId": "usr_judge_01",
         "amount": 79.99,
         "recurrence": "monthly",
-        "category": "contractor-dispatch-ai",
+        "category": "autonomous-compute",
         "monthlyBudgetCap": 100.00,
     }
     res = client.post("/api/agent/spending-mandate/evaluate", json=mandate_req)
@@ -155,7 +154,7 @@ def run_judge_audit():
         "buyerAgentId": "usr_judge_02",
         "amount": 79.99,
         "recurrence": "monthly",
-        "category": "contractor-dispatch-ai",
+        "category": "autonomous-compute",
         "monthlyBudgetCap": 60.00,
     }
     res = client.post("/api/agent/spending-mandate/evaluate", json=sub_budget_req)
@@ -163,7 +162,7 @@ def run_judge_audit():
     counter_res = res.json()
     is_counter_available = counter_res.get("counterOfferAvailable") or counter_res.get("counter_offer_available")
     assert is_counter_available is True
-    tier_name = counter_res.get("counterOfferTier") or counter_res.get("counter_offer_tier", "Solo Starter")
+    tier_name = counter_res.get("counterOfferTier") or counter_res.get("counter_offer_tier", "AP2 Batch Worker")
     counter_price = counter_res.get("counterOfferAmount") or counter_res.get("counter_offer_amount")
     assert counter_price == 49.99
     print_pass(f"Autonomous Counter-Offer Generated: '{tier_name}' at ${counter_price}/mo")
@@ -175,7 +174,7 @@ def run_judge_audit():
     print_step(4, "Interactive Cryptographic Anti-Tamper Verification (HMAC-SHA256)")
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Miller Custom Flooring LLC",
+        business_name="Nexus Autonomous Systems Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_judge_test"
@@ -198,7 +197,7 @@ def run_judge_audit():
 
     # 4c: Entity name alteration
     tampered_entity = dict(canonical)
-    tampered_entity["business_name"] = "Miller Tile Saw LLC"
+    tampered_entity["business_name"] = "Attacker Systems LLC"
     valid, reason = verify_mandate_proof(tampered_entity, signature)
     assert valid is False
     assert reason == "SIGNATURE_MISMATCH"
@@ -213,47 +212,45 @@ def run_judge_audit():
     print_pass(f"Tamper Test (Budget Cap Breach): REJECTED ({reason})")
 
     # -------------------------------------------------------------------------
-    # CHECK 5: Nationwide LATA Allocation & Contiguous Failover
+    # CHECK 5: Autonomous Compute Node Provisioning & KYC Identity Enforcement
     # -------------------------------------------------------------------------
-    print_step(5, "Nationwide LATA Telecom Routing & Local Pool Exhaustion Failover")
-    
-    # Normal allocation in 863
-    alloc_normal = allocate_dynamic_did(preferred_area_code="863", simulate_exhaustion=False)
-    assert alloc_normal.get("area_code") == "863"
-    print_pass(f"Primary Allocation: {alloc_normal.get('did')} ({alloc_normal.get('region')})")
+    print_step(5, "Autonomous Compute Node Provisioning & Dedicated Endpoint Allocation")
+    judge_sub_id = "I-JUDGE-SUB-01"
+    judge_email = "judge@ap2-commerce.org"
+    _COMPLETED_SUBSCRIPTIONS[judge_sub_id] = {
+        "subscription_id": judge_sub_id,
+        "status": "ACTIVE",
+        "contractor_email": judge_email,
+        "tier_id": "ap2-gateway",
+        "agreed_monthly_rate": 79.99,
+        "subscriber_country_code": "US",
+    }
+    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[judge_email] = judge_sub_id
 
-    # Simulated exhaustion failover to Tampa (813)
-    alloc_failover = allocate_dynamic_did(preferred_area_code="863", simulate_exhaustion=True)
-    assert alloc_failover.get("failover_triggered") is True
-    assert alloc_failover.get("area_code") == "813"
-    print_pass(f"Contiguous LATA Failover: {alloc_failover.get('did')} ({alloc_failover.get('region')})")
+    prov_res = client.post("/api/agent/provision", json={
+        "subscriptionId": judge_sub_id,
+        "contractorEmail": judge_email,
+    })
+    assert prov_res.status_code == 201
+    prov_data = prov_res.json()
+    assert prov_data["status"] in ("ALLOCATED", "PROVISIONED")
+    assert prov_data["endpoint"].startswith("mcp+https://")
+    print_pass(f"Dedicated Node Endpoint Provisioned: {prov_data['endpoint']}")
+    print_pass(f"Transport: {prov_data.get('carrier')} (Workload Quota: 450 tasks/mo)")
 
     # -------------------------------------------------------------------------
-    # CHECK 6: Downline Back-Office ERP Payloads (Jobber GraphQL + QBO v3)
+    # CHECK 6: Downline Back-Office ERP Payloads (QuickBooks Online API v3 Account 6300)
     # -------------------------------------------------------------------------
-    print_step(6, "Authentic Back-Office ERP Payloads (Jobber GraphQL v2 + QBO v3)")
-    jobber_gql = jobber_exporter.format_client_graphql_mutation(
-        contractor_name="Marcus Miller",
-        business_entity="Miller Custom Flooring LLC",
-        contractor_email="marcus@millercustomfloors.com",
-        allocated_did="+1 (863) 267-8902",
-        trade_vertical="Tile & Custom Flooring",
-        paypal_subscription_id="I-AUTONOMOUS-8902",
-        mandate_proof_hash="0530c4b618a5f1cd287477bf9d551bff52c100eeaf1811de3036fa2c4bb29560",
-    )
-    assert "mutation ClientCreate($input: ClientCreateInput!)" in jobber_gql["query"]
-    assert jobber_gql["variables"]["input"]["companyName"] == "Miller Custom Flooring LLC"
-    print_pass(f"Jobber GraphQL v2 Mutation: Generated & Validated ({len(jobber_gql['query'])} chars)")
-
+    print_step(6, "Authentic Back-Office ERP Payloads (QuickBooks Online API v3 Expense)")
     qbo_pkg = qbo_exporter.format_purchase_expense_payload(
-        contractor_name="Marcus Miller",
-        business_entity="Miller Custom Flooring LLC",
-        contractor_email="marcus@millercustomfloors.com",
+        contractor_name="Autonomous Compute Buyer",
+        business_entity="Nexus Autonomous Systems Corp",
+        contractor_email="agent-alpha@nexus-systems.io",
         monthly_fee=79.99,
         paypal_subscription_id="I-AUTONOMOUS-8902",
-        allocated_did="+1 (863) 267-8902",
+        allocated_did="mcp+https://gateway-01.ap2.market",
         mandate_proof_hash="PROOF-HASH-5678",
-        trade_vertical="Tile & Custom Flooring",
+        trade_vertical="Autonomous Cloud Compute",
         txn_date="2026-10-03",
     )
     purchase = qbo_pkg["Purchase"]
@@ -267,7 +264,7 @@ def run_judge_audit():
     # -------------------------------------------------------------------------
     # CHECK 7: Telemetry & Financial Mathematics Reconciliation
     # -------------------------------------------------------------------------
-    print_step(7, "Enterprise Fleet Ledger & AG Studio Telemetry Reconciliation")
+    print_step(7, "Enterprise Fleet Ledger & AP2 Telemetry Reconciliation")
     fleet_lines = 14
     price_per_line = 79.99
     total_mrr = round(fleet_lines * price_per_line, 2)
@@ -297,34 +294,33 @@ def run_judge_audit():
     assert stats_res.status_code == 200
     stats_data = stats_res.json()
     assert stats_data.get("total_subscribers") >= 14
-    assert "CITNRYD" in stats_data.get("carrier_resporg", "")
-    print_pass(f"Fleet Telemetry: TCR Campaign {stats_data.get('carrier_resporg')} • {stats_data.get('compliance_guard')}")
+    print_pass(f"Fleet Telemetry: Active Nodes {stats_data.get('total_subscribers')} • {stats_data.get('compliance_guard')}")
 
     sched_res = client.get("/api/fleet/schedule")
     assert sched_res.status_code == 200
     sched_data = sched_res.json()
     assert len(sched_data.get("resources", [])) >= 4
     assert len(sched_data.get("events", [])) >= 4
-    print_pass(f"Bryntum Scheduler: Verified {len(sched_data.get('resources', []))} resources & {len(sched_data.get('events', []))} shifts")
+    print_pass(f"Bryntum Scheduler: Verified {len(sched_data.get('resources', []))} cluster nodes & {len(sched_data.get('events', []))} workload tasks")
 
-    # Lock territory slot via API
+    # Lock dispatch slot via API
     lock_res = client.post(
         "/api/agent/dispatch/lock-slot",
         json={
-            "leadId": "LEAD-AUDIT-863",
-            "territoryZone": "South Lakeland Zone 2",
+            "leadId": "WORKLOAD-AUDIT-01",
+            "territoryZone": "Zone 1 - High Throughput",
             "slotStartIso": "2026-10-02 13:00",
             "paypalTransactionId": "TXN-AUDIT-9021",
         },
     )
     assert lock_res.status_code == 200
     assert lock_res.json().get("success") is True
-    print_pass("Bryntum Territory Dispatch: Locked 75-min window for Crew B (HTTP 200)")
+    print_pass("Bryntum Cluster Schedule: Locked execution window on Node Alpha (HTTP 200)")
 
     # -------------------------------------------------------------------------
     # CHECK 9: Dynamic Self-Service Buyer Key Onboarding & Challenge Verification
     # -------------------------------------------------------------------------
-    print_step(9, "Dynamic Self-Service Buyer Key Onboarding (APIMatic / AP2 Challenge-Response)")
+    print_step(9, "Dynamic Self-Service Buyer Key Onboarding (AP2 Challenge-Response)")
     chal_res = client.get("/api/agent/keys/challenge")
     assert chal_res.status_code == 200
     challenge_nonce = chal_res.json()["challenge"]
@@ -342,8 +338,8 @@ def run_judge_audit():
         json={
             "kid": kid,
             "publicKeyHex": new_pub,
-            "contractorEmail": "judge@fieldsmith.pro",
-            "businessEntity": "Hackathon Evaluation Crew LLC",
+            "contractorEmail": "judge@ap2-commerce.org",
+            "businessEntity": "Nexus Autonomous Systems Corp",
             "challenge": challenge_nonce,
             "challengeSignature": sig,
             "monthlyBudgetCap": 150.0,

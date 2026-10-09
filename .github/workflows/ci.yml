@@ -1,4 +1,4 @@
-name: FieldSmith Pro CI
+name: AP2 Autonomous Commerce CI
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
         run: |
           python -c "import yaml; yaml.safe_load(open('openapi.yaml')); print('OpenAPI 3.1.0 specification is valid!')"
 
-      - name: Run Pytest Suite (Trades Profile)
+      - name: Run Pytest Suite
         run: |
           pytest backend/tests/ -q -n 4
 
@@ -44,7 +44,7 @@ jobs:
 
       - name: Run Autonomous Buyer Agent CLI Simulation
         run: |
-          python -m backend.agents.buyer_agent --budget 100 --trade flooring-tile
+          python -m backend.agents.buyer_agent --budget 100 --tier ap2-gateway
 
   frontend-build:
     name: Frontend Build & Typecheck (Vite + React)

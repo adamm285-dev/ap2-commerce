@@ -3,3 +3,9 @@ Copyright 2026 Google LLC
 
 This product includes software developed by Google LLC (https://github.com/google-agentic-commerce/AP2)
 Vendored at commit e1ea56db72a6 under the Apache License, Version 2.0.
+
+MODIFICATIONS (Apache License, Version 2.0, Section 4.b):
+- sdk/sdjwt/kb_sd_jwt.py: Enforce expected_aud and expected_nonce checks whenever supplied
+  by caller in verify(), even on intermediate hops (typ in TYP_INTERMEDIATE), to ensure
+  test_verify_rejects_aud_mismatch and test_verify_rejects_nonce_mismatch pass as specified
+  by Google's test suite.

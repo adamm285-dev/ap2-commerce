@@ -161,6 +161,7 @@ def _build_test_chains(
     )
     checkout_jwt = chk_record["checkout_jwt"]
     checkout_hash = chk_record["checkout_hash"]
+    checkout_nonce = chk_record.get("nonce", "test_nonce_order")
 
     # 2. Open Checkout Mandate (signed by User / Trusted Surface)
     open_chk = OpenCheckoutMandate(
@@ -187,7 +188,7 @@ def _build_test_chains(
         mandate_token=open_chk_tok,
         payloads=[closed_chk],
         aud=AP2_MERCHANT_ID,
-        nonce="test_nonce_checkout",
+        nonce=checkout_nonce,
     )
 
     # 4. Open Payment Mandate (signed by User)
@@ -217,7 +218,7 @@ def _build_test_chains(
         mandate_token=open_pay_tok,
         payloads=[closed_pay],
         aud=AP2_MERCHANT_ID,
-        nonce="test_nonce_payment",
+        nonce=checkout_nonce,
     )
 
     return chk_chain, pay_chain, checkout_jwt, checkout_hash

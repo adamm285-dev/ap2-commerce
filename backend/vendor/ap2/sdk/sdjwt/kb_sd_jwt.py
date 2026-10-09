@@ -125,6 +125,15 @@ def verify(
     # them into inline dicts so the cnf check below works correctly.
     _resolve_delegate_payload(payload, token)
     common.verify_binding(payload, prev_token)
+# ─────────────────────────────────────────────────────────────────────────────
+# MODIFICATION NOTICE (Apache License, Version 2.0, Section 4.b)
+# Modified by AP2 Autonomous Commerce Contributors on 2026-10-09:
+# In verify(): Enforce expected_aud and expected_nonce checks whenever supplied
+# by caller, even on intermediate hops (typ in TYP_INTERMEDIATE), to satisfy
+# kb_sd_jwt_intermediate_tests.py (test_verify_rejects_aud_mismatch and
+# test_verify_rejects_nonce_mismatch) per Google test specification.
+# ─────────────────────────────────────────────────────────────────────────────
+
     if typ in TYP_TERMINAL or expected_aud is not None or expected_nonce is not None:
         common.verify_expected_claims(
             payload,

@@ -138,7 +138,9 @@ def create_merchant_checkout(
         links=links,
     )
 
+    order_nonce = f"nonce_{uuid.uuid4().hex[:12]}"
     checkout_payload = checkout_model.model_dump(mode="json", exclude_none=True)
+    checkout_payload["nonce"] = order_nonce
     if is_counter_offer:
         checkout_payload["is_counter_offer"] = True
         checkout_payload["counter_reason"] = counter_reason or "Budget constrained: recommended tier within approved spending cap."
@@ -158,6 +160,7 @@ def create_merchant_checkout(
         "checkout_id": chk_id,
         "checkout_jwt": checkout_jwt,
         "checkout_hash": checkout_hash,
+        "nonce": order_nonce,
         "tier_id": clean_tier,
         "title": plan_title,
         "price_cents": price_cents,
@@ -311,43 +314,80 @@ def get_issued_checkout(identifier: str) -> Optional[Dict[str, Any]]:
     return _ISSUED_CHECKOUTS.get(identifier)
 
 
-def resolve_root_public_key(parsed_token: common.ParsedToken, override_key: Optional[JWK] = None) -> JWK:
-    """Resolves the public JWK for the root issuer of a mandate chain."""
+def resolve_root_public_key(
+    parsed_token: common.ParsedToken,
+    override_key: Optional[JWK] = None,
+    buyer_email: Optional[str] = None,
+) -> JWK:
+    """
+    Resolves the public JWK for the root issuer of an Open Mandate chain.
+    Conforms to AP2 security invariants:
+      (a) Keys must come ONLY from the registered buyer-key registry,
+          where buyer_email must match the email bound to that key;
+      (b) The demo Trusted-Surface user key is accepted ONLY when MOCK_EXTERNAL_APIS=true.
+    Self-asserted JWKs in the token header are NEVER trusted.
+    Agent keys sign only closed mandates and are NEVER accepted as root keys.
+    """
     if override_key is not None:
         return override_key
 
     header = parsed_token.header if hasattr(parsed_token, "header") else getattr(parsed_token, "jwt_header", {})
     kid = header.get("kid")
-    demo_user = get_demo_user_key()
-    if not kid or kid == demo_user.kid or kid == "demo-user-key":
-        return JWK.from_json(demo_user.export_public())
 
+    # Invariant 1: Agent keys sign only closed mandates; never accept as root
     demo_agent = get_demo_agent_key()
-    if kid == demo_agent.kid or kid == "demo-agent-key":
-        return JWK.from_json(demo_agent.export_public())
+    if kid and kid in (demo_agent.kid, "demo-autonomous-buyer-agent", "demo-agent-key"):
+        raise ValueError("INVALID_ROOT_KEY: Agent keys sign only closed mandates, never root open mandates.")
 
-    # Fallback: check database registered buyer keys
-    from ..database import get_buyer_key
-    pub_json = get_buyer_key(kid)
-    if pub_json:
-        try:
-            return JWK.from_json(pub_json)
-        except Exception:
-            pass
+    # Invariant 2: Never inspect or trust self-asserted "jwk" in header
 
-    # If header contains self-asserted jwk
-    if "jwk" in header:
-        try:
-            jwk_dict = header["jwk"]
-            return JWK.from_json(json.dumps(jwk_dict))
-        except Exception:
-            pass
+    # Invariant 3: Check registered buyer-key registry
+    if kid:
+        from ..database import get_buyer_key, get_buyer_key_email
+        pub_json = get_buyer_key(kid)
+        if pub_json:
+            reg_email = get_buyer_key_email(kid)
+            if buyer_email:
+                if not reg_email or reg_email.strip().lower() != buyer_email.strip().lower():
+                    raise ValueError(
+                        f"EMAIL_KEY_BINDING_MISMATCH: Registered key '{kid}' is bound to '{reg_email}', "
+                        f"which does not match purchase email '{buyer_email}'."
+                    )
+            try:
+                if pub_json.strip().startswith("{"):
+                    raw_dict = json.loads(pub_json)
+                    if "kty" in raw_dict and isinstance(raw_dict["kty"], str):
+                        raw_dict["kty"] = raw_dict["kty"].upper()
+                    if "crv" in raw_dict and isinstance(raw_dict["crv"], str) and raw_dict["crv"].lower() == "p-256":
+                        raw_dict["crv"] = "P-256"
+                    return JWK(**raw_dict)
+                else:
+                    try:
+                        return JWK.from_json(pub_json)
+                    except Exception:
+                        from cryptography.hazmat.primitives.asymmetric import ec
+                        from cryptography.hazmat.primitives.serialization import load_der_public_key
+                        raw_bytes = bytes.fromhex(pub_json.strip())
+                        try:
+                            ec_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw_bytes)
+                            return JWK.from_pyca(ec_key)
+                        except Exception:
+                            ec_key = load_der_public_key(raw_bytes)
+                            return JWK.from_pyca(ec_key)
+            except Exception as e:
+                raise ValueError(f"INVALID_BUYER_KEY: Failed to parse registered key '{kid}': {e}")
 
-    # In mock / demo mode, fallback to demo_user
+    # Invariant 4: Demo user key ONLY when mock_external_apis is True
     if settings.mock_external_apis:
-        return JWK.from_json(demo_user.export_public())
+        demo_user = get_demo_user_key()
+        if not kid or kid in (demo_user.kid, "demo-human-trusted-surface", "demo-user-key"):
+            return JWK.from_json(demo_user.export_public())
+        raise ValueError(f"UNREGISTERED_BUYER_KEY: No registered public key found for kid '{kid}'.")
 
-    raise ValueError(f"UNTRUSTED_ROOT_KEY: No registered public key found for kid '{kid}'.")
+    # In live mode (mock_external_apis == False):
+    if not kid:
+        raise ValueError("MISSING_KEY_ID: Root mandate token header must include a registered 'kid'.")
+    raise ValueError(f"UNREGISTERED_BUYER_KEY: No registered public key found for kid '{kid}'.")
 
 
 def verify_ap2_chains(
@@ -358,6 +398,7 @@ def verify_ap2_chains(
     expected_aud: str = AP2_MERCHANT_ID,
     expected_nonce: Optional[str] = None,
     enforce_replay_defense: bool = True,
+    buyer_email: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Verifies the complete AP2 v0.2 Checkout and Payment Mandate chains.
@@ -369,103 +410,138 @@ def verify_ap2_chains(
     client = MandateClient()
     order_id = "unknown_order"
 
-    # Step 0: Resolve checkout_jwt if not provided directly
-    if not checkout_jwt:
+    try:
+        # Step 0: Resolve checkout_jwt if not provided directly
+        if not checkout_jwt:
+            try:
+                parts = checkout_mandate_token.split("~~")
+                if len(parts) >= 2:
+                    from ap2.sdk.utils import b64url_decode
+                    closed_part = parts[1].split("~")[0]
+                    payload_b64 = closed_part.split(".")[1]
+                    payload_json = json.loads(b64url_decode(payload_b64).decode("utf-8"))
+                    chk_hash = payload_json.get("checkout_hash")
+                    if chk_hash and chk_hash in _ISSUED_CHECKOUTS:
+                        checkout_jwt = _ISSUED_CHECKOUTS[chk_hash]["checkout_jwt"]
+            except Exception:
+                pass
+
+        if not checkout_jwt:
+            ref = f"err_{uuid.uuid4().hex[:8]}"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description="checkout_jwt is required to verify checkout constraints.",
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_MANDATE,
+                "error_description": "checkout_jwt is required to verify checkout constraints.",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": None,
+            }
+
+        checkout_hash = compute_checkout_hash(checkout_jwt)
+
+        # Step 1: Verify merchant Checkout JWT signature and integrity
         try:
-            parts = checkout_mandate_token.split("~~")
-            if len(parts) >= 2:
-                from ap2.sdk.utils import b64url_decode
-                closed_part = parts[1].split("~")[0]
-                payload_b64 = closed_part.split(".")[1]
-                payload_json = json.loads(b64url_decode(payload_b64).decode("utf-8"))
-                chk_hash = payload_json.get("checkout_hash")
-                if chk_hash and chk_hash in _ISSUED_CHECKOUTS:
-                    checkout_jwt = _ISSUED_CHECKOUTS[chk_hash]["checkout_jwt"]
-        except Exception:
-            pass
+            chk_payload = verify_jwt(checkout_jwt, get_merchant_public_key())
+            order_id = chk_payload.get("id", order_id)
+        except Exception as e:
+            logger.warning(f"Merchant Checkout JWT signature verification failed: {e}")
+            ref = f"chk_hash_{checkout_hash[:16]}"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_CREDENTIAL,
+                error_description=f"Checkout JWT signature verification failed: {e}",
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_CREDENTIAL,
+                "error_description": f"Checkout JWT signature verification failed: {e}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": None,
+            }
 
-    if not checkout_jwt:
-        ref = f"err_{uuid.uuid4().hex[:8]}"
-        err_receipt = create_checkout_receipt_jwt(
-            order_id=order_id,
-            closed_mandate_reference=ref,
-            status="Error",
-            error=ERR_INVALID_MANDATE,
-            error_description="checkout_jwt is required to verify checkout constraints.",
-        )
-        return {
-            "valid": False,
-            "error": ERR_INVALID_MANDATE,
-            "error_description": "checkout_jwt is required to verify checkout constraints.",
-            "checkout_receipt": err_receipt,
-            "payment_receipt": None,
-        }
+        # Resolve buyer_email if not explicitly provided
+        if not buyer_email:
+            if checkout_hash in _ISSUED_CHECKOUTS:
+                buyer_email = _ISSUED_CHECKOUTS[checkout_hash].get("contractor_email")
+            elif order_id in _ISSUED_CHECKOUTS:
+                buyer_email = _ISSUED_CHECKOUTS[order_id].get("contractor_email")
 
-    checkout_hash = compute_checkout_hash(checkout_jwt)
+        # Resolve expected_nonce if not explicitly provided
+        if not expected_nonce:
+            if isinstance(chk_payload, dict) and "nonce" in chk_payload:
+                expected_nonce = chk_payload.get("nonce")
+            if not expected_nonce and checkout_hash in _ISSUED_CHECKOUTS:
+                expected_nonce = _ISSUED_CHECKOUTS[checkout_hash].get("nonce")
+            if not expected_nonce and order_id in _ISSUED_CHECKOUTS:
+                expected_nonce = _ISSUED_CHECKOUTS[order_id].get("nonce")
 
-    # Step 1: Verify merchant Checkout JWT signature and integrity
-    try:
-        chk_payload = verify_jwt(checkout_jwt, get_merchant_public_key())
-        order_id = chk_payload.get("id", order_id)
-    except Exception as e:
-        logger.warning(f"Merchant Checkout JWT signature verification failed: {e}")
-        ref = f"chk_hash_{checkout_hash[:16]}"
-        err_receipt = create_checkout_receipt_jwt(
-            order_id=order_id,
-            closed_mandate_reference=ref,
-            status="Error",
-            error=ERR_INVALID_CREDENTIAL,
-            error_description=f"Checkout JWT signature verification failed: {e}",
-        )
-        return {
-            "valid": False,
-            "error": ERR_INVALID_CREDENTIAL,
-            "error_description": f"Checkout JWT signature verification failed: {e}",
-            "checkout_receipt": err_receipt,
-            "payment_receipt": None,
-        }
+        # Step 2: Verify Checkout Mandate chain
+        def checkout_root_provider(t: common.ParsedToken) -> JWK:
+            return resolve_root_public_key(t, override_key=user_public_key, buyer_email=buyer_email)
 
-    # Step 2: Verify Checkout Mandate chain
-    def checkout_root_provider(t: common.ParsedToken) -> JWK:
-        return resolve_root_public_key(t, override_key=user_public_key)
+        try:
+            checkout_payloads = client.verify(
+                token=checkout_mandate_token,
+                key_or_provider=checkout_root_provider,
+                expected_aud=expected_aud,
+                expected_nonce=expected_nonce,
+            )
+        except ValueError as e:
+            msg = str(e)
+            logger.warning(f"Checkout mandate verification crypto/structure failure: {msg}")
+            code = ERR_UNRESOLVED_CONSTRAINT if "constraint" in msg.lower() else ERR_INVALID_CREDENTIAL
+            ref = f"chk_{checkout_hash[:16]}"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=ref,
+                status="Error",
+                error=code,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": code,
+                "error_description": msg,
+                "checkout_receipt": err_receipt,
+                "payment_receipt": None,
+            }
 
-    try:
-        checkout_payloads = client.verify(
-            token=checkout_mandate_token,
-            key_or_provider=checkout_root_provider,
-            expected_aud=expected_aud,
-            expected_nonce=expected_nonce,
-        )
-    except ValueError as e:
-        msg = str(e)
-        logger.warning(f"Checkout mandate verification crypto/structure failure: {msg}")
-        code = ERR_UNRESOLVED_CONSTRAINT if "constraint" in msg.lower() else ERR_INVALID_CREDENTIAL
-        ref = f"chk_{checkout_hash[:16]}"
-        err_receipt = create_checkout_receipt_jwt(
-            order_id=order_id,
-            closed_mandate_reference=ref,
-            status="Error",
-            error=code,
-            error_description=msg,
-        )
-        return {
-            "valid": False,
-            "error": code,
-            "error_description": msg,
-            "checkout_receipt": err_receipt,
-            "payment_receipt": None,
-        }
-
-    try:
-        checkout_chain = CheckoutMandateChain.parse(checkout_payloads)
-        chk_violations = checkout_chain.verify(
-            expected_checkout_hash=checkout_hash,
-            checkout_jwt=checkout_jwt,
-        )
-        if chk_violations:
-            detail = "; ".join(chk_violations)
-            logger.warning(f"Checkout mandate constraint violations: {detail}")
-            ref = checkout_chain.closed_mandate.checkout_hash
+        try:
+            checkout_chain = CheckoutMandateChain.parse(checkout_payloads)
+            chk_violations = checkout_chain.verify(
+                expected_checkout_hash=checkout_hash,
+                checkout_jwt=checkout_jwt,
+            )
+            if chk_violations:
+                detail = "; ".join(chk_violations)
+                logger.warning(f"Checkout mandate constraint violations: {detail}")
+                ref = checkout_chain.closed_mandate.checkout_hash
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=order_id,
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=detail,
+                )
+                return {
+                    "valid": False,
+                    "error": ERR_INVALID_MANDATE,
+                    "error_description": detail,
+                    "checkout_receipt": err_receipt,
+                    "payment_receipt": None,
+                }
+        except Exception as e:
+            detail = str(e)
+            logger.warning(f"Checkout mandate parsing error: {detail}")
+            ref = f"chk_{checkout_hash[:16]}"
             err_receipt = create_checkout_receipt_jwt(
                 order_id=order_id,
                 closed_mandate_reference=ref,
@@ -480,66 +556,66 @@ def verify_ap2_chains(
                 "checkout_receipt": err_receipt,
                 "payment_receipt": None,
             }
-    except Exception as e:
-        detail = str(e)
-        logger.warning(f"Checkout mandate parsing error: {detail}")
-        ref = f"chk_{checkout_hash[:16]}"
-        err_receipt = create_checkout_receipt_jwt(
-            order_id=order_id,
-            closed_mandate_reference=ref,
-            status="Error",
-            error=ERR_INVALID_MANDATE,
-            error_description=detail,
-        )
-        return {
-            "valid": False,
-            "error": ERR_INVALID_MANDATE,
-            "error_description": detail,
-            "checkout_receipt": err_receipt,
-            "payment_receipt": None,
-        }
 
-    # Step 3: Verify Payment Mandate chain
-    def payment_root_provider(t: common.ParsedToken) -> JWK:
-        return resolve_root_public_key(t, override_key=user_public_key)
+        # Step 3: Verify Payment Mandate chain
+        def payment_root_provider(t: common.ParsedToken) -> JWK:
+            return resolve_root_public_key(t, override_key=user_public_key, buyer_email=buyer_email)
 
-    try:
-        payment_payloads = client.verify(
-            token=payment_mandate_token,
-            key_or_provider=payment_root_provider,
-            expected_aud=expected_aud,
-            expected_nonce=expected_nonce,
-        )
-    except ValueError as e:
-        msg = str(e)
-        logger.warning(f"Payment mandate verification crypto/structure failure: {msg}")
-        code = ERR_UNRESOLVED_CONSTRAINT if "constraint" in msg.lower() else ERR_INVALID_CREDENTIAL
-        ref = f"pay_{checkout_hash[:16]}"
-        err_receipt = create_payment_receipt_jwt(
-            payment_id=f"err_{uuid.uuid4().hex[:8]}",
-            closed_mandate_reference=ref,
-            status="Error",
-            error=code,
-            error_description=msg,
-        )
-        return {
-            "valid": False,
-            "error": code,
-            "error_description": msg,
-            "checkout_receipt": None,
-            "payment_receipt": err_receipt,
-        }
+        try:
+            payment_payloads = client.verify(
+                token=payment_mandate_token,
+                key_or_provider=payment_root_provider,
+                expected_aud=expected_aud,
+                expected_nonce=expected_nonce,
+            )
+        except ValueError as e:
+            msg = str(e)
+            logger.warning(f"Payment mandate verification crypto/structure failure: {msg}")
+            code = ERR_UNRESOLVED_CONSTRAINT if "constraint" in msg.lower() else ERR_INVALID_CREDENTIAL
+            ref = f"pay_{checkout_hash[:16]}"
+            err_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=code,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": code,
+                "error_description": msg,
+                "checkout_receipt": None,
+                "payment_receipt": err_receipt,
+            }
 
-    try:
-        payment_chain = PaymentMandateChain.parse(payment_payloads)
-        pay_violations = payment_chain.verify(
-            expected_transaction_id=checkout_hash,
-            expected_open_checkout_hash=checkout_hash,
-        )
-        if pay_violations:
-            detail = "; ".join(pay_violations)
-            logger.warning(f"Payment mandate constraint violations: {detail}")
-            ref = payment_chain.closed_mandate.transaction_id
+        try:
+            payment_chain = PaymentMandateChain.parse(payment_payloads)
+            pay_violations = payment_chain.verify(
+                expected_transaction_id=checkout_hash,
+                expected_open_checkout_hash=checkout_hash,
+            )
+            if pay_violations:
+                detail = "; ".join(pay_violations)
+                logger.warning(f"Payment mandate constraint violations: {detail}")
+                ref = payment_chain.closed_mandate.transaction_id
+                err_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=detail,
+                )
+                return {
+                    "valid": False,
+                    "error": ERR_INVALID_MANDATE,
+                    "error_description": detail,
+                    "checkout_receipt": None,
+                    "payment_receipt": err_receipt,
+                }
+        except Exception as e:
+            detail = str(e)
+            logger.warning(f"Payment mandate parsing error: {detail}")
+            ref = f"pay_{checkout_hash[:16]}"
             err_receipt = create_payment_receipt_jwt(
                 payment_id=f"err_{uuid.uuid4().hex[:8]}",
                 closed_mandate_reference=ref,
@@ -554,35 +630,27 @@ def verify_ap2_chains(
                 "checkout_receipt": None,
                 "payment_receipt": err_receipt,
             }
-    except Exception as e:
-        detail = str(e)
-        logger.warning(f"Payment mandate parsing error: {detail}")
-        ref = f"pay_{checkout_hash[:16]}"
-        err_receipt = create_payment_receipt_jwt(
-            payment_id=f"err_{uuid.uuid4().hex[:8]}",
-            closed_mandate_reference=ref,
-            status="Error",
-            error=ERR_INVALID_MANDATE,
-            error_description=detail,
-        )
-        return {
-            "valid": False,
-            "error": ERR_INVALID_MANDATE,
-            "error_description": detail,
-            "checkout_receipt": None,
-            "payment_receipt": err_receipt,
-        }
 
-    # Step 4: Replay defense check
-    closed_ref = checkout_chain.closed_mandate.checkout_hash
-    if enforce_replay_defense and get_stored_receipt(closed_ref):
-        stored = get_stored_receipt(closed_ref)
-        if stored.get("status") == "Success":
-            msg = f"REPLAY_DETECTED: Mandate with reference '{closed_ref}' has already been successfully redeemed."
-            logger.warning(msg)
-            err_receipt = create_checkout_receipt_jwt(
-                order_id=order_id,
-                closed_mandate_reference=closed_ref,
+        # Step 4: Closed-Mandate Integrity Checks against Merchant Checkout
+        closed_chk = checkout_chain.closed_mandate
+        closed_pay = payment_chain.closed_mandate
+
+        expected_cents = chk_payload.get("totals", [{}])[-1].get("amount")
+        if expected_cents is None:
+            expected_cents = chk_payload.get("line_items", [{}])[0].get("item", {}).get("price")
+        expected_cents = int(expected_cents) if expected_cents is not None else None
+        expected_currency = chk_payload.get("currency", "USD")
+
+        # 4a. Amount integrity check
+        if expected_cents is not None and closed_pay.payment_amount.amount != expected_cents:
+            msg = (
+                f"PAYMENT_AMOUNT_MISMATCH: Payment mandate amount ({closed_pay.payment_amount.amount}) "
+                f"does not match checkout total ({expected_cents})."
+            )
+            logger.warning(f"[AP2_VERIFIER] {msg}")
+            err_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=closed_pay.transaction_id,
                 status="Error",
                 error=ERR_INVALID_MANDATE,
                 error_description=msg,
@@ -591,49 +659,303 @@ def verify_ap2_chains(
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": msg,
-                "checkout_receipt": err_receipt,
-                "payment_receipt": None,
+                "checkout_receipt": None,
+                "payment_receipt": err_receipt,
             }
 
-    # Step 5: Extract verified transaction details
-    closed_chk = checkout_chain.closed_mandate
-    closed_pay = payment_chain.closed_mandate
+        # 4b. Currency integrity check
+        if closed_pay.payment_amount.currency != expected_currency:
+            msg = (
+                f"CURRENCY_MISMATCH: Payment mandate currency '{closed_pay.payment_amount.currency}' "
+                f"does not match checkout currency '{expected_currency}'."
+            )
+            logger.warning(f"[AP2_VERIFIER] {msg}")
+            err_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=closed_pay.transaction_id,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_MANDATE,
+                "error_description": msg,
+                "checkout_receipt": None,
+                "payment_receipt": err_receipt,
+            }
 
-    price_dollars = minor_units_to_dollars(closed_pay.payment_amount.amount)
-    tier_id = chk_payload.get("line_items", [{}])[0].get("item", {}).get("id", "ap2-gateway")
+        # 4c. Payee integrity check
+        payee_id = getattr(closed_pay.payee, "id", None) if closed_pay.payee else None
+        if payee_id != AP2_MERCHANT_ID:
+            msg = (
+                f"PAYEE_MISMATCH: Payment mandate payee '{payee_id}' "
+                f"does not match merchant '{AP2_MERCHANT_ID}'."
+            )
+            logger.warning(f"[AP2_VERIFIER] {msg}")
+            err_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=closed_pay.transaction_id,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_MANDATE,
+                "error_description": msg,
+                "checkout_receipt": None,
+                "payment_receipt": err_receipt,
+            }
 
-    # Step 6: Generate authentic merchant-signed Success receipts
-    payment_id = f"pay_{uuid.uuid4().hex[:12]}"
-    chk_receipt_jwt = create_checkout_receipt_jwt(
-        order_id=order_id,
-        closed_mandate_reference=closed_ref,
-        status="Success",
+        # Step 5: Replay defense check
+        closed_ref = checkout_chain.closed_mandate.checkout_hash
+        if enforce_replay_defense and get_stored_receipt(closed_ref):
+            stored = get_stored_receipt(closed_ref)
+            if stored.get("status") == "Success":
+                msg = f"REPLAY_DETECTED: Mandate with reference '{closed_ref}' has already been successfully redeemed."
+                logger.warning(msg)
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=order_id,
+                    closed_mandate_reference=closed_ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=msg,
+                )
+                return {
+                    "valid": False,
+                    "error": ERR_INVALID_MANDATE,
+                    "error_description": msg,
+                    "checkout_receipt": err_receipt,
+                    "payment_receipt": None,
+                }
+
+        # Step 6: Extract verified transaction details & authoritative budget cap
+        price_dollars = minor_units_to_dollars(closed_pay.payment_amount.amount)
+        tier_id = chk_payload.get("line_items", [{}])[0].get("item", {}).get("id", "ap2-gateway")
+
+        authoritative_budget_cap: Optional[float] = None
+        if payment_chain.open_mandate and hasattr(payment_chain.open_mandate, "constraints"):
+            for c in (payment_chain.open_mandate.constraints or []):
+                if hasattr(c, "max") and getattr(c, "max") is not None:
+                    authoritative_budget_cap = minor_units_to_dollars(c.max)
+                    break
+                elif isinstance(c, dict) and "max" in c:
+                    authoritative_budget_cap = minor_units_to_dollars(c["max"])
+                    break
+
+        # Step 7: Generate authentic merchant-signed Success receipts
+        payment_id = f"pay_{uuid.uuid4().hex[:12]}"
+        chk_receipt_jwt = create_checkout_receipt_jwt(
+            order_id=order_id,
+            closed_mandate_reference=closed_ref,
+            status="Success",
+        )
+        pay_receipt_jwt = create_payment_receipt_jwt(
+            payment_id=payment_id,
+            closed_mandate_reference=closed_pay.transaction_id,
+            status="Success",
+        )
+
+        logger.info(
+            f"[AP2_VERIFIER] Successfully verified AP2 v0.2 checkout & payment mandate chains for order '{order_id}' "
+            f"(${price_dollars:.2f} / {closed_pay.payment_amount.amount} minor units, tier: {tier_id}, cap: {authoritative_budget_cap})"
+        )
+
+        return {
+            "valid": True,
+            "order_id": order_id,
+            "payment_id": payment_id,
+            "tier_id": tier_id,
+            "monthly_price": price_dollars,
+            "price_cents": closed_pay.payment_amount.amount,
+            "authoritative_budget_cap": authoritative_budget_cap,
+            "checkout_hash": checkout_hash,
+            "checkout_receipt": chk_receipt_jwt,
+            "payment_receipt": pay_receipt_jwt,
+            "checkout_chain": checkout_chain,
+            "payment_chain": payment_chain,
+            "open_checkout_mandate": checkout_chain.open_mandate,
+            "closed_checkout_mandate": closed_chk,
+            "open_payment_mandate": payment_chain.open_mandate,
+            "closed_payment_mandate": closed_pay,
+        }
+
+    except Exception as e:
+        detail = str(e)
+        logger.warning(f"[AP2_VERIFIER] Unhandled verification exception: {detail}", exc_info=True)
+        code = ERR_INVALID_CREDENTIAL
+        if "constraint" in detail.lower():
+            code = ERR_UNRESOLVED_CONSTRAINT
+        elif "mandate" in detail.lower() and "signature" not in detail.lower() and "key" not in detail.lower():
+            code = ERR_INVALID_MANDATE
+        ref = f"err_{uuid.uuid4().hex[:8]}"
+        err_receipt = create_checkout_receipt_jwt(
+            order_id=order_id,
+            closed_mandate_reference=ref,
+            status="Error",
+            error=code,
+            error_description=detail,
+        )
+        return {
+            "valid": False,
+            "error": code,
+            "error_description": detail,
+            "checkout_receipt": err_receipt,
+            "payment_receipt": None,
+        }
+
+
+# ── Buyer-Side Mandate Authoring Helpers ─────────────────────────────────────
+
+def create_trusted_surface_open_mandates(
+    budget_cap: float,
+    allowed_tiers: Optional[List[str]] = None,
+    user_key: Optional[JWK] = None,
+    agent_key: Optional[JWK] = None,
+) -> Dict[str, Any]:
+    """
+    Simulates a non-agentic Trusted Surface signing the Human's Open Mandates.
+    Embeds the agent's public key (cnf.jwk) and the budget constraints.
+    """
+    user_k = user_key or get_demo_user_key()
+    agent_k = agent_key or get_demo_agent_key()
+    client = MandateClient()
+
+    max_cap_cents = dollars_to_minor_units(budget_cap)
+    tiers = allowed_tiers or ["ap2-gateway", "ap2-batch", "ap2-cluster"]
+
+    agent_cnf = {"jwk": agent_k.export_public(as_dict=True)}
+
+    # Open Checkout Mandate (signed by human)
+    open_chk = OpenCheckoutMandate(
+        vct="mandate.checkout.open.1",
+        cnf=agent_cnf,
+        constraints=[
+            AllowedMerchants(allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]),
+        ],
     )
-    pay_receipt_jwt = create_payment_receipt_jwt(
-        payment_id=payment_id,
-        closed_mandate_reference=closed_pay.transaction_id,
-        status="Success",
+    open_chk_tok = client.create(issuer_key=user_k, payloads=[open_chk])
+
+    # Open Payment Mandate (signed by human)
+    open_pay = OpenPaymentMandate(
+        vct="mandate.payment.open.1",
+        cnf=agent_cnf,
+        constraints=[
+            AmountRange(currency="USD", min=1, max=max_cap_cents),
+            AllowedPayees(allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]),
+        ],
+    )
+    open_pay_tok = client.create(issuer_key=user_k, payloads=[open_pay])
+
+    return {
+        "open_checkout_token": open_chk_tok,
+        "open_payment_token": open_pay_tok,
+        "user_key": user_k,
+        "agent_key": agent_k,
+        "budget_cap_dollars": budget_cap,
+        "max_cap_cents": max_cap_cents,
+        "allowed_tiers": tiers,
+    }
+
+
+def create_closed_mandate_chains(
+    open_checkout_token: str,
+    open_payment_token: str,
+    checkout_jwt: str,
+    agent_key: Optional[JWK] = None,
+    contractor_email: Optional[str] = None,
+    nonce: Optional[str] = None,
+    aud: str = AP2_MERCHANT_ID,
+) -> Dict[str, Any]:
+    """
+    The Autonomous Buyer Agent evaluates the merchant's Checkout JWT,
+    checks it against human constraints, and signs the closed mandates
+    using its private holder key (cnf).
+    """
+    agent_k = agent_key or get_demo_agent_key()
+    client = MandateClient()
+
+    checkout_hash = compute_checkout_hash(checkout_jwt)
+    chk_payload = verify_jwt(checkout_jwt, get_merchant_public_key())
+    price_cents = chk_payload.get("totals", [{}])[-1].get("amount") or chk_payload.get("line_items", [{}])[0].get("item", {}).get("price", 7999)
+    used_nonce = nonce or (chk_payload.get("nonce") if isinstance(chk_payload, dict) else None) or f"nonce_{uuid.uuid4().hex[:12]}"
+
+    # Closed Checkout Mandate (signed by agent)
+    closed_chk = CheckoutMandate(
+        vct="mandate.checkout.1",
+        checkout_jwt=checkout_jwt,
+        checkout_hash=checkout_hash,
+    )
+    chk_chain = client.present(
+        holder_key=agent_k,
+        mandate_token=open_checkout_token,
+        payloads=[closed_chk],
+        aud=aud,
+        nonce=used_nonce,
     )
 
-    logger.info(
-        f"[AP2_VERIFIER] Successfully verified AP2 v0.2 checkout & payment mandate chains for order '{order_id}' "
-        f"(${price_dollars:.2f} / {closed_pay.payment_amount.amount} minor units, tier: {tier_id})"
+    # Closed Payment Mandate (signed by agent)
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=checkout_hash,
+        payment_amount=Amount(amount=int(price_cents), currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(
+            type="paypal_vault",
+            id=f"vault_{contractor_email or 'agent-alpha@nexus-systems.io'}",
+        ),
+    )
+    pay_chain = client.present(
+        holder_key=agent_k,
+        mandate_token=open_payment_token,
+        payloads=[closed_pay],
+        aud=aud,
+        nonce=used_nonce,
     )
 
     return {
-        "valid": True,
-        "order_id": order_id,
-        "payment_id": payment_id,
-        "tier_id": tier_id,
-        "monthly_price": price_dollars,
-        "price_cents": closed_pay.payment_amount.amount,
+        "checkout_mandate_chain": chk_chain,
+        "payment_mandate_chain": pay_chain,
         "checkout_hash": checkout_hash,
-        "checkout_receipt": chk_receipt_jwt,
-        "payment_receipt": pay_receipt_jwt,
-        "checkout_chain": checkout_chain,
-        "payment_chain": payment_chain,
-        "open_checkout_mandate": checkout_chain.open_mandate,
-        "closed_checkout_mandate": closed_chk,
-        "open_payment_mandate": payment_chain.open_mandate,
-        "closed_payment_mandate": closed_pay,
+        "checkout_jwt": checkout_jwt,
+        "nonce": used_nonce,
+        "price_cents": price_cents,
+        "price_dollars": minor_units_to_dollars(price_cents),
     }
+
+
+def build_buyer_ap2_chains(
+    checkout_jwt: str,
+    budget_cap: float = 100.0,
+    allowed_tiers: Optional[List[str]] = None,
+    contractor_email: Optional[str] = None,
+    user_key: Optional[JWK] = None,
+    agent_key: Optional[JWK] = None,
+    nonce: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    One-stop helper for autonomous buyer flows:
+    1. Human signs Open Mandates on Trusted Surface (budget cap, allowed tiers).
+    2. Agent verifies Checkout JWT against constraints and signs Closed Mandates.
+    3. Returns full AP2 v0.2 dual chains ready for MCP / REST purchase.
+    """
+    open_mandates = create_trusted_surface_open_mandates(
+        budget_cap=budget_cap,
+        allowed_tiers=allowed_tiers,
+        user_key=user_key,
+        agent_key=agent_key,
+    )
+    chains = create_closed_mandate_chains(
+        open_checkout_token=open_mandates["open_checkout_token"],
+        open_payment_token=open_mandates["open_payment_token"],
+        checkout_jwt=checkout_jwt,
+        agent_key=open_mandates["agent_key"],
+        contractor_email=contractor_email,
+        nonce=nonce,
+    )
+    return {
+        **open_mandates,
+        **chains,
+    }
+

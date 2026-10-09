@@ -618,6 +618,7 @@ def register_buyer_key(
     """Registers a buyer agent's Ed25519 public key."""
     if not kid or not public_key_hex:
         return
+    cleaned_key = public_key_hex.strip() if public_key_hex.strip().startswith("{") else public_key_hex.strip().lower()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     conn = get_connection(db_path)
     try:
@@ -632,7 +633,7 @@ def register_buyer_key(
                     business_name = COALESCE(excluded.business_name, buyer_keys.business_name),
                     registered_at = excluded.registered_at
                 """,
-                (kid.strip(), public_key_hex.strip().lower(), contractor_email, business_name, now_iso),
+                (kid.strip(), cleaned_key, contractor_email, business_name, now_iso),
             )
     finally:
         conn.close()

@@ -65,6 +65,7 @@ from ..services.crypto_mandate import (
 from ..database import get_buyer_key_email
 from ..config import settings
 from ..services.ap2_service import (
+    AP2_MERCHANT_ID,
     create_merchant_checkout,
     create_merchant_counter_offer,
     verify_ap2_chains,
@@ -471,6 +472,7 @@ class SellerAgent:
             "checkout_jwt": chk_record["checkout_jwt"],
             "checkout_hash": chk_record["checkout_hash"],
             "order_id": chk_record["order_id"],
+            "nonce": chk_record.get("nonce"),
         }
         register_authorized_mandate(proof_hash, auth_entry)
         register_authorized_mandate(offer_id, auth_entry)
@@ -485,6 +487,7 @@ class SellerAgent:
             "checkout_jwt": chk_record["checkout_jwt"],
             "checkout_hash": chk_record["checkout_hash"],
             "order_id": chk_record["order_id"],
+            "nonce": chk_record.get("nonce"),
         }
 
     async def negotiate_tier_terms(
@@ -658,6 +661,7 @@ class SellerAgent:
                 "buyer_email": email,
                 "checkout_jwt": issued["checkout_jwt"],
                 "checkout_hash": issued["checkout_hash"],
+                "nonce": issued.get("nonce"),
             }
 
             next_action = {
@@ -681,6 +685,7 @@ class SellerAgent:
                 "checkout_jwt": issued["checkout_jwt"],
                 "checkout_hash": issued["checkout_hash"],
                 "order_id": issued["order_id"],
+                "nonce": issued.get("nonce"),
                 "offer_expires_at": issued["offer_expires_at"],
                 "next_action": next_action,
                 "workload_tasks_per_month": workload_tasks,
@@ -744,6 +749,7 @@ class SellerAgent:
                 "buyer_email": email,
                 "checkout_jwt": counter_checkout["checkout_jwt"],
                 "checkout_hash": counter_checkout["checkout_hash"],
+                "nonce": counter_checkout.get("nonce"),
             }
 
             next_action = {
@@ -751,6 +757,16 @@ class SellerAgent:
                 "tool": "purchase_subscription",
                 "parameters": next_action_params,
             }
+
+            # Update registered mandate with counter-offer checkout details & nonce
+            auth_entry = get_authorized_mandate(issued["offer_id"])
+            if auth_entry:
+                auth_entry["counter_checkout_jwt"] = counter_checkout["checkout_jwt"]
+                auth_entry["counter_checkout_hash"] = counter_checkout["checkout_hash"]
+                auth_entry["counter_order_id"] = counter_checkout["order_id"]
+                auth_entry["counter_nonce"] = counter_checkout.get("nonce")
+                register_authorized_mandate(issued["offer_id"], auth_entry)
+                register_authorized_mandate(down_hash, auth_entry)
 
             counter_reason = (
                 f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
@@ -777,6 +793,7 @@ class SellerAgent:
                 "checkout_jwt": counter_checkout["checkout_jwt"],
                 "checkout_hash": counter_checkout["checkout_hash"],
                 "order_id": counter_checkout["order_id"],
+                "nonce": counter_checkout.get("nonce"),
                 "counter_offer_checkout_jwt": counter_checkout["checkout_jwt"],
                 "counter_offer_checkout_hash": counter_checkout["checkout_hash"],
                 "offer_expires_at": issued["offer_expires_at"],
@@ -853,17 +870,25 @@ class SellerAgent:
         verified_pay_receipt = None
 
         # 0. AP2 v0.2 Mandate Chain Verification
+        ap2_verify_res = None
         if checkout_mandate_chain and payment_mandate_chain:
             chk_jwt = checkout_jwt
-            if not chk_jwt and offer_id:
+            expected_nonce = kwargs.get("nonce")
+            if offer_id:
                 auth_lookup = get_authorized_mandate(offer_id)
                 if auth_lookup:
-                    chk_jwt = auth_lookup.get("checkout_jwt")
+                    if not chk_jwt:
+                        chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
+                    if not expected_nonce:
+                        expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
 
             ap2_verify_res = verify_ap2_chains(
                 checkout_mandate_token=checkout_mandate_chain,
                 payment_mandate_token=payment_mandate_chain,
                 checkout_jwt=chk_jwt,
+                expected_aud=AP2_MERCHANT_ID,
+                expected_nonce=expected_nonce,
+                buyer_email=contractor_email,
             )
             if not ap2_verify_res.get("valid"):
                 err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
@@ -982,12 +1007,15 @@ class SellerAgent:
             old_sub = None
 
         # Resolve effective monthly budget cap
-        cap = auth.get("monthly_budget_cap")
-        saved_cap = ledger.get_saved_cap(norm_email)
-        if saved_cap is not None:
-            cap = saved_cap
-        if cap is None:
-            cap = 100.0
+        if ap2_verify_res and ap2_verify_res.get("authoritative_budget_cap") is not None:
+            cap = ap2_verify_res["authoritative_budget_cap"]
+        else:
+            cap = auth.get("monthly_budget_cap")
+            saved_cap = ledger.get_saved_cap(norm_email)
+            if saved_cap is not None:
+                cap = saved_cap
+            if cap is None:
+                cap = 100.0
 
         # Purchase-time budget enforcement
         remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)

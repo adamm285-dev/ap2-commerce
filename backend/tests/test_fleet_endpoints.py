@@ -136,3 +136,62 @@ def test_fleet_ledger_dynamically_elevates_when_marcus_line_provisioned():
     assert stats["active_lines"] == 14
     assert stats["total_mrr"] == 1119.86
     assert stats["annualized_gmv"] == 13438.32
+
+
+def test_ap2_profile_fleet_endpoints():
+    """Verify ?profile=ap2 fleet endpoints return AP2 autonomous agent data with exact Node Settings capabilities."""
+    # 1. Test /api/fleet/ledger?profile=ap2
+    ledger_resp = client.get("/api/fleet/ledger?profile=ap2")
+    assert ledger_resp.status_code == 200
+    data = ledger_resp.json()
+    assert data["status"] == "active"
+    assert data["count"] == 14
+    assert data["profile"] == "ap2"
+    assert "AP2 Autonomous Commerce" in data["simulated_fleet_notice"]
+    txns = data["transactions"]
+    assert len(txns) == 14
+
+    allowed_capabilities = {
+        "High-Throughput Batch Worker",
+        "Dedicated AI Service Gateway",
+        "Enterprise Cluster Node",
+    }
+    allowed_tiers = {49.99, 79.99, 179.99}
+
+    for t in txns:
+        assert t["data_source"] == "Demo data"
+        assert t["trade_vertical"] in allowed_capabilities
+        assert t["monthly_amount"] in allowed_tiers
+        assert "AutonomousBuyerAgent-" in t["buyer_agent"]
+        if t["status"] == "ACTIVE_STREAMING":
+            assert t["allocated_did"].startswith("mcp+https://")
+            assert "Ed25519" in t["kyc_status"]
+        else:
+            assert t["status"] == "PENDING_DEPOSIT"
+            assert t["allocated_did"] == "AWAITING_ENDPOINT"
+
+    # 2. Test /api/fleet/stats?profile=ap2
+    stats_resp = client.get("/api/fleet/stats?profile=ap2")
+    assert stats_resp.status_code == 200
+    stats = stats_resp.json()
+    assert stats["total_subscribers"] == 14
+    assert stats["active_lines"] == 13
+    assert stats["total_mrr"] > 0
+    assert stats["annualized_gmv"] == round(stats["total_mrr"] * 12, 2)
+    assert "Ed25519" in stats["compliance_guard"]
+    assert "FastMCP" in stats["carrier_resporg"]
+    assert len(stats["trade_breakdown"]) == 3
+    breakdown_caps = {item["trade"] for item in stats["trade_breakdown"]}
+    assert breakdown_caps == allowed_capabilities
+
+    # 3. Test /api/fleet/schedule?profile=ap2
+    sched_resp = client.get("/api/fleet/schedule?profile=ap2")
+    assert sched_resp.status_code == 200
+    sched = sched_resp.json()
+    assert len(sched["resources"]) == 14
+    assert len(sched["events"]) == 14
+    for r in sched["resources"]:
+        assert r["trade"] in allowed_capabilities
+        if r["status"] == "ACTIVE_STREAMING":
+            assert r["did"].startswith("mcp+https://")
+

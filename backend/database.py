@@ -1203,6 +1203,261 @@ FLEET_SEEDED_SUBSCRIPTIONS = [
     },
 ]
 
+AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
+    {
+        "id": "TXN-AP2-9021",
+        "timestamp": "2026-10-02 02:14:22",
+        "buyer_agent": "AutonomousBuyerAgent-Alpha-Batch",
+        "principal_entity": "Nexus Autonomous Systems Corp",
+        "contractor_name": "AutonomousBuyerAgent-Alpha-Batch",
+        "trade_vertical": "High-Throughput Batch Worker",
+        "service_plan": "High-Throughput Batch Worker ($49.99/mo)",
+        "monthly_amount": 49.99,
+        "paypal_sub_id": "AWAITING_PAYPAL_TOKEN",
+        "kyc_status": "PENDING_MANDATE_CHALLENGE",
+        "kyc_legal_entity": "Nexus Autonomous Systems Corp",
+        "allocated_did": "AWAITING_ENDPOINT",
+        "tcpa_guard": "PENDING ED25519 ACTIVATION",
+        "status": "PENDING_DEPOSIT",
+        "email": "agent-alpha@nexus-systems.io",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9022",
+        "timestamp": "2026-10-02 01:45:10",
+        "buyer_agent": "AutonomousBuyerAgent-Nexus-Gateway",
+        "principal_entity": "Apex Enterprise AI Inc",
+        "contractor_name": "AutonomousBuyerAgent-Nexus-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-BW452NX993L2",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Apex Enterprise AI Inc",
+        "allocated_did": "mcp+https://gateway-01.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-nexus@apex-enterprise.ai",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9023",
+        "timestamp": "2026-10-01 23:18:44",
+        "buyer_agent": "AutonomousBuyerAgent-Sentinel-Cluster",
+        "principal_entity": "Sentinel Code Security Corp",
+        "contractor_name": "AutonomousBuyerAgent-Sentinel-Cluster",
+        "trade_vertical": "Enterprise Cluster Node",
+        "service_plan": "Enterprise Cluster Node ($179.99/mo)",
+        "monthly_amount": 179.99,
+        "paypal_sub_id": "I-SC994ZZ331A8",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Sentinel Code Security Corp",
+        "allocated_did": "mcp+https://cluster-01.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-sentinel@sentinel-sec.com",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9024",
+        "timestamp": "2026-10-01 21:02:15",
+        "buyer_agent": "AutonomousBuyerAgent-Vanguard-Gateway",
+        "principal_entity": "Vanguard Machine Intelligence LLC",
+        "contractor_name": "AutonomousBuyerAgent-Vanguard-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-VG551PP882B4",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Vanguard Machine Intelligence LLC",
+        "allocated_did": "mcp+https://gateway-02.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-vanguard@vanguard-ai.io",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9025",
+        "timestamp": "2026-10-01 19:30:00",
+        "buyer_agent": "AutonomousBuyerAgent-Cortex-Batch",
+        "principal_entity": "Cortex Labs International",
+        "contractor_name": "AutonomousBuyerAgent-Cortex-Batch",
+        "trade_vertical": "High-Throughput Batch Worker",
+        "service_plan": "High-Throughput Batch Worker ($49.99/mo)",
+        "monthly_amount": 49.99,
+        "paypal_sub_id": "I-CX119CC447T1",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Cortex Labs International",
+        "allocated_did": "mcp+https://batch-02.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-cortex@cortexlabs.org",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9026",
+        "timestamp": "2026-10-01 16:11:58",
+        "buyer_agent": "AutonomousBuyerAgent-Hyperion-Cluster",
+        "principal_entity": "Hyperion Agentic Works",
+        "contractor_name": "AutonomousBuyerAgent-Hyperion-Cluster",
+        "trade_vertical": "Enterprise Cluster Node",
+        "service_plan": "Enterprise Cluster Node ($179.99/mo)",
+        "monthly_amount": 179.99,
+        "paypal_sub_id": "I-HY882GG990W3",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Hyperion Agentic Works",
+        "allocated_did": "mcp+https://cluster-02.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-hyperion@hyperion-agentic.com",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9027",
+        "timestamp": "2026-10-01 14:05:32",
+        "buyer_agent": "AutonomousBuyerAgent-Vector-Batch",
+        "principal_entity": "Vector Semantic Systems",
+        "contractor_name": "AutonomousBuyerAgent-Vector-Batch",
+        "trade_vertical": "High-Throughput Batch Worker",
+        "service_plan": "High-Throughput Batch Worker ($49.99/mo)",
+        "monthly_amount": 49.99,
+        "paypal_sub_id": "I-VT771MM220K1",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Vector Semantic Systems",
+        "allocated_did": "mcp+https://batch-03.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-vector@vectorsemantics.io",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9028",
+        "timestamp": "2026-10-01 11:42:19",
+        "buyer_agent": "AutonomousBuyerAgent-Solana-Gateway",
+        "principal_entity": "DeepFlow Compute PBC",
+        "contractor_name": "AutonomousBuyerAgent-Solana-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-DF449EE881V9",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "DeepFlow Compute PBC",
+        "allocated_did": "mcp+https://gateway-03.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-deepflow@deepflowcompute.com",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9029",
+        "timestamp": "2026-10-01 09:15:40",
+        "buyer_agent": "AutonomousBuyerAgent-Synthetix-Cluster",
+        "principal_entity": "Meridian Cloud Solutions",
+        "contractor_name": "AutonomousBuyerAgent-Synthetix-Cluster",
+        "trade_vertical": "Enterprise Cluster Node",
+        "service_plan": "Enterprise Cluster Node ($179.99/mo)",
+        "monthly_amount": 179.99,
+        "paypal_sub_id": "I-MR662SS331B2",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Meridian Cloud Solutions",
+        "allocated_did": "mcp+https://cluster-03.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-meridian@meridiancloud.net",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9030",
+        "timestamp": "2026-10-01 08:30:12",
+        "buyer_agent": "AutonomousBuyerAgent-Cyberdyne-Gateway",
+        "principal_entity": "Cyberdyne Agentic Ltd",
+        "contractor_name": "AutonomousBuyerAgent-Cyberdyne-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-CD551AA994M7",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Cyberdyne Agentic Ltd",
+        "allocated_did": "mcp+https://gateway-04.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-cyberdyne@cyberdyne.ai",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9031",
+        "timestamp": "2026-09-30 22:50:04",
+        "buyer_agent": "AutonomousBuyerAgent-Omni-Batch",
+        "principal_entity": "OmniModel Operations Corp",
+        "contractor_name": "AutonomousBuyerAgent-Omni-Batch",
+        "trade_vertical": "High-Throughput Batch Worker",
+        "service_plan": "High-Throughput Batch Worker ($49.99/mo)",
+        "monthly_amount": 49.99,
+        "paypal_sub_id": "I-OM882JJ115X4",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "OmniModel Operations Corp",
+        "allocated_did": "mcp+https://batch-04.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-omni@omnimodel.io",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9032",
+        "timestamp": "2026-09-30 20:18:27",
+        "buyer_agent": "AutonomousBuyerAgent-Prisma-Gateway",
+        "principal_entity": "Prisma Cognitive Systems",
+        "contractor_name": "AutonomousBuyerAgent-Prisma-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-PR331DD772Z8",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Prisma Cognitive Systems",
+        "allocated_did": "mcp+https://gateway-05.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-prisma@prismacognitive.com",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9033",
+        "timestamp": "2026-09-30 18:04:55",
+        "buyer_agent": "AutonomousBuyerAgent-Quant-Batch",
+        "principal_entity": "QuantScale Infrastructure",
+        "contractor_name": "AutonomousBuyerAgent-Quant-Batch",
+        "trade_vertical": "High-Throughput Batch Worker",
+        "service_plan": "High-Throughput Batch Worker ($49.99/mo)",
+        "monthly_amount": 49.99,
+        "paypal_sub_id": "I-QS224RR661K3",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "QuantScale Infrastructure",
+        "allocated_did": "mcp+https://batch-05.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-quant@quantscale.org",
+        "data_source": "Demo data",
+    },
+    {
+        "id": "TXN-AP2-9034",
+        "timestamp": "2026-09-30 15:22:10",
+        "buyer_agent": "AutonomousBuyerAgent-Apex-Gateway",
+        "principal_entity": "Apex Reasoning Group",
+        "contractor_name": "AutonomousBuyerAgent-Apex-Gateway",
+        "trade_vertical": "Dedicated AI Service Gateway",
+        "service_plan": "Dedicated AI Service Gateway ($79.99/mo)",
+        "monthly_amount": 79.99,
+        "paypal_sub_id": "I-AR118CC559W2",
+        "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
+        "kyc_legal_entity": "Apex Reasoning Group",
+        "allocated_did": "mcp+https://gateway-06.acme-systems.io/mcp",
+        "tcpa_guard": "100% ED25519 SIGNED MANDATE",
+        "status": "ACTIVE_STREAMING",
+        "email": "agent-apex@apexreasoning.com",
+        "data_source": "Demo data",
+    },
+]
+
 
 def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
     """
@@ -1302,13 +1557,89 @@ def _mask_sub_id(sub_id: Optional[str]) -> str:
     return f"{sub_id[:3]}***"
 
 
-def get_fleet_ledger(db_path: Optional[Path] = None, mask_pii: bool = False) -> List[Dict[str, Any]]:
+def get_fleet_ledger(
+    db_path: Optional[Path] = None,
+    mask_pii: bool = False,
+    profile: str = "default",
+) -> List[Dict[str, Any]]:
     """
     Returns the dynamic enterprise fleet ledger formatted for AG Grid and AG Studio.
-    Seeds the 14 fleet records if the database is unpopulated.
+    When profile='ap2', returns the AP2 autonomous agent seller deck dataset (Demo data).
+    When profile='default', seeds and returns the 14 fleet contractor records from SQLite.
     Dynamically elevates Marcus Miller to ACTIVE_STREAMING if a subscription has been provisioned.
     Masks PII (phone, name, PayPal ID) when mask_pii=True for public endpoints.
     """
+    if (profile or "").strip().lower() == "ap2":
+        conn = get_connection(db_path)
+        active_sub = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT * FROM subscriptions 
+                WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
+                  AND (tier_id = 'SOLO' OR agreed_monthly_rate = 49.99 OR contractor_email = 'marcus@millercustomfloors.com')
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """
+            )
+            active_sub = cur.fetchone()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+        if not active_sub:
+            try:
+                from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+                for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
+                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"]:
+                        active_sub = s_data
+                        break
+            except Exception:
+                pass
+
+        result = []
+        for item in AP2_FLEET_SEEDED_SUBSCRIPTIONS:
+            is_pending_batch = item["id"] == "TXN-AP2-9021"
+            if is_pending_batch and active_sub:
+                status = "ACTIVE_STREAMING"
+                is_active = True
+                sub_id = active_sub.get("subscription_id") or "I-AP2-SUB-9021"
+                display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
+                kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
+                anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
+            else:
+                status = item["status"]
+                is_active = status in ["ACTIVE", "ACTIVE_STREAMING"]
+                sub_id = item["paypal_sub_id"]
+                display_endpoint = item["allocated_did"]
+                kyc_status = item["kyc_status"]
+                anti_tamper = None
+
+            display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
+            entry = {
+                "id": item["id"],
+                "timestamp": item["timestamp"],
+                "buyer_agent": item["buyer_agent"],
+                "contractor_name": item["buyer_agent"],
+                "principal_entity": item["principal_entity"],
+                "trade_vertical": item["trade_vertical"],
+                "service_plan": item["service_plan"],
+                "monthly_amount": float(item["monthly_amount"]),
+                "paypal_sub_id": display_sub_id,
+                "kyc_status": kyc_status,
+                "kyc_legal_entity": item["kyc_legal_entity"],
+                "allocated_did": display_endpoint,
+                "tcpa_guard": item["tcpa_guard"],
+                "status": status,
+                "data_source": "Demo data",
+            }
+            if anti_tamper:
+                entry["anti_tamper_hash"] = anti_tamper
+            result.append(entry)
+        return result
+
     seed_fleet_subscriptions_if_empty(db_path=db_path)
 
     conn = get_connection(db_path)
@@ -1394,24 +1725,25 @@ def get_fleet_ledger(db_path: Optional[Path] = None, mask_pii: bool = False) -> 
             "allocated_did": display_did,
             "tcpa_guard": tcpa_guard,
             "status": status_str,
+            "data_source": "Demo data",
         })
         seen_contractor_emails.add(email)
 
     return result
 
 
-def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Computes real-time fleet aggregates and KPIs from the persistent SQLite database."""
-    ledger_items = get_fleet_ledger(db_path=db_path)
+def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") -> Dict[str, Any]:
+    """Computes real-time fleet aggregates and KPIs from the persistent SQLite database or AP2 dataset."""
+    ledger_items = get_fleet_ledger(db_path=db_path, profile=profile)
 
-    total_mrr = sum(item["monthly_amount"] for item in ledger_items if item["status"] == "ACTIVE_STREAMING")
-    active_lines = sum(1 for item in ledger_items if item["status"] == "ACTIVE_STREAMING")
+    total_mrr = sum(item["monthly_amount"] for item in ledger_items if item["status"] in ["ACTIVE", "ACTIVE_STREAMING"])
+    active_lines = sum(1 for item in ledger_items if item["status"] in ["ACTIVE", "ACTIVE_STREAMING"])
     total_subscribers = len(ledger_items)
     annualized_gmv = round(total_mrr * 12, 2)
     # One verified mandate settles each active subscription; no multipliers
     mandates_cleared = active_lines
 
-    # Group by trade vertical
+    # Group by capability / trade vertical
     trade_counts: Dict[str, Dict[str, Any]] = {}
     for item in ledger_items:
         trade = item["trade_vertical"]
@@ -1423,7 +1755,7 @@ def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 "annualized_gmv": 0.0,
                 "mandates_cleared": 0,
             }
-        if item["status"] == "ACTIVE_STREAMING":
+        if item["status"] in ["ACTIVE", "ACTIVE_STREAMING"]:
             trade_counts[trade]["active_agents"] += 1
             trade_counts[trade]["monthly_settlement"] += item["monthly_amount"]
             trade_counts[trade]["mandates_cleared"] += 1
@@ -1432,20 +1764,196 @@ def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
         t["monthly_settlement"] = round(t["monthly_settlement"], 2)
         t["annualized_gmv"] = round(t["monthly_settlement"] * 12, 2)
 
+    is_ap2 = (profile or "").strip().lower() == "ap2"
     return {
         "total_mrr": round(total_mrr, 2),
         "active_lines": active_lines,
         "total_subscribers": total_subscribers,
         "annualized_gmv": annualized_gmv,
         "mandates_cleared": mandates_cleared,
-        "compliance_guard": "100% Policy Enforced (Zero Robocalls)",
-        "carrier_resporg": "Telnyx TCR CITNRYD",
+        "compliance_guard": "100% Ed25519 Mandate Verified (Anti-Tamper Strict)" if is_ap2 else "100% Policy Enforced (Zero Robocalls)",
+        "carrier_resporg": "Dual-Transport FastMCP (RFC 8032)" if is_ap2 else "Telnyx TCR CITNRYD",
         "trade_breakdown": list(trade_counts.values()),
     }
 
 
-def get_fleet_schedule(db_path: Optional[Path] = None) -> Dict[str, Any]:
+def get_fleet_schedule(db_path: Optional[Path] = None, profile: str = "default") -> Dict[str, Any]:
     """Returns resources and realistic timeline events for Bryntum Dispatch Scheduler."""
+    if (profile or "").strip().lower() == "ap2":
+        ledger_items = get_fleet_ledger(db_path=db_path, profile="ap2")
+        resources = []
+        for idx, item in enumerate(ledger_items):
+            node_id = f"node-{idx + 1}"
+            resources.append({
+                "id": node_id,
+                "name": item["buyer_agent"],
+                "entity": item["kyc_legal_entity"],
+                "trade": item["trade_vertical"],
+                "did": item["allocated_did"],
+                "status": item["status"],
+            })
+
+        events = [
+            {
+                "id": "evt-ap2-01",
+                "resourceId": "node-1",
+                "name": "Mandate Ingestion: Nexus Autonomous • High-Throughput Batch Worker",
+                "startDate": "2026-10-02 08:30",
+                "endDate": "2026-10-02 09:45",
+                "eventColor": "orange",
+                "iconCls": "b-fa b-fa-clock",
+                "depositStatus": "AWAITING DEPOSIT / MANDATE",
+                "paypalTxn": "TXN-AP2-9021",
+            },
+            {
+                "id": "evt-ap2-02",
+                "resourceId": "node-2",
+                "name": "Mandate Renewal: Apex Enterprise • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 10:00",
+                "endDate": "2026-10-02 11:15",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-key",
+                "depositStatus": "RENEWAL CONFIRMED - ED25519",
+                "paypalTxn": "I-BW452NX993L2",
+            },
+            {
+                "id": "evt-ap2-03",
+                "resourceId": "node-3",
+                "name": "SLA Verification: Sentinel Code • Enterprise Cluster Node",
+                "startDate": "2026-10-02 11:30",
+                "endDate": "2026-10-02 12:45",
+                "eventColor": "purple",
+                "iconCls": "b-fa b-fa-shield-check",
+                "depositStatus": "SLA VERIFIED (99.99%)",
+                "paypalTxn": "I-SC994ZZ331A8",
+            },
+            {
+                "id": "evt-ap2-04",
+                "resourceId": "node-4",
+                "name": "Key Rotation: Vanguard Machine • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 13:00",
+                "endDate": "2026-10-02 14:15",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-sync",
+                "depositStatus": "RFC 8032 RE-VERIFIED",
+                "paypalTxn": "I-VG551PP882B4",
+            },
+            {
+                "id": "evt-ap2-05",
+                "resourceId": "node-5",
+                "name": "Quota Refresh: Cortex Labs • High-Throughput Batch Worker",
+                "startDate": "2026-10-02 14:30",
+                "endDate": "2026-10-02 15:45",
+                "eventColor": "cyan",
+                "iconCls": "b-fa b-fa-microchip",
+                "depositStatus": "125 OPS QUOTA PROVISIONED",
+                "paypalTxn": "I-CX119CC447T1",
+            },
+            {
+                "id": "evt-ap2-06",
+                "resourceId": "node-6",
+                "name": "Cluster Health Audit: Hyperion • Enterprise Cluster Node",
+                "startDate": "2026-10-02 16:00",
+                "endDate": "2026-10-02 17:15",
+                "eventColor": "purple",
+                "iconCls": "b-fa b-fa-server",
+                "depositStatus": "HARDWARE ENCLAVE BOUND",
+                "paypalTxn": "I-HY882GG990W3",
+            },
+            {
+                "id": "evt-ap2-07",
+                "resourceId": "node-7",
+                "name": "Mandate Settlement: Vector Semantic • High-Throughput Batch Worker",
+                "startDate": "2026-10-02 09:15",
+                "endDate": "2026-10-02 10:30",
+                "eventColor": "cyan",
+                "iconCls": "b-fa b-fa-file-invoice",
+                "depositStatus": "QBO #6300 SYNCED",
+                "paypalTxn": "I-VT771MM220K1",
+            },
+            {
+                "id": "evt-ap2-08",
+                "resourceId": "node-8",
+                "name": "Gateway Latency Audit: DeepFlow • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 10:45",
+                "endDate": "2026-10-02 12:00",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-bolt",
+                "depositStatus": "SUB-350MS LATENCY PASS",
+                "paypalTxn": "I-DF449EE881V9",
+            },
+            {
+                "id": "evt-ap2-09",
+                "resourceId": "node-9",
+                "name": "Failover Simulation: Meridian Cloud • Enterprise Cluster Node",
+                "startDate": "2026-10-02 13:30",
+                "endDate": "2026-10-02 14:45",
+                "eventColor": "purple",
+                "iconCls": "b-fa b-fa-network-wired",
+                "depositStatus": "MULTI-REGION DRIFT 0MS",
+                "paypalTxn": "I-MR662SS331B2",
+            },
+            {
+                "id": "evt-ap2-10",
+                "resourceId": "node-10",
+                "name": "Mandate Renewal: Cyberdyne • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 15:00",
+                "endDate": "2026-10-02 16:15",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-key",
+                "depositStatus": "VAULT MIT ACTIVE",
+                "paypalTxn": "I-CD551AA994M7",
+            },
+            {
+                "id": "evt-ap2-11",
+                "resourceId": "node-11",
+                "name": "Batch Worker Scaling: OmniModel • High-Throughput Batch Worker",
+                "startDate": "2026-10-02 08:00",
+                "endDate": "2026-10-02 09:15",
+                "eventColor": "cyan",
+                "iconCls": "b-fa b-fa-microchip",
+                "depositStatus": "BATCH ENCLAVE ACTIVE",
+                "paypalTxn": "I-OM882JJ115X4",
+            },
+            {
+                "id": "evt-ap2-12",
+                "resourceId": "node-12",
+                "name": "Gateway Cert Renewal: Prisma • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 11:15",
+                "endDate": "2026-10-02 12:30",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-lock",
+                "depositStatus": "TLS 1.3 CERT BOUND",
+                "paypalTxn": "I-PR331DD772Z8",
+            },
+            {
+                "id": "evt-ap2-13",
+                "resourceId": "node-13",
+                "name": "Auto-Debit Settlement: QuantScale • High-Throughput Batch Worker",
+                "startDate": "2026-10-02 14:00",
+                "endDate": "2026-10-02 15:15",
+                "eventColor": "cyan",
+                "iconCls": "b-fa b-fa-dollar-sign",
+                "depositStatus": "SETTLED ($49.99)",
+                "paypalTxn": "I-QS224RR661K3",
+            },
+            {
+                "id": "evt-ap2-14",
+                "resourceId": "node-14",
+                "name": "Mandate Health Check: Apex Reasoning • Dedicated AI Service Gateway",
+                "startDate": "2026-10-02 16:30",
+                "endDate": "2026-10-02 17:45",
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-check-double",
+                "depositStatus": "HEALTHY (0 ERRORS)",
+                "paypalTxn": "I-AR118CC559W2",
+            },
+        ]
+        return {
+            "resources": resources,
+            "events": events,
+        }
+
     ledger_items = get_fleet_ledger(db_path=db_path)
     slots = list_dispatch_slots(db_path=db_path)
 

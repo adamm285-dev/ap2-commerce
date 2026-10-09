@@ -18,7 +18,7 @@ import secrets
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Set
 from pydantic import BaseModel, Field, ConfigDict
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -767,32 +767,39 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
 # --- Enterprise Fleet & AG Studio / Bryntum Telemetry Endpoints ---
 
 @app.get("/api/fleet/ledger", tags=["Enterprise Fleet Ledger"])
-async def get_fleet_ledger_endpoint(request: Request, unmasked: bool = False):
+async def get_fleet_ledger_endpoint(request: Request, profile: str = Query("default"), unmasked: bool = False):
     """
     Returns the persistent enterprise fleet ledger for AG Grid and AG Studio.
     Public requests return masked PII for privacy; only requests carrying ADMIN_API_KEY are unmasked
     (the `unmasked` query flag is accepted for compatibility but grants nothing on its own).
+    When profile='ap2', returns the AP2 autonomous agent seller deck dataset (Demo data).
     """
     is_admin = os.getenv("TESTING") == "1" or _has_admin_key(request)
-    txns = get_fleet_ledger(mask_pii=not is_admin)
+    txns = get_fleet_ledger(mask_pii=not is_admin, profile=profile)
+    notice = (
+        "Rows represent simulated live fleet telemetry demonstrating 24/7 AP2 Autonomous Commerce operations across enterprise agent nodes (Demo data)."
+        if (profile or "").strip().lower() == "ap2" else
+        "Rows represent simulated live fleet telemetry demonstrating 24/7 AG Studio operations across Florida contractor trade verticals."
+    )
     return {
         "status": "active",
         "count": len(txns),
-        "simulated_fleet_notice": "Rows represent simulated live fleet telemetry demonstrating 24/7 AG Studio operations across Florida contractor trade verticals.",
+        "profile": profile,
+        "simulated_fleet_notice": notice,
         "transactions": txns,
     }
 
 
 @app.get("/api/fleet/stats", tags=["Enterprise Fleet Ledger"])
-async def get_fleet_stats_endpoint():
-    """Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV, Trade Breakdown)."""
-    return get_fleet_stats()
+async def get_fleet_stats_endpoint(profile: str = Query("default")):
+    """Returns real-time fleet aggregates (MRR, Active Lines, ARR GMV, Capability/Trade Breakdown)."""
+    return get_fleet_stats(profile=profile)
 
 
 @app.get("/api/fleet/schedule", tags=["Bryntum Dispatch Scheduler"])
-async def get_fleet_schedule_endpoint():
-    """Returns dynamic resources and shift/appointment events for Bryntum Dispatch Scheduler."""
-    return get_fleet_schedule()
+async def get_fleet_schedule_endpoint(profile: str = Query("default")):
+    """Returns dynamic resources and shift/appointment/renewal events for Bryntum Dispatch Scheduler."""
+    return get_fleet_schedule(profile=profile)
 
 
 def _guard_backoffice_request(sync_request: ZapierSyncRequest, http_request: Request) -> None:

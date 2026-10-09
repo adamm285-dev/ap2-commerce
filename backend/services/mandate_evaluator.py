@@ -13,7 +13,7 @@ import datetime
 from typing import Dict, Any, Tuple, Optional
 from ..config import settings
 from ..models import SpendingMandateRequest, SpendingMandateResponse, RecurrenceType
-from .plan_catalog import quota_label
+from .plan_catalog import quota_label, get_seller_profile, resolve_paypal_plan_id
 from .crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
@@ -33,8 +33,7 @@ AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"  # backward compat
 
 
 def get_payee_id() -> str:
-    from ..config import settings
-    if getattr(settings, "a2a_seller_profile", "ap2") == "trades":
+    if get_seller_profile() == "trades":
         return TRADES_PAYEE_ID
     return "PAYEE-AP2-AUTONOMOUS-COMPUTE"
 
@@ -298,11 +297,7 @@ def build_ap2_cart_mandate(
         "merchant_id": get_payee_id(),
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
         "tier_id": tier_id,
-        "plan_id": (
-            f"P-FLSMITH-{tier_id.upper().replace('-', '_')}"
-            if getattr(settings, "a2a_seller_profile", "ap2") == "trades"
-            else f"P-AP2-{tier_id.upper().replace('-', '_')}"
-        ),
+        "plan_id": resolve_paypal_plan_id(tier_id, profile=get_seller_profile()),
         "category": category,
         "amount": {"value": f"{amount:.2f}", "currency_code": "USD"},
         "billing_cadence": recurrence,
@@ -607,7 +602,7 @@ def evaluate_spending_mandate(
     if request.amount > cap or request.amount > effective_available:
         # Check if dynamic counter-offer tier is viable within contractor's budget
         if effective_available >= 49.99 and cap >= 49.99:
-            prof = getattr(settings, "a2a_seller_profile", "ap2")
+            prof = get_seller_profile()
             down_tier = "solo-starter" if prof == "trades" else "ap2-batch"
             down_tier_title = "Solo Starter" if prof == "trades" else "High-Throughput Batch Worker"
             # Generate pre-signed counter-offer token for down-tier at $49.99
@@ -661,7 +656,7 @@ def evaluate_spending_mandate(
     )
 
     # Asymmetric Ed25519 AP2 Proof
-    prof = getattr(settings, "a2a_seller_profile", "ap2")
+    prof = get_seller_profile()
     biz_name = "FieldSmith Telephony Subscriber" if prof == "trades" else "Autonomous Compute Subscriber"
     asym_proof = generate_dynamic_mandate_proof(
         contractor_id=request.buyer_agent_id,

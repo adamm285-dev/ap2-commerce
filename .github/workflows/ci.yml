@@ -32,9 +32,15 @@ jobs:
         run: |
           python -c "import yaml; yaml.safe_load(open('openapi.yaml')); print('OpenAPI 3.1.0 specification is valid!')"
 
-      - name: Run Pytest Suite
+      - name: Run Pytest Suite (Trades Profile)
         run: |
           pytest backend/tests/ -q -n 4
+
+      - name: Run Pytest Suite (AP2 Profile)
+        env:
+          A2A_SELLER_PROFILE: "ap2"
+        run: |
+          pytest backend/tests/test_ap2_adversarial_audit.py backend/tests/test_mcp_profiles.py backend/tests/test_fleet_endpoints.py backend/tests/test_bi_reconciliation.py backend/tests/test_plan_resolution.py backend/tests/test_external_buyer_harness.py -q -n 4
 
       - name: Run Autonomous Buyer Agent CLI Simulation
         run: |

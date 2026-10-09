@@ -1,0 +1,385 @@
+=== AP2 LIVE MCP VERIFICATION AUDIT ===
+Timestamp: 2026-10-09 18:45:39 UTC
+Target: http://127.0.0.1:8001/mcp
+
+
+================================================================================
+[1. MCP INITIALIZE]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "ap2-audit-client", "version": "1.0.0"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "ap2-autonomous-compute-seller",
+      "version": "1.0.0"
+    },
+    "instructions": "AP2 Autonomous Compute Protocol Engine.\nAP2 connects autonomous agent buyers directly to verified compute worker nodes and service gateways with automated PayPal recurring billing.\nAP2 Monthly Subscription Plans:\n- 'ap2-batch': $49.99/mo (125 workload tasks/mo, asynchronous worker node)\n- 'ap2-gateway': $79.99/mo (450 workload tasks/mo, real-time routing and multi-agent coordination)\n- 'ap2-cluster': $179.99/mo (1,200 workload tasks/mo, high-volume multi-node cluster with dedicated SLA)\nEvery autonomous workload (batch processing, gateway routing, cluster execution) is supported across all tiers.\nRecommended buyer procurement workflow:\n1. inspect_subscription_tiers: Inspect AP2 compute subscription tiers, workload task quotas ($49.99 / $79.99 / $179.99), and compute features.\n2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and buyer_email to PayPal Recurring Vault for automated billing.\n4. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription."
+  }
+}
+
+================================================================================
+[2. MCP TOOLS/LIST]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "tools": [
+      {
+        "name": "get_service_catalog",
+        "description": "Returns the AP2 compute service catalog: plans, workload task quotas, capabilities included on every plan, activation requirements, and policy links.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "inspect_subscription_tiers",
+        "description": "Inspects AP2 autonomous compute subscription tiers ($49.99 High-Throughput Batch Worker, $79.99 Dedicated AI Service Gateway, $179.99 Enterprise Cluster Node), workload task quotas, and features.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "negotiate_tier_terms",
+        "description": "Evaluates buyer budget cap against desired AP2 compute tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Batch Worker at $49.99/mo) with a signed AP2 Intent Mandate.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "buyer_agent_id",
+            "buyer_email",
+            "tier_id",
+            "monthly_budget_cap"
+          ],
+          "properties": {
+            "buyer_agent_id": {
+              "type": "string",
+              "description": "Unique identifier of the Buyer Agent"
+            },
+            "buyer_email": {
+              "type": "string",
+              "description": "Buyer PayPal billing email. The issued mandate is bound to this email and can only be redeemed by it."
+            },
+            "tier_id": {
+              "type": "string",
+              "description": "Desired AP2 subscription tier ('ap2-batch' at $49.99, 'ap2-gateway' at $79.99, 'ap2-cluster' at $179.99)"
+            },
+            "monthly_budget_cap": {
+              "type": "number",
+              "description": "Strict maximum monthly budget cap authorized by the buyer mandate"
+            },
+            "proposed_price": {
+              "type": "number",
+              "description": "Optional buyer-proposed target monthly price for counter-negotiation"
+            },
+            "recurrence": {
+              "type": "string",
+              "enum": [
+                "monthly",
+                "annual",
+                "one_time"
+              ],
+              "default": "monthly",
+              "description": "Billing cadence"
+            },
+            "category": {
+              "type": "string",
+              "default": "autonomous-node-service",
+              "description": "Authorized spending category"
+            },
+            "buyer_intent_mandate": {
+              "type": "object",
+              "description": "Optional buyer-signed AP2 Intent Mandate (vct: ap2.mandate.intent.1). If omitted, seller creates a seller-attested intent mandate on buyer's behalf."
+            }
+          }
+        }
+      },
+      {
+        "name": "evaluate_spending_mandate",
+        "description": "Validates buyer agent programmatic budget caps and generates signed mandate proof tokens.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "buyer_agent_id",
+            "amount",
+            "recurrence",
+            "category",
+            "monthly_budget_cap"
+          ],
+          "properties": {
+            "buyer_agent_id": {
+              "type": "string",
+              "description": "Unique ID of the Buyer Agent"
+            },
+            "amount": {
+              "type": "number",
+              "description": "Proposed asking price per billing cycle"
+            },
+            "recurrence": {
+              "type": "string",
+              "enum": [
+                "one_time",
+                "monthly",
+                "annual"
+              ],
+              "description": "Billing recurrence cadence"
+            },
+            "category": {
+              "type": "string",
+              "description": "Spending category"
+            },
+            "monthly_budget_cap": {
+              "type": "number",
+              "description": "Strict maximum monthly budget authorized by the buyer mandate"
+            }
+          }
+        }
+      },
+      {
+        "name": "purchase_subscription",
+        "description": "Binds a verified AP2 Intent Mandate or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Provide offer_id (recommended from next_action) or tier_id + agreed_monthly_rate + mandate_proof_hash.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "buyer_email"
+          ],
+          "properties": {
+            "offer_id": {
+              "type": "string",
+              "description": "Merchant offer_id returned in Cart Mandate and next_action (e.g. 'off_ap2_batch_49_...'). Automatically resolves and binds all pre-verified terms without rate tampering risk."
+            },
+            "buyer_email": {
+              "type": "string",
+              "description": "Buyer PayPal billing email; must match the email the mandate was negotiated for."
+            },
+            "tier_id": {
+              "type": "string",
+              "description": "Optional if offer_id is provided. Subscription tier ID (e.g. 'ap2-batch', 'ap2-gateway', 'ap2-cluster')."
+            },
+            "agreed_monthly_rate": {
+              "type": "number",
+              "description": "Optional if offer_id is provided. Agreed monthly subscription rate."
+            },
+            "mandate_proof_hash": {
+              "type": "string",
+              "description": "Optional if offer_id is provided. mandate_proof_hash returned by negotiate_tier_terms."
+            }
+          }
+        }
+      },
+      {
+        "name": "provision_compute_node",
+        "description": "Provisions a dedicated autonomous compute node endpoint (mcp+https) upon verified PayPal subscription.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "subscription_id",
+            "buyer_email"
+          ],
+          "properties": {
+            "subscription_id": {
+              "type": "string",
+              "description": "Verified PayPal subscription ID"
+            },
+            "buyer_email": {
+              "type": "string",
+              "description": "Buyer notification email"
+            },
+            "node_type": {
+              "type": "string",
+              "default": "gateway",
+              "description": "Target compute node architecture (batch, gateway, cluster)"
+            }
+          }
+        }
+      },
+      {
+        "name": "dispatch_zapier_mcp",
+        "description": "Executes downline multi-app back-office action chain into accounting and task management systems.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workflow_type": {
+              "type": "string",
+              "default": "a2a_onboarding"
+            },
+            "subscriber_name": {
+              "type": "string"
+            },
+            "business_entity": {
+              "type": "string"
+            },
+            "node_endpoint": {
+              "type": "string"
+            },
+            "service_vertical": {
+              "type": "string"
+            },
+            "monthly_subscription_fee": {
+              "type": "number"
+            },
+            "paypal_subscription_id": {
+              "type": "string"
+            },
+            "buyer_email": {
+              "type": "string"
+            },
+            "mandate_proof_hash": {
+              "type": "string"
+            },
+            "webhook_url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "get_subscription_details",
+        "description": "Retrieves the live status, plan information, next billing date, and subscriber details of a PayPal subscription. Aligns with official PayPal AI-Toolkit subscription schema.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "subscription_id"
+          ],
+          "properties": {
+            "subscription_id": {
+              "type": "string",
+              "description": "PayPal Subscription ID (e.g. 'I-...' or 'I-A2A-VAULT-...')"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+================================================================================
+[3. TOOL: inspect_subscription_tiers]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "inspect_subscription_tiers", "arguments": {}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"provider\": \"AP2 Autonomous Seller MCP\",\n  \"currency\": \"USD\",\n  \"protocol_support\": [\n    \"AP2\",\n    \"MCP\"\n  ],\n  \"service_description\": \"AP2 Autonomous Compute & Worker Node Network for Agent Infrastructure\",\n  \"quota_unit\": \"workload_tasks_per_month\",\n  \"quota_unit_definition\": \"Autonomous compute tasks processed and verified by the worker node each month.\",\n  \"billing_period\": \"monthly\",\n  \"subscription_plans\": [\n    {\n      \"tier_id\": \"ap2-batch\",\n      \"title\": \"High-Throughput Batch Worker\",\n      \"website_plan_name\": \"Batch Worker\",\n      \"monthly_price\": 49.99,\n      \"workload_tasks_per_month\": 125,\n      \"best_for\": \"Batch processing and background agent workflows\",\n      \"features\": [\n        \"125 workload tasks per month\",\n        \"Asynchronous job queue execution\",\n        \"Standard MCP tool execution latency\",\n        \"Autonomous agent task verification\",\n        \"Standard execution priority\",\n        \"Instant task completion webhooks\"\n      ],\n      \"is_negotiable\": false,\n      \"tier_id_aliases\": [\n        \"batch\",\n        \"batch-worker\"\n      ]\n    },\n    {\n      \"tier_id\": \"ap2-gateway\",\n      \"title\": \"Dedicated AI Service Gateway\",\n      \"website_plan_name\": \"Service Gateway\",\n      \"monthly_price\": 79.99,\n      \"workload_tasks_per_month\": 450,\n      \"best_for\": \"Production agents requiring real-time gateway access\",\n      \"features\": [\n        \"450 workload tasks per month\",\n        \"All Batch Worker features\",\n        \"Real-time low-latency gateway routing\",\n        \"Multi-agent protocol negotiation\",\n        \"High-priority task execution\",\n        \"Dedicated gateway endpoint allocation\"\n      ],\n      \"is_negotiable\": false,\n      \"tier_id_aliases\": [\n        \"gateway\",\n        \"gateway-node\"\n      ]\n    },\n    {\n      \"tier_id\": \"ap2-cluster\",\n      \"title\": \"Enterprise Cluster Node\",\n      \"website_plan_name\": \"Cluster Node\",\n      \"monthly_price\": 179.99,\n      \"workload_tasks_per_month\": 1200,\n      \"best_for\": \"Enterprise agent fleets with high-volume compute needs\",\n      \"features\": [\n        \"1,200 workload tasks per month\",\n        \"Multi-node cluster scaling\",\n        \"Dedicated compute resources and SLA\",\n        \"Enterprise security and audit logging\"\n      ],\n      \"is_negotiable\": false,\n      \"tier_id_aliases\": [\n        \"cluster\",\n        \"cluster-node\"\n      ]\n    }\n  ],\n  \"included_on_all_plans\": [\n    \"24/7 autonomous compute node execution (~350ms median response)\",\n    \"Automated AP2 Intent and Cart Mandate cryptographic verification\",\n    \"Mutual authentication via Ed25519 asymmetric signatures\",\n    \"Zero-speculative metric auditing and immutable ledger logging\",\n    \"Downline webhook execution for ERP and database synchronization\",\n    \"Automated node health monitoring and failover routing\"\n  ]\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[4. TOOL: negotiate_tier_terms (COUNTER-OFFER)]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "negotiate_tier_terms", "arguments": {"buyer_agent_id": "agent-audit-buyer-001", "buyer_email": "audit.buyer@acme-systems.io", "tier_id": "ap2-gateway", "monthly_budget_cap": 60.0}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"COUNTER_OFFER\",\n  \"approved\": false,\n  \"original_request_approved\": false,\n  \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n  \"offer_id\": \"off_ap2_batch_49_59107bab\",\n  \"tier_id\": \"ap2-gateway\",\n  \"counter_offer_available\": true,\n  \"counter_offer_tier\": \"High-Throughput Batch Worker\",\n  \"counter_offer_tier_id\": \"ap2-batch\",\n  \"counter_offer_amount\": 49.99,\n  \"counter_offer_mandate_hash\": \"001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\",\n  \"mandate_proof_hash\": \"001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\",\n  \"ap2_intent_mandate\": {\n    \"mandate_id\": \"mandate_7c285093d2af4d57\",\n    \"vct\": \"ap2.mandate.intent.1\",\n    \"attestation\": \"seller_attested\",\n    \"kid\": \"fieldsmith-seller-ed25519-v1\",\n    \"issuer\": \"agent-audit-buyer-001\",\n    \"payer\": {\n      \"email\": \"audit.buyer@acme-systems.io\"\n    },\n    \"payee\": \"PAYEE-AP2-AUTONOMOUS-COMPUTE\",\n    \"tier_id\": \"ap2-batch\",\n    \"amount\": {\n      \"value\": \"49.99\",\n      \"currency_code\": \"USD\"\n    },\n    \"recurrence\": \"monthly\",\n    \"category\": \"autonomous-node-service\",\n    \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n    \"issued_at\": 1791571539,\n    \"issued_at_iso\": \"2026-10-09T18:45:39+00:00\",\n    \"expires_at\": 1823107539,\n    \"expires_at_iso\": \"2027-10-09T18:45:39+00:00\",\n    \"validity_period\": \"P1Y\",\n    \"nonce\": \"9a7fa1b642504d4e\",\n    \"user_present\": false,\n    \"signature_alg\": \"Ed25519\",\n    \"public_key\": \"a8de836dbdf17990cdb206ac26c501f8ff4cb077070ff44ab2e55567ef941109\",\n    \"signature\": \"e75a39bd4746b98116368f509647309d4b3befbb6a8bea014c7e1f04825033e63ce464b541123ef43abfd33aa35f343dbac0350808a82d8fbd2b71b4f2839e04\"\n  },\n  \"ap2_cart_mandate\": {\n    \"cart_id\": \"cart_798c06a1dbed4768\",\n    \"offer_id\": \"off_ap2_batch_49_59107bab\",\n    \"vct\": \"ap2.mandate.cart.1\",\n    \"merchant_id\": \"PAYEE-AP2-AUTONOMOUS-COMPUTE\",\n    \"payer\": {\n      \"email\": \"audit.buyer@acme-systems.io\"\n    },\n    \"tier_id\": \"ap2-batch\",\n    \"plan_id\": \"P-AP2-BATCH-SANDBOX\",\n    \"category\": \"autonomous-node-service\",\n    \"amount\": {\n      \"value\": \"49.99\",\n      \"currency_code\": \"USD\"\n    },\n    \"billing_cadence\": \"monthly\",\n    \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n    \"issued_at\": 1791571539,\n    \"issued_at_iso\": \"2026-10-09T18:45:39+00:00\",\n    \"expires_at\": 1791573339,\n    \"expires_at_iso\": \"2026-10-09T19:15:39+00:00\",\n    \"offer_expires_at\": \"2026-10-09T19:15:39+00:00\",\n    \"nonce\": \"5d0cfde7b24c4057\",\n    \"kid\": \"fieldsmith-seller-ed25519-v1\",\n    \"signature_alg\": \"Ed25519\",\n    \"public_key\": \"a8de836dbdf17990cdb206ac26c501f8ff4cb077070ff44ab2e55567ef941109\",\n    \"signature\": \"1aa3914f2959ff9af83edb61e4f59077300087cd23a8617d247dab25506145f8c0ce8bf6b21cadb761879b361bea0ba156d14a5ba9f81c74abb0eaf9624a2e03\"\n  },\n  \"offer_expires_at\": \"2026-10-09T19:15:39+00:00\",\n  \"monthly_budget_cap\": 60.0,\n  \"monthly_cap_remaining\": 10.01,\n  \"next_action\": {\n    \"type\": \"tool_call\",\n    \"tool\": \"purchase_subscription\",\n    \"parameters\": {\n      \"offer_id\": \"off_ap2_batch_49_59107bab\",\n      \"tier_id\": \"ap2-batch\",\n      \"agreed_monthly_rate\": 49.99,\n      \"mandate_proof_hash\": \"001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\",\n      \"buyer_email\": \"audit.buyer@acme-systems.io\"\n    }\n  },\n  \"reason\": \"Requested plan 'ap2-gateway' lists at $79.99/mo, which exceeds monthly budget cap of $60.00. Counter-offer available: Down-tier to 'High-Throughput Batch Worker' at $49.99/mo (125 workload tasks/mo, asynchronous worker node), leaving $10.01 in your monthly budget. Execute next_action tool call with offer_id='off_ap2_batch_49_59107bab' to bind to PayPal Vault.\"\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[5. TOOL: purchase_subscription]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "purchase_subscription", "arguments": {"tier_id": "ap2-batch", "agreed_monthly_rate": 49.99, "mandate_proof_hash": "001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4", "buyer_email": "audit.buyer@acme-systems.io"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"ACTIVE\",\n  \"subscription_id\": \"I-A2A-VAULT-5377969\",\n  \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n  \"offer_id\": \"off_ap2_batch_49_59107bab\",\n  \"buyer_agent_id\": \"agent-audit-buyer-001\",\n  \"plan_id\": \"P-AP2-BATCH-SANDBOX\",\n  \"product_id\": \"PROD-AP2-AUTONOMOUS-COMPUTE\",\n  \"payer_id\": \"PAYER-F8BF07FF83D0\",\n  \"vault_id\": \"vault_tok_i_a2a_vault_5377969\",\n  \"payment_token\": \"tok_5b41cfb532c6f302\",\n  \"payment_method\": \"paypal_vault_mit\",\n  \"tier_id\": \"ap2-batch\",\n  \"agreed_monthly_rate\": 49.99,\n  \"monthly_budget_cap\": 60.0,\n  \"monthly_cap_remaining\": 10.01,\n  \"billing_cycle\": \"monthly\",\n  \"billing_cycles\": [\n    {\n      \"sequence\": 1,\n      \"tenure_type\": \"REGULAR\",\n      \"frequency\": {\n        \"interval_unit\": \"MONTH\",\n        \"interval_count\": 1\n      },\n      \"total_cycles\": 0,\n      \"pricing_scheme\": {\n        \"fixed_price\": {\n          \"value\": \"49.99\",\n          \"currency_code\": \"USD\"\n        }\n      }\n    }\n  ],\n  \"currency\": \"USD\",\n  \"mandate_proof_hash\": \"001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\",\n  \"traceable_proof\": \"mandate:mandate_7c285093d2af4d57|cart:cart_798c06a1dbed4768|hash:001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\",\n  \"subscriber_country_code\": \"US\",\n  \"paypal_vault_status\": \"VAULT_BOUND\",\n  \"vault_billing_authorized\": true,\n  \"vault_customer_present\": false,\n  \"paypal_environment\": \"sandbox\",\n  \"paypal_request_id\": \"req_490b190f01f9cf24\",\n  \"create_time\": \"2026-10-09T18:45:40.044047+00:00\",\n  \"next_billing_time\": \"2026-11-08T18:45:40.044047+00:00\",\n  \"hateoas_links\": [\n    {\n      \"href\": \"https://api.sandbox.paypal.com/v1/billing/subscriptions/I-A2A-VAULT-5377969\",\n      \"rel\": \"self\",\n      \"method\": \"GET\"\n    },\n    {\n      \"href\": \"https://api.sandbox.paypal.com/v1/billing/subscriptions/I-A2A-VAULT-5377969/cancel\",\n      \"rel\": \"cancel\",\n      \"method\": \"POST\"\n    }\n  ],\n  \"ap2_intent_mandate\": {\n    \"mandate_id\": \"mandate_7c285093d2af4d57\",\n    \"vct\": \"ap2.mandate.intent.1\",\n    \"attestation\": \"seller_attested\",\n    \"kid\": \"fieldsmith-seller-ed25519-v1\",\n    \"issuer\": \"agent-audit-buyer-001\",\n    \"payer\": {\n      \"email\": \"audit.buyer@acme-systems.io\"\n    },\n    \"payee\": \"PAYEE-AP2-AUTONOMOUS-COMPUTE\",\n    \"tier_id\": \"ap2-batch\",\n    \"amount\": {\n      \"value\": \"49.99\",\n      \"currency_code\": \"USD\"\n    },\n    \"recurrence\": \"monthly\",\n    \"category\": \"autonomous-node-service\",\n    \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n    \"issued_at\": 1791571539,\n    \"issued_at_iso\": \"2026-10-09T18:45:39+00:00\",\n    \"expires_at\": 1823107539,\n    \"expires_at_iso\": \"2027-10-09T18:45:39+00:00\",\n    \"validity_period\": \"P1Y\",\n    \"nonce\": \"9a7fa1b642504d4e\",\n    \"user_present\": false,\n    \"signature_alg\": \"Ed25519\",\n    \"public_key\": \"a8de836dbdf17990cdb206ac26c501f8ff4cb077070ff44ab2e55567ef941109\",\n    \"signature\": \"e75a39bd4746b98116368f509647309d4b3befbb6a8bea014c7e1f04825033e63ce464b541123ef43abfd33aa35f343dbac0350808a82d8fbd2b71b4f2839e04\"\n  },\n  \"ap2_cart_mandate\": {\n    \"cart_id\": \"cart_798c06a1dbed4768\",\n    \"offer_id\": \"off_ap2_batch_49_59107bab\",\n    \"vct\": \"ap2.mandate.cart.1\",\n    \"merchant_id\": \"PAYEE-AP2-AUTONOMOUS-COMPUTE\",\n    \"payer\": {\n      \"email\": \"audit.buyer@acme-systems.io\"\n    },\n    \"tier_id\": \"ap2-batch\",\n    \"plan_id\": \"P-AP2-BATCH-SANDBOX\",\n    \"category\": \"autonomous-node-service\",\n    \"amount\": {\n      \"value\": \"49.99\",\n      \"currency_code\": \"USD\"\n    },\n    \"billing_cadence\": \"monthly\",\n    \"negotiation_id\": \"neg_5ff7ca94bb7c\",\n    \"issued_at\": 1791571539,\n    \"issued_at_iso\": \"2026-10-09T18:45:39+00:00\",\n    \"expires_at\": 1791573339,\n    \"expires_at_iso\": \"2026-10-09T19:15:39+00:00\",\n    \"offer_expires_at\": \"2026-10-09T19:15:39+00:00\",\n    \"nonce\": \"5d0cfde7b24c4057\",\n    \"kid\": \"fieldsmith-seller-ed25519-v1\",\n    \"signature_alg\": \"Ed25519\",\n    \"public_key\": \"a8de836dbdf17990cdb206ac26c501f8ff4cb077070ff44ab2e55567ef941109\",\n    \"signature\": \"1aa3914f2959ff9af83edb61e4f59077300087cd23a8617d247dab25506145f8c0ce8bf6b21cadb761879b361bea0ba156d14a5ba9f81c74abb0eaf9624a2e03\"\n  },\n  \"next_action\": {\n    \"type\": \"tool_call\",\n    \"tool\": \"provision_compute_node\",\n    \"parameters\": {\n      \"subscription_id\": \"I-A2A-VAULT-5377969\",\n      \"buyer_email\": \"audit.buyer@acme-systems.io\",\n      \"node_type\": \"batch\"\n    }\n  },\n  \"message\": \"Successfully bound PayPal subscription I-A2A-VAULT-5377969 at $49.99/mo under verified AP2 Intent Mandate.\",\n  \"buyer_email\": \"audit.buyer@acme-systems.io\",\n  \"subscriber_name\": \"Autonomous Buyer Agent\",\n  \"business_entity\": \"Autonomous Compute Network\"\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[6. TOOL: provision_compute_node (VALID)]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "provision_compute_node", "arguments": {"subscription_id": "I-A2A-VAULT-5377969", "buyer_email": "audit.buyer@acme-systems.io", "node_type": "batch"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"PROVISIONED\",\n  \"subscription_id\": \"I-A2A-VAULT-5377969\",\n  \"buyer_email\": \"audit.buyer@acme-systems.io\",\n  \"node_id\": \"node-batch-c1d90a4a\",\n  \"node_type\": \"batch\",\n  \"endpoint\": \"mcp+https://batch-01.acme-systems.io/agents/node-batch-c1d90a4a\",\n  \"workload_tasks_per_month\": 450,\n  \"next_action\": {\n    \"type\": \"tool_call\",\n    \"tool\": \"dispatch_zapier_mcp\",\n    \"parameters\": {\n      \"workflow_type\": \"a2a_onboarding\",\n      \"subscriber_name\": \"Autonomous Buyer Agent\",\n      \"business_entity\": \"Autonomous Node Network\",\n      \"node_endpoint\": \"mcp+https://batch-01.acme-systems.io/agents/node-batch-c1d90a4a\",\n      \"service_vertical\": \"Autonomous Compute\",\n      \"monthly_subscription_fee\": 49.99,\n      \"paypal_subscription_id\": \"I-A2A-VAULT-5377969\",\n      \"buyer_email\": \"audit.buyer@acme-systems.io\",\n      \"mandate_proof_hash\": \"mandate:mandate_7c285093d2af4d57|cart:cart_798c06a1dbed4768|hash:001880d05b75db31ccfd257e4a482c5646bb636e10484bec4896885c3015d3b4\"\n    }\n  }\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[7. TOOL: provision_compute_node (INVALID -> SUBSCRIPTION_NOT_FOUND)]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "provision_compute_node", "arguments": {"subscription_id": "I-FAKE-SUB-DOES-NOT-EXIST", "buyer_email": "audit.buyer@acme-systems.io", "node_type": "batch"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"REJECTED\",\n  \"error\": \"SUBSCRIPTION_NOT_FOUND\",\n  \"reason\": \"Subscription 'I-FAKE-SUB-DOES-NOT-EXIST' was not found or does not exist.\"\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[8. TOOL: get_subscription_details (NOT FOUND)]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "get_subscription_details", "arguments": {"subscription_id": "I-FAKE-SUB-DOES-NOT-EXIST"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"id\": \"I-FAKE-SUB-DOES-NOT-EXIST\",\n  \"subscription_id\": \"I-FAKE-SUB-DOES-NOT-EXIST\",\n  \"error\": \"RESOURCE_NOT_FOUND\",\n  \"status\": \"NOT_FOUND\",\n  \"message\": \"Subscription 'I-FAKE-SUB-DOES-NOT-EXIST' not found.\",\n  \"mock_mode\": true\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+================================================================================
+[9. TOOL: provision_telecom_line (HIDDEN IN AP2 -> -32601)]
+COMMAND: curl -s -X POST http://127.0.0.1:8001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "provision_telecom_line", "arguments": {"subscription_id": "I-A2A-VAULT-5377969", "contractor_email": "audit.buyer@acme-systems.io", "area_code": "863"}}}'
+================================================================================
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "error": {
+    "code": -32601,
+    "message": "Method or Tool 'provision_telecom_line' not found."
+  }
+}

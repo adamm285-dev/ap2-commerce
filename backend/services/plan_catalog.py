@@ -197,6 +197,42 @@ AP2_TIER_ALIASES: Dict[str, str] = {
     "pro-dispatch": "ap2-cluster",
 }
 
+# Publicly visible aliases for AP2 catalog output (excludes legacy trades terminology)
+PUBLIC_AP2_TIER_ALIASES: Dict[str, str] = {
+    "batch": "ap2-batch",
+    "batch-worker": "ap2-batch",
+    "gateway": "ap2-gateway",
+    "gateway-node": "ap2-gateway",
+    "cluster": "ap2-cluster",
+    "cluster-node": "ap2-cluster",
+}
+
+# Single Source of Truth: Canonical mapping from every tier ID and alias across all profiles
+# to the corresponding PayPal plan attribute on backend.config.settings.
+TIER_TO_SETTINGS_ATTR: Dict[str, str] = {
+    # Tier 1 ($49.99): Solo Starter / Batch Worker
+    "solo-starter": "paypal_plan_id_solo",
+    "solo": "paypal_plan_id_solo",
+    "ap2-batch": "paypal_plan_id_solo",
+    "batch": "paypal_plan_id_solo",
+    "batch-worker": "paypal_plan_id_solo",
+    # Tier 2 ($79.99): FieldSmith Pro / Dedicated AI Gateway
+    "fieldsmith-pro": "paypal_plan_id_pro",
+    "pro": "paypal_plan_id_pro",
+    "flooring-tile": "paypal_plan_id_pro",
+    "roofing-storm": "paypal_plan_id_pro",
+    "plumbing-emergency": "paypal_plan_id_pro",
+    "ap2-gateway": "paypal_plan_id_pro",
+    "gateway": "paypal_plan_id_pro",
+    "gateway-node": "paypal_plan_id_pro",
+    # Tier 3 ($179.99): Fleet Dispatch / Enterprise Cluster Node
+    "pro-dispatch": "paypal_plan_id_dispatch",
+    "fleet": "paypal_plan_id_dispatch",
+    "ap2-cluster": "paypal_plan_id_dispatch",
+    "cluster": "paypal_plan_id_dispatch",
+    "cluster-node": "paypal_plan_id_dispatch",
+}
+
 AP2_INCLUDED_ON_ALL_PLANS: List[str] = [
     "24/7 autonomous compute node execution (~350ms median response)",
     "Automated AP2 Intent and Cart Mandate cryptographic verification",
@@ -240,9 +276,16 @@ def get_seller_profile() -> str:
     """Returns active seller profile: 'ap2' or 'trades'."""
     try:
         from ..config import settings
-        return getattr(settings, "a2a_seller_profile", "ap2")
+        val = getattr(settings, "a2a_seller_profile", None)
+        if val and str(val).strip():
+            return str(val).strip().lower()
     except Exception:
-        return "ap2"
+        pass
+    import os
+    env_val = os.getenv("A2A_SELLER_PROFILE")
+    if env_val and env_val.strip():
+        return env_val.strip().lower()
+    return "ap2"
 
 
 def get_plans(profile: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -253,6 +296,12 @@ def get_plans(profile: Optional[str] = None) -> List[Dict[str, Any]]:
 def get_tier_aliases(profile: Optional[str] = None) -> Dict[str, str]:
     prof = profile or get_seller_profile()
     return TRADES_TIER_ALIASES if prof == "trades" else AP2_TIER_ALIASES
+
+
+def get_public_tier_aliases(profile: Optional[str] = None) -> Dict[str, str]:
+    """Returns aliases suitable for public catalog export (hides trades terms in ap2 mode)."""
+    prof = profile or get_seller_profile()
+    return TRADES_TIER_ALIASES if prof == "trades" else PUBLIC_AP2_TIER_ALIASES
 
 
 def get_quota_unit(profile: Optional[str] = None) -> str:
@@ -310,6 +359,50 @@ def resolve_plan(tier_id: Optional[str], profile: Optional[str] = None) -> Optio
         if alt_id and alt_id in plans_by_id:
             return plans_by_id[alt_id]
     return plans_by_id.get(target_id)
+
+
+def resolve_paypal_plan_id(tier_id: Optional[str], profile: Optional[str] = None) -> str:
+    """
+    Single source of truth: resolves any canonical tier_id or alias across all profiles
+    to the configured settings PayPal plan ID (paypal_plan_id_solo, pro, or dispatch).
+    Never returns a synthesized P-FLSMITH-* or P-AP2-* string.
+    """
+    from ..config import settings
+
+    prof = profile or get_seller_profile()
+    raw = (tier_id or "").strip().lower()
+
+    # Try alias in active profile
+    aliases = get_tier_aliases(prof)
+    canonical = aliases.get(raw, raw)
+
+    attr = TIER_TO_SETTINGS_ATTR.get(canonical) or TIER_TO_SETTINGS_ATTR.get(raw)
+    if not attr:
+        plan = resolve_plan(raw, profile=prof)
+        if plan:
+            canon_id = plan.get("tier_id")
+            attr = TIER_TO_SETTINGS_ATTR.get(canon_id)
+            if not attr:
+                price = plan.get("monthly_price", 0.0)
+                if price <= 49.99:
+                    attr = "paypal_plan_id_solo"
+                elif price <= 79.99:
+                    attr = "paypal_plan_id_pro"
+                else:
+                    attr = "paypal_plan_id_dispatch"
+        else:
+            attr = "paypal_plan_id_pro"
+
+    val = getattr(settings, attr, None)
+    if val and str(val).strip():
+        return str(val).strip()
+
+    defaults = {
+        "paypal_plan_id_solo": getattr(settings, "paypal_plan_id_solo", "P-FLSMITH-SOLO-STARTER"),
+        "paypal_plan_id_pro": getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO"),
+        "paypal_plan_id_dispatch": getattr(settings, "paypal_plan_id_dispatch", "P-FLSMITH-DISPATCH"),
+    }
+    return defaults.get(attr, getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO"))
 
 
 def get_plan(tier_id: str, profile: Optional[str] = None) -> Dict[str, Any]:

@@ -48,6 +48,7 @@ from ..services.plan_catalog import (
     get_plan,
     get_plans,
     get_tier_aliases,
+    get_public_tier_aliases,
     get_quota_unit,
     get_quota_unit_definition,
     get_included_on_all_plans,
@@ -55,6 +56,7 @@ from ..services.plan_catalog import (
     get_activation,
     get_trust_signals,
     get_seller_profile,
+    resolve_paypal_plan_id,
     plan_summary,
     public_plan,
 )
@@ -546,7 +548,7 @@ class SellerAgent:
                 },
             ],
             "workloads_note": "All compute workloads are supported across all tiers. Pick a tier by throughput and task volume.",
-            "tier_id_aliases": get_tier_aliases(),
+            "tier_id_aliases": get_public_tier_aliases("ap2"),
             "activation": get_activation(),
             "trust_signals": get_trust_signals(),
         }
@@ -576,7 +578,7 @@ class SellerAgent:
         for plan in get_plans():
             entry = public_plan(plan)
             entry["is_negotiable"] = False
-            entry["tier_id_aliases"] = [alias for alias, target in get_tier_aliases().items() if target == plan["tier_id"]]
+            entry["tier_id_aliases"] = [alias for alias, target in get_public_tier_aliases("ap2").items() if target == plan["tier_id"]]
             subscription_plans.append(entry)
         return {
             "provider": self.agent_name,
@@ -1286,13 +1288,12 @@ class SellerAgent:
         cart_id = auth.get("ap2_cart_mandate", {}).get("cart_id") if isinstance(auth.get("ap2_cart_mandate"), dict) else None
         traceable_proof = f"mandate:{mandate_id or 'none'}|cart:{cart_id or 'none'}|hash:{mandate_proof_hash or offer_id}"
 
+        plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile=prof)
         if prof == "trades":
-            plan_id = f"P-FLSMITH-{tier_id.upper().replace('-', '_')}" if tier_id else "P-FLSMITH-SOLO_STARTER"
             product_id = "PROD-FIELDSMITH-A2A-TELEPHONY"
             contractor_name = "Marcus Miller"
             business_entity = "Miller Custom Flooring LLC"
         else:
-            plan_id = f"P-AP2-{tier_id.upper().replace('-', '_')}" if tier_id else "P-AP2-BATCH_WORKER"
             product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
             contractor_name = "Autonomous Buyer Agent"
             business_entity = "Autonomous Compute Network"
@@ -1410,20 +1411,21 @@ class SellerAgent:
                 "reason": "buyer_email is required for node provisioning.",
             }
 
-        sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id.strip())
+        sub_key = subscription_id.strip()
+        sub = _COMPLETED_SUBSCRIPTIONS.get(sub_key)
         if not sub:
             try:
-                remote_sub = await paypal_service.verify_subscription(subscription_id.strip())
-                if remote_sub and not remote_sub.get("error"):
+                remote_sub = await paypal_service.verify_subscription(sub_key)
+                if remote_sub and not remote_sub.get("error") and remote_sub.get("status") in ("ACTIVE", "APPROVAL_PENDING"):
                     sub = remote_sub
             except Exception:
-                pass
+                sub = None
 
         if not sub:
             return {
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_FOUND",
-                "reason": f"Subscription '{subscription_id}' was not found in completed records.",
+                "reason": f"Subscription '{subscription_id}' was not found or does not exist.",
             }
 
         sub_status = (sub.get("status") or "").upper()
@@ -1434,6 +1436,13 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' is APPROVAL_PENDING. Buyer must authorize payment in PayPal before node provisioning.",
             }
 
+        if sub_status != "ACTIVE":
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_NOT_ACTIVE",
+                "reason": f"Subscription '{subscription_id}' is not active (current status: {sub_status or 'UNKNOWN'}).",
+            }
+
         if sub.get("status") == "REPLACED":
             return {
                 "status": "REJECTED",
@@ -1441,7 +1450,9 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
             }
 
-        owner_email = sub.get("buyer_email") or sub.get("contractor_email") or ""
+        owner_email = sub.get("buyer_email") or sub.get("contractor_email")
+        if not owner_email and isinstance(sub.get("subscriber"), dict):
+            owner_email = sub["subscriber"].get("email_address")
         if owner_email and buyer_email.strip().lower() != owner_email.strip().lower():
             return {
                 "status": "REJECTED",
@@ -1449,17 +1460,17 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' belongs to '{owner_email}', cannot be provisioned for '{buyer_email}'.",
             }
 
-        clean_sub = subscription_id.replace("-", "").lower()
+        clean_sub = sub_key.replace("-", "").lower()
         sub_hash = hashlib.sha256(clean_sub.encode()).hexdigest()[:8]
         tier_id = sub.get("tier_id", "ap2-gateway")
         clean_node_type = "batch" if "batch" in tier_id else ("cluster" if "cluster" in tier_id else "gateway")
         node_id = f"node-{clean_node_type}-{sub_hash}"
-        endpoint = f"mcp+https://gateway-01.acme-systems.io/agents/{node_id}"
+        host_prefix = "batch-01" if clean_node_type == "batch" else ("cluster-01" if clean_node_type == "cluster" else "gateway-01")
+        endpoint = f"mcp+https://{host_prefix}.acme-systems.io/agents/{node_id}"
 
         sub["allocated_node_id"] = node_id
         sub["node_endpoint"] = endpoint
-        _COMPLETED_SUBSCRIPTIONS[subscription_id]["allocated_node_id"] = node_id
-        _COMPLETED_SUBSCRIPTIONS[subscription_id]["node_endpoint"] = endpoint
+        _COMPLETED_SUBSCRIPTIONS[sub_key] = sub
 
         monthly_fee = sub.get("agreed_monthly_rate", 79.99)
         proof = sub.get("traceable_proof") or sub.get("mandate_proof_hash") or f"mandate:{subscription_id}"

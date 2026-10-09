@@ -32,10 +32,10 @@ class ExternalBuyerAgent:
         self,
         transport: str = "http",
         server_url: str = "http://127.0.0.1:8001/mcp",
-        contractor_name: str = "Marcus Miller",
-        business_entity: str = "Miller Custom Flooring LLC",
-        contractor_email: str = "marcus@millercustomfloors.com",
-        trade_id: str = "flooring-tile",
+        contractor_name: Optional[str] = None,
+        business_entity: Optional[str] = None,
+        contractor_email: Optional[str] = None,
+        trade_id: Optional[str] = None,
         budget_cap: float = 100.00,
         area_code: str = "863",
         webhook_url: Optional[str] = None,
@@ -43,13 +43,32 @@ class ExternalBuyerAgent:
         reset_ledger: bool = True,
         simulate_exhaustion: bool = False,
         admin_api_key: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         self.transport = transport
         self.server_url = server_url
-        self.contractor_name = contractor_name
-        self.business_entity = business_entity
-        self.contractor_email = contractor_email
-        self.trade_id = trade_id
+        if profile:
+            self.profile = profile
+        else:
+            try:
+                from ..services.plan_catalog import get_seller_profile
+                self.profile = get_seller_profile()
+            except Exception:
+                self.profile = os.getenv("A2A_SELLER_PROFILE", "ap2")
+
+        if self.profile == "trades":
+            self.contractor_name = contractor_name or "Marcus Miller"
+            self.business_entity = business_entity or "Miller Custom Flooring LLC"
+            self.contractor_email = contractor_email or "marcus@millercustomfloors.com"
+            self.trade_id = trade_id or "flooring-tile"
+            self.category = "TELEPHONY_AI_SCREENER"
+        else:
+            self.contractor_name = contractor_name or "Autonomous Compute Buyer"
+            self.business_entity = business_entity or "Acme Systems Fleet LLC"
+            self.contractor_email = contractor_email or "buyer@acme-systems.io"
+            self.trade_id = trade_id or "ap2-gateway"
+            self.category = "AUTONOMOUS_NODE_SERVICE"
+
         self.budget_cap = budget_cap
         self.area_code = area_code
         self.webhook_url = webhook_url
@@ -225,20 +244,26 @@ class ExternalBuyerAgent:
         self.log(f"   Monthly Cost:    ${monthly_price:.2f}/mo (USD)")
         self.log(f"   Features:        {', '.join(selected_tier.get('features', []))}\n")
 
-        # Step 4: Jobsite Scope & Quote Calculation
-        self.log("📐 [Step 4: Scoping & Labor Quote Calculation (calculate_quote)]")
-        quote = await self._call_tool(
-            "calculate_quote",
-            {
-                "trade_id": self.trade_id,
-                "square_footage": 600.0,
-                "material_type": "Porcelain Tile",
-                "postal_code": "33801",
-            },
-        )
-        self.log(f"   Estimated Labor: {quote.get('labor_estimate')}")
-        self.log(f"   Required Deposit: ${quote.get('required_deposit', 250):.2f}")
-        self.log(f"   Material Takeoff: {quote.get('waste_allowance_sq_ft')} sq ft (10% overage)\n")
+        # Step 4: Jobsite Scope / Compute Node Specification
+        if self.profile == "trades":
+            self.log("📐 [Step 4: Scoping & Labor Quote Calculation (calculate_quote)]")
+            quote = await self._call_tool(
+                "calculate_quote",
+                {
+                    "trade_id": self.trade_id,
+                    "square_footage": 600.0,
+                    "material_type": "Porcelain Tile",
+                    "postal_code": "33801",
+                },
+            )
+            self.log(f"   Estimated Labor: {quote.get('labor_estimate')}")
+            self.log(f"   Required Deposit: ${quote.get('required_deposit', 250):.2f}")
+            self.log(f"   Material Takeoff: {quote.get('waste_allowance_sq_ft')} sq ft (10% overage)\n")
+        else:
+            self.log("⚡ [Step 4: Autonomous Compute Specification]")
+            self.log(f"   Selected Tier:   {tier_title}")
+            self.log(f"   Workload Quota:  {selected_tier.get('workload_tasks_per_month', 450)} workload tasks/mo")
+            self.log("   Compute Target:  Dedicated AI Gateway micro-agent coordination\n")
 
         # Step 5: Programmatic Spending Mandate Evaluation
         self.log("⚖️  [Step 5: Enforcing Spending Mandate Policy (evaluate_spending_mandate)]")
@@ -249,7 +274,7 @@ class ExternalBuyerAgent:
                 "buyer_agent_id": buyer_agent_id,
                 "amount": monthly_price,
                 "recurrence": "monthly",
-                "category": "TELEPHONY_AI_SCREENER",
+                "category": self.category,
                 "monthly_budget_cap": self.budget_cap,
             },
         )
@@ -266,7 +291,7 @@ class ExternalBuyerAgent:
             has_counter = mandate.get("counterOfferAvailable") or mandate.get("counter_offer_available", False)
             counter_amount = float(mandate.get("counterOfferAmount") or mandate.get("counter_offer_amount", 0.0))
             counter_tier = mandate.get("counterOfferTier") or mandate.get("counter_offer_tier", "Alternative Tier")
-            counter_tier_id = mandate.get("counterOfferTierId") or mandate.get("counter_offer_tier_id") or "solo-starter"
+            counter_tier_id = mandate.get("counterOfferTierId") or mandate.get("counter_offer_tier_id") or ("solo-starter" if self.profile == "trades" else "ap2-batch")
 
             if has_counter and counter_amount > 0 and counter_amount <= self.budget_cap:
                 self.log(f"\n🔄 [AUTONOMOUS NEGOTIATION] Counter-Offer Received: '{counter_tier}' @ ${counter_amount:.2f}/mo")
@@ -279,7 +304,7 @@ class ExternalBuyerAgent:
                         "buyer_agent_id": buyer_agent_id,
                         "amount": counter_amount,
                         "recurrence": "monthly",
-                        "category": "TELEPHONY_AI_SCREENER",
+                        "category": self.category,
                         "monthly_budget_cap": self.budget_cap,
                     },
                 )
@@ -313,6 +338,7 @@ class ExternalBuyerAgent:
             "agreed_monthly_rate": monthly_price,
             "mandate_proof_hash": proof_hash,
             "contractor_email": self.contractor_email,
+            "buyer_email": self.contractor_email,
         }
         if offer_id:
             purchase_args["offer_id"] = offer_id
@@ -379,60 +405,97 @@ class ExternalBuyerAgent:
                 except Exception as e:
                     self.log(f"   ⚠️ In-process approval simulation error: {e}")
 
-        # Step 7: Telecom Line Allocation
-        self.log("📞 [Step 7: KYC Telecom Line Allocation (provision_telecom_line)]")
-        prov = await self._call_tool(
-            "provision_telecom_line",
-            {
-                "subscription_id": subscription_id,
-                "contractor_email": self.contractor_email,
-                "area_code": self.area_code,
-                "simulate_exhaustion": self.simulate_exhaustion,
-            },
-        )
-        if prov.get("status") == "REJECTED":
-            err_msg = prov.get("reason") or prov.get("error") or "Provisioning rejected"
-            self.log(f"\n❌ [ABORT] Telecom Provisioning Rejected: {err_msg}")
-            return {
-                "status": "PROVISION_FAILED",
-                "error": err_msg,
-                "audit_log": self.audit_log,
-            }
+        # Step 7: Resource Allocation (Telecom Line or Compute Node)
+        assigned_did = None
+        carrier = "Acme Systems Autonomous Mesh" if self.profile == "ap2" else "Telnyx LLC"
+        routing_state = "NODE_ACTIVE" if self.profile == "ap2" else "ACTIVE_10DLC_BOUND"
+        node_endpoint = None
+        allocated_node_id = None
 
-        assigned_did = prov.get("assignedDid") or prov.get("assigned_did")
-        if not assigned_did:
-            self.log("\n❌ [ABORT] Telecom Provisioning returned empty DID.")
-            return {
-                "status": "PROVISION_FAILED",
-                "error": "EMPTY_DID_RETURNED",
-                "audit_log": self.audit_log,
-            }
+        if self.profile == "trades":
+            self.log("📞 [Step 7: KYC Telecom Line Allocation (provision_telecom_line)]")
+            prov = await self._call_tool(
+                "provision_telecom_line",
+                {
+                    "subscription_id": subscription_id,
+                    "contractor_email": self.contractor_email,
+                    "area_code": self.area_code,
+                    "simulate_exhaustion": self.simulate_exhaustion,
+                },
+            )
+            if prov.get("status") == "REJECTED":
+                err_msg = prov.get("reason") or prov.get("error") or "Provisioning rejected"
+                self.log(f"\n❌ [ABORT] Telecom Provisioning Rejected: {err_msg}")
+                return {
+                    "status": "PROVISION_FAILED",
+                    "error": err_msg,
+                    "audit_log": self.audit_log,
+                }
 
-        carrier = prov.get("carrier", "Telnyx LLC")
-        routing_state = prov.get("routingState", "ACTIVE_10DLC_BOUND")
+            assigned_did = prov.get("assignedDid") or prov.get("assigned_did")
+            if not assigned_did:
+                self.log("\n❌ [ABORT] Telecom Provisioning returned empty DID.")
+                return {
+                    "status": "PROVISION_FAILED",
+                    "error": "EMPTY_DID_RETURNED",
+                    "audit_log": self.audit_log,
+                }
 
-        self.log(f"   Assigned DID:    {assigned_did}")
-        self.log(f"   Carrier Binding: {carrier} (10DLC Campaign CITNRYD)")
-        self.log(f"   Routing State:   {routing_state}")
-        self.log(f"   Protection:      100% Inbound Defensive (Zero Robocalls)\n")
+            carrier = prov.get("carrier", "Telnyx LLC")
+            routing_state = prov.get("routingState", "ACTIVE_10DLC_BOUND")
 
-        # Step 8: Downline Back-Office Synchronization (Jobber & QBO)
-        self.log("⚡ [Step 8: Back-Office CRM & Accounting Export (dispatch_zapier_mcp)]")
-        zapier_res = await self._call_tool(
-            "dispatch_zapier_mcp",
-            {
-                "workflow_type": "a2a_onboarding",
-                "contractor_name": self.contractor_name,
-                "business_entity": self.business_entity,
-                "allocated_did": assigned_did,
-                "trade_vertical": tier_title,
-                "monthly_subscription_fee": monthly_price,
-                "paypal_subscription_id": subscription_id,
-                "contractor_email": self.contractor_email,
-                "mandate_proof_hash": proof_hash,
-                "webhook_url": self.webhook_url,
-            },
-        )
+            self.log(f"   Assigned DID:    {assigned_did}")
+            self.log(f"   Carrier Binding: {carrier} (10DLC Campaign CITNRYD)")
+            self.log(f"   Routing State:   {routing_state}")
+            self.log(f"   Protection:      100% Inbound Defensive (Zero Robocalls)\n")
+        else:
+            self.log("🚀 [Step 7: Compute Node Allocation (provision_compute_node)]")
+            prov = await self._call_tool(
+                "provision_compute_node",
+                {
+                    "subscription_id": subscription_id,
+                    "buyer_email": self.contractor_email,
+                    "node_type": "gateway",
+                },
+            )
+            if prov.get("status") == "REJECTED":
+                err_msg = prov.get("reason") or prov.get("error") or "Compute node provisioning rejected"
+                self.log(f"\n❌ [ABORT] Node Provisioning Rejected: {err_msg}")
+                return {
+                    "status": "PROVISION_FAILED",
+                    "error": err_msg,
+                    "audit_log": self.audit_log,
+                }
+            node_endpoint = prov.get("endpoint")
+            allocated_node_id = prov.get("node_id")
+            carrier = "Acme Systems Autonomous Mesh"
+            routing_state = "NODE_ACTIVE"
+            self.log(f"   Allocated Node:  {allocated_node_id}")
+            self.log(f"   Node Endpoint:   {node_endpoint}")
+            self.log(f"   Routing State:   {routing_state}\n")
+
+        # Step 8: Downline Back-Office Synchronization
+        self.log("⚡ [Step 8: Back-Office CRM & Fleet Synchronization (dispatch_zapier_mcp)]")
+        zapier_payload = {
+            "workflow_type": "a2a_onboarding",
+            "contractor_name": self.contractor_name,
+            "subscriber_name": self.contractor_name,
+            "business_entity": self.business_entity,
+            "trade_vertical": tier_title,
+            "service_vertical": tier_title,
+            "monthly_subscription_fee": monthly_price,
+            "paypal_subscription_id": subscription_id,
+            "contractor_email": self.contractor_email,
+            "buyer_email": self.contractor_email,
+            "mandate_proof_hash": proof_hash,
+            "webhook_url": self.webhook_url,
+        }
+        if assigned_did:
+            zapier_payload["allocated_did"] = assigned_did
+        if node_endpoint:
+            zapier_payload["node_endpoint"] = node_endpoint
+
+        zapier_res = await self._call_tool("dispatch_zapier_mcp", zapier_payload)
 
         jobber_id = zapier_res.get("jobberQuoteId") or zapier_res.get("jobber_quote_id")
         qbo_id = zapier_res.get("qboDraftInvoiceId") or zapier_res.get("qbo_draft_invoice_id")
@@ -450,12 +513,15 @@ class ExternalBuyerAgent:
         self.log("🎉 [SUCCESS] Autonomous Machine-to-Machine Commerce Cycle Complete!")
         self.log("   • Buyer Agent Mandate Hash: " + proof_hash)
         self.log("   • PayPal Subscription ID:   " + subscription_id)
-        self.log("   • Provisioned DID:          " + assigned_did)
+        if assigned_did:
+            self.log("   • Provisioned DID:          " + assigned_did)
+        if node_endpoint:
+            self.log("   • Node Endpoint:            " + node_endpoint)
         self.log("   • Jobber Routing Record:    " + str(jobber_id))
         self.log("   • QuickBooks Expense Ref:   " + str(qbo_id))
         self.log("=" * 65 + "\n")
 
-        return {
+        res_dict = {
             "status": "COMPLETED",
             "contractor_name": self.contractor_name,
             "business_entity": self.business_entity,
@@ -463,14 +529,20 @@ class ExternalBuyerAgent:
             "monthly_amount": monthly_price,
             "mandate_proof_hash": proof_hash,
             "paypal_subscription_id": subscription_id,
-            "assigned_did": assigned_did,
-            "provisioned_did": assigned_did,
             "carrier": carrier,
+            "routing_state": routing_state,
             "jobber_routing_id": jobber_id,
             "qbo_expense_id": qbo_id,
             "google_calendar_event_id": gcal_id,
             "audit_log": self.audit_log,
         }
+        if assigned_did:
+            res_dict["assigned_did"] = assigned_did
+            res_dict["provisioned_did"] = assigned_did
+        if node_endpoint:
+            res_dict["node_endpoint"] = node_endpoint
+            res_dict["allocated_node_id"] = allocated_node_id
+        return res_dict
 
 
 async def main():

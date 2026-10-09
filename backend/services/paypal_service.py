@@ -44,6 +44,7 @@ class PayPalService:
         )
         self._cached_token: Optional[str] = None
         self._token_expires_at: Optional[datetime.datetime] = None
+        self._mock_subscriptions: Dict[str, Dict[str, Any]] = {}
 
     async def get_access_token(self, force_refresh: bool = False) -> Optional[str]:
         """
@@ -301,18 +302,20 @@ class PayPalService:
 
     async def verify_subscription(self, subscription_id: str) -> Dict[str, Any]:
         """Checks the active status of a PayPal Recurring Subscription."""
+        sub_key = (subscription_id or "").strip()
         if self.mock_mode:
             logger.info(
                 f"[PayPal MOCK] Verifying synthetic subscription {subscription_id}"
             )
+            mock_sub = self._mock_subscriptions.get(sub_key)
+            if mock_sub:
+                return dict(mock_sub)
             return {
                 "id": subscription_id,
-                "status": "ACTIVE",
-                "plan_id": "P-5ML4271244454362WXNWU5NQ",
-                "subscriber": {
-                    "email_address": "verified-contractor@floorsmith.pro",
-                    "name": {"given_name": "Verified", "surname": "Contractor"},
-                },
+                "subscription_id": subscription_id,
+                "error": "RESOURCE_NOT_FOUND",
+                "status": "NOT_FOUND",
+                "message": f"Subscription '{subscription_id}' not found.",
                 "mock_mode": True,
             }
 
@@ -340,6 +343,14 @@ class PayPalService:
                     headers={"Authorization": f"Bearer {token}"},
                     timeout=10.0,
                 )
+            if res.status_code == 404:
+                return {
+                    "id": subscription_id,
+                    "subscription_id": subscription_id,
+                    "error": "RESOURCE_NOT_FOUND",
+                    "status": "NOT_FOUND",
+                    "message": f"Subscription '{subscription_id}' not found on PayPal Sandbox.",
+                }
             res.raise_for_status()
             return res.json()
 
@@ -357,11 +368,18 @@ class PayPalService:
         In Mock Mode: Returns a deterministic, verified subscription contract.
         In Live Mode: Authenticates via OAuth2 and creates an active/approved subscription on PayPal Sandbox.
         """
+        from .plan_catalog import resolve_paypal_plan_id, get_seller_profile
+
+        prof = get_seller_profile()
+        is_ap2 = prof != "trades"
+        target_plan_id = resolve_paypal_plan_id(tier_id, profile=prof)
+        brand_name = "Autonomous Agent Network" if is_ap2 else "FieldSmith Pro A2A"
+
         if self.mock_mode:
             seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
             stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
             sub_id = f"I-A2A-VAULT-{stable_int:07d}"
-            payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-A2A-BUYER"
+            payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else ("PAYER-A2A-BUYER" if is_ap2 else "PAYER-FLSMITH-CONTRACTOR")
             vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
             payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
             paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
@@ -370,10 +388,11 @@ class PayPalService:
             next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
 
             logger.info(
-                f"[PayPal MOCK] Creating synthetic vaulted subscription {sub_id} for {contractor_email} at ${agreed_monthly_rate:.2f}/mo"
+                f"[PayPal MOCK] Creating synthetic vaulted subscription {sub_id} for {contractor_email} at ${agreed_monthly_rate:.2f}/mo (plan: {target_plan_id})"
             )
-            return {
+            mock_sub_record = {
                 "subscription_id": sub_id,
+                "id": sub_id,
                 "status": "ACTIVE",
                 "payer_id": payer_id,
                 "vault_id": vault_id,
@@ -381,7 +400,15 @@ class PayPalService:
                 "paypal_request_id": paypal_req_id,
                 "created_time": created_time,
                 "next_billing_time": next_billing,
-                "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
+                "plan_id": target_plan_id,
+                "tier_id": tier_id,
+                "agreed_monthly_rate": agreed_monthly_rate,
+                "buyer_email": contractor_email,
+                "contractor_email": contractor_email,
+                "subscriber": {
+                    "email_address": contractor_email,
+                    "name": {"given_name": contractor_name.split()[0] if contractor_name else "Subscriber", "surname": "Agent"},
+                },
                 "mock_mode": True,
                 "hateoas_links": [
                     {
@@ -396,13 +423,8 @@ class PayPalService:
                     },
                 ],
             }
-
-        plan_map = {
-            "solo-starter": getattr(settings, "paypal_plan_id_solo", "P-FLSMITH-SOLO-STARTER"),
-            "fieldsmith-pro": getattr(settings, "paypal_plan_id_pro", "P-FLSMITH-PRO"),
-            "pro-dispatch": getattr(settings, "paypal_plan_id_dispatch", "P-FLSMITH-DISPATCH"),
-        }
-        target_plan_id = plan_map.get(tier_id, f"P-FLSMITH-{tier_id.upper().replace('-', '_')}")
+            self._mock_subscriptions[sub_id] = mock_sub_record
+            return mock_sub_record
 
         name_parts = contractor_name.split(" ", 1)
         given_name = name_parts[0]
@@ -420,7 +442,7 @@ class PayPalService:
                     },
                     "custom_id": f"a2a_{offer_id or (mandate_proof_hash[:16] if mandate_proof_hash else 'sub')}",
                     "application_context": {
-                        "brand_name": "FieldSmith Pro A2A",
+                        "brand_name": brand_name,
                         "locale": "en-US",
                         "shipping_preference": "GET_FROM_FILE",
                         "user_action": "SUBSCRIBE_NOW",
@@ -467,7 +489,7 @@ class PayPalService:
             },
             "custom_id": f"a2a_{offer_id or (mandate_proof_hash[:16] if mandate_proof_hash else 'sub')}",
             "application_context": {
-                "brand_name": "FieldSmith Pro A2A",
+                "brand_name": brand_name,
                 "locale": "en-US",
                 "shipping_preference": "NO_SHIPPING",
                 "user_action": "SUBSCRIBE_NOW",

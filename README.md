@@ -19,7 +19,7 @@
 | Resource | URL | Protocol / Format |
 | :--- | :--- | :--- |
 | **Interactive Web Portal** | [https://api.fieldsmith.pro/portal/](https://api.fieldsmith.pro/portal/) | React 19 + AG Studio + Bryntum UI |
-| **FastMCP Seller Server** | `https://api.fieldsmith.pro/a2a/mcp` | MCP 2024-11-05 JSON-RPC 2.0 (Agentic Commerce Seller Protocol; core contractor signups at `/mcp`) |
+| **FastMCP Seller Server** | `https://api.fieldsmith.pro/mcp` | MCP 2024-11-05 JSON-RPC 2.0 (Agentic Commerce Seller Protocol; core contractor signups at `/mcp`) |
 | **Live SSE Wire Stream** | `https://api.fieldsmith.pro/sse` | Server-Sent Events (SSE) Wire Frames |
 | **OpenAPI 3.1.0 Specification** | [https://api.fieldsmith.pro/openapi.json](https://api.fieldsmith.pro/openapi.json) | OpenAPI 3.1.0 JSON (33 Endpoints) |
 | **Interactive API Documentation**| [https://api.fieldsmith.pro/docs](https://api.fieldsmith.pro/docs) | Swagger UI |
@@ -112,7 +112,7 @@ Solo trade contractors (flooring, plumbing, roofing, emergency towing) lose an e
 - **Dispatch Scheduling:** Bryntum Scheduler 7.3.7 (`@bryntum/scheduler` trial build)
 - **API Specification:** OpenAPI 3.1.0 (`openapi.yaml` and `openapi.json`) + APIMatic SDK configuration (`apimatic.json`)
 - **Backend Core:** FastAPI + Uvicorn + Python 3.13 + Pydantic v2
-- **Persistence:** SQLite WAL Mode (`a2a_database.db`) with 5000ms busy timeout
+- **Persistence:** SQLite WAL Mode (`ap2_commerce.db`) with 5000ms busy timeout
 - **Cloud Deployment:** Google Cloud Platform VM + Caddy Reverse Proxy + Cloudflare TLS (`api.fieldsmith.pro`)
 
 ---

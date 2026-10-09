@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: fieldsmith_a2a_backend
+    container_name: ap2_seller_backend
     ports:
       - "8001:8001"
     environment:
@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: fieldsmith_a2a_frontend
+    container_name: ap2_seller_frontend
     ports:
       - "5173:5173"
     depends_on:

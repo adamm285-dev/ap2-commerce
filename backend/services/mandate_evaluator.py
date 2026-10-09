@@ -28,7 +28,17 @@ from .crypto_mandate import (
     is_trusted_buyer_key,
 )
 
-AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
+TRADES_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"
+AP2_PAYEE_ID = "PAYEE-FIELDSMITH-PRO-TELEPHONY"  # backward compat
+
+
+def get_payee_id() -> str:
+    from ..config import settings
+    if getattr(settings, "a2a_seller_profile", "ap2") == "trades":
+        return TRADES_PAYEE_ID
+    return "PAYEE-AP2-AUTONOMOUS-COMPUTE"
+
+
 AP2_INTENT_MANDATE_TTL_SEC = 31536000  # 1 year (365 days) standing monthly authorization
 AP2_CART_OFFER_TTL_SEC = 1800  # 30 minutes merchant price quote validity
 AP2_OFFER_TTL_SEC = AP2_CART_OFFER_TTL_SEC
@@ -124,7 +134,7 @@ def _intent_mandate_body(
         "kid": kid,
         "issuer": buyer_agent_id,
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
-        "payee": AP2_PAYEE_ID,
+        "payee": get_payee_id(),
         "tier_id": tier_id,
         "amount": {"value": f"{amount:.2f}", "currency_code": "USD"},
         "recurrence": recurrence,
@@ -285,10 +295,14 @@ def build_ap2_cart_mandate(
         "cart_id": f"cart_{uuid.uuid4().hex[:16]}",
         "offer_id": offer_id,
         "vct": "ap2.mandate.cart.1",
-        "merchant_id": AP2_PAYEE_ID,
+        "merchant_id": get_payee_id(),
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
         "tier_id": tier_id,
-        "plan_id": f"P-FLSMITH-{tier_id.upper().replace('-', '_')}",
+        "plan_id": (
+            f"P-FLSMITH-{tier_id.upper().replace('-', '_')}"
+            if getattr(settings, "a2a_seller_profile", "ap2") == "trades"
+            else f"P-AP2-{tier_id.upper().replace('-', '_')}"
+        ),
         "category": category,
         "amount": {"value": f"{amount:.2f}", "currency_code": "USD"},
         "billing_cadence": recurrence,
@@ -593,7 +607,10 @@ def evaluate_spending_mandate(
     if request.amount > cap or request.amount > effective_available:
         # Check if dynamic counter-offer tier is viable within contractor's budget
         if effective_available >= 49.99 and cap >= 49.99:
-            # Generate pre-signed counter-offer token for Solo Starter at $49.99
+            prof = getattr(settings, "a2a_seller_profile", "ap2")
+            down_tier = "solo-starter" if prof == "trades" else "ap2-batch"
+            down_tier_title = "Solo Starter" if prof == "trades" else "High-Throughput Batch Worker"
+            # Generate pre-signed counter-offer token for down-tier at $49.99
             counter_hash = sign_mandate_token(
                 agent_id=request.buyer_agent_id,
                 amount=49.99,
@@ -604,7 +621,7 @@ def evaluate_spending_mandate(
             register_authorized_mandate(
                 counter_hash,
                 {
-                    "tier_id": "solo-starter",
+                    "tier_id": down_tier,
                     "amount": 49.99,
                     "buyer_agent_id": request.buyer_agent_id,
                     "contractor_email": email.strip().lower() if email else None,
@@ -616,14 +633,14 @@ def evaluate_spending_mandate(
                 authorized_amount=0.0,
                 monthly_cap_remaining=remaining,
                 mandate_proof_hash=counter_hash,
-                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: Solo Starter ({quota_label('solo-starter')}) at $49.99/mo.",
+                reason=f"Requested amount ${request.amount:.2f} exceeds remaining monthly budget cap of ${remaining:.2f}. Counter-offer available: {down_tier_title} ({quota_label(down_tier, profile=prof)}) at $49.99/mo.",
                 counter_offer_available=True,
-                counter_offer_tier="Solo Starter",
-                counter_offer_tier_id="solo-starter",
+                counter_offer_tier=down_tier_title,
+                counter_offer_tier_id=down_tier,
                 counter_offer_plan_id=settings.paypal_plan_id_solo,
                 counter_offer_amount=49.99,
                 counter_offer_mandate_hash=counter_hash,
-                tier_id="solo-starter",
+                tier_id=down_tier,
                 plan_id=settings.paypal_plan_id_solo,
             )
         return SpendingMandateResponse(
@@ -644,9 +661,11 @@ def evaluate_spending_mandate(
     )
 
     # Asymmetric Ed25519 AP2 Proof
+    prof = getattr(settings, "a2a_seller_profile", "ap2")
+    biz_name = "FieldSmith Telephony Subscriber" if prof == "trades" else "Autonomous Compute Subscriber"
     asym_proof = generate_dynamic_mandate_proof(
         contractor_id=request.buyer_agent_id,
-        business_name="FieldSmith Telephony Subscriber",
+        business_name=biz_name,
         monthly_cap_usd=cap,
         agreed_price_usd=request.amount,
         nonce=uuid.uuid4().hex[:16],

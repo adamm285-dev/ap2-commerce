@@ -22,10 +22,47 @@ from .services.plan_catalog import plan_summary
 logger = logging.getLogger("fieldsmith_mcp_server")
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {
-    "name": "fieldsmith-pro-a2a-seller",
-    "version": "1.0.0",
-}
+
+
+def get_server_info() -> Dict[str, str]:
+    if getattr(settings, "a2a_seller_profile", "ap2") == "trades":
+        return {
+            "name": "fieldsmith-pro-a2a-seller",
+            "version": "1.0.0",
+        }
+    return {
+        "name": "ap2-autonomous-compute-seller",
+        "version": "1.0.0",
+    }
+
+
+class _ServerInfoProxy(dict):
+    def get(self, key, default=None):
+        return get_server_info().get(key, default)
+
+    def __getitem__(self, key):
+        return get_server_info()[key]
+
+    def __contains__(self, key):
+        return key in get_server_info()
+
+    def items(self):
+        return get_server_info().items()
+
+    def keys(self):
+        return get_server_info().keys()
+
+    def values(self):
+        return get_server_info().values()
+
+    def __eq__(self, other):
+        return get_server_info() == other
+
+    def __repr__(self):
+        return repr(get_server_info())
+
+
+SERVER_INFO = _ServerInfoProxy()
 
 _MCP_WIRE_FRAMES: List[Dict[str, Any]] = []
 _MAX_WIRE_FRAMES = 100
@@ -160,6 +197,37 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
     # 1. Handle initialize handshake
     if method == "initialize":
+        prof = getattr(settings, "a2a_seller_profile", "ap2")
+        if prof == "trades":
+            instructions = (
+                "FieldSmith Pro Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine.\n"
+                "FieldSmith is a SaaS telephony AI voice receptionist and screening platform for trade contractors (Flooring, Roofing, Plumbing, Remodeling, etc.).\n"
+                "FieldSmith Monthly Subscription Plans:\n"
+                f"- 'solo-starter': {plan_summary('solo-starter', profile='trades')}\n"
+                f"- 'fieldsmith-pro' (or 'flooring-tile'): {plan_summary('fieldsmith-pro', profile='trades')}\n"
+                f"- 'pro-dispatch': {plan_summary('pro-dispatch', profile='trades')}\n"
+                "Every trade (flooring, roofing, plumbing/HVAC, towing, general contracting) is supported on every plan.\n"
+                "Recommended buyer procurement workflow:\n"
+                "1. inspect_subscription_tiers: Inspect FieldSmith SaaS subscription plans, quotas (screened calls per month), and pricing tiers ($49.99 / $79.99 / $179.99).\n"
+                "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, contractor_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n"
+                "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and contractor_email to PayPal Recurring Vault for automated billing.\n"
+                "4. provision_telecom_line: (Optional) Allocate dedicated local 10DLC telephone DID upon verified subscription."
+            )
+        else:
+            instructions = (
+                "AP2 Autonomous Compute Protocol Engine.\n"
+                "AP2 connects autonomous agent buyers directly to verified compute worker nodes and service gateways with automated PayPal recurring billing.\n"
+                "AP2 Monthly Subscription Plans:\n"
+                f"- 'ap2-batch': {plan_summary('ap2-batch', profile='ap2')}\n"
+                f"- 'ap2-gateway': {plan_summary('ap2-gateway', profile='ap2')}\n"
+                f"- 'ap2-cluster': {plan_summary('ap2-cluster', profile='ap2')}\n"
+                "Every autonomous workload (batch processing, gateway routing, cluster execution) is supported across all tiers.\n"
+                "Recommended buyer procurement workflow:\n"
+                "1. inspect_subscription_tiers: Inspect AP2 compute subscription tiers, workload task quotas ($49.99 / $79.99 / $179.99), and compute features.\n"
+                "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n"
+                "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and buyer_email to PayPal Recurring Vault for automated billing.\n"
+                "4. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription."
+            )
         return {
             "jsonrpc": jsonrpc,
             "id": req_id,
@@ -169,20 +237,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     "tools": {"listChanged": False},
                 },
                 "serverInfo": SERVER_INFO,
-                "instructions": (
-                    "FieldSmith Pro Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine.\n"
-                    "FieldSmith is a SaaS telephony AI voice receptionist and screening platform for trade contractors (Flooring, Roofing, Plumbing, Remodeling, etc.).\n"
-                    "FieldSmith Monthly Subscription Plans:\n"
-                    f"- 'solo-starter': {plan_summary('solo-starter')}\n"
-                    f"- 'fieldsmith-pro' (or 'flooring-tile'): {plan_summary('fieldsmith-pro')}\n"
-                    f"- 'pro-dispatch': {plan_summary('pro-dispatch')}\n"
-                    "Every trade (flooring, roofing, plumbing/HVAC, towing, general contracting) is supported on every plan.\n"
-                    "Recommended buyer procurement workflow:\n"
-                    "1. inspect_subscription_tiers: Inspect FieldSmith SaaS subscription plans, quotas (screened calls per month), and pricing tiers ($49.99 / $79.99 / $179.99).\n"
-                    "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, contractor_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n"
-                    "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and contractor_email to PayPal Recurring Vault for automated billing.\n"
-                    "4. provision_telecom_line: (Optional) Allocate dedicated local 10DLC telephone DID upon verified subscription."
-                ),
+                "instructions": instructions,
             },
         }
 
@@ -223,6 +278,17 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             return _rpc_error(req_id, -32602, "Invalid params: 'arguments' must be an object.")
         logger.info(f"[MCP] Invoking tool '{tool_name}' with argument keys: {sorted(arguments)}")
 
+        prof = getattr(settings, "a2a_seller_profile", "ap2")
+        if prof == "ap2" and tool_name in ("provision_telecom_line", "calculate_quote"):
+            return {
+                "jsonrpc": jsonrpc,
+                "id": req_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Method or Tool '{tool_name}' not found.",
+                },
+            }
+
         try:
             if tool_name == "inspect_subscription_tiers":
                 result = await seller_agent.inspect_subscription_tiers()
@@ -231,36 +297,53 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 result = await seller_agent.get_service_catalog()
 
             elif tool_name == "negotiate_tier_terms":
+                email = arguments.get("buyer_email") or arguments.get("contractor_email")
+                default_tier = "flooring-tile" if prof == "trades" else "ap2-gateway"
+                default_cat = "TELEPHONY_AI_SCREENER" if prof == "trades" else "autonomous-node-service"
                 result = await seller_agent.negotiate_tier_terms(
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
-                    tier_id=arguments.get("tier_id", "flooring-tile"),
+                    tier_id=arguments.get("tier_id", default_tier),
                     monthly_budget_cap=_num(arguments, "monthly_budget_cap", 60.00),
-                    contractor_email=arguments.get("contractor_email"),
+                    contractor_email=email,
                     proposed_price=_num(arguments, "proposed_price"),
                     recurrence=arguments.get("recurrence", "monthly"),
-                    category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
+                    category=arguments.get("category", default_cat),
                     buyer_intent_mandate=arguments.get("buyer_intent_mandate"),
+                    buyer_email=email,
                 )
 
             elif tool_name == "purchase_subscription":
+                email = arguments.get("buyer_email") or arguments.get("contractor_email")
                 result = await seller_agent.purchase_subscription(
                     tier_id=arguments.get("tier_id"),
                     agreed_monthly_rate=_num(arguments, "agreed_monthly_rate"),
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
-                    contractor_email=arguments.get("contractor_email"),
+                    contractor_email=email,
                     offer_id=arguments.get("offer_id"),
+                    buyer_email=email,
                 )
 
             elif tool_name == "evaluate_spending_mandate":
                 # Ensure no silent $100 default; preserve buyer's explicit cap
                 amount = _num(arguments, "amount", 79.99, minimum=0.01)
                 mb_cap = _num(arguments, "monthly_budget_cap")
+                default_cat = "TELEPHONY_AI_SCREENER" if prof == "trades" else "autonomous-node-service"
+                email = arguments.get("buyer_email") or arguments.get("contractor_email")
                 result = await seller_agent.verify_spending_mandate(
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
                     amount=amount,
                     recurrence=arguments.get("recurrence", "monthly"),
-                    category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
+                    category=arguments.get("category", default_cat),
                     monthly_budget_cap=mb_cap if mb_cap is not None else amount,
+                    contractor_email=email,
+                )
+
+            elif tool_name == "provision_compute_node":
+                buyer_email = arguments.get("buyer_email") or arguments.get("contractor_email") or os.getenv("A2A_DEFAULT_EMAIL", "buyer@example.com")
+                result = await seller_agent.provision_compute_node(
+                    subscription_id=arguments.get("subscription_id", "I-MOCK-SUB-01"),
+                    buyer_email=buyer_email,
+                    node_type=arguments.get("node_type", "gateway"),
                 )
 
             elif tool_name == "calculate_quote":
@@ -281,15 +364,20 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 )
 
             elif tool_name == "dispatch_zapier_mcp":
+                email = arguments.get("buyer_email") or arguments.get("contractor_email") or "marcus@millercustomfloors.com"
+                endpoint = arguments.get("node_endpoint") or arguments.get("allocated_did") or "+1 (863) 267-8902"
+                vertical = arguments.get("service_vertical") or arguments.get("trade_vertical") or "Tile & Custom Flooring"
+                sub_name = arguments.get("subscriber_name") or arguments.get("contractor_name") or "Marcus Miller"
+                entity = arguments.get("business_entity") or "Miller Custom Flooring LLC"
                 result = await seller_agent.dispatch_zapier_mcp(
                     workflow_type=arguments.get("workflow_type", "a2a_onboarding"),
-                    contractor_name=arguments.get("contractor_name", "Marcus Miller"),
-                    business_entity=arguments.get("business_entity", "Miller Custom Flooring LLC"),
-                    allocated_did=arguments.get("allocated_did", "+1 (863) 267-8902"),
-                    trade_vertical=arguments.get("trade_vertical", "Tile & Custom Flooring"),
+                    contractor_name=sub_name,
+                    business_entity=entity,
+                    allocated_did=endpoint,
+                    trade_vertical=vertical,
                     monthly_subscription_fee=_num(arguments, "monthly_subscription_fee", 79.99),
                     paypal_subscription_id=arguments.get("paypal_subscription_id", "I-AUTONOMOUS-8902"),
-                    contractor_email=arguments.get("contractor_email", "marcus@millercustomfloors.com"),
+                    contractor_email=email,
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
                     webhook_url=arguments.get("webhook_url") if settings.mock_external_apis else None,
                 )

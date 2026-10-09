@@ -5,6 +5,7 @@ Loads environment variables safely from .env with fallback to mock mode when key
 
 import os
 from pathlib import Path
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -19,6 +20,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # Seller Profile: 'ap2' (default for AP2 standalone open-source / hackathon) or 'trades' (FieldSmith trades telephony)
+    a2a_seller_profile: Literal["ap2", "trades"] = Field(default="ap2", alias="A2A_SELLER_PROFILE")
 
     # Server network settings
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")

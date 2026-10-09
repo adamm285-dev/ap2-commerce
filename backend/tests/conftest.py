@@ -4,6 +4,7 @@ import os
 os.environ.setdefault("A2A_MANDATE_SECRET", "ci_test_mandate_secret_key_32_chars_long")
 os.environ.setdefault("ADMIN_API_KEY", "ci_admin_secret_token_key_for_testing")
 os.environ.setdefault("MOCK_EXTERNAL_APIS", "true")
+os.environ.setdefault("A2A_SELLER_PROFILE", "trades")
 os.environ["TESTING"] = "1"
 import tempfile
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "main")

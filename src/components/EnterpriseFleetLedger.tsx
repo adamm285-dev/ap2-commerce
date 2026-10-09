@@ -1086,14 +1086,19 @@ export function EnterpriseFleetLedger({
 
                   {/* Step 5 */}
                   <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                      5. Hard Floor Block
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                        5. Hard Floor Block
+                      </div>
+                      <span style={{ fontSize: '9px', backgroundColor: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                        Demo data
+                      </span>
                     </div>
                     <div style={{ fontSize: '18px', fontWeight: 800, color: '#94a3b8', margin: '3px 0' }}>
                       {funnelMetrics.hardFloorBlocks} ({funnelMetrics.hardFloorPct}%)
                     </div>
                     <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      Cap &lt; $49.99 Hard Minimum
+                      Cap &lt; $49.99 Hard Minimum &bull; Demo data
                     </div>
                   </div>
                 </div>

@@ -1578,7 +1578,12 @@ def get_fleet_ledger(
                 """
                 SELECT * FROM subscriptions 
                 WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
-                  AND (tier_id = 'SOLO' OR agreed_monthly_rate = 49.99 OR contractor_email = 'marcus@millercustomfloors.com')
+                  AND (
+                    contractor_email = 'agent-alpha@nexus-systems.io'
+                    OR buyer_agent_id LIKE 'AutonomousBuyerAgent%'
+                    OR buyer_agent_id LIKE 'BuyerAgent%'
+                    OR (contractor_email != 'marcus@millercustomfloors.com' AND (tier_id = 'SOLO' OR agreed_monthly_rate = 49.99))
+                  )
                 ORDER BY updated_at DESC, created_at DESC
                 LIMIT 1
                 """
@@ -1593,7 +1598,8 @@ def get_fleet_ledger(
             try:
                 from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
                 for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
-                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"]:
+                    c_email = (s_data.get("contractor_email") or "").lower()
+                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and c_email != "marcus@millercustomfloors.com":
                         active_sub = s_data
                         break
             except Exception:
@@ -1606,7 +1612,11 @@ def get_fleet_ledger(
                 status = "ACTIVE_STREAMING"
                 is_active = True
                 sub_id = active_sub.get("subscription_id") or "I-AP2-SUB-9021"
-                display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
+                assigned = active_sub.get("assigned_did") or active_sub.get("allocated_did") or active_sub.get("mcp_endpoint")
+                if assigned and str(assigned).startswith("mcp+https://"):
+                    display_endpoint = str(assigned)
+                else:
+                    display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
                 kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
                 anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
             else:

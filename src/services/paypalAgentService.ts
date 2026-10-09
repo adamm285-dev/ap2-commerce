@@ -272,10 +272,14 @@ export async function lockDispatchSlot(
     console.warn('[Dispatch Lock] Live API not reachable, using fallback:', err);
   }
 
+  const defaultCluster = territoryZone && (territoryZone.includes('Cluster') || territoryZone.includes('Node'))
+    ? territoryZone
+    : 'Cluster Alpha - Dedicated AI Service Gateway';
+
   return {
     success: true,
     slotLockedUntil: slotStartIso,
-    crewAssigned: 'Zone 1 - North Lakeland',
+    crewAssigned: defaultCluster,
     territoryZone,
     paypalTransactionId,
     isLiveBackend: false,

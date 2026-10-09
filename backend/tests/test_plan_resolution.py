@@ -171,6 +171,7 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     )
     assert batch_res["status"] == "PROVISIONED"
     assert batch_res["endpoint"].startswith("mcp+https://batch-01.acme-systems.io/agents/node-batch-")
+    assert batch_res["workload_tasks_per_month"] == 125
 
     # 2. Service Gateway
     gw_sub_id = "I-A2A-GW-HOST-02"
@@ -187,6 +188,7 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     )
     assert gw_res["status"] == "PROVISIONED"
     assert gw_res["endpoint"].startswith("mcp+https://gateway-01.acme-systems.io/agents/node-gateway-")
+    assert gw_res["workload_tasks_per_month"] == 450
 
     # 3. Enterprise Cluster
     cl_sub_id = "I-A2A-CL-HOST-03"
@@ -203,6 +205,45 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     )
     assert cl_res["status"] == "PROVISIONED"
     assert cl_res["endpoint"].startswith("mcp+https://cluster-01.acme-systems.io/agents/node-cluster-")
+    assert cl_res["workload_tasks_per_month"] == 1200
+
+
+@pytest.mark.asyncio
+async def test_provision_compute_node_per_tier_workload_tasks_quota(monkeypatch):
+    """
+    Verifies that provision_compute_node returns the exact catalog quota for workload_tasks_per_month:
+    ap2-batch: 125, ap2-gateway: 450, ap2-cluster: 1200.
+    """
+    monkeypatch.setattr(settings, "a2a_seller_profile", "ap2")
+    seller = SellerAgent()
+
+    test_cases = [
+        ("ap2-batch", 125, 49.99),
+        ("ap2-gateway", 450, 79.99),
+        ("ap2-cluster", 1200, 179.99),
+        ("batch", 125, 49.99),
+        ("gateway", 450, 79.99),
+        ("cluster", 1200, 179.99),
+    ]
+
+    for tier_id, expected_quota, price in test_cases:
+        sub_id = f"I-TEST-QUOTA-{tier_id.upper().replace('-', '_')}"
+        _COMPLETED_SUBSCRIPTIONS[sub_id] = {
+            "subscription_id": sub_id,
+            "status": "ACTIVE",
+            "buyer_email": f"buyer-{tier_id}@acme.io",
+            "tier_id": tier_id,
+            "agreed_monthly_rate": price,
+        }
+        res = await seller.provision_compute_node(
+            subscription_id=sub_id,
+            buyer_email=f"buyer-{tier_id}@acme.io",
+        )
+        assert res["status"] == "PROVISIONED"
+        assert res["workload_tasks_per_month"] == expected_quota, (
+            f"Expected {expected_quota} workload tasks for tier '{tier_id}', got {res.get('workload_tasks_per_month')}"
+        )
+
 
 
 @pytest.mark.asyncio

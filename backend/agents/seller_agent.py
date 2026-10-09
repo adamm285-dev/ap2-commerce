@@ -1341,6 +1341,9 @@ class SellerAgent:
             response["buyer_email"] = contractor_email
             response["subscriber_name"] = contractor_name
             response["business_entity"] = business_entity
+            plan_obj = resolve_plan(tier_id, profile="ap2")
+            if plan_obj and "workload_tasks_per_month" in plan_obj:
+                response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]
         if approval_url:
             response["approval_url"] = approval_url
         if old_sub_id:
@@ -1470,6 +1473,15 @@ class SellerAgent:
 
         sub["allocated_node_id"] = node_id
         sub["node_endpoint"] = endpoint
+
+        # Resolve tier catalog quota for AP2 compute tasks
+        resolved_plan = resolve_plan(tier_id, profile="ap2")
+        workload_tasks = (
+            resolved_plan.get("workload_tasks_per_month")
+            if resolved_plan and "workload_tasks_per_month" in resolved_plan
+            else sub.get("workload_tasks_per_month", 450)
+        )
+        sub["workload_tasks_per_month"] = workload_tasks
         _COMPLETED_SUBSCRIPTIONS[sub_key] = sub
 
         monthly_fee = sub.get("agreed_monthly_rate", 79.99)
@@ -1482,7 +1494,7 @@ class SellerAgent:
             "node_id": node_id,
             "node_type": clean_node_type,
             "endpoint": endpoint,
-            "workload_tasks_per_month": sub.get("workload_tasks_per_month", 450),
+            "workload_tasks_per_month": workload_tasks,
             "next_action": {
                 "type": "tool_call",
                 "tool": "dispatch_zapier_mcp",

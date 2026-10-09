@@ -3,7 +3,7 @@ Pydantic data models for FieldSmith Pro A2A Commerce & Multi-Agent Network.
 Maps directly to openapi.yaml schemas.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -96,6 +96,7 @@ class SpendingMandateResponse(BaseModel):
         default=None, alias="counterOfferMandateHash"
     )
     tier_id: Optional[str] = Field(default=None, alias="tierId")
+    plan_id: Optional[str] = Field(default=None, alias="planId")
     ap2_intent_mandate: Optional[Dict[str, Any]] = Field(
         default=None, alias="ap2IntentMandate"
     )
@@ -149,6 +150,7 @@ class DispatchLockRequest(BaseModel):
     territory_zone: str = Field(alias="territoryZone", min_length=1, max_length=64)
     slot_start_iso: str = Field(alias="slotStartIso", min_length=10, max_length=40)
     paypal_transaction_id: str = Field(alias="paypalTransactionId", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
+    profile: Literal["ap2", "default"] = Field(default="default", description="Profile mode: 'ap2' for compute workloads or 'default' for trades")
 
 
 class DispatchLockResponse(BaseModel):
@@ -166,20 +168,20 @@ class ZapierSyncRequest(BaseModel):
 
     workflow_type: Optional[str] = Field(default=None, alias="workflowType")
     lead_id: Optional[str] = Field(default="lead-a2a-onboarding", alias="leadId")
-    customer_name: Optional[str] = Field(default="Marcus Miller", alias="customerName")
-    customer_phone: Optional[str] = Field(default="+1 (863) 267-8902", alias="customerPhone")
-    property_address: Optional[str] = Field(default="Lakeland, FL", alias="propertyAddress")
+    customer_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="customerName")
+    customer_phone: Optional[str] = Field(default="+1 (800) 555-0199", alias="customerPhone")
+    property_address: Optional[str] = Field(default="Cloud Execution Region us-east-1", alias="propertyAddress")
     deposit_amount: Optional[float] = Field(default=79.99, alias="depositAmount")
     paypal_txn_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalTxnId")
 
     # A2A Contractor Onboarding specific attributes
-    contractor_name: Optional[str] = Field(default="Marcus Miller", alias="contractorName")
-    business_entity: Optional[str] = Field(default="Miller Custom Flooring LLC", alias="businessEntity")
-    allocated_did: Optional[str] = Field(default="+1 (863) 267-8902", alias="allocatedDid")
-    trade_vertical: Optional[str] = Field(default="Tile & Custom Flooring", alias="tradeVertical")
+    contractor_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="contractorName")
+    business_entity: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="businessEntity")
+    allocated_did: Optional[str] = Field(default="mcp+https://gateway-01.acme-systems.io/agents/gateway", alias="allocatedDid")
+    trade_vertical: Optional[str] = Field(default="Dedicated AI Service Gateway", alias="tradeVertical")
     monthly_subscription_fee: Optional[float] = Field(default=79.99, alias="monthlySubscriptionFee")
     paypal_subscription_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalSubscriptionId")
-    contractor_email: Optional[str] = Field(default="marcus@millercustomfloors.com", alias="contractorEmail")
+    contractor_email: Optional[str] = Field(default="agent@acme-systems.io", alias="contractorEmail")
     mandate_proof_hash: Optional[str] = Field(default=None, alias="mandateProofHash")
     webhook_url: Optional[str] = Field(default=None, alias="webhookUrl")
     dry_run: Optional[bool] = Field(default=True, alias="dryRun")

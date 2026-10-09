@@ -5,12 +5,30 @@ os.environ.setdefault("A2A_MANDATE_SECRET", "ci_test_mandate_secret_key_32_chars
 os.environ.setdefault("ADMIN_API_KEY", "ci_admin_secret_token_key_for_testing")
 os.environ.setdefault("MOCK_EXTERNAL_APIS", "true")
 os.environ["TESTING"] = "1"
+import tempfile
+_worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+_base = os.environ.get("A2A_DB_PATH") or os.path.join(tempfile.gettempdir(), f"a2a_test_{os.getpid()}")
+os.environ["A2A_DB_PATH"] = f"{_base}_{_worker}.db"
 
 import pytest
 from ..config import settings
 from ..services.paypal_service import paypal_service
 from ..services.telnyx_provisioner import telnyx_provisioner
 from ..services.zapier_mcp_dispatcher import zapier_mcp_dispatcher
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Clean up worker test database and WAL/SHM/journal files on session finish."""
+    db_path = os.environ.get("A2A_DB_PATH")
+    if db_path and db_path != ":memory:":
+        for ext in ["", "-wal", "-shm", "-journal"]:
+            f = db_path + ext
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except OSError:
+                pass
+
 
 @pytest.fixture(autouse=True)
 def configure_mock_mode_for_unit_tests(monkeypatch):

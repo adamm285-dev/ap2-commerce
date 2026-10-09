@@ -42,6 +42,7 @@ ALLOWED_CATEGORIES = {
     "trade-software",
     "job-deposit",
     "emergency-towing",
+    "autonomous-node-service",
 }
 
 DEFAULT_MONTHLY_CAP = 100.00
@@ -575,7 +576,7 @@ def evaluate_spending_mandate(
                 agent_id=agent_id, cap=cap
             ),
             mandate_proof_hash="",
-            reason=f"Category '{request.category}' is not in approved whitelist: {sorted(ALLOWED_CATEGORIES)}",
+            reason=f"Category '{request.category}' is not approved for this seller.",
         )
 
     # 2. Budget ceiling verification
@@ -619,9 +620,11 @@ def evaluate_spending_mandate(
                 counter_offer_available=True,
                 counter_offer_tier="Solo Starter",
                 counter_offer_tier_id="solo-starter",
-                counter_offer_plan_id="solo-starter",
+                counter_offer_plan_id=settings.paypal_plan_id_solo,
                 counter_offer_amount=49.99,
                 counter_offer_mandate_hash=counter_hash,
+                tier_id="solo-starter",
+                plan_id=settings.paypal_plan_id_solo,
             )
         return SpendingMandateResponse(
             approved=False,
@@ -682,6 +685,16 @@ def evaluate_spending_mandate(
     # Monthly cap remaining is calculated as projected remaining budget
     projected_remaining = round(remaining - request.amount, 2)
 
+    if abs(request.amount - 49.99) < 0.05:
+        agreed_tier_id = "solo-starter"
+        agreed_plan_id = settings.paypal_plan_id_solo
+    elif abs(request.amount - 179.99) < 0.05:
+        agreed_tier_id = "pro-dispatch"
+        agreed_plan_id = settings.paypal_plan_id_dispatch
+    else:
+        agreed_tier_id = "fieldsmith-pro"
+        agreed_plan_id = settings.paypal_plan_id_pro
+
     return SpendingMandateResponse(
         approved=True,
         authorized_amount=request.amount,
@@ -689,5 +702,7 @@ def evaluate_spending_mandate(
         mandate_proof_hash=proof_hash,
         ap2_intent_mandate=ap2_mandate,
         signature_algorithm="Ed25519",
+        tier_id=agreed_tier_id,
+        plan_id=agreed_plan_id,
         reason="Spending mandate policy checks passed. Programmatic AP2 authorization issued.",
     )

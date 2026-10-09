@@ -26,7 +26,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt pyyaml
+          pip install -r backend/requirements-dev.txt pyyaml
 
       - name: Validate OpenAPI 3.1.0 Contract
         run: |
@@ -34,7 +34,7 @@ jobs:
 
       - name: Run Pytest Suite
         run: |
-          pytest backend/tests/ -v
+          pytest backend/tests/ -q -n 4
 
       - name: Run Autonomous Buyer Agent CLI Simulation
         run: |

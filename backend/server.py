@@ -455,8 +455,8 @@ class VerifyTamperRequest(BaseModel):
 
 
 class GenerateProofRequest(BaseModel):
-    contractor_id: Optional[str] = "contractor_marcus_863"
-    business_name: Optional[str] = "Miller Custom Flooring LLC"
+    contractor_id: Optional[str] = "agent:acme-procure"
+    business_name: Optional[str] = "Acme Autonomous Systems LLC"
     monthly_cap_usd: Optional[float] = 100.00
     agreed_price_usd: Optional[float] = 79.99
     nonce: Optional[str] = None
@@ -499,8 +499,8 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
     """Generates a canonical mandate proof for given parameters using the demo tamper key."""
     nonce = req.nonce or uuid.uuid4().hex[:12]
     proof = generate_dynamic_mandate_proof(
-        contractor_id=req.contractor_id or "contractor_marcus_863",
-        business_name=req.business_name or "Miller Custom Flooring LLC",
+        contractor_id=req.contractor_id or "agent:acme-procure",
+        business_name=req.business_name or "Acme Autonomous Systems LLC",
         monthly_cap_usd=req.monthly_cap_usd if req.monthly_cap_usd is not None else 100.00,
         agreed_price_usd=req.agreed_price_usd if req.agreed_price_usd is not None else 79.99,
         nonce=nonce,
@@ -514,19 +514,31 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
 
 @app.get("/api/agent/anti-tamper/sample-proof", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.get("/api/crypto/sample-proof", tags=["Anti-Tamper & Cryptography"])
-async def get_sample_proof():
-    """Returns a ready-to-test authentic proof for Marcus Miller using the demo tamper key."""
+async def get_sample_proof(profile: str = Query("default")):
+    """Returns a ready-to-test authentic proof using the demo tamper key. Profile-aware (ap2 vs default)."""
     nonce = uuid.uuid4().hex[:12]
-    proof = generate_dynamic_mandate_proof(
-        contractor_id="contractor_marcus_863",
-        business_name="Miller Custom Flooring LLC",
-        monthly_cap_usd=100.00,
-        agreed_price_usd=79.99,
-        nonce=nonce,
-        buyer_private_key_hex=DEMO_TAMPER_PRIVATE_KEY_HEX,
-        secret_key=DEMO_TAMPER_SECRET,
-        kid=DEMO_TAMPER_KID,
-    )
+    if (profile or "").strip().lower() == "ap2":
+        proof = generate_dynamic_mandate_proof(
+            contractor_id="agent:acme-procure",
+            business_name="Acme Autonomous Systems LLC",
+            monthly_cap_usd=100.00,
+            agreed_price_usd=79.99,
+            nonce=nonce,
+            buyer_private_key_hex=DEMO_TAMPER_PRIVATE_KEY_HEX,
+            secret_key=DEMO_TAMPER_SECRET,
+            kid=DEMO_TAMPER_KID,
+        )
+    else:
+        proof = generate_dynamic_mandate_proof(
+            contractor_id="contractor_marcus_863",
+            business_name="Miller Custom Flooring LLC",
+            monthly_cap_usd=100.00,
+            agreed_price_usd=79.99,
+            nonce=nonce,
+            buyer_private_key_hex=DEMO_TAMPER_PRIVATE_KEY_HEX,
+            secret_key=DEMO_TAMPER_SECRET,
+            kid=DEMO_TAMPER_KID,
+        )
     # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
 
@@ -743,13 +755,28 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         "Zone 3 - East Polk / Winter Haven": "Crew C - Hardwood & Substrate Leveling",
         "Zone 4 - West Lakeland / Plant City": "Crew D - Commercial Bid Estimator",
     }
-    assigned_crew = crew_map.get(
-        request.territory_zone, "Crew B - Custom Tile & Precision Master"
+    tz_lower = (request.territory_zone or "").lower()
+    is_ap2_workload = (
+        (request.profile or "").strip().lower() == "ap2"
+        or "cluster" in tz_lower
+        or "node" in tz_lower
+        or "gateway" in tz_lower
+        or "batch" in tz_lower
+        or (request.lead_id or "").lower().startswith("txn_ap2_")
+        or (request.lead_id or "").lower().startswith("lead_ap2_")
     )
+    if is_ap2_workload:
+        assigned_crew = request.territory_zone if ("cluster" in tz_lower or "node" in tz_lower or "gateway" in tz_lower or "batch" in tz_lower) else "Cluster Alpha - Dedicated AI Service Gateway"
+        contractor_id = "buyer_agent_alpha_01"
+    else:
+        assigned_crew = crew_map.get(
+            request.territory_zone, "Crew B - Custom Tile & Precision Master"
+        )
+        contractor_id = "contractor_marcus_863"
 
     record_dispatch_slot({
         "lead_id": request.lead_id,
-        "contractor_id": "contractor_marcus_863",
+        "contractor_id": contractor_id,
         "territory_zone": request.territory_zone,
         "slot_start_iso": request.slot_start_iso,
         "paypal_transaction_id": request.paypal_transaction_id,
@@ -1101,7 +1128,7 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
                 sub_record = {
                     "subscription_id": sub_id,
                     "status": "ACTIVE",
-                    "contractor_email": subscriber_data.get("email_address", "marcus@millercustomfloors.com"),
+                    "contractor_email": subscriber_data.get("email_address") or "",
                     "tier_id": tier_id,
                     "agreed_monthly_rate": rate,
                     "plan_id": remote_sub.get("plan_id"),

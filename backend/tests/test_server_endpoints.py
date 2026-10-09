@@ -730,6 +730,62 @@ def test_crypto_sample_and_tamper_verification_endpoints():
     assert "401 Signature Mismatch" in t_data["detail"]
 
 
+def test_ap2_sample_proof_budget_cap_breach_and_clean_identity():
+    """Verifies that AP2 sample proof contains zero trades identity, verifies untampered, and yields BUDGET_CAP_BREACH when cap lowered to $50."""
+    import json
+
+    res = client.get("/api/crypto/sample-proof?profile=ap2")
+    assert res.status_code == 200
+    sample = res.json()
+    assert "canonical_payload" in sample
+    assert "signature" in sample
+    payload = sample["canonical_payload"]
+    signature = sample["signature"]
+
+    # 1. Clean AP2 identity assertions (zero Marcus / Flooring leakage)
+    raw_sample_str = json.dumps(sample).lower()
+    assert "marcus" not in raw_sample_str
+    assert "flooring" not in raw_sample_str
+    assert payload["contractor_id"] == "agent:acme-procure"
+    assert payload["business_name"] == "Acme Autonomous Systems LLC"
+    assert payload["agreed_price_usd"] == 79.99
+    assert payload["monthly_cap_usd"] == 100.00
+
+    # 2. Untampered verification succeeds
+    v_res = client.post(
+        "/api/crypto/verify-tamper",
+        json={"payload": payload, "signature": signature},
+    )
+    assert v_res.status_code == 200
+    assert v_res.json()["valid"] is True
+
+    # 3. Force Cap Breach ($50.00 Cap < $79.99 agreed price) must yield BUDGET_CAP_BREACH
+    breach_payload = dict(payload)
+    breach_payload["monthly_cap_usd"] = 50.00
+    b_res = client.post(
+        "/api/crypto/verify-tamper",
+        json={"payload": breach_payload, "signature": signature},
+    )
+    assert b_res.status_code == 200
+    b_data = b_res.json()
+    assert b_data["valid"] is False
+    assert b_data["status_code"] == 401
+    assert b_data["reason"] == "BUDGET_CAP_BREACH"
+    assert "Budget Policy Violated" in b_data["detail"]
+
+    # 4. Price tamper ($79.99 -> $80.00) yields SIGNATURE_MISMATCH
+    t_payload = dict(payload)
+    t_payload["agreed_price_usd"] = 80.00
+    t_res = client.post(
+        "/api/crypto/verify-tamper",
+        json={"payload": t_payload, "signature": signature},
+    )
+    assert t_res.status_code == 200
+    t_data = t_res.json()
+    assert t_data["valid"] is False
+    assert t_data["reason"] == "SIGNATURE_MISMATCH"
+
+
 def test_mcp_wire_frames_endpoint():
     """Tests GET /api/mcp/frames and /m2m/frames for JSON-RPC frame inspection."""
     res = client.get("/api/mcp/frames")

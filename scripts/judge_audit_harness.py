@@ -22,6 +22,26 @@ PORTAL_ROOT = os.path.dirname(SCRIPT_DIR)
 if PORTAL_ROOT not in sys.path:
     sys.path.insert(0, PORTAL_ROOT)
 
+import tempfile
+import atexit
+
+# Ensure isolated temp DB in local mode to protect development DB
+if not ("--remote" in sys.argv or os.environ.get("REMOTE_AUDIT") == "1"):
+    if not os.environ.get("A2A_DB_PATH"):
+        _temp_judge_db = os.path.join(tempfile.gettempdir(), f"a2a_judge_{os.getpid()}_{uuid.uuid4().hex[:8]}.db")
+        os.environ["A2A_DB_PATH"] = _temp_judge_db
+
+        def _cleanup_judge_temp_db():
+            for ext in ["", "-wal", "-shm", "-journal"]:
+                f = _temp_judge_db + ext
+                try:
+                    if os.path.exists(f):
+                        os.remove(f)
+                except OSError:
+                    pass
+
+        atexit.register(_cleanup_judge_temp_db)
+
 import argparse
 import httpx
 from fastapi.testclient import TestClient

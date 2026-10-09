@@ -1582,7 +1582,10 @@ def get_fleet_ledger(
                     contractor_email = 'agent-alpha@nexus-systems.io'
                     OR buyer_agent_id LIKE 'AutonomousBuyerAgent%'
                     OR buyer_agent_id LIKE 'BuyerAgent%'
-                    OR (contractor_email != 'marcus@millercustomfloors.com' AND (tier_id = 'SOLO' OR agreed_monthly_rate = 49.99))
+                    OR buyer_agent_id = 'buyer_agent_alpha_01'
+                    OR contractor_name LIKE '%Nexus%'
+                    OR contractor_name LIKE '%Acme%'
+                    OR (tier_id = 'SOLO' AND contractor_email LIKE '%nexus%')
                   )
                 ORDER BY updated_at DESC, created_at DESC
                 LIMIT 1
@@ -1599,7 +1602,14 @@ def get_fleet_ledger(
                 from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
                 for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
                     c_email = (s_data.get("contractor_email") or "").lower()
-                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and c_email != "marcus@millercustomfloors.com":
+                    b_id = (s_data.get("buyer_agent_id") or "").lower()
+                    c_name = (s_data.get("contractor_name") or "").lower()
+                    if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and (
+                        c_email == "agent-alpha@nexus-systems.io"
+                        or "buyeragent" in b_id
+                        or "nexus" in c_name
+                        or "acme" in c_name
+                    ):
                         active_sub = s_data
                         break
             except Exception:

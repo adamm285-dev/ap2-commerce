@@ -266,6 +266,7 @@ class ExternalBuyerAgent:
             has_counter = mandate.get("counterOfferAvailable") or mandate.get("counter_offer_available", False)
             counter_amount = float(mandate.get("counterOfferAmount") or mandate.get("counter_offer_amount", 0.0))
             counter_tier = mandate.get("counterOfferTier") or mandate.get("counter_offer_tier", "Alternative Tier")
+            counter_tier_id = mandate.get("counterOfferTierId") or mandate.get("counter_offer_tier_id") or "solo-starter"
 
             if has_counter and counter_amount > 0 and counter_amount <= self.budget_cap:
                 self.log(f"\n🔄 [AUTONOMOUS NEGOTIATION] Counter-Offer Received: '{counter_tier}' @ ${counter_amount:.2f}/mo")
@@ -286,6 +287,7 @@ class ExternalBuyerAgent:
                 proof_hash = mandate.get("mandateProofHash") or mandate.get("mandate_proof_hash", "")
                 rem_budget = mandate.get("monthlyCapRemaining") or mandate.get("monthly_cap_remaining", 0.0)
                 monthly_price = counter_amount
+                plan_id = counter_tier_id
                 tier_title = f"{counter_tier} (Negotiated)"
 
                 self.log(f"   Counter-Offer Authorization: {'APPROVED' if approved else 'REJECTED'}")

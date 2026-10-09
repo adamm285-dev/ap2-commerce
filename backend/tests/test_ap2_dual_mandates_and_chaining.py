@@ -13,6 +13,7 @@ from backend.services.mandate_evaluator import (
     ledger,
     get_authorized_mandate,
     build_ap2_intent_mandate,
+    build_buyer_intent_mandate,
     AP2_OFFER_TTL_SEC,
     AP2_INTENT_MANDATE_TTL_SEC,
     AP2_CART_OFFER_TTL_SEC,
@@ -67,8 +68,9 @@ async def test_dual_sided_ap2_mandates():
     # 1. Buyer Intent Mandate verification
     intent = neg["ap2_intent_mandate"]
     assert intent["vct"] == "ap2.mandate.intent.1"
-    assert intent["kid"] == DEFAULT_BUYER_KID
-    assert intent["public_key"] == DEFAULT_BUYER_PUBLIC_KEY_HEX
+    assert intent["attestation"] == "seller_attested"
+    assert intent["kid"] == DEFAULT_SELLER_KID
+    assert intent["public_key"] == DEFAULT_SELLER_PUBLIC_KEY_HEX
     assert verify_ap2_intent_mandate(intent) is True
 
     # 2. Seller Cart Mandate verification
@@ -207,7 +209,7 @@ def test_agent_discovery_card_endpoint():
 async def test_buyer_signed_intent_mandate_acceptance():
     """Verifies that negotiate_tier_terms accepts and binds a buyer-signed AP2 Intent Mandate."""
     # Buyer generates and Ed25519-signs its own intent mandate
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -242,7 +244,7 @@ async def test_buyer_signed_intent_mandate_acceptance():
 @pytest.mark.asyncio
 async def test_tampered_buyer_signed_intent_mandate_rejected():
     """Verifies that a tampered buyer-signed mandate is rejected by negotiate_tier_terms."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -268,7 +270,7 @@ async def test_tampered_buyer_signed_intent_mandate_rejected():
 @pytest.mark.asyncio
 async def test_buyer_signed_intent_mandate_identity_mismatch():
     """Verifies that a buyer-signed mandate with conflicting contractor email is rejected."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -291,7 +293,7 @@ async def test_buyer_signed_intent_mandate_identity_mismatch():
 @pytest.mark.asyncio
 async def test_untrusted_buyer_key_rejected():
     """Verifies that an intent mandate signed by an unregistered/untrusted key is rejected."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="hacker-buyer-01",
         amount=60.00,
         recurrence="monthly",
@@ -316,7 +318,7 @@ async def test_untrusted_buyer_key_rejected():
 @pytest.mark.asyncio
 async def test_expired_buyer_mandate_rejected():
     """Verifies that an expired buyer intent mandate is rejected with MANDATE_EXPIRED."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -341,7 +343,7 @@ async def test_expired_buyer_mandate_rejected():
 @pytest.mark.asyncio
 async def test_unauthorized_category_buyer_mandate_rejected():
     """Verifies that a buyer intent mandate for an unauthorized merchant category is rejected."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -368,7 +370,7 @@ async def test_signed_cap_overrides_unsigned_param():
     Verifies that the signed budget cap inside the buyer mandate strictly overrides
     any caller-supplied unsigned monthly_budget_cap parameter (Test B security fix).
     """
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,  # Signed cap: $60.00/mo
         recurrence="monthly",
@@ -432,7 +434,7 @@ async def test_provision_telecom_line_subscription_validation():
 @pytest.mark.asyncio
 async def test_missing_expires_at_rejected():
     """Verifies that a buyer intent mandate without expires_at is rejected."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -457,7 +459,7 @@ async def test_missing_expires_at_rejected():
 @pytest.mark.asyncio
 async def test_missing_payer_email_rejected():
     """Verifies that a buyer intent mandate without payer.email is rejected."""
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=60.00,
         recurrence="monthly",
@@ -498,7 +500,7 @@ async def test_repo_seed_cannot_forge_mandate():
     old_seed = hashlib.sha256(b"fieldsmith_pro_buyer_ed25519_seed_2026").digest()
     old_priv = ed25519.Ed25519PrivateKey.from_private_bytes(old_seed)
 
-    custom_mandate = build_ap2_intent_mandate(
+    custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
         amount=500.00,
         recurrence="monthly",

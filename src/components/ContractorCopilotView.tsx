@@ -111,6 +111,16 @@ export function ContractorCopilotView({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isTriggeringTestRun, setIsTriggeringTestRun] = useState(false);
 
+  // In-memory admin key state (never persist in localStorage per security audit)
+  const [sessionAdminKey, setSessionAdminKey] = useState<string>(() => (window as any).__FS_ADMIN_KEY || '');
+
+  // Purge any legacy persisted admin key on mount
+  useEffect(() => {
+    try {
+      localStorage.removeItem('fs_admin_key');
+    } catch {}
+  }, []);
+
   // --- Layer 1: Anti-Tamper & Cryptographic State ---
   const [tamperPayload, setTamperPayload] = useState<any>({
     contractor_id: 'contractor_marcus_863',
@@ -329,7 +339,7 @@ export function ContractorCopilotView({
   const triggerTestCycle = async () => {
     setIsTriggeringTestRun(true);
     try {
-      let adminKey = localStorage.getItem('fs_admin_key') || (window as any).__FS_ADMIN_KEY || '';
+      let adminKey = sessionAdminKey || (window as any).__FS_ADMIN_KEY || '';
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (adminKey) {
         headers['X-Admin-Key'] = adminKey;
@@ -348,10 +358,11 @@ export function ContractorCopilotView({
       });
 
       if (res.status === 401) {
-        const entered = prompt('Administrative authorization required to trigger autonomous buyer harness.\nEnter ADMIN_API_KEY:');
+        const entered = prompt('Administrative authorization required to trigger autonomous buyer harness.\nEnter ADMIN_API_KEY (retained in-memory only):');
         if (entered) {
           adminKey = entered.trim();
-          localStorage.setItem('fs_admin_key', adminKey);
+          setSessionAdminKey(adminKey);
+          (window as any).__FS_ADMIN_KEY = adminKey;
           headers['X-Admin-Key'] = adminKey;
           res = await fetch('/api/harness/run-buyer-agent', {
             method: 'POST',

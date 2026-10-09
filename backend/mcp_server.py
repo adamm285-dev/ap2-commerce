@@ -6,13 +6,17 @@ and invoke FieldSmith telephony capabilities, mandate evaluation, and line provi
 """
 
 import os
+import re
 import sys
 import json
+import math
 import logging
 import asyncio
 import datetime
 from typing import Dict, Any, Optional, List, Set
+from pydantic import ValidationError
 from .agents.seller_agent import seller_agent, SELLER_MCP_TOOLS
+from .config import settings
 from .services.plan_catalog import plan_summary
 
 logger = logging.getLogger("fieldsmith_mcp_server")
@@ -27,6 +31,39 @@ _MCP_WIRE_FRAMES: List[Dict[str, Any]] = []
 _MAX_WIRE_FRAMES = 100
 _WIRE_SUBSCRIBERS: Set[asyncio.Queue] = set()
 
+# The public wire inspector shows protocol shape, never identities or redeemable tokens
+_REDACTED_KEYS = {
+    "contractor_email", "contractorEmail", "email", "payer_email",
+    "offer_id", "offerId", "mandate_proof_hash", "mandateProofHash", "proof_hash",
+    "counter_offer_mandate_hash", "counterOfferMandateHash", "traceable_proof",
+    "subscription_id", "active_subscription_id", "replaces_subscription_id",
+    "current_subscription_id", "paypal_subscription_id", "approval_url",
+    "payment_token", "vault_id", "payer_id",
+}
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_OFFER_RE = re.compile(r"\boff_[A-Za-z0-9_]+")
+_SUB_ID_RE = re.compile(r"\bI-[A-Z0-9][A-Z0-9-]{5,}")
+
+
+def _redact_frame(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {
+            k: ("***" if k in _REDACTED_KEYS and v not in (None, "") else _redact_frame(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact_frame(v) for v in obj]
+    if isinstance(obj, str):
+        if obj.lstrip()[:1] in ("{", "["):
+            try:
+                return json.dumps(_redact_frame(json.loads(obj)), indent=2)
+            except ValueError:
+                pass
+        obj = _EMAIL_RE.sub("***@***", obj)
+        obj = _OFFER_RE.sub("off_***", obj)
+        return _SUB_ID_RE.sub("I-***", obj)
+    return obj
+
 
 def broadcast_wire_frame(direction: str, frame: Dict[str, Any], method: Optional[str] = None):
     entry = {
@@ -34,7 +71,7 @@ def broadcast_wire_frame(direction: str, frame: Dict[str, Any], method: Optional
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "direction": direction,
         "method": method or frame.get("method") or "response",
-        "frame": frame,
+        "frame": _redact_frame(frame),
     }
     _MCP_WIRE_FRAMES.append(entry)
     if len(_MCP_WIRE_FRAMES) > _MAX_WIRE_FRAMES:
@@ -66,11 +103,37 @@ def get_recent_wire_frames() -> List[Dict[str, Any]]:
     return list(_MCP_WIRE_FRAMES)
 
 
-async def process_mcp_request(request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+class InvalidParams(ValueError):
+    """Raised for tool arguments that fail validation (JSON-RPC -32602)."""
+
+
+def _rpc_error(req_id: Any, code: int, message: str) -> Dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+
+def _num(arguments: Dict[str, Any], key: str, default: Any = None, minimum: float = 0.0) -> Optional[float]:
+    """Parses a finite numeric tool argument >= minimum; None stays None when the default is None."""
+    raw = arguments.get(key, default)
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise InvalidParams(f"'{key}' must be a number.")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise InvalidParams(f"'{key}' must be a number.")
+    if not math.isfinite(value) or value < minimum:
+        raise InvalidParams(f"'{key}' must be a finite number >= {minimum:g}.")
+    return value
+
+
+async def process_mcp_request(request_data: Any) -> Optional[Dict[str, Any]]:
     """
     Processes a single JSON-RPC 2.0 MCP request and returns the standard response.
     Broadcasts wire frames to real-time subscribers.
     """
+    if not isinstance(request_data, dict):
+        return _rpc_error(None, -32600, "Invalid Request: expected a JSON-RPC 2.0 request object.")
     method = request_data.get("method")
     broadcast_wire_frame("incoming", request_data, method=method)
     resp = await _handle_mcp_request_internal(request_data)
@@ -80,10 +143,18 @@ async def process_mcp_request(request_data: Dict[str, Any]) -> Optional[Dict[str
 
 
 async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    jsonrpc = request_data.get("jsonrpc", "2.0")
+    jsonrpc = "2.0"
     req_id = request_data.get("id")
     method = request_data.get("method")
-    params = request_data.get("params", {})
+    params = request_data.get("params")
+    if request_data.get("jsonrpc") != "2.0":
+        return _rpc_error(req_id, -32600, "Invalid Request: 'jsonrpc' must be \"2.0\".")
+    if not isinstance(method, str) or not method:
+        return _rpc_error(req_id, -32600, "Invalid Request: 'method' must be a non-empty string.")
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return _rpc_error(req_id, -32602, "Invalid params: 'params' must be an object.")
 
     logger.info(f"[MCP] Received method: '{method}' (id: {req_id})")
 
@@ -145,8 +216,12 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
     # 5. Handle tools/call
     if method == "tools/call":
         tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        logger.info(f"[MCP] Invoking tool '{tool_name}' with arguments: {arguments}")
+        arguments = params.get("arguments")
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            return _rpc_error(req_id, -32602, "Invalid params: 'arguments' must be an object.")
+        logger.info(f"[MCP] Invoking tool '{tool_name}' with argument keys: {sorted(arguments)}")
 
         try:
             if tool_name == "inspect_subscription_tiers":
@@ -159,19 +234,18 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 result = await seller_agent.negotiate_tier_terms(
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
                     tier_id=arguments.get("tier_id", "flooring-tile"),
-                    monthly_budget_cap=float(arguments.get("monthly_budget_cap", 60.00)),
+                    monthly_budget_cap=_num(arguments, "monthly_budget_cap", 60.00),
                     contractor_email=arguments.get("contractor_email"),
-                    proposed_price=float(arguments["proposed_price"]) if "proposed_price" in arguments and arguments["proposed_price"] is not None else None,
+                    proposed_price=_num(arguments, "proposed_price"),
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
                     buyer_intent_mandate=arguments.get("buyer_intent_mandate"),
                 )
 
             elif tool_name == "purchase_subscription":
-                raw_rate = arguments.get("agreed_monthly_rate")
                 result = await seller_agent.purchase_subscription(
                     tier_id=arguments.get("tier_id"),
-                    agreed_monthly_rate=float(raw_rate) if raw_rate is not None else None,
+                    agreed_monthly_rate=_num(arguments, "agreed_monthly_rate"),
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
                     contractor_email=arguments.get("contractor_email"),
                     offer_id=arguments.get("offer_id"),
@@ -179,21 +253,20 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
             elif tool_name == "evaluate_spending_mandate":
                 # Ensure no silent $100 default; preserve buyer's explicit cap
-                mb_cap = arguments.get("monthly_budget_cap")
-                if mb_cap is None:
-                    mb_cap = arguments.get("amount", 79.99)
+                amount = _num(arguments, "amount", 79.99, minimum=0.01)
+                mb_cap = _num(arguments, "monthly_budget_cap")
                 result = await seller_agent.verify_spending_mandate(
                     buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
-                    amount=float(arguments.get("amount", 79.99)),
+                    amount=amount,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "TELEPHONY_AI_SCREENER"),
-                    monthly_budget_cap=float(mb_cap),
+                    monthly_budget_cap=mb_cap if mb_cap is not None else amount,
                 )
 
             elif tool_name == "calculate_quote":
                 result = await seller_agent.calculate_quote(
                     trade_id=arguments.get("trade_id", "flooring-tile"),
-                    square_footage=float(arguments.get("square_footage", 500)),
+                    square_footage=_num(arguments, "square_footage", 500),
                     material_type=arguments.get("material_type", "Porcelain"),
                     postal_code=arguments.get("postal_code", "33801"),
                 )
@@ -214,11 +287,11 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     business_entity=arguments.get("business_entity", "Miller Custom Flooring LLC"),
                     allocated_did=arguments.get("allocated_did", "+1 (863) 267-8902"),
                     trade_vertical=arguments.get("trade_vertical", "Tile & Custom Flooring"),
-                    monthly_subscription_fee=float(arguments.get("monthly_subscription_fee", 79.99)),
+                    monthly_subscription_fee=_num(arguments, "monthly_subscription_fee", 79.99),
                     paypal_subscription_id=arguments.get("paypal_subscription_id", "I-AUTONOMOUS-8902"),
                     contractor_email=arguments.get("contractor_email", "marcus@millercustomfloors.com"),
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
-                    webhook_url=arguments.get("webhook_url"),
+                    webhook_url=arguments.get("webhook_url") if settings.mock_external_apis else None,
                 )
 
             elif tool_name == "get_subscription_details":
@@ -250,16 +323,14 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 },
             }
 
+        except InvalidParams as e:
+            return _rpc_error(req_id, -32602, f"Invalid params: {e}")
+        except ValidationError as e:
+            fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in e.errors())
+            return _rpc_error(req_id, -32602, f"Invalid params: {fields}")
         except Exception as e:
             logger.error(f"[MCP] Error executing tool '{tool_name}': {e}", exc_info=True)
-            return {
-                "jsonrpc": jsonrpc,
-                "id": req_id,
-                "error": {
-                    "code": -32000,
-                    "message": f"Tool execution failed: {str(e)}",
-                },
-            }
+            return _rpc_error(req_id, -32603, "Internal error: tool execution failed.")
 
     # Unknown method
     return {

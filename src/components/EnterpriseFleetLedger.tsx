@@ -15,14 +15,12 @@ import {
   Sliders,
   CheckCircle2,
   Eye,
-  Edit3,
-  BarChart3,
   Zap,
   X,
   FileText,
+  LayoutGrid,
 } from 'lucide-react';
-import { AgStudio } from 'ag-studio-react';
-import { studioTheme, type AgDataSourcesDefinition, type AgStudioMode } from 'ag-studio';
+import { AgStudioReportStudio } from './AgStudioReportStudio';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ModuleRegistry as GridModuleRegistry,
@@ -46,7 +44,6 @@ import {
   type A2aTransaction,
   type TradeImpact,
   type KycAuditRecord,
-  initialDashboardState,
 } from '../data/telemetryData';
 
 // Edward Tufte Data-to-Ink Ratio Sparkline
@@ -95,13 +92,15 @@ export interface EnterpriseFleetLedgerProps {
   transactions: A2aTransaction[];
   tradeImpactData: TradeImpact[];
   kycAuditData: KycAuditRecord[];
-  studioData: AgDataSourcesDefinition;
-  studioMode: AgStudioMode;
-  onSetStudioMode: (mode: AgStudioMode) => void;
+  studioData?: any;
+  studioMode?: any;
+  onSetStudioMode?: (mode: any) => void;
   onSimulateClick: () => void;
   onInspectTrace?: (transactionId: string) => void;
-  onNavigateTab?: (tab: 'copilot' | 'ag-studio' | 'bryntum' | 'zapier') => void;
+  onNavigateTab?: (tab: 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier') => void;
   onRefreshData?: () => Promise<void>;
+  viewMode?: 'grid' | 'studio';
+  onViewModeChange?: (mode: 'grid' | 'studio') => void;
 }
 
 export function EnterpriseFleetLedger({
@@ -115,10 +114,18 @@ export function EnterpriseFleetLedger({
   onInspectTrace,
   onNavigateTab,
   onRefreshData,
+  viewMode,
+  onViewModeChange,
 }: EnterpriseFleetLedgerProps) {
-  // View toggle: 'command-center' (Default high-density mission control) vs 'ag-studio' (Raw drag-and-drop report builder)
-  const [subView, setSubView] = useState<'command-center' | 'ag-studio'>('command-center');
-
+  const [internalViewMode, setInternalViewMode] = useState<'grid' | 'studio'>('grid');
+  const currentViewMode = viewMode ?? internalViewMode;
+  const handleViewModeToggle = (m: 'grid' | 'studio') => {
+    if (onViewModeChange) {
+      onViewModeChange(m);
+    } else {
+      setInternalViewMode(m);
+    }
+  };
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -129,110 +136,6 @@ export function EnterpriseFleetLedger({
   // Selected transaction for the Slide-Over Inspection Drawer
   const [selectedTxn, setSelectedTxn] = useState<A2aTransaction | null>(null);
   const [drawerTab, setDrawerTab] = useState<'audit' | 'raw'>('audit');
-
-  // AG Studio theme accent & reset state
-  const [accentColor, setAccentColor] = useState<string>('#0284c7');
-  const [resetKey, setResetKey] = useState<number>(0);
-
-  // Custom Dark Enterprise Studio Theme
-  const customStudioTheme = useMemo(() => {
-    return studioTheme.withParams({
-      browserColorScheme: 'dark',
-      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      fontSize: 13,
-      lineHeight: 16,
-      backgroundColor: '#0b1222',
-      foregroundColor: '#f8fafc',
-      textColor: '#f8fafc',
-      subtleTextColor: '#94a3b8',
-      borderColor: '#1e293b',
-      borderWidth: 1,
-      borderRadius: 8,
-      accentColor: accentColor,
-
-      // Studio canvas & wrapper
-      studioCanvasBackgroundColor: '#070d1a',
-      studioCanvasFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      studioCanvasPadding: 16,
-      studioWrapperBackgroundColor: '#0b1222',
-      studioWrapperBorder: 'solid 1px #1e293b',
-      studioWrapperBorderRadius: 10,
-
-      // Panels (Sidebar, Toolbars, Drawers)
-      studioPanelContainerBackgroundColor: '#0b1222',
-      studioPanelContainerBorder: 'solid 1px #1e293b',
-      studioPanelWidth: 260,
-      studioPanelMinWidth: 200,
-      studioPanelMaxWidth: 420,
-      studioPanelDividerColor: '#1e293b',
-      studioPanelDividerActiveColor: accentColor,
-      studioPanelHeaderFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      studioPanelHeaderFontSize: 13,
-      studioPanelHeaderFontWeight: 'bold',
-      studioPanelGroupBackgroundColor: '#0f172a',
-      studioPanelGroupTitleBarTextColor: '#e2e8f0',
-      studioPanelSectionBorderColor: '#1e293b',
-
-      // Buttons & toggles
-      studioToggleButtonActiveBackgroundColor: accentColor,
-      studioToggleButtonActiveBorderColor: accentColor,
-      studioToggleButtonActiveColor: '#ffffff',
-
-      // Widgets
-      studioWidgetBackgroundColor: '#0f172a',
-      studioWidgetBorder: 'solid 1px #1e293b',
-      studioWidgetBorderRadius: 10,
-      studioWidgetPadding: 12,
-      studioWidgetTitleFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      studioWidgetTitleFontSize: 14,
-      studioWidgetTitleFontWeight: 'bold',
-      studioWidgetTitleTextColor: '#f8fafc',
-      studioWidgetSubtitleFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      studioWidgetSubtitleFontSize: 11,
-      studioWidgetSubtitleTextColor: '#94a3b8',
-      studioWidgetCaptionFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      studioWidgetCaptionFontSize: 11,
-      studioWidgetCaptionTextColor: '#64748b',
-      studioValueWidgetFontSize: 28,
-
-      // Charts
-      chartFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      chartFontSize: 11,
-      chartTextColor: '#cbd5e1',
-      chartSubtleTextColor: '#64748b',
-      chartAxisLineColor: '#334155',
-      chartGridLineColor: '#1e293b',
-      chartTooltipBackgroundColor: '#0f172a',
-      chartTooltipTextColor: '#f8fafc',
-      chartTooltipBorder: 'solid 1px #334155',
-      chartPaletteFills1Color: accentColor,
-      chartPaletteFills2Color: '#10b981',
-      chartPaletteFills3Color: '#8b5cf6',
-      chartPaletteFills4Color: '#f59e0b',
-      chartPaletteFills5Color: '#06b6d4',
-      chartPaletteFills6Color: '#ec4899',
-      chartPaletteStrokes1Color: '#38bdf8',
-      chartPaletteStrokes2Color: '#34d399',
-      chartPaletteStrokes3Color: '#a78bfa',
-      chartPaletteStrokes4Color: '#fbbf24',
-      chartPaletteStrokes5Color: '#22d3ee',
-      chartPaletteStrokes6Color: '#f472b6',
-
-      // Grid
-      gridRowHeight: 40,
-      gridHeaderHeight: 38,
-      gridHeaderBackgroundColor: '#131e32',
-      gridHeaderTextColor: '#94a3b8',
-      gridHeaderFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      gridHeaderFontSize: 11,
-      gridHeaderFontWeight: 'bold',
-      gridDataFontSize: 12,
-      gridFontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-      gridRowBorder: 'solid 1px #1e293b',
-      gridHeaderRowBorder: 'solid 1px #1e293b',
-      gridAccentColor: accentColor,
-    });
-  }, [accentColor]);
 
   // Copy helper
   const handleCopy = (text: string, key: string) => {
@@ -653,6 +556,52 @@ export function EnterpriseFleetLedger({
     return dynamicTradeData.reduce((acc, d) => acc + d.gmv, 0);
   }, [dynamicTradeData]);
 
+  // Dynamic histories computed from real transactions (ADR-079)
+  const mrrHistory = useMemo(() => {
+    if (!transactions.length) return [];
+    const sorted = [...transactions].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+    let running = 0;
+    return sorted.map((t) => {
+      if (t.status === 'ACTIVE_STREAMING') running += t.monthly_amount;
+      return running;
+    });
+  }, [transactions]);
+
+  const activeTrunksHistory = useMemo(() => {
+    if (!transactions.length) return [];
+    const sorted = [...transactions].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+    let count = 0;
+    return sorted.map((t) => {
+      if (t.status === 'ACTIVE_STREAMING') count += 1;
+      return count;
+    });
+  }, [transactions]);
+
+  const gmvHistory = useMemo(() => {
+    if (!transactions.length) return [];
+    const sorted = [...transactions].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+    let running = 0;
+    return sorted.map((t) => {
+      if (t.status === 'ACTIVE_STREAMING') running += (t.monthly_amount * 12);
+      return running;
+    });
+  }, [transactions]);
+
+  const topVertical = useMemo(() => {
+    if (!dynamicTradeData || dynamicTradeData.length === 0) return null;
+    const sorted = [...dynamicTradeData].sort((a, b) => b.gmv - a.gmv);
+    const top = sorted[0];
+    if (!top || top.gmv === 0) return null;
+    const agentCount = transactions.filter(
+      (t) => (t.trade_vertical || '').toLowerCase() === top.trade.toLowerCase() && t.status === 'ACTIVE_STREAMING'
+    ).length;
+    return {
+      name: top.trade,
+      gmv: top.gmv,
+      agentCount,
+    };
+  }, [dynamicTradeData, transactions]);
+
   // Subscription Tier Distribution computed from live transactions (Adam Finer's <= 5 slice rule)
   const tierDistribution = useMemo(() => {
     const map: Record<string, { tier: string; count: number; mrr: number }> = {};
@@ -830,46 +779,49 @@ export function EnterpriseFleetLedger({
           </div>
         </div>
 
-        {/* View Mode Toggle: Command Center vs AG Studio */}
+        {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ display: 'flex', backgroundColor: '#1e293b', padding: '3px', borderRadius: '8px', border: '1px solid #334155' }}>
+          {/* Segmented Operational Grid / AG Studio Custom BI Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: '6px', padding: '2px', border: '1px solid #334155' }}>
             <button
-              onClick={() => setSubView('command-center')}
+              onClick={() => handleViewModeToggle('grid')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '6px',
+                padding: '6px 12px',
+                borderRadius: '4px',
                 border: 'none',
-                backgroundColor: subView === 'command-center' ? '#0284c7' : 'transparent',
-                color: subView === 'command-center' ? '#fff' : '#94a3b8',
-                fontSize: '12px',
+                backgroundColor: currentViewMode === 'grid' ? '#0284c7' : 'transparent',
+                color: currentViewMode === 'grid' ? '#ffffff' : '#94a3b8',
+                fontSize: '11px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
+              title="Live high-density operational ledger with column filtering and sorting"
             >
-              <BarChart3 size={14} /> Mission Control
+              <LayoutGrid size={13} /> Live Operational Grid
             </button>
             <button
-              onClick={() => setSubView('ag-studio')}
+              onClick={() => handleViewModeToggle('studio')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '6px',
+                padding: '6px 12px',
+                borderRadius: '4px',
                 border: 'none',
-                backgroundColor: subView === 'ag-studio' ? '#0284c7' : 'transparent',
-                color: subView === 'ag-studio' ? '#fff' : '#94a3b8',
-                fontSize: '12px',
+                backgroundColor: currentViewMode === 'studio' ? '#0284c7' : 'transparent',
+                color: currentViewMode === 'studio' ? '#ffffff' : '#94a3b8',
+                fontSize: '11px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
+              title="Interactive AG Studio drag-and-drop report designer with 4 multi-table datasets"
             >
-              <Layers size={14} /> AG Studio Report Studio
+              <Layers size={13} /> AG Studio Custom BI
             </button>
           </div>
 
@@ -895,193 +847,23 @@ export function EnterpriseFleetLedger({
         </div>
       </div>
 
-      {/* VIEW BRANCH: AG STUDIO VIEW (ENTERPRISE REPORT STUDIO) */}
-      {subView === 'ag-studio' && (
-        <div className="ag-studio-frame" style={{ margin: '16px 20px', display: 'flex', flexDirection: 'column' }}>
-          {/* Studio Control Header */}
-          <div className="ag-studio-control-bar">
-            {/* Left: Studio Identity & Live Badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 10px #10b981' }} />
-                <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.04em', color: '#f8fafc' }}>
-                  AG STUDIO ENTERPRISE v3.0
-                </span>
-              </div>
-              <div style={{ width: '1px', height: '18px', backgroundColor: '#334155' }} />
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Autonomous Telephony &amp; Agentic Commerce Report
-                  <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
-                    LIVE IN-MEMORY
-                  </span>
-                </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  4 Multi-Table Datasets &bull; {activeLinesCount} Active Carrier Subscriptions &bull; 10DLC KYC Attestation
-                </div>
-              </div>
-            </div>
-
-            {/* Center: Accent Palette Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0f172a', padding: '4px 10px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Palette:</span>
-              {[
-                { label: 'Cyber Blue', color: '#0284c7' },
-                { label: 'Emerald', color: '#10b981' },
-                { label: 'Neon Violet', color: '#8b5cf6' },
-              ].map((p) => (
-                <button
-                  key={p.color}
-                  onClick={() => setAccentColor(p.color)}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    backgroundColor: p.color,
-                    border: accentColor === p.color ? '2px solid #ffffff' : '1px solid transparent',
-                    boxShadow: accentColor === p.color ? `0 0 8px ${p.color}` : 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    transition: 'all 0.15s ease',
-                  }}
-                  title={`Switch theme accent to ${p.label}`}
-                />
-              ))}
-            </div>
-
-            {/* Right: Studio Controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {/* Mode Switcher */}
-              <div style={{ display: 'flex', backgroundColor: '#0f172a', padding: '3px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <button
-                  onClick={() => onSetStudioMode('view')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '5px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: studioMode === 'view' ? accentColor : 'transparent',
-                    color: studioMode === 'view' ? '#fff' : '#94a3b8',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <Eye size={12} /> Executive View
-                </button>
-                <button
-                  onClick={() => onSetStudioMode('edit')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '5px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: studioMode === 'edit' ? accentColor : 'transparent',
-                    color: studioMode === 'edit' ? '#fff' : '#94a3b8',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <Edit3 size={12} /> Drag &amp; Drop Editor
-                </button>
-              </div>
-
-              {/* Reset Layout */}
-              <button
-                onClick={() => setResetKey((k) => k + 1)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  color: '#cbd5e1',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-                title="Reset report canvas to default layout"
-              >
-                <RefreshCw size={12} /> Reset Canvas
-              </button>
-
-              {/* Export CSV */}
-              <button
-                onClick={handleExportCsv}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  color: '#38bdf8',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <Download size={12} /> Export CSV
-              </button>
-            </div>
-          </div>
-
-          {/* Studio Canvas Embed */}
-          <div style={{ flex: 1, minHeight: '660px', height: 'calc(100vh - 220px)', position: 'relative', overflow: 'hidden' }}>
-            <AgStudio
-              key={`studio-${resetKey}`}
-              data={studioData}
-              mode={studioMode}
-              initialState={initialDashboardState}
-              theme={customStudioTheme}
-              style={{ width: '100%', height: '100%' }}
-            />
-          </div>
-
-          {/* Studio Footer Status */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 18px',
-              backgroundColor: '#0b1222',
-              borderTop: '1px solid #1e293b',
-              fontSize: '11px',
-              color: '#64748b',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span>Telemetry: <strong style={{ color: '#38bdf8' }}>${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo MRR</strong></span>
-              <span>&bull;</span>
-              <span>Ingress Shield: <strong style={{ color: '#34d399' }}>99.8% TCPA Protected</strong></span>
-              <span>&bull;</span>
-              <span>Autonomous GMV: <strong style={{ color: '#38bdf8' }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARR</strong></span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span>AG Studio Enterprise v3.0 &bull; AG Grid Community v36</span>
-              <span>&bull;</span>
-              <span>Model Context Protocol (MCP 2024-11-05)</span>
-            </div>
-          </div>
+      {currentViewMode === 'studio' ? (
+        <div style={{ flex: 1, minHeight: 'calc(100vh - 140px)', width: '100%' }}>
+          <AgStudioReportStudio
+            studioData={studioData}
+            studioMode={studioMode ?? 'view'}
+            onSetStudioMode={onSetStudioMode ?? (() => {})}
+            transactions={transactions}
+            onSimulateClick={onSimulateClick}
+            onNavigateTab={onNavigateTab}
+          />
         </div>
-      )}
-
-      {/* VIEW BRANCH: ENTERPRISE COMMAND CENTER DASHBOARD */}
-      {subView === 'command-center' && (
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* 1. TOP STAT CARDS (KPI METRIC DECK - TUFTE DATA-TO-INK RATIO) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+      ) : (
+        <>
+          {/* ENTERPRISE COMMAND CENTER DASHBOARD (HIGH-DENSITY MISSION CONTROL) */}
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* 1. TOP STAT CARDS (KPI METRIC DECK - TUFTE DATA-TO-INK RATIO) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {/* Card 1: Active Fleet MRR */}
             <div
               style={{
@@ -1110,11 +892,11 @@ export function EnterpriseFleetLedger({
                     <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>/mo</span>
                   </div>
                   <div style={{ fontSize: '11px', color: '#34d399', fontWeight: 600, marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <TrendingUp size={13} /> +32.4% MoM &bull; {activeLinesCount} Seeded Trunks
+                    <TrendingUp size={13} /> {activeLinesCount} Seeded Trunks
                   </div>
                 </div>
                 <div style={{ paddingBottom: '2px' }}>
-                  <Sparkline data={[980, 1050, 1120, 1240, 1310, 1380, totalMrr]} color="#38bdf8" />
+                  <Sparkline data={mrrHistory} color="#38bdf8" />
                 </div>
               </div>
             </div>
@@ -1150,7 +932,7 @@ export function EnterpriseFleetLedger({
                   </div>
                 </div>
                 <div style={{ paddingBottom: '2px' }}>
-                  <Sparkline data={[8, 9, 10, 11, 12, 13, activeLinesCount]} color="#34d399" />
+                  <Sparkline data={activeTrunksHistory} color="#34d399" />
                 </div>
               </div>
             </div>
@@ -1184,9 +966,6 @@ export function EnterpriseFleetLedger({
                   <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '5px' }}>
                     {activeLinesCount} Trunks Bound &bull; 0 Budget Leaks
                   </div>
-                </div>
-                <div style={{ paddingBottom: '2px' }}>
-                  <Sparkline data={[100, 100, 100, 99.8, 100, 100, 100]} color="#10b981" />
                 </div>
               </div>
             </div>
@@ -1223,7 +1002,7 @@ export function EnterpriseFleetLedger({
                   </div>
                 </div>
                 <div style={{ paddingBottom: '2px' }}>
-                  <Sparkline data={[12000, 13200, 14100, 15300, 16200, totalAutonomousGmv]} color="#a78bfa" />
+                  <Sparkline data={gmvHistory} color="#a78bfa" />
                 </div>
               </div>
             </div>
@@ -1262,7 +1041,14 @@ export function EnterpriseFleetLedger({
               </div>
 
               <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
-                <span>Top Vertical: <strong>Roofing &amp; Storm (${tradeImpactData[2]?.annualized_gmv ? `$${tradeImpactData[2].annualized_gmv.toLocaleString()}` : '$3,839.52'} ARR &bull; 4 Agents)</strong></span>
+                <span>
+                  Top Vertical:{' '}
+                  <strong>
+                    {topVertical
+                      ? `${topVertical.name} ($${topVertical.gmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARR • ${topVertical.agentCount} ${topVertical.agentCount === 1 ? 'Agent' : 'Agents'})`
+                      : 'None Active ($0.00 ARR • 0 Agents)'}
+                  </strong>
+                </span>
                 <span>Software Tiers: <strong>$49.99 Solo / $79.99 Pro / $179.99 Fleet &bull; PayPal Recurring</strong></span>
               </div>
             </div>
@@ -1507,7 +1293,6 @@ export function EnterpriseFleetLedger({
             </div>
           </div>
         </div>
-      )}
 
       {/* SLIDE-OVER INSPECTION DRAWER (PROGRESSIVE DISCLOSURE - ADAM FINER PRINCIPLE) */}
       {selectedTxn && (
@@ -1943,6 +1728,8 @@ export function EnterpriseFleetLedger({
               </button>
             </div>
           </div>
+        </>
+      )}
         </>
       )}
     </div>

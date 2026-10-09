@@ -58,11 +58,11 @@ class SpendingMandateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     buyer_agent_id: str = Field(alias="buyerAgentId")
-    amount: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
     recurrence: RecurrenceType
     category: str
     monthly_budget_cap: Optional[float] = Field(
-        default=100.00, alias="monthlyBudgetCap"
+        default=100.00, alias="monthlyBudgetCap", ge=0, allow_inf_nan=False
     )
     contractor_email: Optional[str] = Field(
         default=None, alias="contractorEmail"
@@ -145,10 +145,10 @@ class ProvisionResponse(BaseModel):
 class DispatchLockRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    lead_id: str = Field(alias="leadId")
-    territory_zone: str = Field(alias="territoryZone")
-    slot_start_iso: str = Field(alias="slotStartIso")
-    paypal_transaction_id: str = Field(alias="paypalTransactionId")
+    lead_id: str = Field(alias="leadId", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
+    territory_zone: str = Field(alias="territoryZone", min_length=1, max_length=64)
+    slot_start_iso: str = Field(alias="slotStartIso", min_length=10, max_length=40)
+    paypal_transaction_id: str = Field(alias="paypalTransactionId", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
 
 
 class DispatchLockResponse(BaseModel):
@@ -202,10 +202,10 @@ class ZapierSyncResponse(BaseModel):
 
 # --- PayPal Order Management Models ---
 class PayPalOrderCreateRequest(BaseModel):
-    amount: float
-    currency: str = "USD"
-    description: str
-    custom_id: Optional[str] = None
+    amount: float = Field(gt=0, le=10000, allow_inf_nan=False)
+    currency: str = Field(default="USD", pattern=r"^USD$")
+    description: str = Field(min_length=1, max_length=127)
+    custom_id: Optional[str] = Field(default=None, max_length=127)
 
 
 class PayPalOrderResponse(BaseModel):

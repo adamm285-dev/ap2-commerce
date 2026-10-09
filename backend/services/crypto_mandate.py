@@ -9,6 +9,7 @@ import os
 import hmac
 import hashlib
 import json
+import math
 import time
 from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -64,6 +65,12 @@ if _env_buyer_pub and len(_env_buyer_pub.strip()) == 64:
 
 DEFAULT_SELLER_KID = "fieldsmith-seller-ed25519-v1"
 DEFAULT_BUYER_KID = "marcus-buyer-ed25519-v1"
+
+# Ephemeral key for the public anti-tamper playground; never registered or trusted for purchases
+_DEMO_TAMPER_KEY = ed25519.Ed25519PrivateKey.generate()
+DEMO_TAMPER_PRIVATE_KEY_HEX = _DEMO_TAMPER_KEY.private_bytes_raw().hex()
+DEMO_TAMPER_PUBLIC_KEY_HEX = _DEMO_TAMPER_KEY.public_key().public_bytes_raw().hex()
+DEMO_TAMPER_KID = "demo-anti-tamper-ed25519"
 
 from ..database import BuyerKeysProxy
 
@@ -131,6 +138,7 @@ def generate_dynamic_mandate_proof(
     nonce: str,
     buyer_private_key_hex: Optional[str] = None,
     secret_key: bytes = SECRET_KEY,
+    kid: str = DEFAULT_BUYER_KID,
 ) -> Dict[str, Any]:
     """
     Generates an AP2-aligned cryptographically signed spending authorization proof.
@@ -152,7 +160,7 @@ def generate_dynamic_mandate_proof(
         "nonce": nonce,
         "timestamp": timestamp,
         "public_key": pub_hex,
-        "kid": DEFAULT_BUYER_KID,
+        "kid": kid,
     }
     canonical_payload = canonicalize_mandate_payload(raw_payload)
     encoded_bytes = json.dumps(canonical_payload, sort_keys=True).encode("utf-8")
@@ -164,7 +172,7 @@ def generate_dynamic_mandate_proof(
         "canonical_payload": canonical_payload,
         "signature": signature,
         "public_key": pub_hex,
-        "kid": DEFAULT_BUYER_KID,
+        "kid": kid,
         "algorithm": "Ed25519",
         "vct": "ap2.mandate.intent.1",
     }
@@ -254,12 +262,19 @@ def verify_mandate_proof(
     Returns (True, "VERIFIED") or (False, REASON).
     """
     current_time = int(time.time())
-    payload_time = payload.get("timestamp", 0)
+    try:
+        payload_time = float(payload.get("timestamp", 0))
+        agreed_price = float(payload.get("agreed_price_usd", 0))
+        monthly_cap = float(payload.get("monthly_cap_usd", 0))
+    except (TypeError, ValueError):
+        return False, "MALFORMED_PAYLOAD"
+    if not all(math.isfinite(v) for v in (payload_time, agreed_price, monthly_cap)):
+        return False, "MALFORMED_PAYLOAD"
 
     if abs(current_time - payload_time) > max_drift_sec:
         return False, "TIMESTAMP_EXPIRED"
 
-    if payload.get("agreed_price_usd", 0) > payload.get("monthly_cap_usd", 0):
+    if agreed_price > monthly_cap:
         return False, "BUDGET_CAP_BREACH"
 
     canonical_payload = canonicalize_mandate_payload(payload)
@@ -267,6 +282,8 @@ def verify_mandate_proof(
 
     # 1. Asymmetric Ed25519 Verification (AP2 standard)
     pub_hex = public_key_hex or payload.get("public_key")
+    if not isinstance(signature, str):
+        return False, "SIGNATURE_MISMATCH"
     if pub_hex and len(signature) == 128:  # 64-byte Ed25519 signature is 128 hex chars
         try:
             pub_bytes = bytes.fromhex(pub_hex)

@@ -131,6 +131,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS contractor_authorized_caps (
+                contractor_email TEXT PRIMARY KEY,
+                monthly_cap REAL NOT NULL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS agent_spends (
                 agent_id TEXT PRIMARY KEY,
                 total_spent REAL NOT NULL DEFAULT 0.00,
@@ -649,6 +656,21 @@ def get_buyer_key(kid: str, db_path: Optional[Path] = None) -> Optional[str]:
         conn.close()
 
 
+def get_buyer_key_email(kid: str, db_path: Optional[Path] = None) -> Optional[str]:
+    """Returns the contractor email a buyer key was registered for, if any."""
+    if not kid:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT contractor_email FROM buyer_keys WHERE kid = ?", (kid.strip(),))
+        row = cur.fetchone()
+        email = row["contractor_email"] if row else None
+        return email.strip().lower() if email else None
+    finally:
+        conn.close()
+
+
 def list_buyer_keys(db_path: Optional[Path] = None) -> Dict[str, str]:
     """Returns a dictionary of all registered buyer keys (kid -> hex)."""
     conn = get_connection(db_path)
@@ -709,6 +731,45 @@ def get_contractor_cap(contractor_email: str, default_cap: float = 100.0, db_pat
         cur.execute("SELECT monthly_cap FROM contractor_budgets WHERE contractor_email = ?", (norm,))
         row = cur.fetchone()
         return float(row["monthly_cap"]) if row else default_cap
+    finally:
+        conn.close()
+
+
+def set_authorized_cap(contractor_email: str, cap: float, source: str, db_path: Optional[Path] = None) -> None:
+    """Saves a contractor's binding monthly cap (key registration or the contractor's own signed mandate)."""
+    if not contractor_email:
+        return
+    norm = contractor_email.strip().lower()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO contractor_authorized_caps (contractor_email, monthly_cap, source, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(contractor_email) DO UPDATE SET
+                    monthly_cap = excluded.monthly_cap,
+                    source = excluded.source,
+                    updated_at = excluded.updated_at
+                """,
+                (norm, float(cap), source, now_iso),
+            )
+    finally:
+        conn.close()
+
+
+def get_authorized_cap(contractor_email: str, db_path: Optional[Path] = None) -> Optional[float]:
+    """Returns the contractor's binding monthly cap, or None when none has been saved."""
+    if not contractor_email:
+        return None
+    norm = contractor_email.strip().lower()
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT monthly_cap FROM contractor_authorized_caps WHERE contractor_email = ?", (norm,))
+        row = cur.fetchone()
+        return float(row["monthly_cap"]) if row else None
     finally:
         conn.close()
 
@@ -856,6 +917,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM active_contractor_subscriptions")
             conn.execute("DELETE FROM authorized_mandates")
             conn.execute("DELETE FROM contractor_budgets")
+            conn.execute("DELETE FROM contractor_authorized_caps")
             conn.execute("DELETE FROM agent_spends")
             conn.execute("DELETE FROM spend_history")
             conn.execute("DELETE FROM processed_webhooks")
@@ -1346,7 +1408,8 @@ def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
     active_lines = sum(1 for item in ledger_items if item["status"] == "ACTIVE_STREAMING")
     total_subscribers = len(ledger_items)
     annualized_gmv = round(total_mrr * 12, 2)
-    mandates_cleared = total_subscribers * 12
+    # One verified mandate settles each active subscription; no multipliers
+    mandates_cleared = active_lines
 
     # Group by trade vertical
     trade_counts: Dict[str, Dict[str, Any]] = {}
@@ -1363,7 +1426,7 @@ def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
         if item["status"] == "ACTIVE_STREAMING":
             trade_counts[trade]["active_agents"] += 1
             trade_counts[trade]["monthly_settlement"] += item["monthly_amount"]
-        trade_counts[trade]["mandates_cleared"] += 12
+            trade_counts[trade]["mandates_cleared"] += 1
 
     for t in trade_counts.values():
         t["monthly_settlement"] = round(t["monthly_settlement"], 2)
@@ -1382,45 +1445,323 @@ def get_fleet_stats(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def get_fleet_schedule(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Returns resources and timeline events for Bryntum Dispatch Scheduler."""
+    """Returns resources and realistic timeline events for Bryntum Dispatch Scheduler."""
     ledger_items = get_fleet_ledger(db_path=db_path)
     slots = list_dispatch_slots(db_path=db_path)
+
+    # Sort key spotlight crews to the top so dispatchers immediately see core trade operations
+    spotlight_names = ["Marcus Miller", "Dave Vance", "Elena Rostova", "Hank Schrader"]
+    spotlight_items = [i for name in spotlight_names for i in ledger_items if i["contractor_name"] == name]
+    other_items = [i for i in ledger_items if i["contractor_name"] not in spotlight_names]
+    ordered_items = spotlight_items + other_items
 
     resources = []
     events = []
 
-    for idx, item in enumerate(ledger_items):
+    # Realistic appointment fixtures across trade verticals for all 14 contractors
+    staggered_schedule_fixtures = {
+        "Marcus Miller": [
+            {
+                "id": "appt-marcus-1",
+                "name": "Intake: Mrs. Henderson • Master Bath Travertine",
+                "start": "2026-10-02 08:30",
+                "end": "2026-10-02 09:45",
+                "color": "cyan",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-8831",
+            },
+            {
+                "id": "appt-marcus-2",
+                "name": "Consultation: Oakridge Estates • Kitchen LVP Remodel",
+                "start": "2026-10-02 10:30",
+                "end": "2026-10-02 11:45",
+                "color": "blue",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-8842",
+            },
+            {
+                "id": "appt-marcus-3",
+                "name": "Inspection: Highland Park • Hardwood Moisture Scan",
+                "start": "2026-10-02 15:30",
+                "end": "2026-10-02 16:45",
+                "color": "purple",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-8859",
+            },
+        ],
+        "Dave Vance": [
+            {
+                "id": "appt-dave-1",
+                "name": "Emergency: Lakeland Medical • Main Sewer Jetting",
+                "start": "2026-10-02 08:00",
+                "end": "2026-10-02 09:30",
+                "color": "red",
+                "icon": "b-fa b-fa-exclamation-triangle",
+                "deposit": "PAID $250.00 MOBILIZATION",
+                "txn": "TXN-DEP-7712",
+            },
+            {
+                "id": "appt-dave-2",
+                "name": "Diagnostic: Oak Creek Estates • Tankless Water Heater",
+                "start": "2026-10-02 10:45",
+                "end": "2026-10-02 12:15",
+                "color": "green",
+                "icon": "b-fa b-fa-wrench",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-7725",
+            },
+            {
+                "id": "appt-dave-3",
+                "name": "Certification: Cypress Landing • Commercial Backflow",
+                "start": "2026-10-02 14:00",
+                "end": "2026-10-02 15:30",
+                "color": "blue",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $125.00 DEPOSIT",
+                "txn": "TXN-DEP-7738",
+            },
+        ],
+        "Elena Rostova": [
+            {
+                "id": "appt-elena-1",
+                "name": "Drone Scan: Oak Creek HOA • Roof Hail Damage",
+                "start": "2026-10-02 09:00",
+                "end": "2026-10-02 10:30",
+                "color": "cyan",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $75.00 DEPOSIT",
+                "txn": "TXN-DEP-9910",
+            },
+            {
+                "id": "appt-elena-2",
+                "name": "Commercial Bid: Ridgeview Church • TPO Membrane Sealing",
+                "start": "2026-10-02 12:00",
+                "end": "2026-10-02 13:30",
+                "color": "purple",
+                "icon": "b-fa b-fa-shield-alt",
+                "deposit": "PAID $350.00 DEPOSIT",
+                "txn": "TXN-DEP-9924",
+            },
+            {
+                "id": "appt-elena-3",
+                "name": "Emergency: North Lakeland Plaza • Wind Damage Tarping",
+                "start": "2026-10-02 15:15",
+                "end": "2026-10-02 16:45",
+                "color": "red",
+                "icon": "b-fa b-fa-exclamation-triangle",
+                "deposit": "PAID $300.00 EMERGENCY",
+                "txn": "TXN-DEP-9937",
+            },
+        ],
+        "Hank Schrader": [
+            {
+                "id": "appt-hank-1",
+                "name": "Tow: I-4 Westbound MM 32 • Flatbed Highway Recovery",
+                "start": "2026-10-02 08:15",
+                "end": "2026-10-02 09:45",
+                "color": "red",
+                "icon": "b-fa b-fa-truck",
+                "deposit": "PAID $200.00 TOW DEPOSIT",
+                "txn": "TXN-DEP-5501",
+            },
+            {
+                "id": "appt-hank-2",
+                "name": "Off-Road: Polk Parkway MM 10 • Winch-Out Mud Recovery",
+                "start": "2026-10-02 11:30",
+                "end": "2026-10-02 13:00",
+                "color": "blue",
+                "icon": "b-fa b-fa-truck",
+                "deposit": "PAID $175.00 DEPOSIT",
+                "txn": "TXN-DEP-5518",
+            },
+            {
+                "id": "appt-hank-3",
+                "name": "Transport: Bartow Highway • Box Truck Heavy Axle Lift",
+                "start": "2026-10-02 14:30",
+                "end": "2026-10-02 16:00",
+                "color": "green",
+                "icon": "b-fa b-fa-truck",
+                "deposit": "PAID $225.00 DEPOSIT",
+                "txn": "TXN-DEP-5532",
+            },
+        ],
+        "Brandon Cole": [
+            {
+                "id": "appt-brandon-1",
+                "name": "Inspection: Citrus Ridge • Commercial TPO Assessment",
+                "start": "2026-10-02 09:15",
+                "end": "2026-10-02 10:45",
+                "color": "blue",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-3310",
+            },
+        ],
+        "Mateo Rossi": [
+            {
+                "id": "appt-mateo-1",
+                "name": "Intake: Lake Morton • Herringbone Tile Scope",
+                "start": "2026-10-02 11:00",
+                "end": "2026-10-02 12:30",
+                "color": "cyan",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-3320",
+            },
+        ],
+        "Declan Brooks": [
+            {
+                "id": "appt-declan-1",
+                "name": "Emergency: Cleveland Heights • Hydro-Jet Line",
+                "start": "2026-10-02 13:00",
+                "end": "2026-10-02 14:30",
+                "color": "red",
+                "icon": "b-fa b-fa-exclamation-triangle",
+                "deposit": "PAID $250.00 MOBILIZATION",
+                "txn": "TXN-DEP-3330",
+            },
+        ],
+        "Sarah Jenkins": [
+            {
+                "id": "appt-sarah-1",
+                "name": "Diagnostic: Carillon Lakes • Heat Pump Capacitor",
+                "start": "2026-10-02 08:30",
+                "end": "2026-10-02 10:00",
+                "color": "green",
+                "icon": "b-fa b-fa-wrench",
+                "deposit": "PAID $125.00 DEPOSIT",
+                "txn": "TXN-DEP-3340",
+            },
+        ],
+        "Tariq Al-Mansoor": [
+            {
+                "id": "appt-tariq-1",
+                "name": "Inspection: Grasslands HOA • 200A Panel Upgrade",
+                "start": "2026-10-02 14:00",
+                "end": "2026-10-02 15:30",
+                "color": "purple",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-3350",
+            },
+        ],
+        "Brett Sterling": [
+            {
+                "id": "appt-brett-1",
+                "name": "Tow: County Line Rd • Ditch Winch-Out",
+                "start": "2026-10-02 10:00",
+                "end": "2026-10-02 11:30",
+                "color": "red",
+                "icon": "b-fa b-fa-truck",
+                "deposit": "PAID $175.00 DEPOSIT",
+                "txn": "TXN-DEP-3360",
+            },
+        ],
+        "Wyatt Earp": [
+            {
+                "id": "appt-wyatt-1",
+                "name": "Reroof Scope: Southgate Plaza • Metal Reroof",
+                "start": "2026-10-02 13:30",
+                "end": "2026-10-02 15:00",
+                "color": "blue",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $200.00 DEPOSIT",
+                "txn": "TXN-DEP-3370",
+            },
+        ],
+        "Carlos Mendez": [
+            {
+                "id": "appt-carlos-1",
+                "name": "Intake: Imperial Lakes • Luxury Vinyl Plank",
+                "start": "2026-10-02 09:00",
+                "end": "2026-10-02 10:15",
+                "color": "cyan",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-3380",
+            },
+        ],
+        "Pamela Green": [
+            {
+                "id": "appt-pamela-1",
+                "name": "Diagnostic: Edgewood • Tankless Flush & Filter",
+                "start": "2026-10-02 15:00",
+                "end": "2026-10-02 16:30",
+                "color": "green",
+                "icon": "b-fa b-fa-wrench",
+                "deposit": "PAID $125.00 DEPOSIT",
+                "txn": "TXN-DEP-3390",
+            },
+        ],
+        "Samira Khan": [
+            {
+                "id": "appt-samira-1",
+                "name": "Service: Beacon Hill • Ductwork Airflow Balance",
+                "start": "2026-10-02 11:30",
+                "end": "2026-10-02 13:00",
+                "color": "blue",
+                "icon": "b-fa b-fa-calendar-check",
+                "deposit": "PAID $150.00 DEPOSIT",
+                "txn": "TXN-DEP-3400",
+            },
+        ],
+    }
+
+    for idx, item in enumerate(ordered_items):
         crew_id = f"crew-{idx + 1}"
         is_active = item["status"] == "ACTIVE_STREAMING"
+        name = item["contractor_name"]
+
         resources.append({
             "id": crew_id,
-            "name": item["contractor_name"],
+            "name": name,
             "entity": item["kyc_legal_entity"],
             "trade": item["trade_vertical"],
             "did": item["allocated_did"],
             "status": "ACTIVE_10DLC_BOUND" if is_active else "PENDING_SUBSCRIPTION",
         })
 
-        events.append({
-            "id": f"line-shift-{item['id']}",
-            "resourceId": crew_id,
-            "name": f"AI Voice Screener Active • DID: {item['allocated_did']} [KYC BOUND]" if is_active else "AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)",
-            "startDate": "2026-10-02 08:00",
-            "endDate": "2026-10-02 18:00",
-            "eventColor": "green" if is_active else "orange",
-            "iconCls": "b-fa b-fa-check-circle" if is_active else "b-fa b-fa-clock",
-            "depositStatus": f"ACTIVE (${item['monthly_amount']:.2f}/MO)" if is_active else "AWAITING PAYPAL ($79.99/MO)",
-            "paypalTxn": item["paypal_sub_id"],
-        })
+        # Add Marcus Miller's 75-minute afternoon dispatch slot
+        # When pending subscription: orange 'Awaiting PayPal' slot. When active: green active slot.
+        if name == "Marcus Miller":
+            events.append({
+                "id": f"line-shift-{item['id']}",
+                "resourceId": crew_id,
+                "name": f"AI Voice Screener Active • DID: {item['allocated_did']} [KYC BOUND]" if is_active else "AI Screener Line Pending • Awaiting PayPal Subscription ($79.99/mo)",
+                "startDate": "2026-10-02 13:00",
+                "endDate": "2026-10-02 14:15",
+                "eventColor": "green" if is_active else "orange",
+                "iconCls": "b-fa b-fa-check-circle" if is_active else "b-fa b-fa-clock",
+                "depositStatus": f"ACTIVE (${item['monthly_amount']:.2f}/MO)" if is_active else "AWAITING PAYPAL ($79.99/MO)",
+                "paypalTxn": item["paypal_sub_id"],
+            })
 
-    # Add locked territory appointment slots
+        # Add staggered jobsite appointment events for this crew
+        if name in staggered_schedule_fixtures:
+            for appt in staggered_schedule_fixtures[name]:
+                events.append({
+                    "id": appt["id"],
+                    "resourceId": crew_id,
+                    "name": appt["name"],
+                    "startDate": appt["start"],
+                    "endDate": appt["end"],
+                    "eventColor": appt["color"],
+                    "iconCls": appt["icon"],
+                    "depositStatus": appt["deposit"],
+                    "paypalTxn": appt["txn"],
+                })
+
+    # Add locked territory appointment slots (assigned to Crew 1 - Marcus Miller)
     for slot in slots:
         events.append({
             "id": f"slot-{slot.get('slot_id')}",
             "resourceId": "crew-1",
             "name": f"Takeoff: {slot.get('caller_name') or 'Customer'} • {slot.get('project_scope') or 'Jobsite Estimate'} ({slot.get('territory_zone', 'Zone 2')})",
-            "startDate": slot.get("slot_start_iso") or "2026-10-02 14:00",
-            "endDate": slot.get("slot_end_iso") or "2026-10-02 15:15",
+            "startDate": slot.get("slot_start_iso") or "2026-10-02 13:00",
+            "endDate": slot.get("slot_end_iso") or "2026-10-02 14:15",
             "eventColor": "blue",
             "iconCls": "b-fa b-fa-calendar-check",
             "depositStatus": "DEPOSIT VERIFIED ($250.00)",

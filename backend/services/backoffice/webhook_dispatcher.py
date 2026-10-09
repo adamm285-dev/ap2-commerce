@@ -24,6 +24,10 @@ _PERMITTED_DOMAINS = [
     "zapier.com",
     "make.com",
     "ifttt.com",
+]
+
+# Public request-inspection sinks: allowed for local mock/test runs only, never in live mode
+_MOCK_ONLY_DOMAINS = [
     "webhook.site",
     "pipedream.net",
 ]
@@ -73,7 +77,8 @@ def is_url_permitted(url: str) -> bool:
         return getattr(settings, "mock_external_apis", False)
 
     # 4. Whitelist check for allowed webhook domains
-    for domain in _PERMITTED_DOMAINS:
+    domains = _PERMITTED_DOMAINS + (_MOCK_ONLY_DOMAINS if getattr(settings, "mock_external_apis", False) else [])
+    for domain in domains:
         if hostname == domain or hostname.endswith("." + domain):
             return True
 

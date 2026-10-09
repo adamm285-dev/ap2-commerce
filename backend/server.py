@@ -5,7 +5,9 @@ Supports 100% offline mock simulation when external keys are not configured.
 """
 
 import os
+import math
 import logging
+import collections
 import hmac
 import hashlib
 import json
@@ -56,6 +58,9 @@ from .services.crypto_mandate import (
     REGISTERED_BUYER_KEYS,
     SECRET_KEY,
     DEMO_TAMPER_SECRET,
+    DEMO_TAMPER_PRIVATE_KEY_HEX,
+    DEMO_TAMPER_PUBLIC_KEY_HEX,
+    DEMO_TAMPER_KID,
 )
 from .mcp_server import (
     process_mcp_request,
@@ -85,7 +90,6 @@ from .database import (
     register_buyer_key,
     get_buyer_key,
     list_buyer_key_records,
-    set_contractor_cap,
 )
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
@@ -93,6 +97,16 @@ _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
 
 def clear_processed_webhooks():
     _PROCESSED_WEBHOOK_IDS.clear()
+
+
+def _has_admin_key(request: Request) -> bool:
+    """True only when the request carries the configured ADMIN_API_KEY (X-Admin-Key or Bearer)."""
+    expected = (getattr(settings, "admin_api_key", None) or "").strip()
+    if not expected or expected == "dev-admin-secret-key":
+        return False
+    raw = request.headers.get("Authorization") or request.headers.get("X-Admin-Key") or ""
+    token = raw[7:].strip() if raw.startswith("Bearer ") else raw.strip()
+    return bool(token) and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 app = FastAPI(
     title="FieldSmith Pro Agentic Commerce & AP2 API",
@@ -298,6 +312,15 @@ async def mcp_jsonrpc_endpoint(request: Request):
             "id": None,
             "error": {"code": -32700, "message": "Parse error: invalid JSON body"},
         }
+    if isinstance(body, list):
+        if not body or len(body) > 20:
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": "Invalid Request: batch must contain 1-20 requests."},
+            }
+        responses = [r for r in [await process_mcp_request(item) for item in body] if r is not None]
+        return responses or {"status": "ok"}
     resp = await process_mcp_request(body)
     if resp is None:
         return {"status": "ok"}
@@ -448,7 +471,12 @@ async def verify_tamper_endpoint(req: VerifyTamperRequest):
     checks budget caps, and verifies timestamp drift.
     Never returns expected signatures or leaks secrets.
     """
-    valid, reason = verify_mandate_proof(req.payload, req.signature, secret_key=DEMO_TAMPER_SECRET)
+    valid, reason = verify_mandate_proof(
+        req.payload,
+        req.signature,
+        public_key_hex=DEMO_TAMPER_PUBLIC_KEY_HEX,
+        secret_key=DEMO_TAMPER_SECRET,
+    )
 
     status_code = 200 if valid else 401
     return {
@@ -476,7 +504,9 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
         monthly_cap_usd=req.monthly_cap_usd if req.monthly_cap_usd is not None else 100.00,
         agreed_price_usd=req.agreed_price_usd if req.agreed_price_usd is not None else 79.99,
         nonce=nonce,
+        buyer_private_key_hex=DEMO_TAMPER_PRIVATE_KEY_HEX,
         secret_key=DEMO_TAMPER_SECRET,
+        kid=DEMO_TAMPER_KID,
     )
     # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
@@ -493,7 +523,9 @@ async def get_sample_proof():
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce=nonce,
+        buyer_private_key_hex=DEMO_TAMPER_PRIVATE_KEY_HEX,
         secret_key=DEMO_TAMPER_SECRET,
+        kid=DEMO_TAMPER_KID,
     )
     # Zero secret leakage: secret_key_preview is strictly omitted
     return proof
@@ -677,6 +709,10 @@ async def provision_line_endpoint(request: ProvisionRequest):
     return ProvisionResponse(**res)
 
 
+_RECENT_SLOT_LOCKS: "collections.deque[float]" = collections.deque()
+_MAX_SLOT_LOCKS_PER_HOUR = 60
+
+
 @app.post(
     "/api/agent/dispatch/lock-slot",
     response_model=DispatchLockResponse,
@@ -684,6 +720,23 @@ async def provision_line_endpoint(request: ProvisionRequest):
 )
 async def lock_dispatch_slot(request: DispatchLockRequest):
     """Atomically reserves a 75-minute estimate window across 4 territory zones upon verified PayPal deposit capture."""
+    try:
+        slot_start = datetime.datetime.fromisoformat(request.slot_start_iso.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="slotStartIso must be an ISO 8601 datetime.")
+    if slot_start.tzinfo is None:
+        slot_start = slot_start.replace(tzinfo=datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if not (now - datetime.timedelta(days=365) <= slot_start <= now + datetime.timedelta(days=365)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="slotStartIso must fall within one year of today.")
+
+    # Public demo endpoint: cap how many slots can be locked per hour
+    cutoff = now.timestamp() - 3600
+    while _RECENT_SLOT_LOCKS and _RECENT_SLOT_LOCKS[0] < cutoff:
+        _RECENT_SLOT_LOCKS.popleft()
+    if len(_RECENT_SLOT_LOCKS) >= _MAX_SLOT_LOCKS_PER_HOUR:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Dispatch slot lock rate exceeded; try again later.")
+    _RECENT_SLOT_LOCKS.append(now.timestamp())
     crew_map = {
         "Zone 1 - North Lakeland": "Crew A - Heavy Restoration & Tearout",
         "Zone 2 - South Lakeland": "Crew B - Custom Tile & Precision Master",
@@ -717,22 +770,10 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
 async def get_fleet_ledger_endpoint(request: Request, unmasked: bool = False):
     """
     Returns the persistent enterprise fleet ledger for AG Grid and AG Studio.
-    Public requests return masked PII for privacy; authenticated requests return unmasked records.
+    Public requests return masked PII for privacy; only requests carrying ADMIN_API_KEY are unmasked
+    (the `unmasked` query flag is accepted for compatibility but grants nothing on its own).
     """
-    auth_header = request.headers.get("Authorization", "")
-    admin_key = getattr(settings, "admin_api_key", "")
-    is_admin = bool(
-        unmasked
-        or os.getenv("TESTING") == "1"
-        or (
-            auth_header
-            and (
-                (admin_key and admin_key in auth_header)
-                or "Bearer " in auth_header
-                or "ApiKey " in auth_header
-            )
-        )
-    )
+    is_admin = os.getenv("TESTING") == "1" or _has_admin_key(request)
     txns = get_fleet_ledger(mask_pii=not is_admin)
     return {
         "status": "active",
@@ -754,18 +795,31 @@ async def get_fleet_schedule_endpoint():
     return get_fleet_schedule()
 
 
+def _guard_backoffice_request(sync_request: ZapierSyncRequest, http_request: Request) -> None:
+    """Without the admin key: no live Zapier actions, and no caller-chosen webhook outside mock mode."""
+    is_admin = _has_admin_key(http_request)
+    if not zapier_mcp_dispatcher.mock_mode and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authorization required for live back-office dispatch.",
+        )
+    if sync_request.webhook_url and not (is_admin or settings.mock_external_apis):
+        sync_request.webhook_url = None
+
+
 @app.post(
     "/api/mcp/zapier-sync",
     response_model=ZapierSyncResponse,
     tags=["Zapier MCP Integration"],
 )
-async def trigger_zapier_mcp_sync(request: ZapierSyncRequest):
+async def trigger_zapier_mcp_sync(request: ZapierSyncRequest, http_request: Request):
     """Dispatches qualified contractor lead into Jobber, QuickBooks Online, and Google Calendar via Zapier MCP."""
+    _guard_backoffice_request(request, http_request)
     try:
         return await zapier_mcp_dispatcher.execute_downline_sync(request)
     except Exception as e:
         logger.error(f"Error in Zapier MCP dispatch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Back-office dispatch failed.")
 
 
 @app.post(
@@ -773,20 +827,22 @@ async def trigger_zapier_mcp_sync(request: ZapierSyncRequest):
     response_model=ZapierSyncResponse,
     tags=["Back-Office Exports"],
 )
-async def export_backoffice_endpoint(request: ZapierSyncRequest):
+async def export_backoffice_endpoint(request: ZapierSyncRequest, http_request: Request):
     """
     Dedicated Back-Office Export Endpoint.
     Generates authentic Jobber GraphQL/REST mutations and QuickBooks Online API v3 Expense
     payloads for autonomous A2A subscriptions, with optional HMAC-signed webhook forwarding.
     """
+    _guard_backoffice_request(request, http_request)
     try:
         return await zapier_mcp_dispatcher.execute_downline_sync(request)
     except Exception as e:
         logger.error(f"Error in back-office export: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Back-office export failed.")
 
 
 _ACTIVE_KEY_CHALLENGES: Dict[str, float] = {}
+_MAX_ACTIVE_KEY_CHALLENGES = 10_000
 
 
 @app.get(
@@ -805,6 +861,9 @@ async def get_buyer_key_challenge_endpoint():
     for k in list(_ACTIVE_KEY_CHALLENGES.keys()):
         if now - _ACTIVE_KEY_CHALLENGES[k] > 600:
             _ACTIVE_KEY_CHALLENGES.pop(k, None)
+    # Bound memory: drop the oldest outstanding challenges first
+    while len(_ACTIVE_KEY_CHALLENGES) > _MAX_ACTIVE_KEY_CHALLENGES:
+        _ACTIVE_KEY_CHALLENGES.pop(next(iter(_ACTIVE_KEY_CHALLENGES)))
 
     return BuyerKeyChallengeResponse(
         challenge=nonce,
@@ -907,12 +966,13 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     )
     REGISTERED_BUYER_KEYS[request.kid] = request.public_key_hex.strip().lower()
 
-    # 5. Set contractor budget cap ONLY if not already established
-    if request.monthly_budget_cap and request.monthly_budget_cap > 0:
+    # 5. Save the contractor budget cap ONLY if the registrant sent one and none is established
+    cap_sent = "monthly_budget_cap" in request.model_fields_set and request.monthly_budget_cap is not None
+    if cap_sent and math.isfinite(request.monthly_budget_cap) and request.monthly_budget_cap > 0:
         from .services.mandate_evaluator import ledger
-        existing_cap = getattr(ledger, "_contractor_caps", {}).get(norm_email)
+        existing_cap = ledger.get_saved_cap(norm_email)
         if existing_cap is None:
-            set_contractor_cap(norm_email, float(request.monthly_budget_cap))
+            ledger.set_contractor_cap(norm_email, float(request.monthly_budget_cap), source="key_registration")
         else:
             logger.info(f"[A2A_KEY] Contractor {norm_email} already has established budget cap ${existing_cap:.2f}; retaining existing cap.")
 
@@ -935,9 +995,11 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     status_code=status.HTTP_200_OK,
     tags=["Autonomous Buyer Onboarding"],
 )
-async def list_registered_buyer_keys_endpoint():
-    """Lists registered autonomous buyer agent keys from SQLite WAL."""
+async def list_registered_buyer_keys_endpoint(request: Request):
+    """Lists registered buyer agent keys. Contractor emails and entities are returned to admins only."""
     records = list_buyer_key_records()
+    if not _has_admin_key(request):
+        records = [{**r, "contractor_email": None, "business_name": None} for r in records]
     return BuyerKeyRegistryResponse(
         status="active",
         count=len(records),
@@ -961,7 +1023,7 @@ async def create_paypal_order(request: PayPalOrderCreateRequest):
         )
     except Exception as e:
         logger.error(f"Error creating PayPal order: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="PayPal order creation failed.")
 
 
 @app.post(
@@ -1119,7 +1181,7 @@ async def paypal_webhook_receiver(request: Request):
         headers=dict(request.headers),
         raw_body=body_str,
     )
-    if verification.get("verification_status") == "FAILURE":
+    if verification.get("verification_status") != "SUCCESS":
         logger.warning(f"[SECURITY] PayPal webhook signature verification failed for event {event_type}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

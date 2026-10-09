@@ -8,6 +8,7 @@ Conforms to FIDO / AP2 Intent Mandate specifications.
 import os
 import re
 import json
+import math
 import uuid
 import hashlib
 import datetime
@@ -55,6 +56,7 @@ from ..services.crypto_mandate import (
     verify_ap2_intent_mandate,
     is_trusted_buyer_key,
 )
+from ..database import get_buyer_key_email
 from ..config import settings
 
 logger = logging.getLogger("seller_agent")
@@ -269,6 +271,14 @@ def reconcile_contractor_ledger(contractor_email: str) -> float:
     return active_rate
 
 
+def _mask_email(email: Optional[str]) -> Optional[str]:
+    """Masks a contractor email for responses that any caller can request."""
+    if not email or "@" not in email:
+        return email
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}"
+
+
 def resolve_tier_from_paypal_plan(plan_id: Optional[str]) -> tuple[str, float]:
     """Maps a PayPal billing plan_id to its canonical tier_id and agreed monthly rate."""
     if not plan_id:
@@ -447,6 +457,7 @@ class SellerAgent:
             if isinstance(payer, dict):
                 contractor_email = payer.get("email")
 
+        signed_cap = None
         if buyer_intent_mandate:
             valid, err_code, signed_cap = validate_buyer_intent_mandate(
                 mandate=buyer_intent_mandate,
@@ -481,8 +492,13 @@ class SellerAgent:
             }
 
         email = contractor_email.strip().lower()
-        if email and monthly_budget_cap:
-            ledger.set_contractor_cap(email, monthly_budget_cap)
+        # Saved caps come only from key registration or a mandate signed by the contractor's own
+        # registered key; any other cap applies to this negotiation only and cannot exceed the saved cap.
+        signing_kid = buyer_intent_mandate.get("kid") if isinstance(buyer_intent_mandate, dict) else None
+        if signed_cap is not None and signing_kid and get_buyer_key_email(signing_kid) == email:
+            ledger.set_contractor_cap(email, monthly_budget_cap, source="signed_mandate")
+        else:
+            monthly_budget_cap = ledger.effective_cap(email, monthly_budget_cap)
 
         active_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(email) if email else None
         active_sub = _COMPLETED_SUBSCRIPTIONS.get(active_sub_id) if active_sub_id else None
@@ -744,6 +760,22 @@ class SellerAgent:
                 "message": f"Purchase rejected: {reason}",
             }
 
+        # 1b. Price integrity: a subscription settles only at its tier's catalog price
+        plan = resolve_plan(tier_id) if tier_id else None
+        if (
+            plan is None
+            or agreed_monthly_rate is None
+            or not math.isfinite(agreed_monthly_rate)
+            or round(agreed_monthly_rate, 2) != round(plan["monthly_price"], 2)
+        ):
+            logger.warning(f"[SECURITY] Purchase rate does not match catalog price for tier '{tier_id}'")
+            return {
+                "status": "REJECTED",
+                "error": "RATE_TAMPERING_DETECTED",
+                "reason": "RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
+                "message": "Purchase rejected: agreed_monthly_rate must equal the catalog price of the requested tier.",
+            }
+
         # 2. Idempotency Check: a verified replay returns the existing subscription
         cache_key = offer_id or mandate_proof_hash
         if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
@@ -770,8 +802,9 @@ class SellerAgent:
 
         # Resolve effective monthly budget cap
         cap = auth.get("monthly_budget_cap")
-        if norm_email and norm_email in getattr(ledger, "_contractor_caps", {}):
-            cap = ledger._contractor_caps[norm_email]
+        saved_cap = ledger.get_saved_cap(norm_email)
+        if saved_cap is not None:
+            cap = saved_cap
         if cap is None:
             cap = 100.0
 
@@ -1011,7 +1044,7 @@ class SellerAgent:
                 "plan_id": sub.get("plan_id"),
                 "tier_id": sub.get("tier_id"),
                 "agreed_monthly_rate": sub.get("agreed_monthly_rate"),
-                "contractor_email": sub.get("contractor_email"),
+                "contractor_email": _mask_email(sub.get("contractor_email")),
                 "create_time": sub.get("create_time"),
                 "next_billing_time": sub.get("next_billing_time"),
                 "paypal_vault_status": sub.get("paypal_vault_status"),

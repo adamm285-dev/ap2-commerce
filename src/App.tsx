@@ -47,8 +47,21 @@ if (studioLicenseKey) {
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'copilot' | 'ag-studio' | 'bryntum' | 'zapier'>('copilot');
+  const [activeTab, setActiveTab] = useState<'copilot' | 'fleet-ledger' | 'bryntum' | 'ag-studio' | 'zapier'>('fleet-ledger');
+  const [ledgerViewMode, setLedgerViewMode] = useState<'grid' | 'studio'>('grid');
   const [mode, setMode] = useState<AgStudioMode>('view');
+
+  const handleNavigateTab = (tab: 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier') => {
+    if (tab === 'ag-studio') {
+      setActiveTab('fleet-ledger');
+      setLedgerViewMode('studio');
+    } else if (tab === 'fleet-ledger') {
+      setActiveTab('fleet-ledger');
+      setLedgerViewMode('grid');
+    } else {
+      setActiveTab(tab);
+    }
+  };
   const [transactions, setTransactions] = useState<A2aTransaction[]>(initialA2aTransactions);
   const [isMarcusDepositLocked, setIsMarcusDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -319,7 +332,10 @@ export function App() {
             <Bot size={14} /> Contractor Copilot
           </button>
           <button
-            onClick={() => setActiveTab('ag-studio')}
+            onClick={() => {
+              setActiveTab('fleet-ledger');
+              setLedgerViewMode('grid');
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -327,14 +343,14 @@ export function App() {
               padding: '6px 12px',
               borderRadius: '6px',
               border: 'none',
-              backgroundColor: activeTab === 'ag-studio' ? '#0284c7' : 'transparent',
-              color: activeTab === 'ag-studio' ? '#fff' : '#94a3b8',
+              backgroundColor: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#0284c7' : 'transparent',
+              color: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#fff' : '#94a3b8',
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
             }}
           >
-            <LayoutGrid size={14} /> Fleet Ledger Command Center
+            <LayoutGrid size={14} /> Fleet Mission Control
           </button>
           <button
             onClick={() => setActiveTab('bryntum')}
@@ -352,7 +368,7 @@ export function App() {
               cursor: 'pointer',
             }}
           >
-            <Calendar size={14} /> Bryntum Telephony Fleet Timeline
+            <Calendar size={14} /> Bryntum Dispatch Cockpit
           </button>
           <button
             onClick={() => setActiveTab('zapier')}
@@ -390,7 +406,7 @@ export function App() {
             tradeVertical={tradeVertical}
             areaCode={preferredAreaCode}
             budgetCap={maxMonthlyBudget}
-            onNavigateTab={(tab) => setActiveTab(tab)}
+            onNavigateTab={handleNavigateTab}
             onA2aCompleted={({ subscriptionId, allocatedDid }) => {
               setTransactions((prev) => {
                 const idx = prev.findIndex((t) => t.contractor_name === contractorName);
@@ -418,7 +434,7 @@ export function App() {
           />
         )}
 
-        {activeTab === 'ag-studio' && (
+        {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
           <EnterpriseFleetLedger
             transactions={transactions}
             tradeImpactData={tradeImpactData}
@@ -430,8 +446,10 @@ export function App() {
             onInspectTrace={() => {
               setActiveTab('copilot');
             }}
-            onNavigateTab={(tab) => setActiveTab(tab)}
+            onNavigateTab={handleNavigateTab}
             onRefreshData={handleRefreshFleet}
+            viewMode={activeTab === 'ag-studio' ? 'studio' : ledgerViewMode}
+            onViewModeChange={setLedgerViewMode}
           />
         )}
 

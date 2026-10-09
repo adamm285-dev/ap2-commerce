@@ -47,7 +47,7 @@ def test_get_fleet_stats_endpoint():
     assert stats["active_lines"] == 13
     assert stats["total_mrr"] == 1039.87
     assert stats["annualized_gmv"] == round(1039.87 * 12, 2)
-    assert stats["mandates_cleared"] == 168
+    assert stats["mandates_cleared"] == stats["active_lines"]
     assert "CITNRYD" in stats["carrier_resporg"]
     assert len(stats["trade_breakdown"]) > 0
 

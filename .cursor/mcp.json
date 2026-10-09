@@ -6,7 +6,7 @@
         "-m",
         "backend.mcp_server"
       ],
-      "cwd": "H:\\Downloads\\FloorsmtihCalling\\a2a_commerce_portal"
+      "cwd": "${workspaceFolder}"
     }
   }
 }

@@ -7,6 +7,7 @@ SQLite WAL persistence, and immediate spending mandate evaluation by newly regis
 import pytest
 from fastapi.testclient import TestClient
 from ..server import app, _ACTIVE_KEY_CHALLENGES
+from ..config import settings
 from ..services.crypto_mandate import (
     generate_ed25519_keypair,
     sign_ed25519_message,
@@ -72,7 +73,13 @@ def test_successful_buyer_key_registration():
     assert db_pub == pub_hex.lower()
 
     # 5. Verify presence in registry endpoint
-    registry_res = client.get("/api/agent/keys/registry")
+    public_res = client.get("/api/agent/keys/registry")
+    assert public_res.status_code == 200
+    public_entry = next((k for k in public_res.json()["keys"] if k["kid"] == kid), None)
+    assert public_entry is not None
+    assert public_entry["contractorEmail"] is None
+
+    registry_res = client.get("/api/agent/keys/registry", headers={"X-Admin-Key": settings.admin_api_key})
     assert registry_res.status_code == 200
     keys = registry_res.json()["keys"]
     enrolled = next((k for k in keys if k["kid"] == kid), None)

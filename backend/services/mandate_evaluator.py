@@ -6,6 +6,7 @@ permitted merchant categories, and cryptographically signs authorization tokens.
 
 import hmac
 import hashlib
+import math
 import time
 import uuid
 import datetime
@@ -22,6 +23,7 @@ from .crypto_mandate import (
     sign_ap2_cart_mandate,
     verify_ap2_cart_mandate,
     DEFAULT_SELLER_KID,
+    DEFAULT_SELLER_PRIVATE_KEY_HEX,
     DEFAULT_BUYER_KID,
     is_trusted_buyer_key,
 )
@@ -48,6 +50,8 @@ from ..database import (
     AuthorizedMandatesProxy,
     set_contractor_cap as db_set_contractor_cap,
     get_contractor_cap as db_get_contractor_cap,
+    set_authorized_cap as db_set_authorized_cap,
+    get_authorized_cap as db_get_authorized_cap,
     get_contractor_committed_spend as db_get_contractor_committed_spend,
     sync_contractor_commitment as db_sync_contractor_commitment,
     record_spend_entry as db_record_spend_entry,
@@ -97,27 +101,26 @@ def bind_mandate_email(proof_hash: str, contractor_email: str):
             _AUTHORIZED_MANDATES[offer_id]["contractor_email"] = email
 
 
-def build_ap2_intent_mandate(
+def _intent_mandate_body(
     buyer_agent_id: str,
     amount: float,
     recurrence: str,
     category: str,
-    tier_id: str = "*",
-    contractor_email: Optional[str] = None,
-    negotiation_id: Optional[str] = None,
+    tier_id: str,
+    contractor_email: Optional[str],
+    negotiation_id: Optional[str],
+    attestation: str,
+    kid: str,
 ) -> Dict[str, Any]:
-    """
-    Builds and Ed25519-signs the canonical AP2 Intent Mandate for standing authorization.
-    Valid for 1 year (365 days) to authorize recurring monthly subscription charges.
-    """
     now = int(time.time())
     issued_at_iso = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).isoformat()
     expires_at = now + AP2_INTENT_MANDATE_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
-    mandate = {
+    return {
         "mandate_id": f"mandate_{uuid.uuid4().hex[:16]}",
         "vct": "ap2.mandate.intent.1",
-        "attestation": "seller_attested",
+        "attestation": attestation,
+        "kid": kid,
         "issuer": buyer_agent_id,
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
         "payee": AP2_PAYEE_ID,
@@ -134,7 +137,46 @@ def build_ap2_intent_mandate(
         "nonce": uuid.uuid4().hex[:16],
         "user_present": False,
     }
-    return sign_ap2_intent_mandate(mandate)
+
+
+def build_ap2_intent_mandate(
+    buyer_agent_id: str,
+    amount: float,
+    recurrence: str,
+    category: str,
+    tier_id: str = "*",
+    contractor_email: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Builds and Ed25519-signs the canonical AP2 Intent Mandate for standing authorization.
+    Valid for 1 year (365 days) to authorize recurring monthly subscription charges.
+    Seller-attested: signed with the seller key, so it can never pass as a buyer-signed mandate.
+    """
+    mandate = _intent_mandate_body(
+        buyer_agent_id, amount, recurrence, category, tier_id, contractor_email,
+        negotiation_id, attestation="seller_attested", kid=DEFAULT_SELLER_KID,
+    )
+    return sign_ap2_intent_mandate(mandate, private_key_hex=DEFAULT_SELLER_PRIVATE_KEY_HEX)
+
+
+def build_buyer_intent_mandate(
+    buyer_agent_id: str,
+    amount: float,
+    recurrence: str,
+    category: str,
+    tier_id: str = "*",
+    contractor_email: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+    private_key_hex: Optional[str] = None,
+    kid: str = DEFAULT_BUYER_KID,
+) -> Dict[str, Any]:
+    """Buyer-side helper (harness / SDK examples): an Intent Mandate signed with the buyer's own key."""
+    mandate = _intent_mandate_body(
+        buyer_agent_id, amount, recurrence, category, tier_id, contractor_email,
+        negotiation_id, attestation="buyer_signed", kid=kid,
+    )
+    return sign_ap2_intent_mandate(mandate, private_key_hex=private_key_hex)
 
 
 def validate_buyer_intent_mandate(
@@ -154,6 +196,9 @@ def validate_buyer_intent_mandate(
     """
     if not isinstance(mandate, dict):
         return False, "INVALID_MANDATE_FORMAT", None
+
+    if mandate.get("attestation") == "seller_attested":
+        return False, "SELLER_ATTESTED_NOT_BUYER_SIGNED", None
 
     kid = mandate.get("kid")
     pub_hex = mandate.get("public_key")
@@ -307,12 +352,12 @@ def verify_authorized_mandate(
     allowed_tier = auth.get("tier_id")
     allowed_rate = auth.get("amount", 0.0)
 
-    # Verify rate doesn't exceed authorized amount
+    # Verify the rate equals the authorized amount exactly (no markup, no discount)
     effective_rate = agreed_rate if agreed_rate is not None else allowed_rate
-    if round(effective_rate, 2) > round(allowed_rate, 2):
+    if not math.isfinite(effective_rate) or round(effective_rate, 2) != round(allowed_rate, 2):
         return (
             False,
-            f"RATE_TAMPERING_DETECTED: Agreed rate ${effective_rate:.2f} exceeds authorized mandate amount ${allowed_rate:.2f}.",
+            f"RATE_TAMPERING_DETECTED: Agreed rate ${effective_rate:.2f} does not match authorized mandate amount ${allowed_rate:.2f}.",
         )
 
     # If tier was restricted, verify tier
@@ -340,11 +385,27 @@ class MandateLedger:
         self._contractor_caps: Dict[str, float] = {}
         self._history: list = []
 
-    def set_contractor_cap(self, email: str, cap: float):
+    def set_contractor_cap(self, email: str, cap: float, source: str = "ledger"):
+        """Saves the contractor's binding cap. Only key registration and signed mandates should call this."""
         if email and cap is not None:
             norm = email.strip().lower()
             self._contractor_caps[norm] = float(cap)
             db_set_contractor_cap(norm, float(cap))
+            db_set_authorized_cap(norm, float(cap), source)
+
+    def get_saved_cap(self, email: Optional[str]) -> Optional[float]:
+        """The contractor's binding cap, or None if none was ever saved."""
+        if not email:
+            return None
+        norm = email.strip().lower()
+        if norm in self._contractor_caps:
+            return self._contractor_caps[norm]
+        return db_get_authorized_cap(norm)
+
+    def effective_cap(self, email: Optional[str], requested_cap: float) -> float:
+        """An unsaved, per-negotiation cap can never exceed the contractor's saved cap."""
+        saved = self.get_saved_cap(email)
+        return min(requested_cap, saved) if saved is not None else requested_cap
 
     def get_remaining_budget(
         self, agent_id: str = None, cap: float = None, contractor_email: str = None
@@ -519,8 +580,8 @@ def evaluate_spending_mandate(
 
     # 2. Budget ceiling verification
     email = request.contractor_email
-    if email and cap:
-        ledger.set_contractor_cap(email, cap)
+    if email:
+        cap = ledger.effective_cap(email, cap)
     existing_sub = 0.0
     if email:
         existing_sub = ledger._contractor_subscriptions.get(email.strip().lower(), 0.0)

@@ -58,10 +58,14 @@ class Settings(BaseSettings):
     # Dedicated back-office webhook signing secret (derived from mandate secret if omitted)
     a2a_webhook_secret: str = Field(default="", alias="A2A_WEBHOOK_SECRET")
 
-    # Asymmetric Ed25519 Signing Keys (AP2 Protocol)
+    # Asymmetric Ed25519 Signing Keys (Legacy AP2 v0.1 compat)
     a2a_seller_private_key: str = Field(default="", alias="A2A_SELLER_PRIVATE_KEY")
     a2a_private_key: str = Field(default="", alias="A2A_PRIVATE_KEY")
     a2a_buyer_public_key: str = Field(default="", alias="A2A_BUYER_PUBLIC_KEY")
+
+    # AP2 v0.2 ES256 ECDSA P-256 Signing Keys (Google Reference Architecture)
+    ap2_merchant_private_key_jwk: str = Field(default="", alias="AP2_MERCHANT_PRIVATE_KEY_JWK")
+    ap2_merchant_key_id: str = Field(default="ap2-merchant-key-1", alias="AP2_MERCHANT_KEY_ID")
 
     # Admin API Key for administrative endpoints (mandate reset, ledger management)
     admin_api_key: str = Field(default="", alias="ADMIN_API_KEY")

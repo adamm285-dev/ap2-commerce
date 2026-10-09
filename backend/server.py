@@ -561,7 +561,7 @@ async def get_trade_catalog():
 async def calculate_trade_quote(request: QuoteRequest):
     """Calculates trade scoping estimates, waste allowances, and required mobilization deposits."""
     # Waste allowance calculation (standard 10% overage for standard materials, 15% for complex)
-    waste_multiplier = 1.15 if "roofing" in request.trade_id else 1.10
+    waste_multiplier = 1.15 if "complex" in request.trade_id else 1.10
     waste_sq_ft = round(request.square_footage * waste_multiplier, 1)
 
     # Labor range calculation ($4.00 - $5.50 / sq ft baseline for tile)
@@ -676,7 +676,7 @@ async def provision_line_endpoint(request: ProvisionRequest):
             detail={"status": "REJECTED", "error": err, "reason": reason, "approval_url": res.get("approval_url")},
         )
 
-    # Automatic post-provisioning downline dispatch via Zapier MCP (Jobber GraphQL v2 + QBO v3)
+    # Automatic post-provisioning downline dispatch via Zapier MCP (ERP Dispatch + QBO v3)
     next_action = res.get("next_action")
     if next_action and next_action.get("tool") == "dispatch_zapier_mcp":
         params = next_action.get("parameters", {})
@@ -825,7 +825,7 @@ def _guard_backoffice_request(sync_request: ZapierSyncRequest, http_request: Req
     tags=["Zapier MCP Integration"],
 )
 async def trigger_zapier_mcp_sync(request: ZapierSyncRequest, http_request: Request):
-    """Dispatches qualified contractor lead into Jobber, QuickBooks Online, and Google Calendar via Zapier MCP."""
+    """Dispatches qualified lead into ERP, QuickBooks Online, and Google Calendar via Zapier MCP."""
     _guard_backoffice_request(request, http_request)
     try:
         return await zapier_mcp_dispatcher.execute_downline_sync(request)
@@ -842,7 +842,7 @@ async def trigger_zapier_mcp_sync(request: ZapierSyncRequest, http_request: Requ
 async def export_backoffice_endpoint(request: ZapierSyncRequest, http_request: Request):
     """
     Dedicated Back-Office Export Endpoint.
-    Generates authentic Jobber GraphQL/REST mutations and QuickBooks Online API v3 Expense
+    Generates authentic ERP routing mutations and QuickBooks Online API v3 Expense
     payloads for autonomous A2A subscriptions, with optional HMAC-signed webhook forwarding.
     """
     _guard_backoffice_request(request, http_request)

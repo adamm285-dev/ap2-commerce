@@ -244,7 +244,7 @@ class ContractorCopilot:
             }
 
         # Priority 7: Back-Office Payloads Inquiry
-        if any(w in msg for w in ["payload", "back-office", "jobber", "qbo", "quickbooks"]):
+        if any(w in msg for w in ["payload", "back-office", "erp", "qbo", "quickbooks"]):
             reply = (
                 f"📄 **Back-Office Artifact Inspector:**\n\n"
                 f"Every autonomous transaction generates authentic downline settlement payloads:\n"

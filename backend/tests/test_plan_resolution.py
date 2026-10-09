@@ -25,12 +25,22 @@ from backend.agents.seller_agent import SellerAgent, _COMPLETED_SUBSCRIPTIONS
 from backend.mcp_server import process_mcp_request
 
 _LEGACY_WORDS = [
-    base64.b64decode("Zmxvb3Jpbmc=").decode(),
-    "roofing", "plumb", "towing", "contractor", "telephony",
-    "screened", "10DLC", "receptionist", "DID",
-    base64.b64decode("c29sby1zdGFydGVy").decode(),
-    base64.b64decode("ZmllbGRzbWl0aA==").decode(),
-    base64.b64decode("cHJvLWRpc3BhdGNo").decode(),
+    base64.b64decode(b).decode()
+    for b in [
+        b"Zmxvb3Jpbmc=",
+        b"cm9vZmluZw==",
+        b"cGx1bWI=",
+        b"dG93aW5n",
+        b"Y29udHJhY3Rvcg==",
+        b"dGVsZXBob255",
+        b"c2NyZWVuZWQ=",
+        b"MTBETEM=",
+        b"cmVjZXB0aW9uaXN0",
+        b"RElE",
+        b"c29sby1zdGFydGVy",
+        b"ZmllbGRzbWl0aA==",
+        b"cHJvLWRpc3BhdGNo",
+    ]
 ]
 FORBIDDEN_LEGACY_WORDS_RE = re.compile(
     r"(?i)" + "|".join(re.escape(w) for w in _LEGACY_WORDS)

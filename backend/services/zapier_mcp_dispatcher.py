@@ -45,7 +45,7 @@ class ZapierMcpDispatcher:
             email = request.contractor_email or "agent-alpha@nexus-systems.io"
             proof_hash = request.mandate_proof_hash or "HMAC-MANDATE-VERIFIED-01"
 
-            jobber_pkg = {"status": "SKIPPED", "service": "QBO_ONLY"}
+            erp_pkg = {"status": "SKIPPED", "service": "QBO_ONLY"}
 
             # 1. Format authentic QuickBooks Online export package
             qbo_pkg = qbo_exporter.export_full_qbo_package(
@@ -60,8 +60,8 @@ class ZapierMcpDispatcher:
             )
 
             qbo_id = f"QBO-EXP-{uuid.uuid4().hex[:6].upper()}"
-            jobber_id = f"AP2-EXP-{uuid.uuid4().hex[:6].upper()}"
-            jobber_pkg["jobber_routing_id"] = jobber_id
+            erp_id = f"AP2-EXP-{uuid.uuid4().hex[:6].upper()}"
+            erp_pkg["erp_routing_id"] = erp_id
             qbo_pkg["purchase_id"] = qbo_id
             gcal_id = f"gcal_briefing_{uuid.uuid4().hex[:10]}"
 
@@ -81,7 +81,7 @@ class ZapierMcpDispatcher:
                     "trade_vertical": vertical,
                     "mandate_proof_hash": proof_hash,
                 },
-                "jobber_export": jobber_pkg,
+                "erp_export": erp_pkg,
                 "qbo_export": qbo_pkg,
             }
 
@@ -97,8 +97,8 @@ class ZapierMcpDispatcher:
                 record_m2m_artifacts(
                     mandate_hash=proof_hash,
                     paypal_sub_id=sub_id,
-                    telecom_did=did,
-                    jobber_payload=jobber_pkg,
+                    node_endpoint=did,
+                    erp_payload=erp_pkg,
                     qbo_payload=qbo_pkg,
                     webhook_meta=dispatch_res,
                 )
@@ -120,12 +120,12 @@ class ZapierMcpDispatcher:
                 )
 
             return ZapierSyncResponse(
-                jobber_quote_id=jobber_id,
+                erp_routing_id=erp_id,
                 qbo_draft_invoice_id=qbo_id,
                 google_calendar_event_id=gcal_id,
                 status="COMPLETED",
                 workflow_type="a2a_onboarding",
-                jobber_payload=jobber_pkg,
+                erp_payload=erp_pkg,
                 qbo_payload=qbo_pkg,
                 webhook_delivery_id=dispatch_res.get("delivery_id"),
                 webhook_dispatched=dispatch_res.get("dispatched", False),
@@ -133,12 +133,12 @@ class ZapierMcpDispatcher:
             )
 
         # General lead workflow fallback
-        jobber_id = f"AP2-{uuid.uuid4().hex[:6].upper()}"
+        erp_id = f"AP2-{uuid.uuid4().hex[:6].upper()}"
         qbo_id = f"QBO-INV-{uuid.uuid4().hex[:6].upper()}"
         gcal_id = f"gcal_evt_{uuid.uuid4().hex[:10]}"
 
         logger.info(
-            f"[Zapier MCP MOCK] 1. Created AP2 Record: {jobber_id} for {request.customer_name}"
+            f"[Zapier MCP MOCK] 1. Created AP2 Record: {erp_id} for {request.customer_name}"
         )
         logger.info(
             f"[Zapier MCP MOCK] 2. Created QuickBooks Draft Invoice: {qbo_id} (Credit ${request.deposit_amount:.2f})"
@@ -148,7 +148,7 @@ class ZapierMcpDispatcher:
         )
 
         return ZapierSyncResponse(
-            jobber_quote_id=jobber_id,
+            erp_routing_id=erp_id,
             qbo_draft_invoice_id=qbo_id,
             google_calendar_event_id=gcal_id,
             status="COMPLETED",

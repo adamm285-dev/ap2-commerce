@@ -141,7 +141,7 @@ async def test_zapier_mcp_dispatcher_exports_authentic_payloads():
     resp = await zapier_mcp_dispatcher.execute_downline_sync(req)
     assert resp.status == "COMPLETED"
     assert resp.workflow_type == "a2a_onboarding"
-    assert resp.jobber_quote_id.startswith("AP2-EXP-")
+    assert resp.erp_routing_id.startswith("AP2-EXP-")
     assert resp.qbo_draft_invoice_id.startswith("QBO-EXP-")
 
     # Verify authentic QBO package is present

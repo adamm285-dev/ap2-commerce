@@ -123,14 +123,13 @@ class BuyerAgent:
             tier_id=matching_tier.get("tier_id", "ap2-gateway"),
         )
 
-        assigned_endpoint = provision_result.get("mcp_endpoint") or provision_result.get("assigned_did")
-        carrier = provision_result.get("carrier")
-        routing_state = provision_result.get("routing_state")
+        assigned_endpoint = provision_result.get("endpoint")
+        if not assigned_endpoint or provision_result.get("status") != "PROVISIONED":
+            error_msg = provision_result.get("reason") or provision_result.get("error") or "Unknown provisioning failure"
+            raise RuntimeError(f"Provisioning failed: no endpoint returned ({error_msg})")
 
         print(f"   Subscriber:       {self.contractor_email}")
-        print(f"   Compute Endpoint: {assigned_endpoint}")
-        print(f"   Carrier Binding:  {carrier}")
-        print(f"   Security State:   {routing_state} (RFC 8032 Ed25519 Verified)\n")
+        print(f"   Compute Endpoint: {assigned_endpoint}\n")
 
         # Phase 6: Downline Back-Office Synchronization via Zapier MCP
         print("⚡ [Phase 6: Autonomous Zapier MCP Back-Office Sync]")

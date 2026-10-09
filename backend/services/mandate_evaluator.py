@@ -46,12 +46,9 @@ ALLOWED_CATEGORIES = {
     "compute-node-service",
     "autonomous-compute",
     "contractor-dispatch-ai",
-    "telephony-screener",
-    "telephony-ai-screener",
-    "ai-voice-screener",
-    "trade-software",
+    "cloud-infrastructure",
+    "api-service",
     "job-deposit",
-    "emergency-towing",
 }
 
 DEFAULT_MONTHLY_CAP = 100.00

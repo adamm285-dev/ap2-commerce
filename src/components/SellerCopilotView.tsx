@@ -606,7 +606,8 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
           status: 'COMPLETED',
           mandate_hash: step1?.proof_hash || 'HMAC-MANDATE-VERIFIED-01',
           paypal_subscription_id: step2?.subscription_id || 'I-AUTONOMOUS-8902',
-          telecom_did: step3?.assigned_did || `node-cluster-01.ap2.net:8443`,
+          node_endpoint: step3?.assigned_did || `node-cluster-01.ap2.net:8443`,
+          endpoint: step3?.assigned_did || `node-cluster-01.ap2.net:8443`,
           timestamp: step4.timestamp || new Date().toISOString(),
           hmac_signature: 'sha256=' + (step1?.proof_hash || 'b6d390a1e352d9a9c5b6118d0937a0ec'),
           quickbooks: step4.qbo_export || {
@@ -4062,7 +4063,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                     <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '12px 16px' }}>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>Worker Node Endpoint</div>
                       <div style={{ fontSize: '16px', fontWeight: 700, color: '#34d399', letterSpacing: '0.3px' }}>
-                        {inspectorData.telecom_did || 'node-cluster-01.ap2.net:8443'}
+                        {inspectorData.node_endpoint || inspectorData.endpoint || 'node-cluster-01.ap2.net:8443'}
                       </div>
                       <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>AP2 Autonomous Worker Enclave &bull; Hardware Secured</div>
                     </div>
@@ -4253,14 +4254,14 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 principal_entity: localBusinessEntity,
                                 service_tier: localTradeVertical,
                                 monthly_rate: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                                allocated_node_endpoint: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                allocated_node_endpoint: inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443',
                                 paypal_subscription_id: inspectorData?.paypal_subscription_id || 'I-AUTONOMOUS-8902',
                                 ed25519_proof_hash: inspectorData?.mandate_hash || 'PROOF-MANDATE-VERIFIED',
                                 enclave_route: 'US-East Node Cluster (Ashburn, VA)',
                               },
                             };
                             const enclaveData = {
-                              enclave_node: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                              enclave_node: inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443',
                               enclave_type: 'AP2 Hardware Isolated Execution Enclave',
                               attestation_hash: inspectorData?.mandate_hash || 'SHA256:7c9e1248...b401',
                               allocated_port: 8443,
@@ -4325,7 +4326,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                     principal_entity: localBusinessEntity,
                                     service_tier: localTradeVertical,
                                     monthly_rate: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                                    allocated_node_endpoint: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                    allocated_node_endpoint: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                     paypal_subscription_id: inspectorData?.paypal_subscription_id || 'I-AUTONOMOUS-8902',
                                     ed25519_proof_hash: inspectorData?.mandate_hash || 'PROOF-MANDATE-VERIFIED',
                                     enclave_route: 'US-East Node Cluster (Ashburn, VA)',
@@ -4337,7 +4338,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                             : activeCloudEventsSubTab === 'workload'
                             ? JSON.stringify(
                                 {
-                                  enclave_node: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                  enclave_node: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                   enclave_type: 'AP2 Hardware Isolated Execution Enclave',
                                   attestation_hash: inspectorData?.mandate_hash || 'SHA256:7c9e1248...b401',
                                   allocated_port: 8443,
@@ -4355,11 +4356,11 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                     type: 'com.ap2.settlement.subscription.activated',
                                     data: {
                                       buyer_agent: localContractorName,
-                                      node_endpoint: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                      node_endpoint: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                     },
                                   },
                                   enclave: {
-                                    enclave_node: inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                    enclave_node: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                     status: 'READY_FOR_INFERENCE',
                                   },
                                 },
@@ -4459,7 +4460,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature,
                                 'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp,
                                 'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id,
-                                'Allocated-Node-Endpoint': inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                'Allocated-Node-Endpoint': (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                 'Execution-Mode': 'LOCAL_HIGH_FIDELITY_SIMULATION',
                               },
                               meta: inspectorData?.webhook_meta,
@@ -4506,7 +4507,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature || 'sha256=...',
                                 'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp,
                                 'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id,
-                                'Allocated-Node-Endpoint': inspectorData?.telecom_did || 'node-cluster-01.ap2.net:8443',
+                                'Allocated-Node-Endpoint': (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
                                 'Execution-Mode': 'LOCAL_HIGH_FIDELITY_SIMULATION',
                                 'Content-Type': 'application/json',
                               },

@@ -22,7 +22,7 @@ import {
 import {
   initialA2aTransactions,
   kycAuditData,
-  telecomTrunkData,
+  nodeClusterData,
   buildTradeImpactFromTransactions,
   type A2aTransaction,
 } from './data/telemetryData';
@@ -191,8 +191,8 @@ export function App() {
           ],
         },
         {
-          id: 'telecom_trunks',
-          data: telecomTrunkData,
+          id: 'node_clusters',
+          data: nodeClusterData,
           fields: [
             { id: 'allocated_did', name: 'Node Endpoint', format: 'textFormat' },
             { id: 'lata', name: 'Worker Cluster Name', format: 'textFormat' },

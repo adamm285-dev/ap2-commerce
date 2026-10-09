@@ -34,9 +34,9 @@ def test_get_buyer_key_challenge():
 def test_successful_buyer_key_registration():
     """POST /api/agent/keys/register accepts valid challenge signature and enrolls buyer key."""
     priv_hex, pub_hex = generate_ed25519_keypair()
-    kid = "buyer-agent-tampa-roofing-v1"
-    email = "tampa@tampabayroofing.com"
-    entity = "Tampa Bay Roofing Solutions LLC"
+    kid = "buyer-agent-tampa-compute-v1"
+    email = "tampa@tampabaycompute.com"
+    entity = "Tampa Bay Compute Solutions LLC"
 
     # 1. Fetch challenge nonce
     chal_res = client.get("/api/agent/keys/challenge")
@@ -145,9 +145,9 @@ def test_rejected_registration_expired_challenge():
 def test_newly_registered_buyer_key_can_evaluate_mandate():
     """A newly onboarded buyer agent can immediately sign and evaluate spending mandates."""
     priv_hex, pub_hex = generate_ed25519_keypair()
-    kid = "buyer-agent-orlando-plumb-v1"
-    email = "orlando@centralfloridaplumbing.com"
-    entity = "Central Florida Plumbing Solutions LLC"
+    kid = "buyer-agent-orlando-cluster-v1"
+    email = "orlando@centralfloridacluster.com"
+    entity = "Central Florida Cluster Solutions LLC"
 
     # 1. Onboard buyer agent
     chal_res = client.get("/api/agent/keys/challenge")

@@ -148,8 +148,8 @@ class ExternalBuyerAgent:
         3. Catalog inspection
         4. Quote calculation
         5. Spending mandate check & HMAC proof
-        6. Telecom line allocation
-        7. Back-office Jobber & QBO export
+        6. Compute node endpoint allocation
+        7. Back-office ERP & QBO export
         """
         self.log("\n" + "=" * 65)
         self.log(f"🤖 [EXTERNAL BUYER AGENT] Initiating Autonomous A2A Procurement")
@@ -425,11 +425,11 @@ class ExternalBuyerAgent:
 
         zapier_res = await self._call_tool("dispatch_zapier_mcp", zapier_payload)
 
-        jobber_id = zapier_res.get("jobberQuoteId") or zapier_res.get("jobber_quote_id")
+        erp_id = zapier_res.get("erpRoutingId") or zapier_res.get("erp_routing_id")
         qbo_id = zapier_res.get("qboDraftInvoiceId") or zapier_res.get("qbo_draft_invoice_id")
         gcal_id = zapier_res.get("googleCalendarEventId") or zapier_res.get("google_calendar_event_id")
 
-        self.log(f"   Jobber CRM:      {jobber_id} (GraphQL & REST Client Synced)")
+        self.log(f"   ERP Dispatch:    {erp_id} (CloudEvents v1.0 & Node Synced)")
         self.log(f"   QuickBooks QBO:  {qbo_id} (Mapped to Account 6300: Software & SaaS)")
         self.log(f"   Executive Brief: {gcal_id} (Daily 6:30 AM Briefing Scheduled)")
         if self.webhook_url:
@@ -445,7 +445,7 @@ class ExternalBuyerAgent:
             self.log("   • Provisioned DID:          " + assigned_did)
         if node_endpoint:
             self.log("   • Node Endpoint:            " + node_endpoint)
-        self.log("   • Jobber Routing Record:    " + str(jobber_id))
+        self.log("   • ERP Routing Record:       " + str(erp_id))
         self.log("   • QuickBooks Expense Ref:   " + str(qbo_id))
         self.log("=" * 65 + "\n")
 
@@ -459,7 +459,7 @@ class ExternalBuyerAgent:
             "paypal_subscription_id": subscription_id,
             "carrier": carrier,
             "routing_state": routing_state,
-            "jobber_routing_id": jobber_id,
+            "erp_routing_id": erp_id,
             "qbo_expense_id": qbo_id,
             "google_calendar_event_id": gcal_id,
             "audit_log": self.audit_log,
@@ -531,7 +531,7 @@ async def main():
     parser.add_argument(
         "--area-code",
         default="863",
-        help="Local area code for telecom provisioning (default: 863)",
+        help="Local area code for region allocation (default: 863)",
     )
     parser.add_argument(
         "--simulate-exhaustion",

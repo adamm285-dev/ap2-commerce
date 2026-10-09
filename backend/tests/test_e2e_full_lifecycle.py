@@ -104,7 +104,7 @@ def test_complete_autonomous_a2a_lifecycle():
     assert zap_a2a["status"] == "COMPLETED"
     assert zap_a2a["workflowType"] == "a2a_onboarding"
     assert zap_a2a["qboDraftInvoiceId"].startswith("QBO-EXP-")
-    assert zap_a2a["jobberQuoteId"].startswith("AP2-EXP-")
+    assert zap_a2a["erpRoutingId"].startswith("AP2-EXP-")
 
     # Step 7: Downstream Quote Calculation
     quote_payload = {
@@ -147,7 +147,7 @@ def test_complete_autonomous_a2a_lifecycle():
     zap_lead = res_zap_lead.json()
     assert zap_lead["status"] == "COMPLETED"
     assert zap_lead["workflowType"] == "homeowner_lead"
-    assert zap_lead["jobberQuoteId"].startswith("AP2-")
+    assert zap_lead["erpRoutingId"].startswith("AP2-")
     assert zap_lead["qboDraftInvoiceId"].startswith("QBO-INV-")
 
     # Step 10: Reset Spending Mandate Ledger (requires Admin Authorization)

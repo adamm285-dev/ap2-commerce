@@ -265,20 +265,32 @@ def run_judge_audit():
     # CHECK 7: Telemetry & Financial Mathematics Reconciliation
     # -------------------------------------------------------------------------
     print_step(7, "Enterprise Fleet Ledger & AP2 Telemetry Reconciliation")
-    fleet_lines = 14
-    price_per_line = 79.99
-    total_mrr = round(fleet_lines * price_per_line, 2)
-    total_arr = round(total_mrr * 12, 2)
-    total_mandates = fleet_lines * 12
+    stats_res = client.get("/api/fleet/stats")
+    assert stats_res.status_code == 200, f"Failed to get fleet stats: {stats_res.text}"
+    stats_data = stats_res.json()
 
-    assert total_mrr == 1119.86
-    assert total_arr == 13438.32
-    assert total_mandates == 168
+    ledger_res = client.get("/api/fleet/ledger?profile=ap2")
+    assert ledger_res.status_code == 200, f"Failed to get fleet ledger: {ledger_res.text}"
+    ledger_data = ledger_res.json()
 
-    print_pass(f"Fleet Scale:          {fleet_lines} Autonomous Buyer Lines")
-    print_pass(f"Active Fleet MRR:     ${total_mrr}/mo (Exact: 14 × $79.99)")
-    print_pass(f"Autonomous GMV (ARR): ${total_arr:,.2f} ARR (Exact: ${total_mrr} × 12)")
-    print_pass(f"Mandates Cleared:     {total_mandates} Annualized Autonomous Cycles")
+    transactions = ledger_data.get("transactions", [])
+    active_rows = [t for t in transactions if t.get("status") in ["ACTIVE", "ACTIVE_STREAMING"]]
+    active_count = len(active_rows)
+    expected_mrr = round(sum(float(t.get("monthly_amount", 0.0)) for t in active_rows), 2)
+    expected_arr = round(expected_mrr * 12, 2)
+
+    backend_mrr = round(float(stats_data.get("total_mrr", 0.0)), 2)
+    backend_arr = round(float(stats_data.get("annualized_gmv", 0.0)), 2)
+    mandates_cleared = stats_data.get("mandates_cleared")
+
+    assert backend_mrr == expected_mrr, f"MRR mismatch: {backend_mrr} != {expected_mrr}"
+    assert backend_arr == expected_arr, f"ARR mismatch: {backend_arr} != {expected_arr}"
+    assert mandates_cleared == active_count, f"Mandates cleared mismatch: {mandates_cleared} != {active_count}"
+
+    print_pass(f"Fleet Scale:          {active_count} Active Autonomous Nodes (Total Subscriptions: {len(transactions)})")
+    print_pass(f"Active Fleet MRR:     ${backend_mrr:,.2f}/mo (Reconciled sum of active subscriptions)")
+    print_pass(f"Autonomous GMV (ARR): ${backend_arr:,.2f} ARR (Exact: ${backend_mrr:,.2f} × 12)")
+    print_pass(f"Mandates Cleared:     {mandates_cleared} Mandates (1:1 per active subscription)")
 
     # -------------------------------------------------------------------------
     # CHECK 8: Live Fleet Ledger & Bryntum Scheduling Verification

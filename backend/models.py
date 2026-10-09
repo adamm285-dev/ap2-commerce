@@ -194,12 +194,12 @@ class ZapierSyncRequest(BaseModel):
 class ZapierSyncResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    jobber_quote_id: str = Field(alias="jobberQuoteId")
+    erp_routing_id: str = Field(default="", alias="erpRoutingId")
     qbo_draft_invoice_id: str = Field(alias="qboDraftInvoiceId")
     google_calendar_event_id: str = Field(alias="googleCalendarEventId")
     status: str
     workflow_type: str = Field(default="a2a_onboarding", alias="workflowType")
-    jobber_payload: Optional[Dict[str, Any]] = Field(default=None, alias="jobberPayload")
+    erp_payload: Optional[Dict[str, Any]] = Field(default=None, alias="erpPayload")
     qbo_payload: Optional[Dict[str, Any]] = Field(default=None, alias="qboPayload")
     webhook_delivery_id: Optional[str] = Field(default=None, alias="webhookDeliveryId")
     webhook_dispatched: Optional[bool] = Field(default=False, alias="webhookDispatched")

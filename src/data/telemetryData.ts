@@ -446,7 +446,7 @@ export const kycAuditData: KycAuditRecord[] = [
   },
 ];
 
-export interface TelecomTrunkRecord {
+export interface NodeClusterRecord {
   allocated_did: string;
   lata: string;
   market_region: string;
@@ -459,7 +459,7 @@ export interface TelecomTrunkRecord {
   concurrency_capacity?: string;
 }
 
-export const telecomTrunkData: TelecomTrunkRecord[] = [
+export const nodeClusterData: NodeClusterRecord[] = [
   {
     allocated_did: 'node-cluster-01.ap2.net',
     lata: 'Node-01: High-Speed LLM Inference Gateway',
@@ -573,8 +573,8 @@ export const a2aDataSources: AgDataSourcesDefinition = {
       ],
     },
     {
-      id: 'telecom_trunks',
-      data: telecomTrunkData,
+      id: 'node_clusters',
+      data: nodeClusterData,
       fields: [
         { id: 'allocated_did', name: 'Node Endpoint', format: 'textFormat' },
         { id: 'lata', name: 'Worker Cluster Name', format: 'textFormat' },
@@ -700,7 +700,7 @@ export const initialDashboardState: AgReportState = {
       },
     },
     {
-      id: 'telecom-kyc-guard',
+      id: 'mandate-kyc-guard',
       widgets: {
         'grid-kyc-audit': {
           type: 'grid',
@@ -725,20 +725,20 @@ export const initialDashboardState: AgReportState = {
       },
     },
     {
-      id: 'telecom-trunks-registry',
+      id: 'node-clusters-registry',
       widgets: {
-        'grid-telecom-trunks': {
+        'grid-node-clusters': {
           type: 'grid',
           dataMapping: {
             cols: [
-              { id: 'telecom_trunks.allocated_did' },
-              { id: 'telecom_trunks.lata' },
-              { id: 'telecom_trunks.market_region' },
-              { id: 'telecom_trunks.tcr_brand' },
-              { id: 'telecom_trunks.tcr_campaign_id' },
-              { id: 'telecom_trunks.monthly_quota_minutes' },
-              { id: 'telecom_trunks.stir_shaken_level' },
-              { id: 'telecom_trunks.inbound_routing_mode' },
+              { id: 'node_clusters.allocated_did' },
+              { id: 'node_clusters.lata' },
+              { id: 'node_clusters.market_region' },
+              { id: 'node_clusters.tcr_brand' },
+              { id: 'node_clusters.tcr_campaign_id' },
+              { id: 'node_clusters.monthly_quota_minutes' },
+              { id: 'node_clusters.stir_shaken_level' },
+              { id: 'node_clusters.inbound_routing_mode' },
             ],
           },
           format: {
@@ -748,7 +748,7 @@ export const initialDashboardState: AgReportState = {
         },
       },
       widgetLayout: {
-        'grid-telecom-trunks': { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 18 },
+        'grid-node-clusters': { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 18 },
       },
     },
   ],

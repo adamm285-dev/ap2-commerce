@@ -48,7 +48,7 @@ ACT_SCRIPTS = {
         "general ledger Account 6300, routing the node endpoint into operational systems, and scheduling "
         "the morning node health audit on Google Calendar — eliminating manual bookkeeping entirely."
     ),
-    "act5_kyc_telecom": (
+    "act5_kyc_compute": (
         "Crucially, every compute node allocation is cryptographically anchored to verified PayPal subscriber identity — "
         "ensuring mathematical non-repudiation with RFC 8032 Ed25519 dual mandates. "
         "With 233 automated tests, complete OpenAPI 3.1 specifications for SDK generation, "

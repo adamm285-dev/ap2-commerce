@@ -575,7 +575,7 @@ def test_trigger_zapier_mcp_sync():
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "COMPLETED"
-    assert data["jobberQuoteId"].startswith("AP2-") or data["jobberQuoteId"].startswith("JOB-")
+    assert data["erpRoutingId"].startswith("AP2-")
     assert data["qboDraftInvoiceId"].startswith("QBO-")
     assert data["googleCalendarEventId"].startswith("gcal_")
 
@@ -596,7 +596,7 @@ def test_trigger_zapier_mcp_a2a_onboarding_sync():
     data = res.json()
     assert data["status"] == "COMPLETED"
     assert data["workflowType"] == "a2a_onboarding"
-    assert data["jobberQuoteId"].startswith("AP2-")
+    assert data["erpRoutingId"].startswith("AP2-")
     assert data["qboDraftInvoiceId"].startswith("QBO-EXP-")
     assert data["googleCalendarEventId"].startswith("gcal_briefing_")
 
@@ -669,10 +669,10 @@ def test_m2m_audit_payloads_endpoint():
     assert res1.status_code == 200
     data1 = res1.json()
     assert data1["status"] == "COMPLETED"
-    assert data1["telecom_did"] == "mcp+https://gateway-01.ap2.market"
+    assert data1["node_endpoint"] == "mcp+https://gateway-01.ap2.market"
     assert data1["paypal_subscription_id"] == "I-AUTONOMOUS-8902"
     assert data1["mandate_hash"] == "HMAC-TEST-PROOF-99"
-    assert "jobber_routing_id" in data1["jobber"] or data1["jobber"].get("status") == "SKIPPED"
+    assert "erp_routing_id" in data1["erp"] or data1["erp"].get("status") == "SKIPPED"
     assert "payload" in data1["quickbooks"]
     assert "webhook_meta" in data1
 

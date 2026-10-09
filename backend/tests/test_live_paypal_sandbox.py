@@ -1,6 +1,6 @@
 """
 Tests for Live PayPal Sandbox OAuth & Plan Verification,
-Agent Discoverability (llms.txt), and Telecom Compliance Disclosures.
+Agent Discoverability (llms.txt), and Node Compliance Disclosures.
 """
 
 import pytest

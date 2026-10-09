@@ -63,7 +63,7 @@ def test_subscription_persistence_across_connections(persist_db: Path):
         "vault_customer_present": False,
         "mandate_proof_hash": "proof_hash_abc_123",
         "offer_id": "offer_xyz_789",
-        "jobber_payload": {"client_id": "jobber_client_99", "quote_id": "q_4421"},
+        "erp_payload": {"client_id": "client_99", "routing_id": "q_4421"},
     }
     
     # 1. Save subscription using first connection
@@ -81,7 +81,7 @@ def test_subscription_persistence_across_connections(persist_db: Path):
     assert hydrated["assigned_did"] == "mcp+https://gateway-01.ap2.market"
     assert hydrated["vault_billing_authorized"] is True
     assert hydrated["vault_customer_present"] is False
-    assert hydrated["jobber_payload"]["client_id"] == "jobber_client_99"
+    assert hydrated["erp_payload"]["client_id"] == "client_99"
 
 
 def test_subscription_aliases_and_in_place_mutations(persist_db: Path):

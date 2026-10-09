@@ -73,7 +73,7 @@ export interface SellerCopilotViewProps {
 export type ContractorCopilotViewProps = SellerCopilotViewProps;
 
 export function SellerCopilotView({
-  contractorName = 'agent:claude-3-5:acme-procure',
+  contractorName = 'agent:acme-procure',
   businessEntity = 'Acme Autonomous Systems LLC',
   tradeVertical = 'Dedicated AI Service Gateway',
   areaCode = '863',
@@ -419,10 +419,10 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
 
   // --- Layer 1: Anti-Tamper & Cryptographic State ---
   const [tamperPayload, setTamperPayload] = useState<any>({
-    contractor_id: 'agent_acme_procure_863',
-    business_name: 'Acme Autonomous Systems LLC',
+    contractor_id: 'buyer_agent_alpha_01',
+    business_name: 'Nexus Autonomous Systems Corp',
     monthly_cap_usd: 100.0,
-    agreed_price_usd: 79.99,
+    agreed_price_usd: 49.99,
     nonce: 'd6fb21ff578f',
     timestamp: Math.floor(Date.now() / 1000),
   });
@@ -432,7 +432,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
 
   // Load official sample proof on mount
   useEffect(() => {
-    fetch('/api/crypto/sample-proof')
+    fetch('/api/crypto/sample-proof?profile=ap2')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.canonical_payload) {
@@ -730,7 +730,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
               budget_cap: localBudgetCap,
               authorized_amount: runData.monthly_amount || 79.99,
               remaining_budget: localBudgetCap - (runData.monthly_amount || 79.99),
-              tier_title: runData.selected_tier || (localBudgetCap < 79.99 ? 'Batch Compute Worker ($49.99/mo)' : 'Dedicated Inference Gateway ($79.99/mo)'),
+              tier_title: runData.selected_tier || (localBudgetCap < 79.99 ? 'High-Throughput Batch Worker ($49.99/mo)' : 'Dedicated AI Service Gateway ($79.99/mo)'),
             },
             {
               step: 2,
@@ -1826,69 +1826,8 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
           </div>
         </div>
 
-        {/* Step Guide: Collapsed Mini-Stepper vs. Expanded 5 Cards */}
-        {isGuideCollapsed ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-              paddingTop: '6px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Quick Jump:
-              </span>
-              {[
-                { step: 1, label: '01 Catalog', color: '#38bdf8' },
-                { step: 2, label: '02 Ed25519 Keys', color: '#a855f7' },
-                { step: 3, label: '03 PayPal Rails', color: '#f59e0b' },
-                { step: 4, label: '04 ERP / QBO', color: '#34d399' },
-                { step: 5, label: '05 FastMCP Daemon', color: '#38bdf8' },
-              ].map((s) => {
-                const isActive = activeSetupStep === s.step && copilotMode === 'onboarding';
-                return (
-                  <button
-                    key={s.step}
-                    onClick={() => handleSelectSetupStep(s.step)}
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: isActive ? 700 : 500,
-                      padding: '3px 8px',
-                      borderRadius: '5px',
-                      border: isActive ? `1px solid ${s.color}` : '1px solid #1e293b',
-                      backgroundColor: isActive ? 'rgba(56, 189, 248, 0.12)' : '#0f172a',
-                      color: isActive ? '#f8fafc' : '#94a3b8',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        backgroundColor: s.color,
-                        boxShadow: isActive ? `0 0 6px ${s.color}` : 'none',
-                      }}
-                    />
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-            <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 600 }}>
-              Full chat &amp; workspace expanded
-            </span>
-          </div>
-        ) : (
+        {/* Step Guide: Collapsed vs. Expanded 5 Cards */}
+        {isGuideCollapsed ? null : (
           /* 5 Interactive Step Cards */
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
           {/* Step 1 */}
@@ -3786,11 +3725,10 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                 </pre>
               </div>
 
-              {/* Cryptographic Signature & Secret Banner */}
+              {/* Cryptographic Signature Banner */}
               <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#94a3b8' }}>
-                <div><strong>Shared Secret:</strong> <code>ap2_agentic_mandate_secret_2026</code></div>
-                <div style={{ marginTop: '4px', wordBreak: 'break-all' }}>
-                  <strong>HMAC-SHA256 Signature:</strong> <code style={{ color: '#fbbf24' }}>{tamperSignature}</code>
+                <div style={{ wordBreak: 'break-all' }}>
+                  <strong>Ed25519 Signature:</strong> <code style={{ color: '#fbbf24' }}>{tamperSignature}</code>
                 </div>
                 <button
                   onClick={() => handleVerifyTamper()}

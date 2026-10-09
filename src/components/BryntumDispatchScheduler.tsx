@@ -91,7 +91,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     summary: 'RFC 8032 Ed25519 mandate anti-tamper signature verified',
     category: 'Security',
     request: {
-      contractor_id: 'contractor_claude_863',
+      contractor_id: 'contractor_acme_863',
       monthly_cap_usd: 100.0,
       agreed_price_usd: 79.99,
       signature: 'ed25519_sig_4a9f82c0b7...d181c2',
@@ -117,7 +117,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     request: {
       plan_id: 'P-4KA989014W524233ANLCRSFQ',
       subscriber: {
-        name: { given_name: 'agent:claude-3-5:acme-procure' },
+        name: { given_name: 'agent:acme-procure' },
         email_address: 'buyer-agent-ops@acme-autonomous.net',
       },
       application_context: {
@@ -198,16 +198,16 @@ import {
 
 // Parsing & Enrichment Helpers for AP2 Autonomous Workload Fulfillment
 function getBuyerAgent(name: string): string {
-  if (name.includes('101') || name.includes('Synthesis')) return 'agent:claude-3-5:acme-ops';
+  if (name.includes('101') || name.includes('Synthesis')) return 'agent:acme-ops';
   if (name.includes('102') || name.includes('Negotiation')) return 'agent:gpt-4o:apex-procure';
   if (name.includes('201') || name.includes('Vector Ingestion')) return 'agent:gemini-pro:kuroshio-rag';
   if (name.includes('202') || name.includes('Embeddings')) return 'agent:deepseek-v3:quant-research';
   if (name.includes('301') || name.includes('Smart Contract')) return 'agent:mistral-large:hyperion-audit';
   if (name.includes('302') || name.includes('Perimeter')) return 'agent:gemini-pro:security-audit';
   if (name.includes('401') || name.includes('Voice Screener')) return 'agent:llama-3-3:vocalis-stream';
-  if (name.includes('402') || name.includes('Batch Voice')) return 'agent:claude-3-5:sonicwave-ai';
+  if (name.includes('402') || name.includes('Batch Voice')) return 'agent:sonicwave-ai';
   if (name.includes('501') || name.includes('Model Evaluation')) return 'agent:gpt-4o:cognitive-eval';
-  if (name.includes('502') || name.includes('Incident')) return 'agent:claude-3-5:turing-oversight';
+  if (name.includes('502') || name.includes('Incident')) return 'agent:turing-oversight';
   return 'agent:autonomous:ap2-buyer';
 }
 
@@ -464,7 +464,7 @@ export function BryntumDispatchScheduler({
   const [activeTradeFilter, setActiveTradeFilter] = useState<string>('ALL');
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [totalDispatches, setTotalDispatches] = useState<number>(18);
-  const [totalVaultedDeposits, setTotalVaultedDeposits] = useState<number>(3450);
+  const [totalVaultedDeposits, setTotalVaultedDeposits] = useState<number>(2504.99);
   const [leadSimulationBanner, setLeadSimulationBanner] = useState<string | null>(null);
 
   // Master lists & dynamic filters for Enclave Matrix view
@@ -475,7 +475,7 @@ export function BryntumDispatchScheduler({
       trade: 'Dedicated AI Service Gateway',
       category: 'GATEWAY',
       entity: 'Ashburn Zone 1 • NVIDIA H100 SXM5',
-      did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'AWAITING_SETTLEMENT',
+      did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
       status: isDepositLocked ? 'ACTIVE_STREAMING' : 'PENDING_SUBSCRIPTION',
       throughput: '48k tok/sec',
       latency: '14ms',
@@ -574,7 +574,7 @@ export function BryntumDispatchScheduler({
       name: '#201 Batch Worker Execution ($49.99)',
       node: 'Node-02: High-Throughput Batch Worker',
       category: 'BATCH',
-      buyer: 'agent:claude-3-5-sonnet:legal',
+      buyer: 'agent:acme-legal',
       status: 'PAID $49.99 (PAYPAL VAULT)',
       txn: 'TXN-SETTLE-7712',
       window: '08:00 - 09:30 • 68% Complete (24m left)',
@@ -778,7 +778,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         name: 'Node-01: Dedicated AI Service Gateway',
         entity: 'Google Gemini 3.8 / Flash Sub-350ms Engine',
         trade: 'Dedicated AI Service Gateway',
-        did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'AWAITING_SETTLEMENT',
+        did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
         status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
         throughput: '48.2k tok/sec • 120ms P95',
         health: '98.4%',
@@ -1451,7 +1451,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         schedulerRef.current.resourceStore.find((r: any) => r.name?.includes('Node-01'));
       if (node1Resource) {
         node1Resource.set({
-          did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'AWAITING_SETTLEMENT',
+          did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
           status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
         });
       }
@@ -1590,14 +1590,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     // 3. Reset slot locked state and metrics
     setIsSlotLocked(false);
     setTotalDispatches(18);
-    setTotalVaultedDeposits(3450);
+    setTotalVaultedDeposits(2504.99);
 
     const node1Resource =
       schedulerRef.current.resourceStore.getById('node-1') ||
       schedulerRef.current.resourceStore.find((r: any) => r.name?.includes('Node-01'));
     if (node1Resource) {
       node1Resource.set({
-        did: 'AWAITING_SETTLEMENT',
+        did: 'Awaiting Settlement',
         status: 'PENDING_SUBSCRIPTION',
       });
     }
@@ -1621,14 +1621,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         target_nodes: ['node-1', 'node-2'],
         action: 'RESET_WORKLOAD_STATE',
         revert_dispatches_to: 18,
-        revert_deposits_to: 3450,
+        revert_deposits_to: 2504.99,
       },
       response: {
         status: 'SUCCESS',
         node_1_status: 'AWAITING_PAYPAL ($79.99/MO)',
         node_2_slot: 'REMOVED',
         dispatches_total: 18,
-        vaulted_deposits_usd: 3450,
+        vaulted_deposits_usd: 2504.99,
       },
     });
   };
@@ -1869,9 +1869,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Workloads: <strong style={{ color: '#f8fafc' }}>{totalDispatches} Tasks</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Vaulted: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString()}.00</strong></span>
+            <span>Vaulted: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Velocity: <strong style={{ color: '#38bdf8' }}>48.2k Tok/s</strong></span>
+            <span>Velocity: <strong style={{ color: '#38bdf8' }}>48.2k Tok/s</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Demo</span></span>
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>SLA: <strong style={{ color: '#a78bfa' }}>&lt;120s (99.98%)</strong></span>
           </div>
@@ -1879,7 +1879,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           <div style={{ fontSize: '11px', color: '#94a3b8', paddingLeft: '34px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             <span style={{ color: '#38bdf8', fontWeight: 600 }}>PayPal Vault Settled</span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>QBO &amp; Jobber Sync &bull; 5 Active Autonomous Node Enclaves</span>
+            <span>QBO &amp; FastMCP Sync &bull; 5 Active Autonomous Node Enclaves</span>
           </div>
         )}
 
@@ -1900,7 +1900,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Active Worker Nodes</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>5 Enclave Clusters</div>
-                <div style={{ fontSize: '9px', color: '#34d399' }}>100% Hardware Attested</div>
+                <div style={{ fontSize: '9px', color: '#34d399', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  100% Hardware Attested <span style={{ fontSize: '8px', backgroundColor: 'rgba(52, 211, 153, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
+                </div>
               </div>
             </div>
 
@@ -1921,7 +1923,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Settlements</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${totalVaultedDeposits.toLocaleString()}.00 Captured</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Captured</div>
                 <div style={{ fontSize: '9px', color: '#fbbf24' }}>Vault MIT Settled</div>
               </div>
             </div>
@@ -1932,7 +1934,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Cluster Velocity</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>48.2k Tok/Sec</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  48.2k Tok/Sec <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Demo</span>
+                </div>
                 <div style={{ fontSize: '9px', color: '#38bdf8' }}>64% Capacity Allocated</div>
               </div>
             </div>
@@ -1944,7 +1948,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Autonomous Workload SLA</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>&lt;120s Turnaround</div>
-                <div style={{ fontSize: '9px', color: '#a78bfa' }}>99.98% On-Time Delivery</div>
+                <div style={{ fontSize: '9px', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  99.98% On-Time Delivery <span style={{ fontSize: '8px', backgroundColor: 'rgba(167, 139, 250, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
+                </div>
               </div>
             </div>
           </div>
@@ -2350,7 +2356,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               ? 'Provisioning...'
               : isDepositLocked
               ? '✓ Node-01 Active'
-              : '⚡ Sim Sub ($80)'}
+              : '⚡ Sim Sub ($50)'}
           </button>
 
           {/* Row 2, Col 4: Reset Button */}
@@ -3165,7 +3171,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle2 size={13} style={{ color: '#34d399' }} />
-                  <span>Jobber GraphQL v2: <code>ClientCreate</code> &amp; <code>JobCreate</code> synced</span>
+                  <span>Enterprise ERP Bridge: <code>ClientCreate</code> &amp; <code>JobCreate</code> synced</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle2 size={13} style={{ color: '#34d399' }} />

@@ -31,10 +31,10 @@ export const initialA2aTransactions: A2aTransaction[] = [
     trade_vertical: 'High-Throughput Batch Worker',
     service_plan: 'High-Throughput Batch Worker ($49.99/mo)',
     monthly_amount: 49.99,
-    paypal_sub_id: 'AWAITING_PAYPAL_TOKEN',
-    kyc_status: 'PENDING_MANDATE_CHALLENGE',
+    paypal_sub_id: 'Awaiting PayPal Token',
+    kyc_status: 'Pending Mandate Challenge',
     kyc_legal_entity: 'Nexus Autonomous Systems Corp',
-    allocated_did: 'AWAITING_ENDPOINT',
+    allocated_did: 'Awaiting Endpoint',
     tcpa_guard: 'PENDING ED25519 ACTIVATION',
     mandate_proof: 'Ed25519 Awaiting Nonce Signature',
     anti_tamper_hash: 'SHA256: 00000000... (PENDING)',
@@ -85,15 +85,15 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9024',
     timestamp: '2026-10-01 21:02:15',
-    buyer_agent: 'AutonomousBuyerAgent-Vanguard-Gateway',
-    principal_entity: 'Vanguard Machine Intelligence LLC',
-    contractor_name: 'AutonomousBuyerAgent-Vanguard-Gateway',
+    buyer_agent: 'AutonomousBuyerAgent-Valence-Gateway',
+    principal_entity: 'Valence Machine Intelligence LLC',
+    contractor_name: 'AutonomousBuyerAgent-Valence-Gateway',
     trade_vertical: 'Dedicated AI Service Gateway',
     service_plan: 'Dedicated AI Service Gateway ($79.99/mo)',
     monthly_amount: 79.99,
     paypal_sub_id: 'I-VG551PP882B4',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
-    kyc_legal_entity: 'Vanguard Machine Intelligence LLC',
+    kyc_legal_entity: 'Valence Machine Intelligence LLC',
     allocated_did: 'mcp+https://gateway-02.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x3d4e... • RFC 8032]',
@@ -105,15 +105,15 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9025',
     timestamp: '2026-10-01 19:30:00',
-    buyer_agent: 'AutonomousBuyerAgent-Cortex-Batch',
-    principal_entity: 'Cortex Labs International',
-    contractor_name: 'AutonomousBuyerAgent-Cortex-Batch',
+    buyer_agent: 'AutonomousBuyerAgent-Corvus-Batch',
+    principal_entity: 'Corvus Labs International',
+    contractor_name: 'AutonomousBuyerAgent-Corvus-Batch',
     trade_vertical: 'High-Throughput Batch Worker',
     service_plan: 'High-Throughput Batch Worker ($49.99/mo)',
     monthly_amount: 49.99,
     paypal_sub_id: 'I-CX119CC447T1',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
-    kyc_legal_entity: 'Cortex Labs International',
+    kyc_legal_entity: 'Corvus Labs International',
     allocated_did: 'mcp+https://batch-02.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x8a1b... • RFC 8032]',
@@ -165,15 +165,15 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9028',
     timestamp: '2026-10-01 11:42:19',
-    buyer_agent: 'AutonomousBuyerAgent-Solana-Gateway',
-    principal_entity: 'DeepFlow Compute PBC',
-    contractor_name: 'AutonomousBuyerAgent-Solana-Gateway',
+    buyer_agent: 'AutonomousBuyerAgent-Solstice-Gateway',
+    principal_entity: 'Solstice Compute PBC',
+    contractor_name: 'AutonomousBuyerAgent-Solstice-Gateway',
     trade_vertical: 'Dedicated AI Service Gateway',
     service_plan: 'Dedicated AI Service Gateway ($79.99/mo)',
     monthly_amount: 79.99,
     paypal_sub_id: 'I-DF449EE881V9',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
-    kyc_legal_entity: 'DeepFlow Compute PBC',
+    kyc_legal_entity: 'Solstice Compute PBC',
     allocated_did: 'mcp+https://gateway-03.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x4a77... • RFC 8032]',
@@ -185,15 +185,15 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9029',
     timestamp: '2026-10-01 09:15:40',
-    buyer_agent: 'AutonomousBuyerAgent-Synthetix-Cluster',
-    principal_entity: 'Meridian Cloud Solutions',
-    contractor_name: 'AutonomousBuyerAgent-Synthetix-Cluster',
+    buyer_agent: 'AutonomousBuyerAgent-Synapse-Cluster',
+    principal_entity: 'Synapse Cloud Solutions',
+    contractor_name: 'AutonomousBuyerAgent-Synapse-Cluster',
     trade_vertical: 'Enterprise Cluster Node',
     service_plan: 'Enterprise Cluster Node ($179.99/mo)',
     monthly_amount: 179.99,
     paypal_sub_id: 'I-MR662SS331B2',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
-    kyc_legal_entity: 'Meridian Cloud Solutions',
+    kyc_legal_entity: 'Synapse Cloud Solutions',
     allocated_did: 'mcp+https://cluster-03.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x99dd... • RFC 8032]',
@@ -205,15 +205,15 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9030',
     timestamp: '2026-10-01 08:30:12',
-    buyer_agent: 'AutonomousBuyerAgent-Cyberdyne-Gateway',
-    principal_entity: 'Cyberdyne Agentic Ltd',
-    contractor_name: 'AutonomousBuyerAgent-Cyberdyne-Gateway',
+    buyer_agent: 'AutonomousBuyerAgent-Cygnus-Gateway',
+    principal_entity: 'Cygnus Agentic Ltd',
+    contractor_name: 'AutonomousBuyerAgent-Cygnus-Gateway',
     trade_vertical: 'Dedicated AI Service Gateway',
     service_plan: 'Dedicated AI Service Gateway ($79.99/mo)',
     monthly_amount: 79.99,
     paypal_sub_id: 'I-CD551AA994M7',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
-    kyc_legal_entity: 'Cyberdyne Agentic Ltd',
+    kyc_legal_entity: 'Cygnus Agentic Ltd',
     allocated_did: 'mcp+https://gateway-04.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x33aa... • RFC 8032]',
@@ -285,20 +285,20 @@ export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9034',
     timestamp: '2026-09-30 15:22:10',
-    buyer_agent: 'AutonomousBuyerAgent-Apex-Cluster',
+    buyer_agent: 'AutonomousBuyerAgent-Apex-Gateway',
     principal_entity: 'Apex Reasoning Group',
-    contractor_name: 'AutonomousBuyerAgent-Apex-Cluster',
-    trade_vertical: 'Enterprise Cluster Node',
-    service_plan: 'Enterprise Cluster Node ($179.99/mo)',
-    monthly_amount: 179.99,
-    paypal_sub_id: 'I-AP118CC559W2',
+    contractor_name: 'AutonomousBuyerAgent-Apex-Gateway',
+    trade_vertical: 'Dedicated AI Service Gateway',
+    service_plan: 'Dedicated AI Service Gateway ($79.99/mo)',
+    monthly_amount: 79.99,
+    paypal_sub_id: 'I-AR118CC559W2',
     kyc_status: 'VERIFIED (Ed25519 Mandate Bound)',
     kyc_legal_entity: 'Apex Reasoning Group',
-    allocated_did: 'mcp+https://cluster-04.acme-systems.io/mcp',
+    allocated_did: 'mcp+https://gateway-06.acme-systems.io/mcp',
     tcpa_guard: '100% ED25519 SIGNED MANDATE',
     mandate_proof: 'Ed25519 Verified [Key: 0x77cc... • RFC 8032]',
     anti_tamper_hash: 'SHA256: 77cc991200bb2244 (PASS)',
-    node_cluster: 'Node-14: Enterprise Cluster Node',
+    node_cluster: 'Node-14: Dedicated AI Service Gateway',
     status: 'ACTIVE_STREAMING',
     data_source: 'Demo data',
   },
@@ -320,53 +320,67 @@ export interface TradeImpact {
   sla_compliance?: string;
 }
 
-export const tradeImpactData: TradeImpact[] = [
-  {
-    trade: 'Dedicated AI Service Gateway',
-    service_capability: 'Dedicated AI Service Gateway ($79.99/mo)',
-    missed_calls_prevented: 18,
-    leads_captured: 1420,
-    annualized_gmv: 4799.40,
-    monthly_settlement: 399.95,
-    active_agents: 5,
-    active_buyer_agents: 5,
-    mandates_cleared: 60,
-    recovered_revenue: 4799.40,
-    subscription_cost: 79.99,
-    roi_multiple: 4.8,
-    sla_compliance: '99.99%',
-  },
-  {
-    trade: 'High-Throughput Batch Worker',
-    service_capability: 'High-Throughput Batch Worker ($49.99/mo)',
-    missed_calls_prevented: 24,
-    leads_captured: 2150,
-    annualized_gmv: 2999.40,
-    monthly_settlement: 249.95,
-    active_agents: 5,
-    active_buyer_agents: 5,
-    mandates_cleared: 60,
-    recovered_revenue: 2999.40,
-    subscription_cost: 49.99,
-    roi_multiple: 3.6,
-    sla_compliance: '99.98%',
-  },
-  {
-    trade: 'Enterprise Cluster Node',
-    service_capability: 'Enterprise Cluster Node ($179.99/mo)',
-    missed_calls_prevented: 31,
-    leads_captured: 980,
-    annualized_gmv: 8639.52,
-    monthly_settlement: 719.96,
-    active_agents: 4,
-    active_buyer_agents: 4,
-    mandates_cleared: 48,
-    recovered_revenue: 8639.52,
-    subscription_cost: 179.99,
-    roi_multiple: 5.2,
-    sla_compliance: '100.0%',
-  },
-];
+export function buildTradeImpactFromTransactions(transactions: A2aTransaction[]): TradeImpact[] {
+  const activeRows = transactions.filter((t) => t.status === 'ACTIVE_STREAMING');
+  const tierOrder = [
+    {
+      trade: 'High-Throughput Batch Worker',
+      planRate: 49.99,
+      leads_captured: 120000,
+    },
+    {
+      trade: 'Dedicated AI Service Gateway',
+      planRate: 79.99,
+      leads_captured: 300000,
+    },
+    {
+      trade: 'Enterprise Cluster Node',
+      planRate: 179.99,
+      leads_captured: 90000,
+    },
+  ];
+
+  const knownTiers = new Set(tierOrder.map((t) => t.trade));
+
+  function getTierForTransaction(t: A2aTransaction): string {
+    // 1. By trade_vertical when it names a known tier
+    if (t.trade_vertical && knownTiers.has(t.trade_vertical)) {
+      return t.trade_vertical;
+    }
+    // 2. Otherwise by price
+    const amount = t.monthly_amount ?? 0;
+    if (Math.abs(amount - 49.99) < 0.05) return 'High-Throughput Batch Worker';
+    if (Math.abs(amount - 179.99) < 0.05) return 'Enterprise Cluster Node';
+    return 'Dedicated AI Service Gateway';
+  }
+
+  return tierOrder.map((tier) => {
+    const activeForTier = activeRows.filter((t) => getTierForTransaction(t) === tier.trade);
+    const count = activeForTier.length;
+    const monthlySettlement = activeForTier.reduce((sum, t) => sum + (t.monthly_amount ?? tier.planRate), 0);
+    const roundedMonthly = Math.round(monthlySettlement * 100) / 100;
+    const annualized = Math.round(roundedMonthly * 12 * 100) / 100;
+
+    return {
+      trade: tier.trade,
+      service_capability: `${tier.trade} ($${tier.planRate}/mo)`,
+      active_agents: count,
+      active_buyer_agents: count,
+      mandates_cleared: count,
+      monthly_settlement: roundedMonthly,
+      annualized_gmv: annualized,
+      recovered_revenue: annualized,
+      leads_captured: tier.leads_captured,
+      missed_calls_prevented: 0,
+      subscription_cost: tier.planRate,
+      roi_multiple: 12.0,
+      sla_compliance: '99.99%',
+    };
+  });
+}
+
+export const tradeImpactData: TradeImpact[] = buildTradeImpactFromTransactions(initialA2aTransactions);
+
 
 export interface KycAuditRecord {
   allocated_did: string;
@@ -587,11 +601,10 @@ export const initialDashboardState: AgReportState = {
         'kpi-mrr': {
           type: 'value',
           dataMapping: {
-            value: [{ id: 'transactions.monthly_amount', aggregation: 'sum' }],
+            value: [{ id: 'trade_impact.monthly_settlement', aggregation: 'sum' }],
           },
           format: {
             title: { enabled: true, text: 'Active Protocol MRR' },
-            subtitle: { enabled: true, text: '14 Active Worker Nodes' },
           },
         },
         'kpi-leads': {
@@ -601,7 +614,6 @@ export const initialDashboardState: AgReportState = {
           },
           format: {
             title: { enabled: true, text: 'Mandates Settled' },
-            subtitle: { enabled: true, text: '168 Autonomous Cycles' },
           },
         },
         'kpi-revenue': {
@@ -611,7 +623,6 @@ export const initialDashboardState: AgReportState = {
           },
           format: {
             title: { enabled: true, text: 'Autonomous AP2 GMV' },
-            subtitle: { enabled: true, text: '100% M2M Settled ($13.4k ARR)' },
           },
         },
         'kpi-tcpa': {
@@ -621,7 +632,6 @@ export const initialDashboardState: AgReportState = {
           },
           format: {
             title: { enabled: true, text: 'Connected Buyer Agents' },
-            subtitle: { enabled: true, text: '100% Ed25519 Verified' },
           },
         },
         'chart-recovered-revenue': {
@@ -644,6 +654,16 @@ export const initialDashboardState: AgReportState = {
           format: {
             title: { enabled: true, text: 'AP2 Settlement Share by Capability' },
             subtitle: { enabled: true, text: 'Autonomous Run-Rate GMV Breakdown' },
+            style: {
+              theme: {
+                common: {
+                  legend: {
+                    enabled: true,
+                    position: 'right',
+                  },
+                },
+              },
+            },
           },
         },
         'grid-a2a-ledger': {

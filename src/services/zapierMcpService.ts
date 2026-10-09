@@ -41,7 +41,7 @@ export interface QualifiedLead {
 export interface ZapierMcpActionLog {
   actionId: string;
   toolName: string;
-  targetApp: 'QuickBooks Online' | 'CloudEvents v1.0' | 'Zapier MCP EventBus' | 'Google Workspace' | 'Jobber' | 'Google Calendar';
+  targetApp: 'QuickBooks Online' | 'CloudEvents v1.0' | 'Zapier MCP EventBus' | 'Google Workspace' | 'Enterprise ERP' | 'Google Calendar';
   status: 'PENDING' | 'EXECUTED' | 'VERIFIED';
   payloadSummary: string;
   timestamp: string;
@@ -53,7 +53,7 @@ export interface ZapierExecutionResult {
   logs: ZapierMcpActionLog[];
   isLiveBackend?: boolean;
   cloudeventsPayload?: any;
-  jobberPayload?: any;
+  erpPayload?: any;
   qboPayload?: any;
   webhookEnvelope?: {
     headers: Record<string, string>;
@@ -185,7 +185,7 @@ export async function executeZapierA2aWorkflow(
         logs,
         isLiveBackend: true,
         cloudeventsPayload,
-        jobberPayload: cloudeventsPayload,
+        erpPayload: cloudeventsPayload,
         qboPayload: data.qboPayload,
         webhookEnvelope,
       };
@@ -326,7 +326,7 @@ export async function executeZapierA2aWorkflow(
     logs,
     isLiveBackend: false,
     cloudeventsPayload: fallbackCloudEventsPayload,
-    jobberPayload: fallbackCloudEventsPayload,
+    erpPayload: fallbackCloudEventsPayload,
     qboPayload: fallbackQboPayload,
     webhookEnvelope: fallbackWebhookEnvelope,
   };
@@ -424,7 +424,7 @@ export async function executeZapierMcpWorkflow(
     logs,
     isLiveBackend: false,
     cloudeventsPayload: workloadCloudEventsPayload,
-    jobberPayload: workloadCloudEventsPayload,
+    erpPayload: workloadCloudEventsPayload,
     qboPayload: workloadQboPayload,
   };
 }

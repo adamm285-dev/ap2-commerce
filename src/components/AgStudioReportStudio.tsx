@@ -106,7 +106,7 @@ export function AgStudioReportStudio({
       chartTooltipTextColor: '#f8fafc',
       chartTooltipBorder: 'solid 1px #334155',
       chartPaletteFills1Color: accentColor,
-      chartPaletteFills2Color: '#10b981',
+      chartPaletteFills2Color: '#199e70',
       chartPaletteFills3Color: '#8b5cf6',
       chartPaletteFills4Color: '#f59e0b',
       chartPaletteFills5Color: '#06b6d4',
@@ -137,11 +137,12 @@ export function AgStudioReportStudio({
   // Derived financial metrics
   const activeLinesCount = transactions.filter((t) => t.status === 'ACTIVE_STREAMING').length;
   const totalMrr = useMemo(() => {
-    return transactions
+    const raw = transactions
       .filter((t) => t.status === 'ACTIVE_STREAMING')
-      .reduce((sum, t) => sum + (t.monthly_amount || 79.99), 0);
+      .reduce((sum, t) => sum + (t.monthly_amount || 0), 0);
+    return Math.round(raw * 100) / 100;
   }, [transactions]);
-  const totalAutonomousGmv = useMemo(() => totalMrr * 12, [totalMrr]);
+  const totalAutonomousGmv = useMemo(() => Math.round(totalMrr * 12 * 100) / 100, [totalMrr]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: 'calc(100vh - 72px)', backgroundColor: '#020617' }}>
@@ -181,7 +182,7 @@ export function AgStudioReportStudio({
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#199e70', boxShadow: '0 0 10px #199e70' }} />
             <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.04em', color: '#f8fafc' }}>
               AG STUDIO ENTERPRISE v3.0
             </span>
@@ -205,7 +206,7 @@ export function AgStudioReportStudio({
           <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Palette:</span>
           {[
             { label: 'Cyber Blue', color: '#0284c7' },
-            { label: 'Emerald', color: '#10b981' },
+            { label: 'Emerald', color: '#199e70' },
             { label: 'Neon Violet', color: '#8b5cf6' },
           ].map((p) => (
             <button
@@ -302,12 +303,12 @@ export function AgStudioReportStudio({
               padding: '6px 14px',
               borderRadius: '6px',
               border: 'none',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
+              background: 'linear-gradient(135deg, #199e70, #059669)',
               color: '#fff',
               fontSize: '11px',
               fontWeight: 700,
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
+              boxShadow: '0 2px 6px rgba(25, 158, 112, 0.3)',
             }}
           >
             <Sliders size={13} /> Simulate AP2

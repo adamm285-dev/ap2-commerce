@@ -257,7 +257,9 @@ export function EnterpriseFleetLedger({
                   {copiedKey === t.id ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
                 </button>
               </div>
-              <div style={{ fontSize: '10px', color: '#64748b', lineHeight: 1 }}>{t.timestamp.slice(11, 19)} UTC</div>
+              <div style={{ fontSize: '10px', color: '#64748b', lineHeight: 1 }}>
+                {t.timestamp ? `${t.timestamp.slice(5, 10)} ${t.timestamp.slice(11, 16)} UTC` : ''}
+              </div>
             </div>
           );
         },
@@ -265,7 +267,7 @@ export function EnterpriseFleetLedger({
       {
         field: 'status',
         headerName: 'Fulfillment State',
-        width: 175,
+        width: 165,
         cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
           const t = params.data;
           if (!t) return null;
@@ -304,7 +306,7 @@ export function EnterpriseFleetLedger({
         field: 'buyer_agent',
         headerName: 'Buyer Agent & Principal Entity',
         flex: 1.5,
-        minWidth: 240,
+        minWidth: 260,
         cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
           const t = params.data;
           if (!t) return null;
@@ -312,13 +314,8 @@ export function EnterpriseFleetLedger({
           const principal = t.principal_entity || t.kyc_legal_entity;
           return (
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-              <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: 'monospace', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>{buyer}</span>
-                {t.data_source === 'Demo data' && (
-                  <span style={{ fontSize: '9px', fontWeight: 600, color: '#94a3b8', backgroundColor: 'rgba(148, 163, 184, 0.15)', border: '1px solid rgba(148, 163, 184, 0.3)', padding: '1px 5px', borderRadius: '4px' }}>
-                    Demo data
-                  </span>
-                )}
+              <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: 'monospace', fontSize: '11px' }}>
+                {buyer}
               </div>
               <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.2 }}>{principal}</div>
             </div>
@@ -328,13 +325,13 @@ export function EnterpriseFleetLedger({
       {
         field: 'trade_vertical',
         headerName: 'Service Capability',
-        width: 180,
+        width: 210,
         cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
           const t = params.data;
           if (!t) return null;
           return (
             <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-              <span style={{ fontSize: '11px', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', padding: '3px 8px', borderRadius: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', color: '#38bdf8', padding: '3px 8px', borderRadius: '6px' }}>
                 {t.trade_vertical}
               </span>
             </div>
@@ -344,7 +341,8 @@ export function EnterpriseFleetLedger({
       {
         field: 'allocated_did',
         headerName: 'Execution Node Endpoint',
-        width: 195,
+        flex: 1.2,
+        minWidth: 230,
         cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
           const t = params.data;
           if (!t) return null;
@@ -363,7 +361,7 @@ export function EnterpriseFleetLedger({
                   </button>
                 </div>
               ) : (
-                <span style={{ color: '#f59e0b', fontStyle: 'italic', fontSize: '11px' }}>Awaiting Approval</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>—</span>
               )}
             </div>
           );
@@ -372,7 +370,7 @@ export function EnterpriseFleetLedger({
       {
         field: 'monthly_amount',
         headerName: 'Monthly Rate & Settlement Rail',
-        width: 170,
+        width: 175,
         cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
           const t = params.data;
           if (!t) return null;
@@ -390,46 +388,8 @@ export function EnterpriseFleetLedger({
         },
       },
       {
-        field: 'kyc_status',
-        headerName: 'Cryptographic Attestation',
-        width: 195,
-        cellRenderer: (params: ICellRendererParams<A2aTransaction>) => {
-          const t = params.data;
-          if (!t) return null;
-          const isDemo = t.data_source === 'Demo data' && !t.anti_tamper_hash;
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isDemo ? '#94a3b8' : '#34d399', fontSize: '11px', fontWeight: 600 }}>
-                <CheckCircle2 size={12} /> {isDemo ? 'Demo Attestation' : 'Ed25519 Verified [RFC 8032]'}
-              </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8', lineHeight: 1, fontFamily: 'monospace' }}>
-                {t.anti_tamper_hash || (isDemo ? 'Simulated Mandate' : 'SHA256 Match (PASS)')}
-              </div>
-            </div>
-          );
-        },
-      },
-      {
-        headerName: 'Back-Office ERP',
-        width: 150,
-        sortable: false,
-        filter: false,
-        cellRenderer: () => {
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '100%' }}>
-              <span style={{ fontSize: '10px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
-                Zapier MCP
-              </span>
-              <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>
-                QBO #6300
-              </span>
-            </div>
-          );
-        },
-      },
-      {
         headerName: 'Action',
-        width: 145,
+        width: 105,
         sortable: false,
         filter: false,
         pinned: 'right',
@@ -495,23 +455,33 @@ export function EnterpriseFleetLedger({
     [copiedKey, onInspectTrace, onNavigateTab]
   );
 
-  // Dynamic Trade GMV computed from live active transactions
+  // Dynamic Trade GMV computed from live active transactions sorted Batch -> Gateway -> Cluster
   const dynamicTradeData = useMemo(() => {
     const tradeGmvMap: Record<string, number> = {};
     transactions.forEach((t) => {
       if (t.status === 'ACTIVE_STREAMING') {
-        tradeGmvMap[t.trade_vertical] = (tradeGmvMap[t.trade_vertical] || 0) + t.monthly_amount * 12;
+        const key = t.trade_vertical;
+        tradeGmvMap[key] = (tradeGmvMap[key] || 0) + (t.monthly_amount || 0) * 12;
       }
     });
 
-    return tradeImpactData.map((d) => {
-      const liveGmv = tradeGmvMap[d.trade];
-      const gmv = liveGmv !== undefined ? liveGmv : (d.annualized_gmv ?? d.recovered_revenue ?? 0);
-      return {
-        trade: d.trade,
-        gmv: Math.round(gmv * 100) / 100,
-      };
-    });
+    const tierOrderWeights: Record<string, number> = {
+      'High-Throughput Batch Worker': 1,
+      'Dedicated AI Service Gateway': 2,
+      'Enterprise Cluster Node': 3,
+      'Autonomous Security Audit Cluster': 3,
+    };
+
+    return tradeImpactData
+      .map((d) => {
+        const liveGmv = tradeGmvMap[d.trade];
+        const gmv = liveGmv !== undefined ? liveGmv : (d.annualized_gmv ?? d.recovered_revenue ?? 0);
+        return {
+          trade: d.trade,
+          gmv: Math.round(gmv * 100) / 100,
+        };
+      })
+      .sort((a, b) => (tierOrderWeights[a.trade] || 99) - (tierOrderWeights[b.trade] || 99));
   }, [transactions, tradeImpactData]);
 
   // AG Charts: Autonomous AP2 Commerce Volume by Capability
@@ -528,7 +498,14 @@ export function EnterpriseFleetLedger({
           yName: 'ARR ($)',
           cornerRadius: 4,
           fill: '#0284c7',
-          stroke: '#38bdf8',
+          strokeWidth: 0,
+          label: {
+            enabled: true,
+            placement: 'outside',
+            formatter: (params: any) => `$${Math.round(params.value).toLocaleString()}`,
+            color: '#cbd5e1',
+            fontSize: 11,
+          },
         } as any,
       ],
       background: {
@@ -542,6 +519,13 @@ export function EnterpriseFleetLedger({
         y: {
           type: 'number',
           position: 'bottom',
+          label: {
+            formatter: (params: any) => {
+              const v = params.value;
+              if (v === 0) return '$0';
+              return `$${Math.round(v / 1000)}k`;
+            },
+          },
         },
       } as any,
     }),
@@ -615,33 +599,40 @@ export function EnterpriseFleetLedger({
       (t) => t.monthly_amount > 49.99 && t.status === 'ACTIVE_STREAMING'
     ).length;
 
-    // Counter-offers sent: all $49.99 Batch inquiries (both active and pending)
-    const counterOffersSent = transactions.filter(
-      (t) => t.monthly_amount === 49.99 || t.service_plan?.includes('49.99')
-    ).length;
-
     // Counter-offers won: $49.99 Batch inquiries converted to active streaming
     const counterOffersWon = starterTierTransactions.length;
 
-    // Hard floor block: inquiries with spending cap below $49.99 starter floor
+    // Pending inquiries: subscriptions awaiting authorization/token (TXN-AP2-9021)
+    const pendingInquiries = transactions.filter((t) => t.status !== 'ACTIVE_STREAMING').length;
+
+    // Hard floor block: inquiries with spending cap below $49.99 starter floor (Demo data benchmark)
     const hardFloorBlocks = 2;
 
-    const totalInquiries = instantApprovals + counterOffersSent + hardFloorBlocks;
-    const instantApprovalPct = totalInquiries > 0 ? ((instantApprovals / totalInquiries) * 100).toFixed(1) : '0.0';
-    const counterOffersSentPct = totalInquiries > 0 ? ((counterOffersSent / totalInquiries) * 100).toFixed(1) : '0.0';
-    const winRatePct = counterOffersSent > 0 ? Math.round((counterOffersWon / counterOffersSent) * 100) : 0;
-    const hardFloorPct = totalInquiries > 0 ? ((hardFloorBlocks / totalInquiries) * 100).toFixed(1) : '0.0';
+    const totalInquiries = instantApprovals + counterOffersWon + pendingInquiries + hardFloorBlocks;
+    const instantApprovalPct = totalInquiries > 0 ? ((instantApprovals / totalInquiries) * 100).toFixed(0) : '0';
+    const counterOffersWonPct = totalInquiries > 0 ? ((counterOffersWon / totalInquiries) * 100).toFixed(0) : '0';
+    const pendingPct = totalInquiries > 0 ? ((pendingInquiries / totalInquiries) * 100).toFixed(0) : '0';
+    const hardFloorPct = totalInquiries > 0 ? ((hardFloorBlocks / totalInquiries) * 100).toFixed(0) : '0';
+
+    const instantWidth = totalInquiries > 0 ? `${((instantApprovals / totalInquiries) * 100).toFixed(2)}%` : '0%';
+    const counterWidth = totalInquiries > 0 ? `${((counterOffersWon / totalInquiries) * 100).toFixed(2)}%` : '0%';
+    const pendingWidth = totalInquiries > 0 ? `${((pendingInquiries / totalInquiries) * 100).toFixed(2)}%` : '0%';
+    const floorWidth = totalInquiries > 0 ? `${((hardFloorBlocks / totalInquiries) * 100).toFixed(2)}%` : '0%';
 
     return {
       totalInquiries,
       instantApprovals,
       instantApprovalPct,
-      counterOffersSent,
-      counterOffersSentPct,
+      instantWidth,
       counterOffersWon,
-      winRatePct,
+      counterOffersWonPct,
+      counterWidth,
+      pendingInquiries,
+      pendingPct,
+      pendingWidth,
       hardFloorBlocks,
       hardFloorPct,
+      floorWidth,
     };
   }, [transactions, starterTierTransactions]);
 
@@ -660,29 +651,40 @@ export function EnterpriseFleetLedger({
     };
   }, [dynamicTradeData, transactions]);
 
-  // Subscription Tier Distribution computed from live transactions
-  // Service Capability Distribution computed from live transactions (5 distinct capability slices)
+  // Subscription Tier Distribution computed on active transactions (Batch 4 [31%], Gateway 6 [46%], Cluster 3 [23%])
   const tierDistribution = useMemo(() => {
-    const map: Record<string, { tier: string; count: number; mrr: number; percentage: string; label: string }> = {};
-    const totalCount = transactions.length || 1;
+    const activeTxns = transactions.filter((t) => t.status === 'ACTIVE_STREAMING');
+    const totalCount = activeTxns.length || 1;
 
-    transactions.forEach((t) => {
-      const capability = t.trade_vertical || 'Dedicated AI Service Gateway';
-      if (!map[capability]) {
-        map[capability] = { tier: capability, count: 0, mrr: 0, percentage: '0%', label: '' };
+    const tierMap: Record<string, { tier: string; shortName: string; count: number; mrr: number; sortOrder: number }> = {
+      'High-Throughput Batch Worker': { tier: 'High-Throughput Batch Worker', shortName: 'Batch', count: 0, mrr: 0, sortOrder: 1 },
+      'Dedicated AI Service Gateway': { tier: 'Dedicated AI Service Gateway', shortName: 'Gateway', count: 0, mrr: 0, sortOrder: 2 },
+      'Enterprise Cluster Node': { tier: 'Enterprise Cluster Node', shortName: 'Cluster', count: 0, mrr: 0, sortOrder: 3 },
+    };
+
+    activeTxns.forEach((t) => {
+      let cap = t.trade_vertical || '';
+      if (!tierMap[cap]) {
+        if (t.monthly_amount === 49.99 || cap.toLowerCase().includes('batch')) cap = 'High-Throughput Batch Worker';
+        else if (t.monthly_amount === 179.99 || cap.toLowerCase().includes('cluster')) cap = 'Enterprise Cluster Node';
+        else cap = 'Dedicated AI Service Gateway';
       }
-      map[capability].count += 1;
-      map[capability].mrr = Math.round((map[capability].mrr + t.monthly_amount) * 100) / 100;
+      tierMap[cap].count += 1;
+      tierMap[cap].mrr = Math.round((tierMap[cap].mrr + t.monthly_amount) * 100) / 100;
     });
 
-    return Object.values(map).map((item) => {
-      const pct = ((item.count / totalCount) * 100).toFixed(1);
-      return {
-        ...item,
-        percentage: `${pct}%`,
-        label: `${item.tier} (${pct}% • ${item.count} Nodes)`,
-      };
-    });
+    return Object.values(tierMap)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((item) => {
+        const pct = Math.round((item.count / totalCount) * 100);
+        return {
+          tier: item.tier,
+          count: item.count,
+          mrr: item.mrr,
+          percentage: `${pct}%`,
+          label: `${item.shortName} · ${item.count} (${pct}%)`,
+        };
+      });
   }, [transactions]);
 
   // AG Charts: Subscription Tier & Capability Fleet Distribution Donut Chart
@@ -696,8 +698,8 @@ export function EnterpriseFleetLedger({
           angleKey: 'count',
           legendItemKey: 'label',
           innerRadiusRatio: 0.65,
-          fills: ['#0284c7', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'],
-          strokes: ['#070d1a', '#070d1a', '#070d1a', '#070d1a', '#070d1a'],
+          fills: ['#0284c7', '#199e70', '#8b5cf6'],
+          strokes: ['#070d1a', '#070d1a', '#070d1a'],
           strokeWidth: 2,
           cornerRadius: 4,
           sectorSpacing: 3,
@@ -705,13 +707,13 @@ export function EnterpriseFleetLedger({
           calloutLabel: { enabled: false },
           innerLabels: [
             {
-              text: `${activeLinesCount} Active Nodes`,
-              fontSize: 16,
+              text: `${activeLinesCount} Active Subscriptions`,
+              fontSize: 14,
               fontWeight: 'bold',
               color: '#f8fafc',
             },
             {
-              text: `$${totalMrr.toFixed(0)}/mo MRR`,
+              text: `$${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo MRR`,
               fontSize: 11,
               color: '#38bdf8',
             },
@@ -729,7 +731,7 @@ export function EnterpriseFleetLedger({
             fontSize: 11,
           },
         },
-      },
+      } as any,
     }),
     [tierDistribution, totalMrr, activeLinesCount]
   );
@@ -973,7 +975,7 @@ export function EnterpriseFleetLedger({
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                     <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      Autonomous Counter-Offer Bargaining Funnel
+                      Inbound Inquiries &amp; Autonomous Conversion
                     </span>
                     <span
                       style={{
@@ -994,7 +996,7 @@ export function EnterpriseFleetLedger({
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', flexShrink: 0 }}>
                   <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                    Active rate: <strong style={{ color: '#34d399' }}>{transactions.length > 0 ? `${Math.round((activeLinesCount / Math.max(transactions.length, 1)) * 100)}% (${activeLinesCount}/${transactions.length})` : '100%'}</strong>
+                    {funnelMetrics.totalInquiries} Total Inquiries &bull; Active rate: <strong style={{ color: '#34d399' }}>{transactions.length > 0 ? `${Math.round((activeLinesCount / Math.max(transactions.length, 1)) * 100)}% (${activeLinesCount}/${transactions.length})` : '100%'}</strong>
                   </span>
                   <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>
                     MRR Preserved: <strong style={{ color: '#38bdf8' }}>+${mrrPreserved.toFixed(2)}/mo</strong>
@@ -1016,7 +1018,7 @@ export function EnterpriseFleetLedger({
                       whiteSpace: 'nowrap',
                       transition: 'all 0.15s ease',
                     }}
-                    title={isFunnelCollapsed ? 'Expand 5-Step Funnel Grid' : 'Collapse 5-Step Funnel Grid'}
+                    title={isFunnelCollapsed ? 'Expand Conversion Distribution' : 'Collapse Conversion Distribution'}
                   >
                     {isFunnelCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
                     <span>{isFunnelCollapsed ? 'Expand' : 'Collapse'}</span>
@@ -1026,79 +1028,156 @@ export function EnterpriseFleetLedger({
 
               {/* Row 2: Subtitle text */}
               <div style={{ fontSize: '11px', color: '#94a3b8', paddingLeft: '34px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Autonomously converts sub-budget buyer agents via starter tier counter-offers
+                Distribution of {funnelMetrics.totalInquiries} inbound buyer agent inquiries across instant catalog approvals, negotiated counter-offers, and floor limits
               </div>
 
-              {/* 5-Step Funnel Grid */}
+              {/* 100% Horizontal Stacked Bar */}
               {!isFunnelCollapsed && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
-                  {/* Step 1 */}
-                  <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                      1. Inquiries
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                  {/* The Bar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      height: '36px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #1e293b',
+                      backgroundColor: '#090e1a',
+                      boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    {/* Segment 1: Instant Approvals */}
+                    <div
+                      style={{
+                        width: funnelMetrics.instantWidth,
+                        backgroundColor: '#0284c7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '0 8px',
+                        cursor: 'default',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={`Instant Catalog Approvals: ${funnelMetrics.instantApprovals} inquiries (${funnelMetrics.instantApprovalPct}%) • Cap >= $79.99/mo accepted automatically`}
+                    >
+                      Instant {funnelMetrics.instantApprovals} ({funnelMetrics.instantApprovalPct}%)
                     </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#f8fafc', margin: '3px 0' }}>
-                      {funnelMetrics.totalInquiries} Total
+
+                    {/* Segment 2: Won by Counter-Offer - Emphasized */}
+                    <div
+                      style={{
+                        width: funnelMetrics.counterWidth,
+                        backgroundColor: '#199e70',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        padding: '0 8px',
+                        cursor: 'default',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        boxShadow: '0 0 12px rgba(25, 158, 112, 0.45)',
+                        borderLeft: '1px solid rgba(255, 255, 255, 0.25)',
+                        borderRight: '1px solid rgba(255, 255, 255, 0.25)',
+                        zIndex: 2,
+                      }}
+                      title={`Won by Counter-Offer: ${funnelMetrics.counterOffersWon} inquiries (${funnelMetrics.counterOffersWonPct}%) • Sub-budget counter-offer accepted (+$${mrrPreserved.toFixed(2)}/mo MRR saved)`}
+                    >
+                      Won Counter {funnelMetrics.counterOffersWon} ({funnelMetrics.counterOffersWonPct}%)
                     </div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      FastMCP Protocol Discovery
+
+                    {/* Segment 3: Pending Authorization */}
+                    <div
+                      style={{
+                        width: funnelMetrics.pendingWidth,
+                        backgroundColor: '#f59e0b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#1e293b',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        padding: '0 4px',
+                        cursor: 'default',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={`Pending Authorization: ${funnelMetrics.pendingInquiries} inquiry (${funnelMetrics.pendingPct}%) • Awaiting PayPal agreement token`}
+                    >
+                      {funnelMetrics.pendingInquiries} ({funnelMetrics.pendingPct}%)
+                    </div>
+
+                    {/* Segment 4: Below Hard Floor */}
+                    <div
+                      style={{
+                        width: funnelMetrics.floorWidth,
+                        backgroundColor: '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#cbd5e1',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '0 6px',
+                        cursor: 'default',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={`Below Hard Floor: ${funnelMetrics.hardFloorBlocks} inquiries (${funnelMetrics.hardFloorPct}%) • Spending mandate < $49.99/mo rejected`}
+                    >
+                      Below Floor {funnelMetrics.hardFloorBlocks} ({funnelMetrics.hardFloorPct}%)
                     </div>
                   </div>
 
-                  {/* Step 2 */}
-                  <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ fontSize: '10px', color: '#34d399', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                      2. Instant Approvals
-                    </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#34d399', margin: '3px 0' }}>
-                      {funnelMetrics.instantApprovals} ({funnelMetrics.instantApprovalPct}%)
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      Cap &ge; $79.99/mo (Instant)
-                    </div>
-                  </div>
-
-                  {/* Step 3 */}
-                  <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ fontSize: '10px', color: '#38bdf8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                      3. Counter-Offers Sent
-                    </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#38bdf8', margin: '3px 0' }}>
-                      {funnelMetrics.counterOffersSent} ({funnelMetrics.counterOffersSentPct}%)
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      Offered $49.99 Starter Tier
-                    </div>
-                  </div>
-
-                  {/* Step 4 */}
-                  <div style={{ backgroundColor: '#090e1a', border: '1px solid #10b981', borderRadius: '8px', padding: '10px 14px', borderLeft: '4px solid #10b981' }}>
-                    <div style={{ fontSize: '10px', color: '#10b981', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.04em' }}>
-                      4. Bargaining Won
-                    </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981', margin: '3px 0' }}>
-                      {funnelMetrics.counterOffersWon} Closed ({funnelMetrics.winRatePct}%)
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#34d399', fontWeight: 600 }}>
-                      +${mrrPreserved.toFixed(2)}/mo MRR Saved
-                    </div>
-                  </div>
-
-                  {/* Step 5 */}
-                  <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '8px', padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                        5. Hard Floor Block
+                  {/* Legend / Breakdown Row */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: '8px',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#0284c7', flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#f8fafc', fontWeight: 600 }}>Instant Approvals: {funnelMetrics.instantApprovals} ({funnelMetrics.instantApprovalPct}%)</div>
+                        <div style={{ color: '#64748b', fontSize: '10px' }}>Cap &ge; $79.99/mo (Standard)</div>
                       </div>
-                      <span style={{ fontSize: '9px', backgroundColor: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
-                        Demo data
-                      </span>
                     </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#94a3b8', margin: '3px 0' }}>
-                      {funnelMetrics.hardFloorBlocks} ({funnelMetrics.hardFloorPct}%)
+
+                    <div style={{ backgroundColor: '#090e1a', border: '1px solid #199e70', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#199e70', flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#34d399', fontWeight: 700 }}>Won Counter: {funnelMetrics.counterOffersWon} ({funnelMetrics.counterOffersWonPct}%)</div>
+                        <div style={{ color: '#38bdf8', fontSize: '10px', fontWeight: 600 }}>+${mrrPreserved.toFixed(2)}/mo MRR Saved</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      Cap &lt; $49.99 Hard Minimum &bull; Demo data
+
+                    <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#f59e0b', flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#fbbf24', fontWeight: 600 }}>Pending: {funnelMetrics.pendingInquiries} ({funnelMetrics.pendingPct}%)</div>
+                        <div style={{ color: '#64748b', fontSize: '10px' }}>Awaiting Token (TXN-9021)</div>
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: '#090e1a', border: '1px solid #1e293b', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#475569', flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#94a3b8', fontWeight: 600 }}>Below Floor: {funnelMetrics.hardFloorBlocks} ({funnelMetrics.hardFloorPct}%)</div>
+                        <div style={{ color: '#64748b', fontSize: '10px' }}>Spending Cap &lt; $49.99/mo</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1327,13 +1406,47 @@ export function EnterpriseFleetLedger({
                 </div>
               </div>
 
+              {/* Single Demo data banner */}
+              <div
+                style={{
+                  padding: '6px 16px',
+                  backgroundColor: 'rgba(30, 41, 59, 0.5)',
+                  borderBottom: '1px solid #1e293b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+                    color: '#94a3b8',
+                    border: '1px solid rgba(148, 163, 184, 0.3)',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  Demo data
+                </span>
+                <span>
+                  Sample autonomous agent subscriptions for AP2 protocol demonstration &bull; All cryptographic proofs &amp; ERP syncs viewable in Inspect drawer
+                </span>
+              </div>
+
               {/* AG Grid High-Density Data Table Container */}
-              <div style={{ height: '520px', width: '100%', position: 'relative' }}>
+              <div style={{ width: '100%', position: 'relative' }}>
                 <AgGridReact<A2aTransaction>
                   ref={gridRef}
                   theme={agGridDarkTheme}
                   rowData={filteredTransactions}
                   columnDefs={colDefs}
+                  domLayout="autoHeight"
                   pagination={true}
                   paginationPageSize={10}
                   paginationPageSizeSelector={[10, 20, 50]}
@@ -1702,6 +1815,31 @@ export function EnterpriseFleetLedger({
                         </div>
                         <div style={{ marginTop: '8px', fontSize: '10px', color: '#64748b' }}>
                           Verified by AP2 Anti-Tamper Runtime &bull; SHA-256 Digest Anchored
+                        </div>
+                      </div>
+
+                      {/* Back-Office ERP Integration */}
+                      <div
+                        style={{
+                          backgroundColor: '#0f172a',
+                          border: '1px solid #1e293b',
+                          borderRadius: '10px',
+                          padding: '14px 16px',
+                        }}
+                      >
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+                          Back-Office ERP Integration
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '11px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                            FastMCP Bridge
+                          </span>
+                          <span style={{ fontSize: '11px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                            QBO GL 6300 Exported
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          Real-time ledger sync via FastMCP tool calling to Enterprise ERP and QuickBooks Online GL Account #6300.
                         </div>
                       </div>
                     </>

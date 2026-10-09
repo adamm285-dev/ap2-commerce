@@ -30,6 +30,10 @@ export interface AgentNegotiationResponse {
   sellerMcpEndpoint: string;
   mandateToken?: string;
   isLiveBackend?: boolean;
+  isCounterOffer?: boolean;
+  counterOfferMessage?: string;
+  requestedMonthlyRate?: number;
+  requestedPlanName?: string;
 }
 
 export interface ProvisioningResult {
@@ -45,10 +49,48 @@ export interface ProvisioningResult {
 
 export const PAYPAL_CONFIG = {
   clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID || 'test',
-  planId: import.meta.env.VITE_PAYPAL_PLAN_ID || 'P-5ML4271244454362WXNWU5NQ',
+  planId: import.meta.env.VITE_PAYPAL_PLAN_ID || 'P-4KA989014W524233ANLCRSFQ',
+  planIdSolo: import.meta.env.VITE_PAYPAL_PLAN_ID_SOLO || 'P-68L14988XW5641721NLCRSFQ',
+  planIdPro: import.meta.env.VITE_PAYPAL_PLAN_ID_PRO || 'P-4KA989014W524233ANLCRSFQ',
+  planIdDispatch: import.meta.env.VITE_PAYPAL_PLAN_ID_DISPATCH || 'P-77627096S5279500YNLCRSFY',
   environment: (import.meta.env.VITE_PAYPAL_ENV || 'sandbox') as 'sandbox' | 'production',
-  mcpServerUrl: 'https://mcp.sandbox.paypal.com/sse',
+  get mcpServerUrl(): string {
+    return typeof window !== 'undefined' && window.location?.origin
+      ? `${window.location.origin}/mcp`
+      : 'http://127.0.0.1:8001/mcp';
+  },
 };
+
+export function getCatalogTierDetails(capabilityOrTier: string): {
+  tierName: string;
+  planName: string;
+  catalogPrice: number;
+  planId: string;
+} {
+  const lower = (capabilityOrTier || '').toLowerCase();
+  if (lower.includes('batch') || lower.includes('solo') || lower.includes('starter') || lower.includes('49.99')) {
+    return {
+      tierName: 'High-Throughput Batch Worker',
+      planName: 'High-Throughput Batch Worker ($49.99/mo)',
+      catalogPrice: 49.99,
+      planId: PAYPAL_CONFIG.planIdSolo,
+    };
+  }
+  if (lower.includes('cluster') || lower.includes('security') || lower.includes('dispatch') || lower.includes('enterprise') || lower.includes('179.99')) {
+    return {
+      tierName: 'Enterprise Cluster Node',
+      planName: 'Enterprise Cluster Node ($179.99/mo)',
+      catalogPrice: 179.99,
+      planId: PAYPAL_CONFIG.planIdDispatch,
+    };
+  }
+  return {
+    tierName: 'Dedicated AI Service Gateway',
+    planName: 'Dedicated AI Service Gateway ($79.99/mo)',
+    catalogPrice: 79.99,
+    planId: PAYPAL_CONFIG.planIdPro,
+  };
+}
 
 /**
  * Autonomous Buyer Agent evaluates whether the seller's terms fall within
@@ -61,12 +103,11 @@ export async function evaluateAgentNegotiation(
 ): Promise<AgentNegotiationResponse> {
   const agentName = request.buyerAgentName || request.contractorName || 'AutonomousBuyerAgent';
   const capabilityName = request.capability || request.tradeVertical || 'Dedicated AI Service Gateway';
-  const valueEstimate = request.workloadValueEstimate || request.missedCallLossEstimate || 500;
-  const sellerMonthlyRate = request.maxMonthlyBudget >= 179.99
-    ? 179.99
-    : request.maxMonthlyBudget >= 79.99
-    ? 79.99
-    : 49.99;
+  
+  // ALWAYS send the SELECTED tier's catalog price - never pick from budget before asking seller
+  const selectedTier = getCatalogTierDetails(capabilityName);
+  const sellerMonthlyRate = selectedTier.catalogPrice;
+  const requestedPlanName = selectedTier.planName;
   const buyerAgentId = `BuyerAgent-${agentName.replace(/\s+/g, '')}-${capabilityName.replace(/\s+/g, '')}`;
 
   try {
@@ -85,34 +126,48 @@ export async function evaluateAgentNegotiation(
     if (res.ok) {
       const data = await res.json();
       const approved = data.approved ?? false;
+      const counterAvailable = Boolean(data.counter_offer_available ?? data.counterOfferAvailable);
+      const counterAmount = data.counter_offer_amount ?? data.counterOfferAmount;
+      const counterTierRaw = data.counter_offer_tier ?? data.counterOfferTier;
+      const counterTier = (counterTierRaw === 'Solo Starter' || !counterTierRaw) ? 'High-Throughput Batch Worker' : counterTierRaw;
+      const isCounterOffer = !approved && counterAvailable;
       const finalMonthlyRate = approved
         ? sellerMonthlyRate
-        : (data.counter_offer_amount || sellerMonthlyRate);
-      const agreedPlanId = data.counter_offer_plan_id || (sellerMonthlyRate === 49.99 ? 'P-AP2-BATCH-WORKER' : sellerMonthlyRate === 179.99 ? 'P-AP2-CLUSTER-NODE' : PAYPAL_CONFIG.planId);
-      const agreedPlanName = data.counter_offer_tier
-        ? `${data.counter_offer_tier} (${capabilityName})`
-        : sellerMonthlyRate === 49.99
-        ? `High-Throughput Batch Worker ($49.99/mo)`
-        : sellerMonthlyRate === 179.99
-        ? `Enterprise Cluster Node ($179.99/mo)`
-        : `Dedicated AI Service Gateway ($79.99/mo)`;
+        : (counterAmount || sellerMonthlyRate);
+      const resolvedPlanId = data.plan_id || data.planId;
+      const resolvedCounterPlanId = data.counter_offer_plan_id || data.counterOfferPlanId;
+      const agreedPlanId = approved
+        ? (resolvedPlanId || (finalMonthlyRate === 49.99 ? PAYPAL_CONFIG.planIdSolo : finalMonthlyRate === 179.99 ? PAYPAL_CONFIG.planIdDispatch : PAYPAL_CONFIG.planIdPro))
+        : (resolvedCounterPlanId || PAYPAL_CONFIG.planIdSolo);
+
+      const agreedPlanName = isCounterOffer
+        ? `${counterTier} ($${finalMonthlyRate.toFixed(2)}/mo)`
+        : requestedPlanName;
+
+      const counterOfferMessage = isCounterOffer
+        ? `[SellerMCP]: Budget $${request.maxMonthlyBudget.toFixed(2)} < $${sellerMonthlyRate.toFixed(2)} — counter-offer: ${counterTier} $${finalMonthlyRate.toFixed(2)}/mo`
+        : undefined;
 
       const message = approved
-        ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Autonomous compute ROI value $${valueEstimate}/mo.`
-        : data.counter_offer_available
-        ? `[BuyerAgent]: Counter-offer accepted for $${finalMonthlyRate}/mo (${data.counter_offer_tier}) within budget cap $${request.maxMonthlyBudget}/mo.`
-        : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds buyer budget cap ($${request.maxMonthlyBudget}).`;
+        ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate.toFixed(2)}/mo <= $${request.maxMonthlyBudget.toFixed(2)}/mo cap).`
+        : isCounterOffer
+        ? `[BuyerAgent]: Counter-offer accepted for $${finalMonthlyRate.toFixed(2)}/mo (${counterTier}) within budget cap $${request.maxMonthlyBudget.toFixed(2)}/mo.`
+        : (data.reason || `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate.toFixed(2)}) exceeds buyer budget cap ($${request.maxMonthlyBudget.toFixed(2)}).`);
 
       return {
         agreedPlanId: agreedPlanId,
         agreedPlanName: agreedPlanName,
         monthlyFee: finalMonthlyRate,
-        mandateSatisfied: approved || Boolean(data.counter_offer_available),
+        mandateSatisfied: approved || isCounterOffer,
         kycRequired: true,
-        message: data.reason || message,
+        message: message,
         sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
-        mandateToken: data.mandateProofHash || data.counter_offer_mandate_hash,
+        mandateToken: data.mandateProofHash || data.mandate_proof_hash || data.counterOfferMandateHash || data.counter_offer_mandate_hash,
         isLiveBackend: true,
+        isCounterOffer: isCounterOffer,
+        counterOfferMessage: counterOfferMessage,
+        requestedMonthlyRate: sellerMonthlyRate,
+        requestedPlanName: requestedPlanName,
       };
     }
   } catch (err) {
@@ -121,24 +176,47 @@ export async function evaluateAgentNegotiation(
 
   // Graceful client-side fallback
   const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
-  const fallbackPlanName = sellerMonthlyRate === 49.99
-    ? `High-Throughput Batch Worker ($49.99/mo)`
-    : sellerMonthlyRate === 179.99
-    ? `Enterprise Cluster Node ($179.99/mo)`
-    : `Dedicated AI Service Gateway ($79.99/mo)`;
-  const fallbackPlanId = sellerMonthlyRate === 49.99 ? 'P-AP2-BATCH-WORKER' : sellerMonthlyRate === 179.99 ? 'P-AP2-CLUSTER-NODE' : PAYPAL_CONFIG.planId;
+  const isFallbackCounterOffer = !isBudgetAcceptable && request.maxMonthlyBudget >= 49.99;
+  const fallbackMonthlyFee = isBudgetAcceptable
+    ? sellerMonthlyRate
+    : isFallbackCounterOffer
+    ? 49.99
+    : sellerMonthlyRate;
+
+  const fallbackPlanName = isFallbackCounterOffer
+    ? 'High-Throughput Batch Worker ($49.99/mo)'
+    : requestedPlanName;
+
+  const fallbackPlanId = fallbackMonthlyFee === 49.99
+    ? PAYPAL_CONFIG.planIdSolo
+    : fallbackMonthlyFee === 179.99
+    ? PAYPAL_CONFIG.planIdDispatch
+    : PAYPAL_CONFIG.planIdPro;
+
+  const fallbackCounterOfferMessage = isFallbackCounterOffer
+    ? `[SellerMCP]: Budget $${request.maxMonthlyBudget.toFixed(2)} < $${sellerMonthlyRate.toFixed(2)} — counter-offer: ${fallbackPlanName}`
+    : undefined;
+
+  const fallbackMessage = isBudgetAcceptable
+    ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate.toFixed(2)}/mo <= $${request.maxMonthlyBudget.toFixed(2)}/mo cap).`
+    : isFallbackCounterOffer
+    ? `[BuyerAgent]: Counter-offer accepted for $${fallbackMonthlyFee.toFixed(2)}/mo (High-Throughput Batch Worker) within budget cap $${request.maxMonthlyBudget.toFixed(2)}/mo.`
+    : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate.toFixed(2)}) exceeds local buyer cap ($${request.maxMonthlyBudget.toFixed(2)}).`;
+
   return {
     agreedPlanId: fallbackPlanId,
     agreedPlanName: fallbackPlanName,
-    monthlyFee: sellerMonthlyRate,
-    mandateSatisfied: isBudgetAcceptable,
+    monthlyFee: fallbackMonthlyFee,
+    mandateSatisfied: isBudgetAcceptable || isFallbackCounterOffer,
     kycRequired: true,
-    message: isBudgetAcceptable
-      ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Autonomous compute value $${valueEstimate}/mo.`
-      : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds local buyer cap ($${request.maxMonthlyBudget}).`,
+    message: fallbackMessage,
     sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
-    mandateToken: isBudgetAcceptable ? 'MANDATE-SIMULATED-LOCAL-TOKEN' : undefined,
+    mandateToken: (isBudgetAcceptable || isFallbackCounterOffer) ? 'MANDATE-SIMULATED-LOCAL-TOKEN' : undefined,
     isLiveBackend: false,
+    isCounterOffer: isFallbackCounterOffer,
+    counterOfferMessage: fallbackCounterOfferMessage,
+    requestedMonthlyRate: sellerMonthlyRate,
+    requestedPlanName: requestedPlanName,
   };
 }
 
@@ -173,7 +251,7 @@ export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean
 export async function executeProvisioningAfterSubscription(
   subscriptionId: string,
   principalEntity: string,
-  _capability: string = 'Dedicated AI Service Gateway',
+  capability: string = 'Dedicated AI Service Gateway',
   _regionCluster: string = 'us-east-1'
 ): Promise<ProvisioningResult> {
   try {
@@ -206,13 +284,15 @@ export async function executeProvisioningAfterSubscription(
 
   // Graceful client-side fallback matching AP2 MCP node endpoints
   await new Promise((resolve) => setTimeout(resolve, 600));
-  const sampleEndpoints = [
-    'mcp+https://gateway-01.acme-systems.io/mcp',
-    'mcp+https://batch-worker-02.acme-systems.io/mcp',
-    'mcp+https://cluster-01.acme-systems.io/mcp',
-    'mcp+https://node-mesh-04.acme-systems.io/mcp',
-  ];
-  const allocatedDid = sampleEndpoints[Math.floor(Math.random() * sampleEndpoints.length)];
+  const capLower = (capability || '').toLowerCase();
+  let allocatedDid = 'mcp+https://gateway-01.acme-systems.io/mcp';
+  if (capLower.includes('batch') || capLower.includes('starter') || capLower.includes('solo') || capLower.includes('49.99')) {
+    allocatedDid = 'mcp+https://batch-01.acme-systems.io/mcp';
+  } else if (capLower.includes('cluster') || capLower.includes('enterprise') || capLower.includes('179.99')) {
+    allocatedDid = 'mcp+https://cluster-01.acme-systems.io/mcp';
+  } else {
+    allocatedDid = 'mcp+https://gateway-01.acme-systems.io/mcp';
+  }
 
   return {
     success: true,

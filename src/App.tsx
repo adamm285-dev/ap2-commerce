@@ -11,7 +11,6 @@ import {
   Calendar,
   Network,
   Cpu,
-  Radio,
   Layers,
   ChevronDown,
   ChevronUp,
@@ -22,9 +21,9 @@ import {
 } from 'lucide-react';
 import {
   initialA2aTransactions,
-  tradeImpactData,
   kycAuditData,
   telecomTrunkData,
+  buildTradeImpactFromTransactions,
   type A2aTransaction,
 } from './data/telemetryData';
 import {
@@ -99,14 +98,24 @@ export function App() {
   const [isScheduleMetricsCollapsed, setIsScheduleMetricsCollapsed] = useState<boolean>(false);
   const [mcpScenario, setMcpScenario] = useState<'a2a' | 'workload'>('a2a');
   const [isMcpControlsCollapsed, setIsMcpControlsCollapsed] = useState<boolean>(false);
+  const [lastFetchTime, setLastFetchTime] = useState<string>(() => new Date().toISOString().slice(11, 19) + ' UTC');
+
+  const activeTransactions = useMemo(() => {
+    return transactions.filter((t) => t.status === 'ACTIVE_STREAMING');
+  }, [transactions]);
+  const pendingTransactions = useMemo(() => {
+    return transactions.filter((t) => t.status !== 'ACTIVE_STREAMING');
+  }, [transactions]);
 
   const totalMrr = useMemo(() => {
-    return transactions.reduce((sum, t) => sum + (t.monthly_amount || 0), 0);
-  }, [transactions]);
-  const activeLinesCount = transactions.length;
-  const totalAutonomousGmv = totalMrr * 12;
+    const raw = activeTransactions.reduce((sum, t) => sum + (t.monthly_amount || 0), 0);
+    return Math.round(raw * 100) / 100;
+  }, [activeTransactions]);
+  const activeLinesCount = activeTransactions.length;
+  const pendingLinesCount = pendingTransactions.length;
+  const totalAutonomousGmv = Math.round(totalMrr * 12 * 100) / 100;
 
-  const [isMarcusDepositLocked, setIsMarcusDepositLocked] = useState(false);
+  const [isPendingDepositLocked, setIsPendingDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNegotiating, setIsNegotiating] = useState(false);
   const [negotiationResult, setNegotiationResult] = useState<AgentNegotiationResponse | null>(null);
@@ -115,12 +124,18 @@ export function App() {
   const [paypalError, setPaypalError] = useState<string | null>(null);
 
   // Form state for AP2 Buyer Agent simulation
-  const [contractorName, setContractorName] = useState('agent:claude-3-5:acme-procure');
+  const [contractorName, setContractorName] = useState('agent:acme-procure');
   const [businessEntity, setBusinessEntity] = useState('Acme Autonomous Systems LLC');
   const [tradeVertical, setTradeVertical] = useState('Dedicated AI Service Gateway');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
   const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA - 863)');
   const [preferredAreaCode, setPreferredAreaCode] = useState('863');
+
+  // Dynamic trade impact dataset computed from live active transactions (Batch -> Gateway -> Cluster)
+  const dynamicTradeImpact = useMemo(() => {
+    return buildTradeImpactFromTransactions(transactions);
+  }, [transactions]);
+
 
   // Memoize data sources to maintain reference stability for AG Studio
   const studioData: AgDataSourcesDefinition = useMemo(() => {
@@ -133,6 +148,7 @@ export function App() {
             { id: 'id', name: 'Transaction ID', format: 'textFormat' },
             { id: 'timestamp', name: 'Timestamp', format: 'textFormat' },
             { id: 'buyer_agent', name: 'Buyer Agent ID', format: 'textFormat' },
+            { id: 'principal_entity', name: 'Principal Entity', format: 'textFormat' },
             { id: 'contractor_name', name: 'Principal Entity', format: 'textFormat' },
             { id: 'trade_vertical', name: 'Service Capability', format: 'textFormat' },
             { id: 'service_plan', name: 'Service Plan Tier', format: 'textFormat' },
@@ -147,7 +163,7 @@ export function App() {
         },
         {
           id: 'trade_impact',
-          data: tradeImpactData,
+          data: dynamicTradeImpact,
           fields: [
             { id: 'trade', name: 'Service Capability', format: 'textFormat' },
             { id: 'active_agents', name: 'Connected Buyer Agents', format: 'integerFormat' },
@@ -190,7 +206,7 @@ export function App() {
         },
       ],
     };
-  }, [transactions]);
+  }, [transactions, dynamicTradeImpact]);
 
   // Hydrate fleet transactions and verify initial state from SQLite backend with periodic background polling
   useEffect(() => {
@@ -199,9 +215,10 @@ export function App() {
       const liveTxns = await fetchFleetLedger();
       if (mounted && liveTxns.length > 0) {
         setTransactions(liveTxns);
-        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+        setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
+        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
         if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
-          setIsMarcusDepositLocked(true);
+          setIsPendingDepositLocked(true);
         }
       }
     }
@@ -255,9 +272,10 @@ export function App() {
         }
         return merged;
       });
-      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+      setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
+      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
       if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
-        setIsMarcusDepositLocked(true);
+        setIsPendingDepositLocked(true);
       }
     }
   }, []);
@@ -272,7 +290,6 @@ export function App() {
       businessEntity,
       tradeVertical,
       maxMonthlyBudget,
-      missedCallLossEstimate: 6200.0,
     };
 
     const res = await evaluateAgentNegotiation(req);
@@ -285,26 +302,43 @@ export function App() {
     async (subId: string) => {
       setIsProvisioning(true);
       try {
+        const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
+        
+        // Map to exact tier name based on agreed monthly amount
+        let actualTier = 'Dedicated AI Service Gateway';
+        let canonicalPlanName = 'Dedicated AI Service Gateway ($79.99/mo)';
+
+        if (Math.abs(agreedMonthlyAmount - 49.99) < 0.05) {
+          actualTier = 'High-Throughput Batch Worker';
+          canonicalPlanName = 'High-Throughput Batch Worker ($49.99/mo)';
+        } else if (Math.abs(agreedMonthlyAmount - 179.99) < 0.05) {
+          actualTier = 'Enterprise Cluster Node';
+          canonicalPlanName = 'Enterprise Cluster Node ($179.99/mo)';
+        } else {
+          actualTier = 'Dedicated AI Service Gateway';
+          canonicalPlanName = 'Dedicated AI Service Gateway ($79.99/mo)';
+        }
+
+        const agreedPlanName = negotiationResult?.agreedPlanName || canonicalPlanName;
+
         const result = await executeProvisioningAfterSubscription(
           subId,
           businessEntity,
-          tradeVertical,
+          actualTier,
           preferredAreaCode
         );
         setProvisioningResult(result);
 
-        const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
-        const agreedPlanName = negotiationResult?.agreedPlanName ?? `AP2 Merchant Node - AI Service Gateway (${tradeVertical})`;
-
         // Mutate existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
         setTransactions((prev) => {
-          const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+          const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
           if (idx !== -1) {
             const updated = [...prev];
             updated[idx] = {
               ...updated[idx],
               timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
               monthly_amount: agreedMonthlyAmount,
+              trade_vertical: actualTier,
               service_plan: agreedPlanName,
               paypal_sub_id: subId,
               kyc_status: 'VERIFIED (PayPal Identity Bound)',
@@ -319,10 +353,10 @@ export function App() {
           const newTxn: A2aTransaction = {
             id: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
             timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-            buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`,
+            buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${actualTier.replace(/\s+/g, '')}`,
             principal_entity: businessEntity,
             contractor_name: contractorName,
-            trade_vertical: tradeVertical,
+            trade_vertical: actualTier,
             service_plan: agreedPlanName,
             monthly_amount: agreedMonthlyAmount,
             paypal_sub_id: subId,
@@ -336,7 +370,7 @@ export function App() {
         });
 
         // Also lock AP2 pending workload slot in Bryntum Dispatch
-        setIsMarcusDepositLocked(true);
+        setIsPendingDepositLocked(true);
       } finally {
         setIsProvisioning(false);
       }
@@ -389,177 +423,10 @@ export function App() {
                   AP2 Seller Operations Deck
                 </h1>
                 <p className="brand-subtitle" style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0 0', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  FastMCP Merchant Node &bull; Turnkey Setup &bull; AG Grid Enterprise, Bryntum &amp; PayPal Commerce
+                  Autonomous Agent Payments Protocol (AP2) Commerce &bull; Turnkey FastMCP Merchant Node &bull; PayPal Subscriptions
                 </p>
               </div>
             </div>
-
-            {/* Row 2 Left: Dynamic Subtitle & Status for each active Tab */}
-            {activeTab === 'copilot' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Cpu size={13} />
-                  </div>
-                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
-                    SETUP &amp; DEPLOYMENT GUIDE
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                      color: '#34d399',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      padding: '1px 6px',
-                      borderRadius: '9999px',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                    ACTIVE PROTOCOL NODE
-                  </span>
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  FastMCP Merchant Node &bull; 5-Step Automated Provisioning Engine &bull; Port 8001
-                </div>
-              </div>
-            )}
-
-            {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Radio size={13} className="animate-pulse" />
-                  </div>
-                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
-                    COMMAND CENTER
-                  </span>
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {activeLinesCount} Subscriber Agent Nodes &bull; FastMCP Daemon (Port 8001) &bull; AP2 Mandates &amp; PayPal Settlement
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'bryntum' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Calendar size={13} />
-                  </div>
-                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
-                    MANDATES & RENEWALS
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                      color: '#34d399',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      padding: '1px 6px',
-                      borderRadius: '9999px',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                    BRYNTUM TIMELINE ENGINE
-                  </span>
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Subscription Renewal &amp; Mandate-Expiry Timeline &bull; PayPal MIT Billing &bull; Autonomous Node Lifecycle
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'zapier' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Network size={13} />
-                  </div>
-                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
-                    ZAPIER MCP BRIDGE
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      backgroundColor: 'rgba(56, 189, 248, 0.2)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.4)',
-                      padding: '1px 6px',
-                      borderRadius: '9999px',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    FAST-MCP PROTOCOL
-                  </span>
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Enterprise ERP &amp; EventBus Bridge &bull; QBO GL 6300 &bull; CloudEvents v1.0
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right Column: Merged Button Set & Live Telemetry Metrics */}
@@ -659,7 +526,7 @@ export function App() {
                       boxSizing: 'border-box',
                     }}
                   >
-                    <Calendar size={13} /> Renewals
+                    <Calendar size={13} /> Workloads
                   </button>
                   <button
                     onClick={() => setActiveTab('zapier')}
@@ -689,39 +556,13 @@ export function App() {
                 {/* Merged Gray Line & Row 2: Secondary View Switchers (Every tab has a custom Row 2) */}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '3px 0', width: '100%' }} />
 
-                {/* Tab 1 Setup: Step 1, Step 2, Step 3, Step 4, Step 5 */}
+                {/* Tab 1 Setup: FastMCP Status */}
                 {activeTab === 'copilot' && (
-                  <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
-                    {[1, 2, 3, 4, 5].map((step) => {
-                      const isActive = activeSetupStep === step;
-                      return (
-                        <button
-                          key={step}
-                          onClick={() => setActiveSetupStep(step)}
-                          style={{
-                            flex: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '0 4px',
-                            height: '100%',
-                            borderRadius: '5px',
-                            border: 'none',
-                            backgroundColor: isActive ? '#0284c7' : 'transparent',
-                            color: isActive ? '#ffffff' : '#94a3b8',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            boxSizing: 'border-box',
-                            transition: 'all 0.15s ease',
-                          }}
-                          title={`Navigate to Setup Step ${step}`}
-                        >
-                          Step {step}
-                        </button>
-                      );
-                    })}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '30px', width: '100%', padding: '0 8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                      FastMCP Active &bull; {typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'} &bull; RFC 8032 Ed25519
+                    </span>
                   </div>
                 )}
 
@@ -1038,7 +879,7 @@ export function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Daemon:</span>
-                  <span style={{ color: '#38bdf8', fontFamily: 'monospace', fontWeight: 700 }}>http://127.0.0.1:8001/mcp</span>
+                  <span style={{ color: '#38bdf8', fontFamily: 'monospace', fontWeight: 700 }}>{typeof window !== 'undefined' && window.location.origin ? `${window.location.origin}/mcp` : 'http://127.0.0.1:8001/mcp'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Tools:</span>
@@ -1046,7 +887,7 @@ export function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Status:</span>
-                  <span style={{ color: '#34d399', fontWeight: 700 }}>Online (Port 8001)</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>Online ({typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'})</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Auth:</span>
@@ -1070,17 +911,17 @@ export function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>MRR:</span>
-                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>${totalMrr.toFixed(2)}/mo</span>
-                  <span style={{ color: '#34d399', fontSize: '10px' }}>({activeLinesCount} Active)</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo</span>
+                  <span style={{ color: '#34d399', fontSize: '10px' }}>({activeLinesCount} active &middot; {pendingLinesCount} pending)</span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: '#64748b', fontWeight: 600 }}>Fleet:</span>
-                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>{activeLinesCount} Nodes</span>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Subscriptions:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>{activeLinesCount} Active</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Annual GMV:</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2 })} ARR</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARR</span>
                 </div>
               </div>
             )}
@@ -1100,11 +941,11 @@ export function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Sync:</span>
-                  <span style={{ color: '#34d399', fontFamily: 'monospace', fontWeight: 700 }}>13:01:12 UTC</span>
+                  <span style={{ color: '#34d399', fontFamily: 'monospace', fontWeight: 700 }}>{lastFetchTime}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: '#64748b', fontWeight: 600 }}>Enclaves:</span>
-                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 Worker Clusters</span>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Worker Nodes:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 Nodes</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>SLA:</span>
@@ -1192,7 +1033,7 @@ export function App() {
                 }
                 return prev;
               });
-              setIsMarcusDepositLocked(true);
+              setIsPendingDepositLocked(true);
             }}
           />
         )}
@@ -1200,7 +1041,7 @@ export function App() {
         {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
           <EnterpriseFleetLedger
             transactions={transactions}
-            tradeImpactData={tradeImpactData}
+            tradeImpactData={dynamicTradeImpact}
             kycAuditData={kycAuditData}
             studioData={studioData}
             studioMode={mode}
@@ -1220,15 +1061,15 @@ export function App() {
 
         {activeTab === 'bryntum' && (
           <BryntumDispatchScheduler
-            isDepositLocked={isMarcusDepositLocked}
+            isDepositLocked={isPendingDepositLocked}
             viewMode={schedulerViewMode}
             onViewModeChange={setSchedulerViewMode}
             isMetricsCollapsed={isScheduleMetricsCollapsed}
             onToggleMetrics={() => setIsScheduleMetricsCollapsed((prev) => !prev)}
             onToggleDepositLock={(locked) => {
-              setIsMarcusDepositLocked(locked);
+              setIsPendingDepositLocked(locked);
               setTransactions((prev) => {
-                const idx = prev.findIndex((t) => t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+                const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
                 if (idx !== -1) {
                   const updated = [...prev];
                   updated[idx] = {
@@ -1260,7 +1101,7 @@ export function App() {
             tradeVertical={tradeVertical}
             monthlyFee={79.99}
             paypalSubscriptionId={provisioningResult?.subscriptionId || 'I-AUTONOMOUS-8902'}
-            isDepositLocked={isMarcusDepositLocked}
+            isDepositLocked={isPendingDepositLocked}
             activeScenario={mcpScenario}
             onScenarioChange={setMcpScenario}
             isControlsCollapsed={isMcpControlsCollapsed}
@@ -1355,7 +1196,7 @@ export function App() {
                     }}
                   >
                     <option value="Dedicated AI Service Gateway">Dedicated AI Service Gateway ($79.99/mo)</option>
-                    <option value="High-Throughput Batch Compute">High-Throughput Batch Compute ($49.99/mo)</option>
+                    <option value="High-Throughput Batch Worker">High-Throughput Batch Worker ($49.99/mo)</option>
                     <option value="Autonomous Security Audit Cluster">Autonomous Security Audit Cluster ($179.99/mo)</option>
                     <option value="Vector RAG Ingestion Pipeline">Vector RAG Ingestion Pipeline ($79.99/mo)</option>
                     <option value="Real-Time Audio Telephony Streamer">Real-Time Audio Telephony Streamer ($79.99/mo)</option>
@@ -1458,7 +1299,7 @@ export function App() {
                   {isNegotiating
                     ? 'Evaluating Mandate & Seller FastMCP...'
                     : negotiationResult?.mandateSatisfied
-                    ? '✓ 1. Mandate Policy Verified ($79.99/mo)'
+                    ? `✓ 1. Mandate Policy Verified ($${negotiationResult.monthlyFee.toFixed(2)}/mo)`
                     : '1. Run AP2 Autonomous Negotiation'}
                 </button>
                 <button
@@ -1468,7 +1309,7 @@ export function App() {
                     setNegotiationResult(null);
                     setProvisioningResult(null);
                     setPaypalError(null);
-                    setIsMarcusDepositLocked(false);
+                    setIsPendingDepositLocked(false);
                     setTransactions((prev) => {
                       const idx = prev.findIndex((t) => t.contractor_name === contractorName);
                       if (idx !== -1) {
@@ -1516,12 +1357,17 @@ export function App() {
                       backgroundColor: negotiationResult.isLiveBackend ? '#065f46' : '#854d0e',
                       color: negotiationResult.isLiveBackend ? '#34d399' : '#fde047',
                     }}>
-                      {negotiationResult.isLiveBackend ? '● FastAPI Backend Connected (Port 8001)' : '○ Local Simulation Mode'}
+                      {negotiationResult.isLiveBackend ? `● FastAPI Backend Connected (${typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'})` : '○ Local Simulation Mode'}
                     </span>
                   </div>
-                  <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements &amp; cryptographic budget ceiling...</div>
+                  <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements & cryptographic budget ceiling...</div>
                   <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller FastMCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
-                  <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.agreedPlanName} @ ${negotiationResult.monthlyFee}/mo</div>
+                  <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.requestedPlanName || negotiationResult.agreedPlanName} @ ${(negotiationResult.requestedMonthlyRate ?? negotiationResult.monthlyFee).toFixed(2)}/mo</div>
+                  {negotiationResult.isCounterOffer && (
+                    <div className="negotiation-line warning" style={{ fontWeight: 600 }}>
+                      {negotiationResult.counterOfferMessage}
+                    </div>
+                  )}
                   <div className={`negotiation-line ${negotiationResult.mandateSatisfied ? 'success' : 'warning'}`}>
                     {negotiationResult.message}
                   </div>
@@ -1580,7 +1426,7 @@ export function App() {
                     </h4>
                   </div>
                   <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 12px 0' }}>
-                    Authorizes $79.99/month recurring service contract. Upon authorization, the Seller Node binds execution capacity to <strong>{businessEntity}</strong> in the sandbox harness.
+                    Authorizes ${negotiationResult.monthlyFee.toFixed(2)}/month recurring service contract ({negotiationResult.agreedPlanName}). Upon authorization, the Seller Node binds execution capacity to <strong>{businessEntity}</strong> in the sandbox harness.
                   </p>
 
                   {/* Primary Instant Simulated Approval Button */}
@@ -1609,10 +1455,10 @@ export function App() {
                     }}
                   >
                     {isProvisioning ? (
-                      'Allocating Worker Node &amp; Binding Attestation...'
+                      'Allocating Worker Node & Binding Attestation...'
                     ) : (
                       <>
-                        <ShieldCheck size={16} /> Authorize $79.99/mo (Instant Sandbox Settlement)
+                        <ShieldCheck size={16} /> Authorize ${negotiationResult.monthlyFee.toFixed(2)}/mo (Simulate approval — no PayPal call)
                       </>
                     )}
                   </button>
@@ -1634,7 +1480,7 @@ export function App() {
                             style={{ layout: 'vertical', color: 'blue', shape: 'rect', label: 'subscribe' }}
                             createSubscription={(_data, actions) => {
                               return actions.subscription.create({
-                                plan_id: PAYPAL_CONFIG.planId,
+                                plan_id: negotiationResult.agreedPlanId || PAYPAL_CONFIG.planId,
                               });
                             }}
                             onApprove={async (data) => {

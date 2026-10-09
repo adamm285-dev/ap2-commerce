@@ -36,7 +36,7 @@ export interface ZapierMcpViewProps {
 }
 
 export function ZapierMcpView({
-  contractorName = 'agent:claude-3-5:acme-procure',
+  contractorName = 'agent:acme-procure',
   businessEntity = 'Acme Autonomous Systems LLC',
   allocatedDid = 'node-cluster-01.ap2.net:8443',
   tradeVertical = 'Dedicated AI Service Gateway',

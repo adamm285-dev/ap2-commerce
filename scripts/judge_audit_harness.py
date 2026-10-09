@@ -216,7 +216,7 @@ def run_judge_audit():
     # -------------------------------------------------------------------------
     print_step(5, "Autonomous Compute Node Provisioning & Dedicated Endpoint Allocation")
     judge_sub_id = "I-JUDGE-SUB-01"
-    judge_email = "judge@ap2-commerce.org"
+    judge_email = "judge@example.com"
     _COMPLETED_SUBSCRIPTIONS[judge_sub_id] = {
         "subscription_id": judge_sub_id,
         "status": "ACTIVE",
@@ -306,7 +306,7 @@ def run_judge_audit():
     assert stats_res.status_code == 200
     stats_data = stats_res.json()
     assert stats_data.get("total_subscribers") >= 14
-    print_pass(f"Fleet Telemetry: Active Nodes {stats_data.get('total_subscribers')} • {stats_data.get('compliance_guard')}")
+    print_pass(f"Fleet Telemetry: Active Nodes {stats_data.get('active_lines')} (Total Subscriptions: {stats_data.get('total_subscribers')}) • {stats_data.get('compliance_guard')}")
 
     sched_res = client.get("/api/fleet/schedule")
     assert sched_res.status_code == 200
@@ -350,7 +350,7 @@ def run_judge_audit():
         json={
             "kid": kid,
             "publicKeyHex": new_pub,
-            "contractorEmail": "judge@ap2-commerce.org",
+            "contractorEmail": "judge@example.com",
             "businessEntity": "Nexus Autonomous Systems Corp",
             "challenge": challenge_nonce,
             "challengeSignature": sig,

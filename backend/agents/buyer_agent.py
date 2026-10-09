@@ -84,18 +84,48 @@ class BuyerAgent:
         proof_hash = mandate_result.get("mandateProofHash", "")
         remaining_cap = mandate_result.get("monthlyCapRemaining", 0.0)
 
+        op = "<=" if monthly_price <= self.monthly_budget_cap else ">"
         print(
-            f"   Policy Check:   ${monthly_price:.2f} <= ${self.monthly_budget_cap:.2f} Cap"
+            f"   Policy Check:   ${monthly_price:.2f} {op} ${self.monthly_budget_cap:.2f} Cap"
         )
         print(f"   Decision:       {'APPROVED' if approved else 'REJECTED'}")
-        print(
-            f"   Remaining Cap:  ${remaining_cap:.2f} (After this authorization)"
-        )
-        print(f"   Mandate Proof:  {proof_hash[:24]}...\n")
+        if approved:
+            print(
+                f"   Remaining Cap:  ${remaining_cap:.2f} (After this authorization)"
+            )
+            print(f"   Mandate Proof:  {proof_hash[:24]}...\n")
+        else:
+            print()
 
         if not approved:
-            print(f"❌ Mandate violation: {mandate_result.get('reason')}")
-            return {"status": "REJECTED", "reason": mandate_result.get("reason")}
+            counter_available = mandate_result.get("counterOfferAvailable") or mandate_result.get("counter_offer_available")
+            counter_amount = mandate_result.get("counterOfferAmount") or mandate_result.get("counter_offer_amount")
+            counter_tier_id = mandate_result.get("counterOfferTierId") or mandate_result.get("counter_offer_tier_id") or "ap2-batch"
+            counter_tier_title = mandate_result.get("counterOfferTier") or mandate_result.get("counter_offer_tier") or "High-Throughput Batch Worker"
+            counter_proof = mandate_result.get("counterOfferMandateHash") or mandate_result.get("counter_offer_mandate_hash") or mandate_result.get("mandateProofHash")
+
+            if counter_available and counter_amount and counter_amount <= self.monthly_budget_cap:
+                # Phase 3b: Counter-Offer Bargaining & Acceptance
+                print("🤝 [Phase 3b: Counter-Offer Bargaining & Acceptance]")
+                print(f"   Seller Offer:   {counter_tier_title} ({counter_tier_id}) at ${counter_amount:.2f}/mo")
+                op_c = "<=" if counter_amount <= self.monthly_budget_cap else ">"
+                print(
+                    f"   Policy Check:   ${counter_amount:.2f} {op_c} ${self.monthly_budget_cap:.2f} Cap (Remaining: ${self.monthly_budget_cap - counter_amount:.2f})"
+                )
+                print(f"   Decision:       ACCEPTED (Within ${self.monthly_budget_cap:.2f} Budget Cap)")
+                print(f"   Mandate Proof:  {counter_proof[:24]}...\n")
+
+                # Adopt counter-offer plan and proof for purchase and provisioning
+                monthly_price = counter_amount
+                matching_tier = next(
+                    (p for p in catalog.get("plans", []) if p["tier_id"] == counter_tier_id),
+                    {"tier_id": counter_tier_id, "title": counter_tier_title},
+                )
+                proof_hash = counter_proof
+                approved = True
+            else:
+                print(f"❌ Mandate violation: {mandate_result.get('reason')}")
+                return {"status": "REJECTED", "reason": mandate_result.get("reason")}
 
         # Phase 4: Delegate PayPal Subscription Session
         print("💳 [Phase 4: Delegated PayPal Subscription Initiation]")

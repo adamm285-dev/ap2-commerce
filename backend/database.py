@@ -1464,13 +1464,19 @@ def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") ->
         t["monthly_settlement"] = round(t["monthly_settlement"], 2)
         t["annualized_gmv"] = round(t["monthly_settlement"] * 12, 2)
 
+    pending_count = total_subscribers - active_lines
+    if pending_count > 0:
+        compliance_guard = f"{active_lines}/{total_subscribers} Ed25519 mandates verified, {pending_count} pending"
+    else:
+        compliance_guard = f"{active_lines}/{total_subscribers} Ed25519 mandates verified (100% Anti-Tamper Strict)"
+
     return {
         "total_mrr": round(total_mrr, 2),
         "active_lines": active_lines,
         "total_subscribers": total_subscribers,
         "annualized_gmv": annualized_gmv,
         "mandates_cleared": mandates_cleared,
-        "compliance_guard": "100% Ed25519 Mandate Verified (Anti-Tamper Strict)",
+        "compliance_guard": compliance_guard,
         "carrier_resporg": "Dual-Transport FastMCP (RFC 8032)",
         "trade_breakdown": list(trade_counts.values()),
     }

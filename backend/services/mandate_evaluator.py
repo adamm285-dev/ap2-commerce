@@ -589,11 +589,10 @@ def evaluate_spending_mandate(
     email = request.contractor_email
     if email:
         cap = ledger.effective_cap(email, cap)
+    remaining = ledger.get_remaining_budget(agent_id=agent_id, cap=cap, contractor_email=email)
     existing_sub = 0.0
     if email:
         existing_sub = ledger._contractor_subscriptions.get(email.strip().lower(), 0.0)
-
-    remaining = ledger.get_remaining_budget(agent_id=agent_id, cap=cap, contractor_email=email)
     effective_available = remaining + existing_sub
 
     if request.amount > cap or request.amount > effective_available:
@@ -692,7 +691,7 @@ def evaluate_spending_mandate(
 
     # Note: Spend is recorded when purchase_subscription is finalized, not during evaluation!
     # Monthly cap remaining is calculated as projected remaining budget
-    projected_remaining = round(remaining - request.amount, 2)
+    projected_remaining = round(cap - request.amount, 2)
 
     if abs(request.amount - 49.99) < 0.05:
         agreed_tier_id = "ap2-batch"

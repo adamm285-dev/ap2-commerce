@@ -4,15 +4,21 @@ import type { AgDataSourcesDefinition, AgStudioMode } from 'ag-studio';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import {
   ShieldCheck,
-  Zap,
-  PhoneCall,
   Sliders,
   X,
   Lock,
   LayoutGrid,
   Calendar,
   Network,
-  Bot,
+  Cpu,
+  Radio,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Server,
+  Sparkles,
+  Play,
 } from 'lucide-react';
 import {
   initialA2aTransactions,
@@ -33,8 +39,9 @@ import {
 } from './services/paypalAgentService';
 import { BryntumDispatchScheduler } from './components/BryntumDispatchScheduler';
 import { ZapierMcpView } from './components/ZapierMcpView';
-import { ContractorCopilotView } from './components/ContractorCopilotView';
+import { SellerCopilotView } from './components/SellerCopilotView';
 import { EnterpriseFleetLedger } from './components/EnterpriseFleetLedger';
+import { type NodeSettingsData } from './components/NodeSettingsView';
 import './App.css';
 
 // 1. Initialize AG Studio License if supplied via environment
@@ -46,23 +53,59 @@ if (studioLicenseKey) {
   console.log('[AG Studio]: Running in local developer trial mode.');
 }
 
+import ap2LogoUrl from './assets/ap2_logo.jpg';
+
+// Bespoke AP2 Protocol Brand Logo Component (Circuit Medallion)
+function Ap2Logo({ size = 38 }: { size?: number }) {
+  return (
+    <img
+      src={ap2LogoUrl}
+      alt="AP2 Autonomous Agent Protocol"
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '8px',
+        objectFit: 'cover',
+        display: 'block',
+        boxShadow: '0 0 12px rgba(56, 189, 248, 0.45)',
+      }}
+    />
+  );
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<'copilot' | 'fleet-ledger' | 'bryntum' | 'ag-studio' | 'zapier'>('fleet-ledger');
+  const [activeTab, setActiveTab] = useState<'copilot' | 'fleet-ledger' | 'bryntum' | 'ag-studio' | 'zapier' | 'settings'>('copilot');
   const [ledgerViewMode, setLedgerViewMode] = useState<'grid' | 'studio'>('grid');
   const [mode, setMode] = useState<AgStudioMode>('view');
 
-  const handleNavigateTab = (tab: 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier') => {
+  const handleNavigateTab = (tab: 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier' | 'settings') => {
     if (tab === 'ag-studio') {
       setActiveTab('fleet-ledger');
       setLedgerViewMode('studio');
     } else if (tab === 'fleet-ledger') {
       setActiveTab('fleet-ledger');
       setLedgerViewMode('grid');
+    } else if (tab === 'settings') {
+      setActiveTab('copilot');
     } else {
       setActiveTab(tab);
     }
   };
   const [transactions, setTransactions] = useState<A2aTransaction[]>(initialA2aTransactions);
+  const [activeSetupStep, setActiveSetupStep] = useState<number>(1);
+  const [isSetupGuideCollapsed, setIsSetupGuideCollapsed] = useState<boolean>(true);
+  const [isDashboardMetricsCollapsed, setIsDashboardMetricsCollapsed] = useState<boolean>(true);
+  const [schedulerViewMode, setSchedulerViewMode] = useState<'timeline' | 'matrix'>('timeline');
+  const [isScheduleMetricsCollapsed, setIsScheduleMetricsCollapsed] = useState<boolean>(false);
+  const [mcpScenario, setMcpScenario] = useState<'a2a' | 'workload'>('a2a');
+  const [isMcpControlsCollapsed, setIsMcpControlsCollapsed] = useState<boolean>(false);
+
+  const totalMrr = useMemo(() => {
+    return transactions.reduce((sum, t) => sum + (t.monthly_amount || 0), 0);
+  }, [transactions]);
+  const activeLinesCount = transactions.length;
+  const totalAutonomousGmv = totalMrr * 12;
+
   const [isMarcusDepositLocked, setIsMarcusDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNegotiating, setIsNegotiating] = useState(false);
@@ -71,12 +114,12 @@ export function App() {
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [paypalError, setPaypalError] = useState<string | null>(null);
 
-  // Form state for Buyer Agent simulation
-  const [contractorName, setContractorName] = useState('Marcus Miller');
-  const [businessEntity, setBusinessEntity] = useState('Miller Custom Flooring LLC');
-  const [tradeVertical, setTradeVertical] = useState('Tile & Flooring');
+  // Form state for AP2 Buyer Agent simulation
+  const [contractorName, setContractorName] = useState('agent:claude-3-5:acme-procure');
+  const [businessEntity, setBusinessEntity] = useState('Acme Autonomous Systems LLC');
+  const [tradeVertical, setTradeVertical] = useState('Dedicated AI Service Gateway');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
-  const [operatingMarket, setOperatingMarket] = useState('Lakeland / Polk County, FL (863)');
+  const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA - 863)');
   const [preferredAreaCode, setPreferredAreaCode] = useState('863');
 
   // Memoize data sources to maintain reference stability for AG Studio
@@ -90,15 +133,15 @@ export function App() {
             { id: 'id', name: 'Transaction ID', format: 'textFormat' },
             { id: 'timestamp', name: 'Timestamp', format: 'textFormat' },
             { id: 'buyer_agent', name: 'Buyer Agent ID', format: 'textFormat' },
-            { id: 'contractor_name', name: 'Contractor', format: 'textFormat' },
-            { id: 'trade_vertical', name: 'Trade Vertical', format: 'textFormat' },
-            { id: 'service_plan', name: 'Service Plan', format: 'textFormat' },
+            { id: 'contractor_name', name: 'Principal Entity', format: 'textFormat' },
+            { id: 'trade_vertical', name: 'Service Capability', format: 'textFormat' },
+            { id: 'service_plan', name: 'Service Plan Tier', format: 'textFormat' },
             { id: 'monthly_amount', name: 'Monthly Fee', format: 'currencyFormat' },
             { id: 'paypal_sub_id', name: 'PayPal Sub ID', format: 'textFormat' },
-            { id: 'kyc_status', name: 'KYC Status', format: 'textFormat' },
-            { id: 'kyc_legal_entity', name: 'Verified Legal Entity', format: 'textFormat' },
-            { id: 'allocated_did', name: 'Allocated DID Phone', format: 'textFormat' },
-            { id: 'tcpa_guard', name: 'TCPA Compliance Guard', format: 'textFormat' },
+            { id: 'kyc_status', name: 'Signature & Policy State', format: 'textFormat' },
+            { id: 'kyc_legal_entity', name: 'Principal Entity', format: 'textFormat' },
+            { id: 'allocated_did', name: 'Worker Node Endpoint', format: 'textFormat' },
+            { id: 'tcpa_guard', name: 'Anti-Tamper & Spending Guard', format: 'textFormat' },
             { id: 'status', name: 'Subscription State', format: 'textFormat' },
           ],
         },
@@ -106,14 +149,14 @@ export function App() {
           id: 'trade_impact',
           data: tradeImpactData,
           fields: [
-            { id: 'trade', name: 'Trade Vertical', format: 'textFormat' },
-            { id: 'active_agents', name: 'Autonomous Buyer Agents', format: 'integerFormat' },
+            { id: 'trade', name: 'Service Capability', format: 'textFormat' },
+            { id: 'active_agents', name: 'Connected Buyer Agents', format: 'integerFormat' },
             { id: 'mandates_cleared', name: 'Mandates Settled', format: 'integerFormat' },
             { id: 'monthly_settlement', name: 'Monthly M2M Volume ($/mo)', format: 'currencyFormat' },
-            { id: 'annualized_gmv', name: 'Autonomous Agentic GMV ($ ARR)', format: 'currencyFormat' },
-            { id: 'recovered_revenue', name: 'Autonomous Agentic GMV ($ ARR)', format: 'currencyFormat' },
-            { id: 'leads_captured', name: 'Booked Leads Intake', format: 'integerFormat' },
-            { id: 'missed_calls_prevented', name: 'Robocalls Filtered', format: 'integerFormat' },
+            { id: 'annualized_gmv', name: 'Autonomous AP2 GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'recovered_revenue', name: 'Autonomous AP2 GMV ($ ARR)', format: 'currencyFormat' },
+            { id: 'leads_captured', name: 'Workload Tasks Fulfilled', format: 'integerFormat' },
+            { id: 'missed_calls_prevented', name: 'Tamper Attempts Blocked', format: 'integerFormat' },
             { id: 'subscription_cost', name: 'PayPal Cost ($79.99/mo)', format: 'currencyFormat' },
             { id: 'roi_multiple', name: 'AP2 Settlement Multiplier (x)', format: 'decimalFormat' },
           ],
@@ -122,27 +165,27 @@ export function App() {
           id: 'kyc_audit',
           data: kycAuditData,
           fields: [
-            { id: 'allocated_did', name: 'Assigned DID Phone', format: 'textFormat' },
-            { id: 'carrier_resporg', name: 'Carrier RespOrg', format: 'textFormat' },
-            { id: 'tcr_campaign_id', name: '10DLC TCR Campaign', format: 'textFormat' },
-            { id: 'subscriber_legal_name', name: 'KYC Verified Subscriber', format: 'textFormat' },
-            { id: 'paypal_payer_id', name: 'PayPal Verified Payer ID', format: 'textFormat' },
-            { id: 'autodialer_blocked', name: 'Autodialer Lock (FCC/TCPA)', format: 'booleanFormat' },
-            { id: 'statutory_shield_status', name: 'Statutory Shield Status', format: 'textFormat' },
+            { id: 'allocated_did', name: 'Node Endpoint', format: 'textFormat' },
+            { id: 'carrier_resporg', name: 'Worker Enclave', format: 'textFormat' },
+            { id: 'tcr_campaign_id', name: 'Cluster Enclave ID', format: 'textFormat' },
+            { id: 'subscriber_legal_name', name: 'Principal Entity', format: 'textFormat' },
+            { id: 'paypal_payer_id', name: 'PayPal Payer ID', format: 'textFormat' },
+            { id: 'autodialer_blocked', name: 'Replay Nonce Monotonic Active', format: 'booleanFormat' },
+            { id: 'statutory_shield_status', name: 'Anti-Tamper Verification', format: 'textFormat' },
           ],
         },
         {
           id: 'telecom_trunks',
           data: telecomTrunkData,
           fields: [
-            { id: 'allocated_did', name: 'Allocated DID Phone', format: 'textFormat' },
-            { id: 'lata', name: 'LATA Market Route', format: 'textFormat' },
-            { id: 'market_region', name: 'Market Region', format: 'textFormat' },
-            { id: 'tcr_brand', name: 'TCR 10DLC Brand', format: 'textFormat' },
-            { id: 'tcr_campaign_id', name: 'TCR Campaign ID', format: 'textFormat' },
-            { id: 'monthly_quota_minutes', name: 'Monthly Inbound Quota (Min)', format: 'integerFormat' },
-            { id: 'stir_shaken_level', name: 'STIR/SHAKEN Level', format: 'textFormat' },
-            { id: 'inbound_routing_mode', name: 'Intake Routing Mode', format: 'textFormat' },
+            { id: 'allocated_did', name: 'Node Endpoint', format: 'textFormat' },
+            { id: 'lata', name: 'Worker Cluster Name', format: 'textFormat' },
+            { id: 'market_region', name: 'Deployment Region', format: 'textFormat' },
+            { id: 'tcr_brand', name: 'Security Enclave', format: 'textFormat' },
+            { id: 'tcr_campaign_id', name: 'Cluster Specification', format: 'textFormat' },
+            { id: 'monthly_quota_minutes', name: 'Monthly Quota (Hours)', format: 'integerFormat' },
+            { id: 'stir_shaken_level', name: 'Execution Protocol', format: 'textFormat' },
+            { id: 'inbound_routing_mode', name: 'Routing Interface', format: 'textFormat' },
           ],
         },
       ],
@@ -156,8 +199,8 @@ export function App() {
       const liveTxns = await fetchFleetLedger();
       if (mounted && liveTxns.length > 0) {
         setTransactions(liveTxns);
-        const marcus = liveTxns.find((t) => t.contractor_name === 'Marcus Miller');
-        if (marcus && marcus.status === 'ACTIVE_STREAMING') {
+        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+        if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
           setIsMarcusDepositLocked(true);
         }
       }
@@ -169,10 +212,20 @@ export function App() {
       const liveTxns = await fetchFleetLedger();
       if (mounted && liveTxns.length > 0) {
         setTransactions((prev) => {
-          if (prev.length !== liveTxns.length || liveTxns[0]?.id !== prev[0]?.id || liveTxns[0]?.status !== prev[0]?.status) {
-            return liveTxns;
+          const isPendingElevatedLocally = prev.some((t) => (t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021') && t.status === 'ACTIVE_STREAMING');
+          const localExtraRows = prev.filter((t) => !liveTxns.some((lt) => lt.id === t.id));
+
+          let merged = liveTxns.map((lt) => {
+            if ((lt.id === 'TXN-AP2-9021' || lt.id === 'AP2-TXN-9021') && isPendingElevatedLocally) {
+              const localElevated = prev.find((t) => t.id === lt.id);
+              return localElevated || { ...lt, status: 'ACTIVE_STREAMING' };
+            }
+            return lt;
+          });
+          if (localExtraRows.length > 0) {
+            merged = [...localExtraRows, ...merged];
           }
-          return prev;
+          return merged;
         });
       }
     }, 10000);
@@ -186,9 +239,24 @@ export function App() {
   const handleRefreshFleet = useCallback(async () => {
     const liveTxns = await fetchFleetLedger();
     if (liveTxns.length > 0) {
-      setTransactions(liveTxns);
-      const marcus = liveTxns.find((t) => t.contractor_name === 'Marcus Miller');
-      if (marcus && marcus.status === 'ACTIVE_STREAMING') {
+      setTransactions((prev) => {
+        const isPendingElevatedLocally = prev.some((t) => (t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021') && t.status === 'ACTIVE_STREAMING');
+        const localExtraRows = prev.filter((t) => !liveTxns.some((lt) => lt.id === t.id));
+
+        let merged = liveTxns.map((lt) => {
+          if ((lt.id === 'TXN-AP2-9021' || lt.id === 'AP2-TXN-9021') && isPendingElevatedLocally) {
+            const localElevated = prev.find((t) => t.id === lt.id);
+            return localElevated || { ...lt, status: 'ACTIVE_STREAMING' };
+          }
+          return lt;
+        });
+        if (localExtraRows.length > 0) {
+          merged = [...localExtraRows, ...merged];
+        }
+        return merged;
+      });
+      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
+      if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
         setIsMarcusDepositLocked(true);
       }
     }
@@ -226,11 +294,11 @@ export function App() {
         setProvisioningResult(result);
 
         const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
-        const agreedPlanName = negotiationResult?.agreedPlanName ?? `FieldSmith Pro - AI Voice Screener (${tradeVertical})`;
+        const agreedPlanName = negotiationResult?.agreedPlanName ?? `AP2 Merchant Node - AI Service Gateway (${tradeVertical})`;
 
-        // Mutate Marcus Miller's existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
+        // Mutate existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
         setTransactions((prev) => {
-          const idx = prev.findIndex((t) => t.contractor_name === contractorName);
+          const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
           if (idx !== -1) {
             const updated = [...prev];
             updated[idx] = {
@@ -241,7 +309,7 @@ export function App() {
               paypal_sub_id: subId,
               kyc_status: 'VERIFIED (PayPal Identity Bound)',
               allocated_did: result.allocatedDid,
-              tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+              tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
               status: 'ACTIVE_STREAMING',
             };
             return updated;
@@ -252,6 +320,7 @@ export function App() {
             id: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
             timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
             buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${tradeVertical.replace(/\s+/g, '')}`,
+            principal_entity: businessEntity,
             contractor_name: contractorName,
             trade_vertical: tradeVertical,
             service_plan: agreedPlanName,
@@ -260,13 +329,13 @@ export function App() {
             kyc_status: 'VERIFIED (PayPal Identity Bound)',
             kyc_legal_entity: businessEntity,
             allocated_did: result.allocatedDid,
-            tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+            tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
             status: 'ACTIVE_STREAMING',
           };
           return [newTxn, ...prev];
         });
 
-        // Also lock Marcus Miller's slot in Bryntum Dispatch
+        // Also lock AP2 pending workload slot in Bryntum Dispatch
         setIsMarcusDepositLocked(true);
       } finally {
         setIsProvisioning(false);
@@ -277,143 +346,837 @@ export function App() {
 
   return (
     <div className="app-container">
-      {/* Executive Header */}
-      <header className="app-header">
-        {/* Brand Section with Live Fleet Status Badge */}
-        <div className="brand-section">
-          <div className="brand-icon-wrapper">
-            <Zap size={22} />
+      {/* Executive Header Card */}
+      <header
+        className="app-header"
+        style={{
+          margin: '10px 16px 0 16px',
+          borderRadius: '12px',
+          border: '1px solid #1e293b',
+          backgroundColor: '#0f172a',
+          padding: '10px 16px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            gap: '16px',
+            flexWrap: 'nowrap',
+          }}
+        >
+          {/* Left Column: Brand & Command Center Sub-Header */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              minWidth: 0,
+              flexShrink: 1,
+            }}
+          >
+            {/* Brand Section */}
+            <div className="brand-section" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="brand-icon-wrapper" style={{ flexShrink: 0, width: '38px', height: '38px' }}>
+                <Ap2Logo size={32} />
+              </div>
+              <div className="brand-titles" style={{ minWidth: 0 }}>
+                <h1 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  AP2 Seller Operations Deck
+                </h1>
+                <p className="brand-subtitle" style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0 0', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  FastMCP Merchant Node &bull; Turnkey Setup &bull; AG Grid Enterprise, Bryntum &amp; PayPal Commerce
+                </p>
+              </div>
+            </div>
+
+            {/* Row 2 Left: Dynamic Subtitle & Status for each active Tab */}
+            {activeTab === 'copilot' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Cpu size={13} />
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
+                    SETUP &amp; DEPLOYMENT GUIDE
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      padding: '1px 6px',
+                      borderRadius: '9999px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                    ACTIVE PROTOCOL NODE
+                  </span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  FastMCP Merchant Node &bull; 5-Step Automated Provisioning Engine &bull; Port 8001
+                </div>
+              </div>
+            )}
+
+            {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Radio size={13} className="animate-pulse" />
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
+                    COMMAND CENTER
+                  </span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {activeLinesCount} Subscriber Agent Nodes &bull; FastMCP Daemon (Port 8001) &bull; AP2 Mandates &amp; PayPal Settlement
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'bryntum' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Calendar size={13} />
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
+                    MANDATES & RENEWALS
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      padding: '1px 6px',
+                      borderRadius: '9999px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                    BRYNTUM TIMELINE ENGINE
+                  </span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Subscription Renewal &amp; Mandate-Expiry Timeline &bull; PayPal MIT Billing &bull; Autonomous Node Lifecycle
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'zapier' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Network size={13} />
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 800, letterSpacing: '0.03em', color: '#f8fafc' }}>
+                    ZAPIER MCP BRIDGE
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.4)',
+                      padding: '1px 6px',
+                      borderRadius: '9999px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    FAST-MCP PROTOCOL
+                  </span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#94a3b8', paddingLeft: '32px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Enterprise ERP &amp; EventBus Bridge &bull; QBO GL 6300 &bull; CloudEvents v1.0
+                </div>
+              </div>
+            )}
           </div>
-          <div className="brand-titles">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1>FieldSmith Pro &mdash; Autonomous Agentic Commerce &amp; AP2 Operations Deck</h1>
-              <span
+
+          {/* Right Column: Merged Button Set & Live Telemetry Metrics */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: '6px',
+              flexShrink: 0,
+            }}
+          >
+            {/* The Merged Button Set + Side Actions */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+              {/* Unified Merged Button Box: Rows are merged into a single cohesive set */}
+              <div
                 style={{
-                  fontSize: '10px',
-                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                  color: '#34d399',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  padding: '2px 8px',
-                  borderRadius: '9999px',
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: '#1e293b',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  padding: '3px',
+                  width: '370px',
+                  boxSizing: 'border-box',
                 }}
               >
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                FLEET M2M: ONLINE
-              </span>
+                {/* Row 1: Primary Navigation Tabs */}
+                <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                  <button
+                    onClick={() => setActiveTab('copilot')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      padding: '0 8px',
+                      height: '100%',
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: activeTab === 'copilot' ? '#0284c7' : 'transparent',
+                      color: activeTab === 'copilot' ? '#fff' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <Cpu size={13} /> Setup
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('fleet-ledger');
+                      setLedgerViewMode('grid');
+                    }}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      padding: '0 8px',
+                      height: '100%',
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#0284c7' : 'transparent',
+                      color: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#fff' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <LayoutGrid size={13} /> Dashboard
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('bryntum')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      padding: '0 8px',
+                      height: '100%',
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: activeTab === 'bryntum' ? '#0284c7' : 'transparent',
+                      color: activeTab === 'bryntum' ? '#fff' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <Calendar size={13} /> Renewals
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('zapier')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      padding: '0 8px',
+                      height: '100%',
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: activeTab === 'zapier' ? '#0284c7' : 'transparent',
+                      color: activeTab === 'zapier' ? '#fff' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <Network size={13} /> MCP
+                  </button>
+                </div>
+
+                {/* Merged Gray Line & Row 2: Secondary View Switchers (Every tab has a custom Row 2) */}
+                <div style={{ height: '1px', backgroundColor: '#334155', margin: '3px 0', width: '100%' }} />
+
+                {/* Tab 1 Setup: Step 1, Step 2, Step 3, Step 4, Step 5 */}
+                {activeTab === 'copilot' && (
+                  <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                    {[1, 2, 3, 4, 5].map((step) => {
+                      const isActive = activeSetupStep === step;
+                      return (
+                        <button
+                          key={step}
+                          onClick={() => setActiveSetupStep(step)}
+                          style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '0 4px',
+                            height: '100%',
+                            borderRadius: '5px',
+                            border: 'none',
+                            backgroundColor: isActive ? '#0284c7' : 'transparent',
+                            color: isActive ? '#ffffff' : '#94a3b8',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            boxSizing: 'border-box',
+                            transition: 'all 0.15s ease',
+                          }}
+                          title={`Navigate to Setup Step ${step}`}
+                        >
+                          Step {step}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Tab 2 Dashboard: Live Operational Grid vs AG Studio BI Suite */}
+                {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
+                  <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                    <button
+                      onClick={() => {
+                        setActiveTab('fleet-ledger');
+                        setLedgerViewMode('grid');
+                      }}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: ledgerViewMode === 'grid' ? '#0284c7' : 'transparent',
+                        color: ledgerViewMode === 'grid' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Live high-density operational ledger"
+                    >
+                      <LayoutGrid size={13} /> Live Operational Grid
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('fleet-ledger');
+                        setLedgerViewMode('studio');
+                      }}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: ledgerViewMode === 'studio' ? '#0284c7' : 'transparent',
+                        color: ledgerViewMode === 'studio' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Interactive AG Studio report designer"
+                    >
+                      <Layers size={13} />
+                      <span>AG Studio BI Suite</span>
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          fontWeight: 700,
+                          backgroundColor: ledgerViewMode === 'studio' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                          color: ledgerViewMode === 'studio' ? '#ffffff' : '#38bdf8',
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        Sponsor
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Tab 3 Schedule: Bryntum Sponsor vs Node Grid */}
+                {activeTab === 'bryntum' && (
+                  <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                    <button
+                      onClick={() => setSchedulerViewMode('timeline')}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: schedulerViewMode === 'timeline' ? '#0284c7' : 'transparent',
+                        color: schedulerViewMode === 'timeline' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Bryntum Scheduler Pro (Hackathon Official Sponsor Engine)"
+                    >
+                      <Clock size={12} color={schedulerViewMode === 'timeline' ? '#ffffff' : '#94a3b8'} />
+                      <span>Bryntum</span>
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          fontWeight: 700,
+                          backgroundColor: schedulerViewMode === 'timeline' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                          color: schedulerViewMode === 'timeline' ? '#ffffff' : '#38bdf8',
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        Sponsor
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setSchedulerViewMode('matrix')}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: schedulerViewMode === 'matrix' ? '#0284c7' : 'transparent',
+                        color: schedulerViewMode === 'matrix' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Compact Node Card Grid View"
+                    >
+                      <Server size={12} color={schedulerViewMode === 'matrix' ? '#ffffff' : '#94a3b8'} />
+                      <span>Node Grid</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Tab 4 MCP: AP2 Settlement vs Workload Dispatch */}
+                {activeTab === 'zapier' && (
+                  <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                    <button
+                      onClick={() => setMcpScenario('a2a')}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: mcpScenario === 'a2a' ? '#0284c7' : 'transparent',
+                        color: mcpScenario === 'a2a' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Autonomous AP2 Agent Onboarding & Settlement Chain"
+                    >
+                      <Sparkles size={12} color={mcpScenario === 'a2a' ? '#fde047' : '#94a3b8'} />
+                      <span>AP2 Settlement</span>
+                    </button>
+                    <button
+                      onClick={() => setMcpScenario('workload')}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 10px',
+                        height: '100%',
+                        borderRadius: '5px',
+                        border: 'none',
+                        backgroundColor: mcpScenario === 'workload' ? '#0284c7' : 'transparent',
+                        color: mcpScenario === 'workload' ? '#ffffff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="AP2 Workload Execution Dispatch Dossier"
+                    >
+                      <Play size={12} color={mcpScenario === 'workload' ? '#38bdf8' : '#94a3b8'} />
+                      <span>Workload Dispatch</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Side Actions Column: Simulate button on Row 1, Expand/Collapse toggle on Row 2 */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <button
+                  className="btn-simulate"
+                  onClick={() => setIsModalOpen(true)}
+                  style={{
+                    height: '36px',
+                    padding: '0 14px',
+                    fontSize: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxSizing: 'border-box',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Sliders size={14} /> Simulate AP2 Purchase
+                </button>
+
+                {/* Expand / Collapse Button (Uniform across all 4 Tabs) */}
+                <button
+                  onClick={() => {
+                    if (activeTab === 'copilot') {
+                      setIsSetupGuideCollapsed((prev) => !prev);
+                    } else if (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') {
+                      setIsDashboardMetricsCollapsed((prev) => !prev);
+                    } else if (activeTab === 'bryntum') {
+                      setIsScheduleMetricsCollapsed((prev) => !prev);
+                    } else if (activeTab === 'zapier') {
+                      setIsMcpControlsCollapsed((prev) => !prev);
+                    }
+                  }}
+                  style={{
+                    height: '30px',
+                    padding: '0 12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    color:
+                      (activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                      ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
+                      (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
+                      (activeTab === 'zapier' && isMcpControlsCollapsed)
+                        ? '#38bdf8'
+                        : '#94a3b8',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title={
+                    (activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                    ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
+                    (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
+                    (activeTab === 'zapier' && isMcpControlsCollapsed)
+                      ? 'Expand Cards'
+                      : 'Collapse Cards'
+                  }
+                >
+                  {(activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                  ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
+                  (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
+                  (activeTab === 'zapier' && isMcpControlsCollapsed) ? (
+                    <ChevronDown size={13} />
+                  ) : (
+                    <ChevronUp size={13} />
+                  )}
+                  <span>
+                    {(activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                    ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
+                    (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
+                    (activeTab === 'zapier' && isMcpControlsCollapsed)
+                      ? 'Expand'
+                      : 'Collapse'}
+                  </span>
+                </button>
+              </div>
             </div>
-            <p className="brand-subtitle">
-              Enterprise Multi-Trade Telephony &bull; Powered by PayPal Agentic Commerce, Zapier MCP, AG Studio &amp; Bryntum
-            </p>
+
+            {/* Row 3: Live Summary Metrics Strip (Clean telemetry for every tab) */}
+            {activeTab === 'copilot' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  paddingLeft: '4px',
+                  paddingTop: '2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Daemon:</span>
+                  <span style={{ color: '#38bdf8', fontFamily: 'monospace', fontWeight: 700 }}>http://127.0.0.1:8001/mcp</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Tools:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 FastMCP Tools</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Status:</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>Online (Port 8001)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Auth:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>RFC 8032</span>
+                </div>
+              </div>
+            )}
+
+            {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  paddingLeft: '4px',
+                  paddingTop: '2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>MRR:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>${totalMrr.toFixed(2)}/mo</span>
+                  <span style={{ color: '#34d399', fontSize: '10px' }}>({activeLinesCount} Active)</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Fleet:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>{activeLinesCount} Nodes</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Annual GMV:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2 })} ARR</span>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'bryntum' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  paddingLeft: '4px',
+                  paddingTop: '2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Sync:</span>
+                  <span style={{ color: '#34d399', fontFamily: 'monospace', fontWeight: 700 }}>13:01:12 UTC</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Enclaves:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 Worker Clusters</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>SLA:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>99.98% Latency</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Active:</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>Node-01 ($79.99)</span>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'zapier' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  paddingLeft: '4px',
+                  paddingTop: '2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Bridge:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>Zapier FastMCP</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>ERP:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>QBO GL 6300</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>EventBus:</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>CloudEvents v1.0</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Transport:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>SSE Stream</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* View Selection Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: '8px', padding: '3px', border: '1px solid #334155' }}>
-          <button
-            onClick={() => setActiveTab('copilot')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: activeTab === 'copilot' ? '#0284c7' : 'transparent',
-              color: activeTab === 'copilot' ? '#fff' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            <Bot size={14} /> Contractor Copilot
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('fleet-ledger');
-              setLedgerViewMode('grid');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#0284c7' : 'transparent',
-              color: (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') ? '#fff' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            <LayoutGrid size={14} /> Fleet Mission Control
-          </button>
-          <button
-            onClick={() => setActiveTab('bryntum')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: activeTab === 'bryntum' ? '#0284c7' : 'transparent',
-              color: activeTab === 'bryntum' ? '#fff' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            <Calendar size={14} /> Bryntum Dispatch Cockpit
-          </button>
-          <button
-            onClick={() => setActiveTab('zapier')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: activeTab === 'zapier' ? '#0284c7' : 'transparent',
-              color: activeTab === 'zapier' ? '#fff' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            <Network size={14} /> Zapier MCP Bridge
-          </button>
-        </div>
-
-        <div className="header-actions">
-          <button className="btn-simulate" onClick={() => setIsModalOpen(true)}>
-            <Sliders size={15} /> Simulate AP2 Purchase
-          </button>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="studio-canvas-container">
         {activeTab === 'copilot' && (
-          <ContractorCopilotView
+          <SellerCopilotView
             contractorName={contractorName}
             businessEntity={businessEntity}
             tradeVertical={tradeVertical}
             areaCode={preferredAreaCode}
             budgetCap={maxMonthlyBudget}
+            activeStep={activeSetupStep}
+            onSelectStep={setActiveSetupStep}
+            isGuideCollapsed={isSetupGuideCollapsed}
+            onToggleGuideCollapsed={() => setIsSetupGuideCollapsed((prev) => !prev)}
             onNavigateTab={handleNavigateTab}
+            onSaveSettings={(newSettings: NodeSettingsData) => {
+              setBusinessEntity(newSettings.businessEntity);
+              setTradeVertical(newSettings.tradeVertical);
+            }}
             onA2aCompleted={({ subscriptionId, allocatedDid }) => {
               setTransactions((prev) => {
                 const idx = prev.findIndex((t) => t.contractor_name === contractorName);
                 if (idx !== -1) {
                   const updated = [...prev];
                   const agreedRate = maxMonthlyBudget < 79.99 ? 49.99 : 79.99;
-                  const planTitle = agreedRate === 49.99 ? 'FieldSmith Solo Starter (125 Calls/mo)' : 'FieldSmith Pro (450 Calls/mo)';
+                  const planTitle = agreedRate === 49.99 ? 'AP2 Solo Node (125k Executions/mo)' : 'AP2 Enterprise Cluster (500k Executions/mo)';
                   updated[idx] = {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
@@ -422,7 +1185,7 @@ export function App() {
                     paypal_sub_id: subscriptionId,
                     kyc_status: 'VERIFIED (PayPal Identity Bound)',
                     allocated_did: allocatedDid,
-                    tcpa_guard: '100% INBOUND ONLY (ZERO ROBOCALLS)',
+                    tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
                     status: 'ACTIVE_STREAMING',
                   };
                   return updated;
@@ -450,25 +1213,31 @@ export function App() {
             onRefreshData={handleRefreshFleet}
             viewMode={activeTab === 'ag-studio' ? 'studio' : ledgerViewMode}
             onViewModeChange={setLedgerViewMode}
+            isTopMetricsCollapsed={isDashboardMetricsCollapsed}
+            onToggleTopMetrics={() => setIsDashboardMetricsCollapsed((prev) => !prev)}
           />
         )}
 
         {activeTab === 'bryntum' && (
           <BryntumDispatchScheduler
             isDepositLocked={isMarcusDepositLocked}
+            viewMode={schedulerViewMode}
+            onViewModeChange={setSchedulerViewMode}
+            isMetricsCollapsed={isScheduleMetricsCollapsed}
+            onToggleMetrics={() => setIsScheduleMetricsCollapsed((prev) => !prev)}
             onToggleDepositLock={(locked) => {
               setIsMarcusDepositLocked(locked);
               setTransactions((prev) => {
-                const idx = prev.findIndex((t) => t.contractor_name === 'Marcus Miller');
+                const idx = prev.findIndex((t) => t.id === 'AP2-TXN-9021' || t.contractor_name === 'Acme Autonomous Systems LLC' || t.contractor_name === 'Marcus Miller');
                 if (idx !== -1) {
                   const updated = [...prev];
                   updated[idx] = {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
                     status: locked ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT',
-                    kyc_status: locked ? 'VERIFIED (PayPal Identity Bound)' : 'PENDING_KYC_VERIFICATION',
-                    allocated_did: locked ? '+1 (863) 267-8902' : 'AWAITING_DEPOSIT',
-                    tcpa_guard: locked ? '100% INBOUND ONLY (ZERO ROBOCALLS)' : 'PENDING ACTIVATION',
+                    kyc_status: locked ? 'VERIFIED (PayPal Identity Bound)' : 'PENDING_MANDATE_SIGNATURE',
+                    allocated_did: locked ? 'node-cluster-01.ap2.net' : 'node-cluster-01.ap2.net',
+                    tcpa_guard: locked ? 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)' : 'PENDING_AUTHORIZATION',
                     paypal_sub_id: locked
                       ? updated[idx].paypal_sub_id.startsWith('I-')
                         ? updated[idx].paypal_sub_id
@@ -487,11 +1256,15 @@ export function App() {
           <ZapierMcpView
             contractorName={contractorName}
             businessEntity={businessEntity}
-            allocatedDid={provisioningResult?.allocatedDid || '+1 (863) 267-8902'}
+            allocatedDid={provisioningResult?.allocatedDid || 'node-cluster-01.ap2.net:8443'}
             tradeVertical={tradeVertical}
             monthlyFee={79.99}
             paypalSubscriptionId={provisioningResult?.subscriptionId || 'I-AUTONOMOUS-8902'}
             isDepositLocked={isMarcusDepositLocked}
+            activeScenario={mcpScenario}
+            onScenarioChange={setMcpScenario}
+            isControlsCollapsed={isMcpControlsCollapsed}
+            onToggleControls={() => setIsMcpControlsCollapsed((prev) => !prev)}
           />
         )}
       </main>
@@ -502,7 +1275,7 @@ export function App() {
           <div className="modal-card">
             <div className="modal-header">
               <h3>
-                <PhoneCall size={18} /> Autonomous Agentic Commerce Simulator (AP2)
+                <Sliders size={18} /> AP2 Buyer Agent Procurement Simulator
               </h3>
               <button className="btn-close" onClick={() => setIsModalOpen(false)}>
                 <X size={18} />
@@ -511,9 +1284,9 @@ export function App() {
 
             <div className="modal-body">
               <p style={{ fontSize: '13px', color: '#94a3b8' }}>
-                Simulate how a solo contractor&apos;s <strong>Autonomous Buyer Agent</strong> discovers call leaks,
-                checks local spending limits, negotiates with FieldSmith&apos;s Seller MCP Server, and executes a
-                recurring PayPal subscription with verified KYC identity.
+                Simulate how an external <strong>Autonomous Buyer Agent</strong> discovers seller node capabilities,
+                verifies cryptographic spending mandate caps, negotiates with the AP2 Seller FastMCP Server, and executes a
+                recurring PayPal billing agreement with verified RFC 8032 Ed25519 attestations.
               </p>
 
               <div
@@ -528,7 +1301,7 @@ export function App() {
               >
                 <div>
                   <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Contractor Name
+                    Buyer Agent ID
                   </label>
                   <input
                     type="text"
@@ -547,7 +1320,7 @@ export function App() {
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Legal Business Entity
+                    Principal Legal Entity
                   </label>
                   <input
                     type="text"
@@ -566,7 +1339,7 @@ export function App() {
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Trade Vertical
+                    Service Capability Tier
                   </label>
                   <select
                     value={tradeVertical}
@@ -581,11 +1354,11 @@ export function App() {
                       fontSize: '13px',
                     }}
                   >
-                    <option value="Tile & Flooring">Tile &amp; Custom Flooring</option>
-                    <option value="Emergency Plumbing">Emergency 24/7 Plumbing</option>
-                    <option value="Roofing & Storm">Roofing &amp; Storm Restoration</option>
-                    <option value="Towing & Roadside">Towing &amp; Heavy Roadside</option>
-                    <option value="HVAC & Mechanical">HVAC &amp; Mechanical Service</option>
+                    <option value="Dedicated AI Service Gateway">Dedicated AI Service Gateway ($79.99/mo)</option>
+                    <option value="High-Throughput Batch Compute">High-Throughput Batch Compute ($49.99/mo)</option>
+                    <option value="Autonomous Security Audit Cluster">Autonomous Security Audit Cluster ($179.99/mo)</option>
+                    <option value="Vector RAG Ingestion Pipeline">Vector RAG Ingestion Pipeline ($79.99/mo)</option>
+                    <option value="Real-Time Audio Telephony Streamer">Real-Time Audio Telephony Streamer ($79.99/mo)</option>
                   </select>
                 </div>
                 <div>
@@ -609,7 +1382,7 @@ export function App() {
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Service Market (City / State)
+                    Target Execution Cluster
                   </label>
                   <select
                     value={operatingMarket}
@@ -631,29 +1404,21 @@ export function App() {
                       fontSize: '13px',
                     }}
                   >
-                    <option value="Lakeland / Polk County, FL (863)">Lakeland / Polk County, FL (863)</option>
-                    <option value="Tampa / Hillsborough, FL (813)">Tampa / Hillsborough, FL (813)</option>
-                    <option value="Orlando / Orange County, FL (407)">Orlando / Orange County, FL (407)</option>
-                    <option value="Miami / South Florida, FL (305)">Miami / South Florida, FL (305)</option>
-                    <option value="Jacksonville / Duval, FL (904)">Jacksonville / Duval, FL (904)</option>
-                    <option value="Atlanta / Metro, GA (404)">Atlanta / Metro, GA (404)</option>
-                    <option value="Dallas / Fort Worth, TX (214)">Dallas / Fort Worth, TX (214)</option>
-                    <option value="Houston / Harris, TX (713)">Houston / Harris, TX (713)</option>
-                    <option value="Austin / Travis, TX (512)">Austin / Travis, TX (512)</option>
-                    <option value="Chicago / Cook County, IL (312)">Chicago / Cook County, IL (312)</option>
-                    <option value="Denver / Front Range, CO (303)">Denver / Front Range, CO (303)</option>
-                    <option value="Phoenix / Maricopa, AZ (480)">Phoenix / Maricopa, AZ (480)</option>
-                    <option value="Custom US Market (Any Area Code)">Custom US Market (Any Area Code)</option>
+                    <option value="US-East Cluster (Ashburn, VA - 863)">US-East Cluster (Ashburn, VA - 863)</option>
+                    <option value="US-Central Cluster (Council Bluffs, IA - 515)">US-Central Cluster (Council Bluffs, IA - 515)</option>
+                    <option value="US-West Cluster (The Dalles, OR - 541)">US-West Cluster (The Dalles, OR - 541)</option>
+                    <option value="EU-West Cluster (Frankfurt, DE - 49)">EU-West Cluster (Frankfurt, DE - 49)</option>
+                    <option value="AP-East Cluster (Tokyo, JP - 81)">AP-East Cluster (Tokyo, JP - 81)</option>
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Dedicated 10DLC Area Code
+                    Assigned Gateway Route / Port
                   </label>
                   <input
                     type="text"
                     maxLength={3}
-                    placeholder="e.g. 863, 404, 214"
+                    placeholder="e.g. 863, 515, 541"
                     value={preferredAreaCode}
                     onChange={(e) => setPreferredAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
                     style={{
@@ -691,9 +1456,9 @@ export function App() {
                   disabled={isNegotiating || Boolean(negotiationResult?.mandateSatisfied)}
                 >
                   {isNegotiating
-                    ? 'Evaluating Telemetry & Mandate...'
+                    ? 'Evaluating Mandate & Seller FastMCP...'
                     : negotiationResult?.mandateSatisfied
-                    ? '✓ 1. Negotiation Approved ($79.99/mo)'
+                    ? '✓ 1. Mandate Policy Verified ($79.99/mo)'
                     : '1. Run AP2 Autonomous Negotiation'}
                 </button>
                 <button
@@ -722,7 +1487,7 @@ export function App() {
                       return prev;
                     });
                   }}
-                  title="Reset spending mandate ledger and restore Marcus Miller to pending status"
+                  title="Reset spending mandate ledger and restore buyer agent to pending status"
                   style={{
                     backgroundColor: '#1e293b',
                     color: '#94a3b8',
@@ -754,33 +1519,33 @@ export function App() {
                       {negotiationResult.isLiveBackend ? '● FastAPI Backend Connected (Port 8001)' : '○ Local Simulation Mode'}
                     </span>
                   </div>
-                  <div className="negotiation-line">[BuyerAgent]: Ingesting telephony logs... Missed call loss: $6,200/mo.</div>
-                  <div className="negotiation-line">[BuyerAgent]: Querying FieldSmith MCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
-                  <div className="negotiation-line">[SellerMCP]: Quoted Plan: {negotiationResult.agreedPlanName} @ ${negotiationResult.monthlyFee}/mo</div>
+                  <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements &amp; cryptographic budget ceiling...</div>
+                  <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller FastMCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
+                  <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.agreedPlanName} @ ${negotiationResult.monthlyFee}/mo</div>
                   <div className={`negotiation-line ${negotiationResult.mandateSatisfied ? 'success' : 'warning'}`}>
                     {negotiationResult.message}
                   </div>
                   {negotiationResult.mandateToken && (
                     <div className="negotiation-line success" style={{ wordBreak: 'break-all', fontSize: '11px' }}>
-                      [HMAC Token]: {negotiationResult.mandateToken}
+                      [Ed25519 Mandate Signature]: {negotiationResult.mandateToken}
                     </div>
                   )}
                   {negotiationResult.mandateSatisfied && (
                     <div className="negotiation-line success">
-                      [AP2 Protocol]: Spending mandate approved. Ready for delegated PayPal subscription token.
+                      [AP2 Protocol]: Spending mandate approved. Ready for delegated PayPal subscription authorization.
                     </div>
                   )}
                 </div>
               )}
 
-              {/* KYC Telecom Protection Notice */}
+              {/* AP2 Cryptographic & Legal Policy Shield */}
               <div className="kyc-verification-box">
                 <Lock size={18} color="#34d399" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div className="kyc-details">
-                  <h4>Statutory KYC Telecom Anchor (FCC &amp; TCPA Guard)</h4>
+                  <h4>Cryptographic Mandate &amp; RFC 8032 Security Guard</h4>
                   <p>
-                    Unlike anonymous bot services, lines are provisioned strictly via verified PayPal subscriber identity.
-                    The provisioned line is locked 100% to inbound screening &mdash; zero autodialers, zero unsolicited outbound robocalls.
+                    Workloads are provisioned strictly via verified buyer agent Ed25519 signatures and authenticated PayPal billing agreements.
+                    Execution nodes enforce strict monotonic replay counters and anti-tamper hash verification &mdash; zero unauthorized overages, zero fraudulent executions.
                   </p>
                 </div>
               </div>
@@ -811,11 +1576,11 @@ export function App() {
                       STEP 2
                     </span>
                     <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
-                      Simulate Approval &amp; Line Provisioning (Sandbox)
+                      Authorize Settlement &amp; Provision Worker Node (Sandbox)
                     </h4>
                   </div>
                   <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 12px 0' }}>
-                    Simulates approval for $79.99/month recurring plan. Upon simulated approval, the Seller Agent allocates a simulated Telnyx DID bound to <strong>{businessEntity}</strong> in the sandbox harness.
+                    Authorizes $79.99/month recurring service contract. Upon authorization, the Seller Node binds execution capacity to <strong>{businessEntity}</strong> in the sandbox harness.
                   </p>
 
                   {/* Primary Instant Simulated Approval Button */}
@@ -844,10 +1609,10 @@ export function App() {
                     }}
                   >
                     {isProvisioning ? (
-                      'Simulating Line Allocation &amp; Binding KYC...'
+                      'Allocating Worker Node &amp; Binding Attestation...'
                     ) : (
                       <>
-                        <ShieldCheck size={16} /> Authorize $79.99/mo (Instant Sandbox Simulation)
+                        <ShieldCheck size={16} /> Authorize $79.99/mo (Instant Sandbox Settlement)
                       </>
                     )}
                   </button>
@@ -909,7 +1674,7 @@ export function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#34d399', fontWeight: 700 }}>
                     <ShieldCheck size={20} />
-                    <span>AP2 Transaction Complete &amp; Telecom Line Live!</span>
+                    <span>AP2 Transaction Complete &amp; Worker Node Live!</span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#f8fafc', lineHeight: 1.6 }}>
                     <div>
@@ -917,18 +1682,18 @@ export function App() {
                       <span style={{ color: '#38bdf8' }}>{provisioningResult.subscriptionId}</span>
                     </div>
                     <div>
-                      <strong>Allocated DID:</strong>{' '}
+                      <strong>Allocated Endpoint:</strong>{' '}
                       <span style={{ color: '#fbbf24' }}>{provisioningResult.allocatedDid}</span>
                     </div>
                     <div>
-                      <strong>Carrier / RespOrg:</strong> {provisioningResult.carrierRespOrg}
+                      <strong>Execution Node Cluster:</strong> {provisioningResult.carrierRespOrg}
                     </div>
                     <div>
-                      <strong>KYC Bound Entity:</strong> {provisioningResult.kycBoundEntity}
+                      <strong>Principal Entity:</strong> {provisioningResult.kycBoundEntity}
                     </div>
                     <div>
-                      <strong>TCPA Guard:</strong>{' '}
-                      <span style={{ color: '#34d399' }}>100% INBOUND ONLY (ZERO AUTODIALING)</span>
+                      <strong>Cryptographic Policy Guard:</strong>{' '}
+                      <span style={{ color: '#34d399' }}>RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)</span>
                     </div>
                   </div>
                   <button
@@ -936,7 +1701,7 @@ export function App() {
                     style={{ alignSelf: 'flex-start', marginTop: '8px' }}
                     onClick={() => setIsModalOpen(false)}
                   >
-                    View in Dashboard
+                    View in Operations Deck
                   </button>
                 </div>
               )}

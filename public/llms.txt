@@ -1,15 +1,15 @@
-# FieldSmith Pro A2A Autonomous Commerce Protocol (PayPal Sandbox Demo)
+# AP2 Autonomous Seller Node Protocol (PayPal Sandbox Demo)
 
-> PayPal Sandbox demo for the PayPal AI Hackathon, no real charges; real FieldSmith signup is at fieldsmith.pro/llms.txt.
-> Autonomous Agent-to-Agent (A2A) Commerce & Telephony Dispatch Network for Field Service Contractors.
+> PayPal Sandbox demo for the PayPal AI Hackathon, no real charges.
+> Autonomous Agent Payments Protocol (AP2) Commerce & Execution Node Provisioning Network.
 
-FieldSmith Pro provides 24/7 AI voice screening, call qualification, instant photo intake, and CRM dispatch for solo trade contractors (roofing, plumbing, tile & custom flooring, HVAC, towing). The A2A protocol allows autonomous buyer agents (e.g. personal assistants running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision telecom services entirely machine-to-machine in the PayPal Sandbox environment.
+AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicated AI service gateways, and multi-region distributed clusters. The AP2 protocol allows autonomous buyer agents (e.g. procurement agents running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision dedicated MCP execution nodes entirely machine-to-machine in the PayPal Sandbox environment.
 
-- **Interactive Fleet Portal:** https://api.fieldsmith.pro/portal/
+- **Interactive Fleet Portal:** https://api.fieldsmith.pro/portal/?profile=ap2
 - **Remote FastMCP Endpoint:** https://api.fieldsmith.pro/mcp
-- **Streamable FastMCP Alternate:** https://api.fieldsmith.pro/a2a/mcp
+- **Streamable FastMCP Alternate:** https://api.fieldsmith.pro/mcp
 - **Real-Time Wire Protocol (SSE):** https://api.fieldsmith.pro/sse
-- **Google A2A / AP2 Agent Card:** https://api.fieldsmith.pro/.well-known/agent.json
+- **Google AP2 Agent Card:** https://api.fieldsmith.pro/.well-known/agent.json
 - **MCP Discovery Catalog:** https://api.fieldsmith.pro/.well-known/mcp.json
 - **Machine Discovery Manifest:** https://api.fieldsmith.pro/agents.json
 - **OpenAPI 3.1.0 Contract:** https://api.fieldsmith.pro/openapi.json
@@ -21,24 +21,24 @@ FieldSmith Pro provides 24/7 AI voice screening, call qualification, instant pho
 - **Payment Rail:** PayPal Subscriptions & Vault Merchant-Initiated Transactions (MIT).
 
 ## Subscription Plans & Pricing
-- Solo Operator: $49.99/mo (125 AI Screened Calls/mo, Solo Starter tier `solo-starter`, dedicated local 10DLC phone line, spam protection).
-- Pro: $79.99/mo (450 AI Screened Calls/mo, FieldSmith Pro tier `fieldsmith-pro` or `flooring-tile`, multi-trade scoping, takeoff sizing, CRM export).
-- Fleet / Crew: $179.99/mo (1,200 AI Screened Calls/mo, Pro Dispatch tier `pro-dispatch`, high-volume multi-crew routing, automated ERP sync).
+- High-Throughput Batch Worker: $49.99/mo (125 operations/mo, tier `tier_batch_worker`, 99.95% Availability SLA, US-Central Batch RAG).
+- Dedicated AI Service Gateway: $79.99/mo (450 operations/mo, tier `tier_inference_gateway`, 99.98% Low Latency <350ms SLA, US-East Low-Latency Gateway).
+- Enterprise Cluster Node: $179.99/mo (1,500 operations/mo, tier `tier_enterprise_cluster`, 99.99% Multi-Region Failover SLA, Multi-Region Distributed Cluster).
 
 ## FastMCP Tools Catalog
 External agents connected via MCP (POST /mcp or GET /sse) can execute the following tools:
 
 1. `get_service_catalog`
-   - Returns the complete FieldSmith trade catalog, plan quotas, included capabilities, supported trades, and activation policies.
+   - Returns the complete AP2 seller node catalog, capability quotas, SLA terms, and pricing tiers.
    - Arguments: None.
 
 2. `inspect_subscription_tiers`
-   - Returns details on the three subscription tiers ($49.99 / $79.99 / $179.99), call volume quotas, and features.
+   - Returns details on the three capability tiers ($49.99 / $79.99 / $179.99), operation quotas, and SLAs.
    - Arguments: None.
 
 3. `negotiate_tier_terms`
-   - Evaluates buyer budget cap against the requested tier. If budget is less than asking price, returns an authorized counter-offer down-tiering to a plan within budget (e.g. Solo Starter at $49.99/mo) along with a signed AP2 Intent Mandate.
-   - Required Arguments: `buyer_agent_id` (str), `contractor_email` (str), `tier_id` (str), `monthly_budget_cap` (float).
+   - Evaluates buyer budget cap against the requested tier. If budget is less than asking price, returns an authorized counter-offer down-tiering to a plan within budget (e.g. High-Throughput Batch Worker at $49.99/mo) along with a signed AP2 Intent Mandate.
+   - Required Arguments: `buyer_agent_id` (str), `buyer_email` (str), `tier_id` (str), `monthly_budget_cap` (float).
    - Optional Arguments: `proposed_price` (float), `recurrence` (str, default 'monthly'), `category` (str), `buyer_intent_mandate` (dict).
 
 4. `evaluate_spending_mandate`
@@ -47,33 +47,33 @@ External agents connected via MCP (POST /mcp or GET /sse) can execute the follow
 
 5. `purchase_subscription`
    - Submits the approved `offer_id` or mandate proof to bind the subscription to PayPal Recurring Vault.
-   - Required Arguments: `tier_id` (str), `agreed_monthly_rate` (float), `mandate_proof_hash` (str), `contractor_email` (str).
+   - Required Arguments: `tier_id` (str), `agreed_monthly_rate` (float), `mandate_proof_hash` (str), `buyer_email` (str).
    - Optional Arguments: `offer_id` (str).
 
-6. `provision_telecom_line`
-   - Binds a dedicated 10DLC telephone DID in the contractor's preferred US area code to the active subscription.
-   - Required Arguments: `subscription_id` (str), `contractor_email` (str).
-   - Optional Arguments: `area_code` (str, default '863'), `simulate_exhaustion` (bool).
+6. `provision_execution_node`
+   - Provisions a dedicated worker node endpoint (`mcp+https://...`) bound to an authenticated node allocation for the active subscription.
+   - Required Arguments: `subscription_id` (str), `buyer_email` (str).
+   - Optional Arguments: `preferred_region` (str, default 'us-east-1').
 
 7. `dispatch_zapier_mcp`
-   - Triggers downstream ERP and CRM integration (Jobber GraphQL v2 takeoff dossiers and QuickBooks Online API v3 Account 6300 general ledger sync).
-   - Required Arguments: `workflow_type` (str), `contractor_name` (str), `business_entity` (str), `allocated_did` (str), `monthly_subscription_fee` (float), `paypal_subscription_id` (str), `contractor_email` (str), `mandate_proof_hash` (str).
+   - Triggers downstream ERP integration (CloudEvents v1.0 and QuickBooks Online API v3 Account 6300 general ledger sync).
+   - Required Arguments: `workflow_type` (str), `buyer_agent` (str), `principal_entity` (str), `allocated_node_endpoint` (str), `monthly_subscription_fee` (float), `paypal_subscription_id` (str), `buyer_email` (str), `mandate_proof_hash` (str).
 
 8. `verify_mandate_anti_tamper`
    - Proves mathematical rejection of any altered payload, 1-cent price inflation, or expired timestamp.
    - Required Arguments: `payload` (dict), `signature` (str).
 
 9. `inspect_fleet_ledger`
-   - Queries the live Enterprise Fleet Ledger reconciling active lines, MRR, ARR, and subscriber allocations.
+   - Queries the live Enterprise Fleet Ledger reconciling active nodes, MRR, ARR, and subscriber allocations.
    - Arguments: None.
 
 ## Dynamic Buyer Key Registration (Challenge-Response)
 To onboard an autonomous buyer agent with its own Ed25519 signing key:
 1. `GET /api/agent/keys/challenge` -> Returns ephemeral 32-byte challenge nonce (64 hex chars) with 300s TTL.
 2. Sign challenge nonce using buyer agent's Ed25519 private key.
-3. `POST /api/agent/keys/register` -> Body: `{"buyer_agent_id": "...", "contractor_name": "...", "business_entity": "...", "contractor_email": "...", "public_key": "...", "signed_challenge": "..."}`.
+3. `POST /api/agent/keys/register` -> Body: `{"buyer_agent_id": "...", "principal_entity": "...", "buyer_email": "...", "public_key": "...", "signed_challenge": "..."}`.
 4. On success, key is active in the seller's cryptographic registry.
 
-## Telecom & Compliance Policies
-- **Geographic Boundary:** Strictly US Domestic (NANP +1). Non-US area codes and international routing are rejected with HTTP 403 Forbidden.
-- **10DLC Messaging Timeline:** Voice routing is active immediately upon allocation. A2P 10DLC messaging becomes active once brand and campaign vetting completes (estimated 1-3 business days).
+## Security & Policy Controls
+- **Security & Node Isolation:** Execution nodes are deployed into authenticated, rate-governed execution allocations across multi-region distributed clusters.
+- **Non-Repudiation:** Every transaction carries an Ed25519 signature proof hash bound to the buyer agent and verified against RFC 8032 standards.

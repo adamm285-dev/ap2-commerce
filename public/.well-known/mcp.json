@@ -1,8 +1,8 @@
 {
-  "name": "FieldSmith Pro A2A Seller Agent",
+  "name": "AP2 Autonomous Seller Node",
   "version": "1.0.0",
-  "description": "24/7 autonomous AI receptionist, telecom line provisioning, and subscription bargaining platform for field service contractors (roofing, plumbing, tile/flooring, HVAC, towing).",
-  "agent_instructions": "https://fieldsmith.pro/agents",
+  "description": "Autonomous Agent Payments Protocol (AP2) commerce protocol and execution node provisioning for high-throughput batch workers, dedicated AI service gateways, and distributed cluster nodes.",
+  "agent_instructions": "https://api.fieldsmith.pro/portal/llms.txt",
   "mcp_server": {
     "url": "https://api.fieldsmith.pro/mcp",
     "sse_url": "https://api.fieldsmith.pro/sse",
@@ -14,8 +14,10 @@
       "negotiate_tier_terms",
       "evaluate_spending_mandate",
       "purchase_subscription",
-      "provision_telecom_line",
-      "dispatch_zapier_mcp"
+      "provision_execution_node",
+      "dispatch_zapier_mcp",
+      "verify_mandate_anti_tamper",
+      "inspect_fleet_ledger"
     ]
   },
   "payment_rail": {
@@ -24,31 +26,35 @@
     "currency": "USD",
     "billing_period": "monthly",
     "plans": {
-      "solo_starter": {
-        "tier_id": "solo-starter",
+      "tier_batch_worker": {
+        "tier_id": "tier_batch_worker",
+        "name": "High-Throughput Batch Worker",
         "price": "$49.99/mo",
-        "screened_calls_quota": 125,
-        "paypal_plan_id": "P-68L14988XW5641721NLCRSFQ"
+        "operations_quota": 125,
+        "sla": "99.95% Availability",
+        "paypal_plan_id": "P-5ML4271244454362WXNWU5NQ"
       },
-      "fieldsmith_pro": {
-        "tier_id": "fieldsmith-pro",
+      "tier_inference_gateway": {
+        "tier_id": "tier_inference_gateway",
+        "name": "Dedicated AI Service Gateway",
         "price": "$79.99/mo",
-        "screened_calls_quota": 450,
-        "paypal_plan_id": "P-4KA989014W524233ANLCRSFQ"
+        "operations_quota": 450,
+        "sla": "99.98% Low Latency (<350ms)",
+        "paypal_plan_id": "P-1GH8273644454362WXNWU7ZZ"
       },
-      "pro_dispatch": {
-        "tier_id": "pro-dispatch",
+      "tier_enterprise_cluster": {
+        "tier_id": "tier_enterprise_cluster",
+        "name": "Enterprise Cluster Node",
         "price": "$179.99/mo",
-        "screened_calls_quota": 1200,
-        "paypal_plan_id": "P-77627096S5279500YNLCRSFY"
+        "operations_quota": 1500,
+        "sla": "99.99% Multi-Region Failover",
+        "paypal_plan_id": "P-9KL9921444454362WXNWU9AA"
       }
     }
   },
-  "regulatory_compliance": {
-    "us_domestic_only": true,
-    "nanp_only": true,
-    "jurisdiction": "US (NANP +1)"
-  },
-  "refund_policy": "https://fieldsmith.pro/refunds",
-  "terms": "https://fieldsmith.pro/terms"
+  "cryptographic_attestation": {
+    "signature_standard": "RFC 8032 Ed25519",
+    "enclave_attestation": "Multi-Region Distributed Cluster",
+    "mandate_protocol": "AP2 Intent & Cart Mandates with HMAC-SHA256"
+  }
 }

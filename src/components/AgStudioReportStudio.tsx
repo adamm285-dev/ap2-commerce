@@ -189,13 +189,13 @@ export function AgStudioReportStudio({
           <div style={{ width: '1px', height: '18px', backgroundColor: '#334155' }} />
           <div>
             <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Autonomous Telephony &amp; Agentic Commerce Report Studio
+              Autonomous Agentic Commerce &amp; Worker Node Report Studio
               <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
                 4 MULTI-TABLE DATASETS
               </span>
             </div>
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-              Transactions &bull; Trade Impact &bull; KYC Audit &bull; Telecom Trunks Registry &bull; {activeLinesCount} Active Carrier Lines
+              Transactions &bull; Service Capabilities &bull; Mandate Audits &bull; Worker Node Clusters &bull; {activeLinesCount} Active Subscriptions
             </div>
           </div>
         </div>
@@ -343,7 +343,7 @@ export function AgStudioReportStudio({
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span>Telemetry: <strong style={{ color: '#38bdf8' }}>${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo MRR</strong></span>
           <span>&bull;</span>
-          <span>Ingress Shield: <strong style={{ color: '#34d399' }}>99.8% TCPA Protected</strong></span>
+          <span>Spending Policy Guard: <strong style={{ color: '#34d399' }}>100% Enforced</strong></span>
           <span>&bull;</span>
           <span>Autonomous GMV: <strong style={{ color: '#38bdf8' }}>${totalAutonomousGmv.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARR</strong></span>
         </div>

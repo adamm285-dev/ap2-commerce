@@ -1,5 +1,5 @@
 /**
- * PayPal Agentic Commerce Service (A2A Protocol)
+ * PayPal Agentic Commerce Service (AP2 Protocol)
  *
  * Implements the Buyer Agent / Seller Agent protocol using PayPal Subscriptions
  * and the FastAPI backend matching the OpenAPI 3.1.0 contract.
@@ -8,11 +8,16 @@
 import type { A2aTransaction } from '../data/telemetryData';
 
 export interface AgentNegotiationRequest {
-  contractorName: string;
-  businessEntity: string;
-  tradeVertical: string;
+  buyerAgentName?: string;
+  principalEntity?: string;
+  capability?: string;
   maxMonthlyBudget: number;
-  missedCallLossEstimate: number;
+  workloadValueEstimate?: number;
+  // Backward compatibility fields
+  contractorName?: string;
+  businessEntity?: string;
+  tradeVertical?: string;
+  missedCallLossEstimate?: number;
 }
 
 export interface AgentNegotiationResponse {
@@ -47,15 +52,22 @@ export const PAYPAL_CONFIG = {
 
 /**
  * Autonomous Buyer Agent evaluates whether the seller's terms fall within
- * the contractor's explicit financial spending mandate (< $100/mo).
+ * the buyer's explicit programmatic spending mandate (< $200/mo).
  *
  * Calls FastAPI backend at POST /api/agent/spending-mandate/evaluate
  */
 export async function evaluateAgentNegotiation(
   request: AgentNegotiationRequest
 ): Promise<AgentNegotiationResponse> {
-  const sellerMonthlyRate = request.maxMonthlyBudget >= 79.99 ? 79.99 : 49.99;
-  const buyerAgentId = `BuyerAgent-${request.contractorName.split(' ')[0]}-${request.tradeVertical.replace(/\s+/g, '')}`;
+  const agentName = request.buyerAgentName || request.contractorName || 'AutonomousBuyerAgent';
+  const capabilityName = request.capability || request.tradeVertical || 'Dedicated AI Service Gateway';
+  const valueEstimate = request.workloadValueEstimate || request.missedCallLossEstimate || 500;
+  const sellerMonthlyRate = request.maxMonthlyBudget >= 179.99
+    ? 179.99
+    : request.maxMonthlyBudget >= 79.99
+    ? 79.99
+    : 49.99;
+  const buyerAgentId = `BuyerAgent-${agentName.replace(/\s+/g, '')}-${capabilityName.replace(/\s+/g, '')}`;
 
   try {
     const res = await fetch('/api/agent/spending-mandate/evaluate', {
@@ -65,7 +77,7 @@ export async function evaluateAgentNegotiation(
         buyerAgentId: buyerAgentId,
         amount: sellerMonthlyRate,
         recurrence: 'monthly',
-        category: 'telephony-screener',
+        category: 'autonomous-node-service',
         monthlyBudgetCap: request.maxMonthlyBudget,
       }),
     });
@@ -76,18 +88,20 @@ export async function evaluateAgentNegotiation(
       const finalMonthlyRate = approved
         ? sellerMonthlyRate
         : (data.counter_offer_amount || sellerMonthlyRate);
-      const agreedPlanId = data.counter_offer_plan_id || (sellerMonthlyRate === 49.99 ? 'P-FLSMITH-SOLO-STARTER' : PAYPAL_CONFIG.planId);
+      const agreedPlanId = data.counter_offer_plan_id || (sellerMonthlyRate === 49.99 ? 'P-AP2-BATCH-WORKER' : sellerMonthlyRate === 179.99 ? 'P-AP2-CLUSTER-NODE' : PAYPAL_CONFIG.planId);
       const agreedPlanName = data.counter_offer_tier
-        ? `FieldSmith ${data.counter_offer_tier} (${request.tradeVertical})`
+        ? `${data.counter_offer_tier} (${capabilityName})`
         : sellerMonthlyRate === 49.99
-        ? `FieldSmith Solo Starter (${request.tradeVertical})`
-        : `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`;
+        ? `High-Throughput Batch Worker ($49.99/mo)`
+        : sellerMonthlyRate === 179.99
+        ? `Enterprise Cluster Node ($179.99/mo)`
+        : `Dedicated AI Service Gateway ($79.99/mo)`;
 
       const message = approved
-        ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Estimated ROI saves $${request.missedCallLossEstimate}/mo in lost revenue.`
+        ? `[BuyerAgent]: Mandate approved by FastAPI ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Autonomous compute ROI value $${valueEstimate}/mo.`
         : data.counter_offer_available
         ? `[BuyerAgent]: Counter-offer accepted for $${finalMonthlyRate}/mo (${data.counter_offer_tier}) within budget cap $${request.maxMonthlyBudget}/mo.`
-        : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds contractor cap ($${request.maxMonthlyBudget}).`;
+        : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds buyer budget cap ($${request.maxMonthlyBudget}).`;
 
       return {
         agreedPlanId: agreedPlanId,
@@ -102,15 +116,17 @@ export async function evaluateAgentNegotiation(
       };
     }
   } catch (err) {
-    console.warn('[A2A Agent] Live backend not reachable, using local mandate simulation:', err);
+    console.warn('[AP2 Agent] Live backend not reachable, using local mandate simulation:', err);
   }
 
   // Graceful client-side fallback
   const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
   const fallbackPlanName = sellerMonthlyRate === 49.99
-    ? `FieldSmith Solo Starter (${request.tradeVertical})`
-    : `FieldSmith Pro - AI Voice Screener (${request.tradeVertical})`;
-  const fallbackPlanId = sellerMonthlyRate === 49.99 ? 'P-FLSMITH-SOLO-STARTER' : PAYPAL_CONFIG.planId;
+    ? `High-Throughput Batch Worker ($49.99/mo)`
+    : sellerMonthlyRate === 179.99
+    ? `Enterprise Cluster Node ($179.99/mo)`
+    : `Dedicated AI Service Gateway ($79.99/mo)`;
+  const fallbackPlanId = sellerMonthlyRate === 49.99 ? 'P-AP2-BATCH-WORKER' : sellerMonthlyRate === 179.99 ? 'P-AP2-CLUSTER-NODE' : PAYPAL_CONFIG.planId;
   return {
     agreedPlanId: fallbackPlanId,
     agreedPlanName: fallbackPlanName,
@@ -118,8 +134,8 @@ export async function evaluateAgentNegotiation(
     mandateSatisfied: isBudgetAcceptable,
     kycRequired: true,
     message: isBudgetAcceptable
-      ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Estimated ROI saves $${request.missedCallLossEstimate}/mo in lost contractor revenue.`
-      : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds local contractor cap ($${request.maxMonthlyBudget}).`,
+      ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate}/mo <= $${request.maxMonthlyBudget}/mo cap). Autonomous compute value $${valueEstimate}/mo.`
+      : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate}) exceeds local buyer cap ($${request.maxMonthlyBudget}).`,
     sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
     mandateToken: isBudgetAcceptable ? 'MANDATE-SIMULATED-LOCAL-TOKEN' : undefined,
     isLiveBackend: false,
@@ -143,32 +159,31 @@ export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean
     });
     return res.ok;
   } catch (err) {
-    console.warn('[A2A Agent] Could not reset mandate ledger:', err);
+    console.warn('[AP2 Agent] Could not reset mandate ledger:', err);
     return false;
   }
 }
 
 /**
- * Seller Agent verifies PayPal Subscription token and provisions an unassailable
- * inbound-only Telnyx DID, permanently locking out autodialers to ensure FCC/TCPA compliance.
+ * Seller Agent verifies PayPal Subscription token and provisions an authenticated
+ * AP2 MCP node endpoint bound to the buyer's Ed25519 mandate.
  *
  * Calls FastAPI backend at POST /api/agent/provision with client-side fallback.
  */
 export async function executeProvisioningAfterSubscription(
   subscriptionId: string,
-  contractorEntity: string,
-  _tradeVertical: string = 'Tile & Flooring',
-  areaCode: string = '863'
+  principalEntity: string,
+  _capability: string = 'Dedicated AI Service Gateway',
+  _regionCluster: string = 'us-east-1'
 ): Promise<ProvisioningResult> {
-  const cleanAc = areaCode.replace(/\D/g, '') || '863';
   try {
     const res = await fetch('/api/agent/provision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscriptionId: subscriptionId,
-        contractorEmail: 'adam@floorsmithllc.com',
-        areaCode: cleanAc,
+        contractorEmail: 'merchant@ap2protocol.org',
+        areaCode: '863',
       }),
     });
 
@@ -178,41 +193,33 @@ export async function executeProvisioningAfterSubscription(
         success: true,
         subscriptionId: data.subscriptionId,
         allocatedDid: data.assignedDid,
-        carrierRespOrg: data.carrier,
-        kycBoundEntity: contractorEntity,
+        carrierRespOrg: data.carrier || 'AP2 Autonomous Node Registry',
+        kycBoundEntity: principalEntity,
         tcpaGuardActive: true,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         isLiveBackend: true,
       };
     }
   } catch (err) {
-    console.warn('[A2A Agent] Live backend not reachable, using local provisioning simulation:', err);
+    console.warn('[AP2 Agent] Live backend not reachable, using local provisioning simulation:', err);
   }
 
-  // Graceful client-side fallback matching requested area code
+  // Graceful client-side fallback matching AP2 MCP node endpoints
   await new Promise((resolve) => setTimeout(resolve, 600));
-  const prefix = cleanAc === '863' ? '802' : '555';
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const sampleDids =
-    cleanAc === '863'
-      ? [
-          '+1 (863) 267-8902',
-          '+1 (863) 356-7801',
-          '+1 (863) 356-7802',
-          '+1 (863) 356-7803',
-        ]
-      : [
-          `+1 (${cleanAc}) ${prefix}-${randomSuffix}`,
-          `+1 (${cleanAc}) ${prefix}-${randomSuffix + 1}`,
-        ];
-  const allocatedDid = sampleDids[Math.floor(Math.random() * sampleDids.length)];
+  const sampleEndpoints = [
+    'mcp+https://gateway-01.acme-systems.io/mcp',
+    'mcp+https://batch-worker-02.acme-systems.io/mcp',
+    'mcp+https://cluster-01.acme-systems.io/mcp',
+    'mcp+https://node-mesh-04.acme-systems.io/mcp',
+  ];
+  const allocatedDid = sampleEndpoints[Math.floor(Math.random() * sampleEndpoints.length)];
 
   return {
     success: true,
     subscriptionId,
     allocatedDid,
-    carrierRespOrg: 'Telnyx Wholesale (Somos RespOrg)',
-    kycBoundEntity: contractorEntity,
+    carrierRespOrg: 'AP2 Autonomous Node Registry',
+    kycBoundEntity: principalEntity,
     tcpaGuardActive: true,
     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
     isLiveBackend: false,
@@ -317,11 +324,11 @@ export interface FleetScheduleResponse {
 }
 
 /**
- * Fetches dynamic enterprise fleet ledger from SQLite via GET /api/fleet/ledger.
+ * Fetches dynamic enterprise fleet ledger from SQLite via GET /api/fleet/ledger?profile=ap2.
  */
 export async function fetchFleetLedger(): Promise<A2aTransaction[]> {
   try {
-    const res = await fetch('/api/fleet/ledger');
+    const res = await fetch('/api/fleet/ledger?profile=ap2');
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.transactions) && data.transactions.length > 0) {
@@ -335,11 +342,11 @@ export async function fetchFleetLedger(): Promise<A2aTransaction[]> {
 }
 
 /**
- * Fetches real-time fleet aggregates and KPIs from SQLite via GET /api/fleet/stats.
+ * Fetches real-time fleet aggregates and KPIs from SQLite via GET /api/fleet/stats?profile=ap2.
  */
 export async function fetchFleetStats(): Promise<FleetStats | null> {
   try {
-    const res = await fetch('/api/fleet/stats');
+    const res = await fetch('/api/fleet/stats?profile=ap2');
     if (res.ok) {
       return await res.json();
     }
@@ -350,11 +357,11 @@ export async function fetchFleetStats(): Promise<FleetStats | null> {
 }
 
 /**
- * Fetches timeline resources, shifts, and appointment locks via GET /api/fleet/schedule.
+ * Fetches timeline resources, shifts, and appointment locks via GET /api/fleet/schedule?profile=ap2.
  */
 export async function fetchFleetSchedule(): Promise<FleetScheduleResponse | null> {
   try {
-    const res = await fetch('/api/fleet/schedule');
+    const res = await fetch('/api/fleet/schedule?profile=ap2');
     if (res.ok) {
       return await res.json();
     }

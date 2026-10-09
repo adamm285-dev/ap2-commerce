@@ -3,16 +3,15 @@ import {
   Network,
   CheckCircle2,
   Play,
-  FileText,
-  Calendar,
-  Building2,
   ShieldCheck,
-  PhoneCall,
   Receipt,
-  Sparkles,
   Copy,
   Check,
   Code2,
+  Cpu,
+  Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   executeZapierMcpWorkflow,
@@ -30,23 +29,46 @@ export interface ZapierMcpViewProps {
   monthlyFee?: number;
   paypalSubscriptionId?: string;
   isDepositLocked?: boolean;
+  activeScenario?: 'a2a' | 'workload';
+  onScenarioChange?: (scenario: 'a2a' | 'workload') => void;
+  isControlsCollapsed?: boolean;
+  onToggleControls?: () => void;
 }
 
 export function ZapierMcpView({
-  contractorName = 'Marcus Miller',
-  businessEntity = 'Miller Custom Flooring LLC',
-  allocatedDid = '+1 (863) 267-8902',
-  tradeVertical = 'Tile & Custom Flooring',
+  contractorName = 'agent:claude-3-5:acme-procure',
+  businessEntity = 'Acme Autonomous Systems LLC',
+  allocatedDid = 'node-cluster-01.ap2.net:8443',
+  tradeVertical = 'Dedicated AI Service Gateway',
   monthlyFee = 79.99,
   paypalSubscriptionId = 'I-AUTONOMOUS-8902',
   isDepositLocked = false,
+  activeScenario: propActiveScenario,
+  onScenarioChange,
+  isControlsCollapsed: propIsControlsCollapsed,
+  onToggleControls,
 }: ZapierMcpViewProps) {
-  const [activeScenario, setActiveScenario] = useState<'a2a' | 'lead'>('a2a');
-  const [activeInspectorTab, setActiveInspectorTab] = useState<'qbo' | 'jobber' | 'webhook'>('qbo');
+  const [internalScenario, setInternalScenario] = useState<'a2a' | 'workload'>('a2a');
+  const activeScenario = propActiveScenario ?? internalScenario;
+  const setActiveScenario = (scenario: 'a2a' | 'workload') => {
+    setInternalScenario(scenario);
+    onScenarioChange?.(scenario);
+  };
+  void setActiveScenario;
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'qbo' | 'cloudevents' | 'webhook'>('qbo');
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [a2aResult, setA2aResult] = useState<ZapierExecutionResult | null>(null);
-  const [leadResult, setLeadResult] = useState<ZapierExecutionResult | null>(null);
+  const [workloadResult, setWorkloadResult] = useState<ZapierExecutionResult | null>(null);
+  const [internalIsMcpControlsCollapsed, setInternalIsMcpControlsCollapsed] = useState(false);
+  const isMcpControlsCollapsed = propIsControlsCollapsed ?? internalIsMcpControlsCollapsed;
+  const toggleMcpControlsCollapsed = () => {
+    if (onToggleControls) {
+      onToggleControls();
+    } else {
+      setInternalIsMcpControlsCollapsed((prev) => !prev);
+    }
+  };
 
   const copyToClipboard = (text: string, tabKey: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -56,63 +78,63 @@ export function ZapierMcpView({
     }
   };
 
-  // Scenario 1: A2A Contractor Onboarding Data
-  const contractor: A2aContractorOnboarding = {
+  // Scenario 1: Autonomous AP2 Agent Onboarding
+  const agentSubscription: A2aContractorOnboarding = {
     contractorName,
     businessEntity,
     allocatedDid,
     tradeVertical,
     monthlyFee,
     paypalSubscriptionId: isDepositLocked ? 'I-AUTONOMOUS-186492' : paypalSubscriptionId,
-    contractorEmail: 'marcus@millercustomfloors.com',
+    contractorEmail: 'procure@acme-autonomous.io',
   };
 
-  // Scenario 2: Downstream Homeowner Lead Data
-  const [lead] = useState<QualifiedLead>({
-    callerName: 'Sarah Jenkins',
-    callerPhone: '+1 (863) 555-0199',
-    propertyAddress: '4822 Cleveland Heights Blvd, Lakeland, FL 33813',
-    tradeVertical: 'Tile & Custom Flooring',
-    scopeSummary: '650 sq ft porcelain plank tile in kitchen & hallway',
-    territoryZone: 'Zone 2 - South Lakeland',
-    appointmentTime: 'Tuesday, Oct 6 @ 10:00 AM',
-    depositAmount: 250.0,
-    paypalTransactionId: 'TXN-998811',
+  // Scenario 2: Workload Execution Dispatch Dossier
+  const [workloadDispatch] = useState<QualifiedLead>({
+    callerName: 'agent:gpt-4o:document-parse',
+    callerPhone: 'node-cluster-02.ap2.net:8443',
+    propertyAddress: '50,000 Operations Inference & Batch RAG Synthesis',
+    tradeVertical: 'High-Throughput Batch Worker',
+    scopeSummary: 'Autonomous inference dispatch reserved for 50k operations batch with Ed25519 signature proof',
+    territoryZone: 'Cluster Zone 2 - US East (High-Memory)',
+    appointmentTime: 'Execution SLA: Sub-350ms Latency',
+    depositAmount: 15.0,
+    paypalTransactionId: 'PAYPAL-TXN-998811',
   });
 
   const handleRunWorkflow = async () => {
     setIsRunning(true);
     if (activeScenario === 'a2a') {
-      const res = await executeZapierA2aWorkflow(contractor);
+      const res = await executeZapierA2aWorkflow(agentSubscription);
       setA2aResult(res);
     } else {
-      const res = await executeZapierMcpWorkflow(lead);
-      setLeadResult(res);
+      const res = await executeZapierMcpWorkflow(workloadDispatch);
+      setWorkloadResult(res);
     }
     setIsRunning(false);
   };
 
-  const currentResult = activeScenario === 'a2a' ? a2aResult : leadResult;
+  const currentResult = activeScenario === 'a2a' ? a2aResult : workloadResult;
 
-  // Authentic Payload Previews for APIMatic & Zapier Tracks
+  // Authentic Payload Previews for Enterprise Accounting & EventBus
   const qboPreview = currentResult?.qboPayload || (activeScenario === 'a2a' ? {
     Purchase: {
       PaymentType: 'CreditCard',
       AccountRef: { value: '99', name: 'PayPal Clearing Account' },
-      EntityRef: { value: '101', name: 'FieldSmith Pro Inc.', type: 'Vendor' },
+      EntityRef: { value: '101', name: 'AP2 Autonomous Merchant LLC', type: 'Vendor' },
       TxnDate: new Date().toISOString().substring(0, 10),
-      DocNumber: `FS-A2A-${contractor.paypalSubscriptionId.slice(-6)}`,
-      TotalAmt: contractor.monthlyFee,
+      DocNumber: `AP2-SUB-${agentSubscription.paypalSubscriptionId.slice(-6)}`,
+      TotalAmt: agentSubscription.monthlyFee,
       CurrencyRef: { value: 'USD', name: 'United States Dollar' },
-      PrivateNote: `FieldSmith Pro Autonomous AP2 Commerce Protocol.\nPayPal Sub: ${contractor.paypalSubscriptionId} | Monthly: $${contractor.monthlyFee.toFixed(2)} USD\nDedicated DID: ${contractor.allocatedDid} | Vertical: ${contractor.tradeVertical}\nMandate Proof Hash: HMAC-MANDATE-VERIFIED-01\nCarrier FCC Attestation: STIR/SHAKEN Class A (Telnyx LLC)\nPurchaser: ${contractor.contractorName} (${contractor.businessEntity})`,
+      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${agentSubscription.paypalSubscriptionId} | Monthly: $${agentSubscription.monthlyFee.toFixed(2)} USD\nDedicated Node: ${agentSubscription.allocatedDid} | Capability: ${agentSubscription.tradeVertical}\nMandate Proof Hash: HMAC-MANDATE-VERIFIED-01\nCryptographic Attestation: RFC 8032 Ed25519 Mandate Bound\nPurchaser: ${agentSubscription.contractorName} (${agentSubscription.businessEntity})`,
       GlobalTaxCalculation: 'NotApplicable',
       Line: [
         {
           Id: '1',
           LineNum: 1,
-          Amount: contractor.monthlyFee,
+          Amount: agentSubscription.monthlyFee,
           DetailType: 'AccountBasedExpenseLineDetail',
-          Description: `FieldSmith Pro AI Telephony & Dispatch Screener (${contractor.tradeVertical}) — Autonomous Recurring Subscription`,
+          Description: `AP2 Dedicated Node Gateway (${agentSubscription.tradeVertical}) — Autonomous Recurring Subscription`,
           AccountBasedExpenseLineDetail: {
             AccountRef: { value: '6300', name: 'Dues & Subscriptions: Software & SaaS' },
             BillableStatus: 'NotBillable',
@@ -124,128 +146,89 @@ export function ZapierMcpView({
     purchase_id: 'QBO-EXP-9124',
   } : {
     Invoice: {
-      CustomerRef: { value: '202', name: lead.callerName },
+      CustomerRef: { value: '202', name: workloadDispatch.callerName },
       Line: [
         {
-          Amount: lead.depositAmount,
+          Amount: workloadDispatch.depositAmount,
           DetailType: 'SalesItemLineDetail',
-          Description: `Mobilization Deposit: ${lead.tradeVertical} (${lead.scopeSummary})`,
+          Description: `Autonomous Workload Settlement: ${workloadDispatch.tradeVertical} (${workloadDispatch.propertyAddress})`,
           SalesItemLineDetail: {
-            ItemRef: { value: '1', name: 'Services' },
-            UnitPrice: lead.depositAmount,
+            ItemRef: { value: '1', name: 'AI Compute & Token Quota' },
+            UnitPrice: workloadDispatch.depositAmount,
             Qty: 1,
           },
         },
       ],
       TxnDate: new Date().toISOString().substring(0, 10),
-      PrivateNote: `PayPal Deposit Verified: ${lead.paypalTransactionId} | Zone: ${lead.territoryZone}`,
+      PrivateNote: `AP2 Workload Settled via PayPal: ${workloadDispatch.paypalTransactionId} | Cluster: ${workloadDispatch.territoryZone}`,
     },
     purchase_id: 'QBO-INV-5501',
   });
 
-  const jobberPreview = currentResult?.jobberPayload || (activeScenario === 'a2a' ? {
-    mutation: `mutation ClientCreate($input: ClientCreateInput!) {
-  clientCreate(input: $input) {
-    client {
-      id
-      firstName
-      lastName
-      companyName
-      isCompany
-      phones {
-        number
-        primary
-        type
-        description
-      }
-      emails {
-        address
-        primary
-      }
-      customFields {
-        ... on CustomFieldText {
-          label
-          valueText
-        }
-      }
-    }
-    userErrors {
-      message
-      field
-    }
-  }
-}`,
-    variables: {
-      input: {
-        firstName: contractor.contractorName.split(' ')[0] || 'Marcus',
-        lastName: contractor.contractorName.split(' ')[1] || 'Miller',
-        companyName: contractor.businessEntity,
-        isCompany: true,
-        phones: [
-          {
-            number: contractor.allocatedDid,
-            primary: true,
-            type: 'WORK',
-            description: 'FieldSmith Dedicated AI Inbound Line',
-          },
-        ],
-        emails: [{ address: contractor.contractorEmail, primary: true }],
-        customFields: [
-          { label: 'Telephony DID', valueText: contractor.allocatedDid },
-          { label: 'Carrier Route', valueText: 'Telnyx Wholesale Voice 10DLC' },
-          { label: 'AI Voice Screener Webhook', valueText: 'https://api.fieldsmith.pro/voice/inbound' },
-        ],
-      },
+  const cloudEventsPreview = currentResult?.cloudeventsPayload || (activeScenario === 'a2a' ? {
+    specversion: '1.0',
+    id: 'ce-sub-99120482',
+    source: 'https://api.ap2protocol.org/mcp/seller',
+    type: 'com.ap2.settlement.subscription.activated',
+    datacontenttype: 'application/json',
+    time: new Date().toISOString(),
+    subject: `agent_${(agentSubscription.contractorName || agentSubscription.buyerAgentName || 'procure').toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    data: {
+      buyer_agent: agentSubscription.contractorName,
+      principal_entity: agentSubscription.businessEntity,
+      service_tier: agentSubscription.tradeVertical,
+      monthly_rate: agentSubscription.monthlyFee,
+      allocated_node_endpoint: agentSubscription.allocatedDid,
+      paypal_subscription_id: agentSubscription.paypalSubscriptionId,
+      ed25519_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
+      enclave_route: 'US-East Node Cluster (Ashburn, VA)',
+      protocol_version: 'AP2-v1.4.1',
     },
-    jobber_routing_id: 'JOB-ROUTING-7819',
   } : {
-    mutation: `mutation QuoteCreate($input: QuoteCreateInput!) {
-  quoteCreate(input: $input) {
-    quote {
-      id
-      title
-      total
-      client { name phone }
-    }
-    userErrors { message field }
-  }
-}`,
-    variables: {
-      input: {
-        title: `Consultation & Scope: ${lead.tradeVertical}`,
-        clientName: lead.callerName,
-        phone: lead.callerPhone,
-        address: lead.propertyAddress,
-        notes: lead.scopeSummary,
-      },
+    specversion: '1.0',
+    id: 'ce-workload-8821901',
+    source: 'https://api.ap2protocol.org/mcp/seller',
+    type: 'com.ap2.settlement.workload.dispatched',
+    datacontenttype: 'application/json',
+    time: new Date().toISOString(),
+    subject: 'workload_50k_tokens',
+    data: {
+      requesting_agent: workloadDispatch.callerName,
+      target_node: workloadDispatch.callerPhone,
+      service_capability: workloadDispatch.tradeVertical,
+      workload_scope: workloadDispatch.propertyAddress,
+      settlement_amount: workloadDispatch.depositAmount,
+      paypal_transaction_id: workloadDispatch.paypalTransactionId,
+      token_quota: 50000,
+      sla_target: 'sub-350ms',
+      cluster_zone: workloadDispatch.territoryZone,
     },
-    jobber_routing_id: 'JOB-QUOTE-3342',
   });
 
   const webhookPreview = currentResult?.webhookEnvelope || {
     headers: {
       'Content-Type': 'application/json',
-      'X-FieldSmith-Signature': 'sha256=9b72e1858a74e47bcf056ad8564177d6118d098e94fae75896a297b83d8e578a',
-      'X-FieldSmith-Timestamp': new Date().toISOString(),
-      'X-FieldSmith-Delivery-Id': 'del_live_sync_001',
-      'X-FieldSmith-Event': activeScenario === 'a2a' ? 'a2a.subscription.provisioned' : 'fieldsmith.lead.created',
+      'X-AP2-Signature': 'sha256=9b72e1858a74e47bcf056ad8564177d6118d098e94fae75896a297b83d8e578a',
+      'X-AP2-Timestamp': new Date().toISOString(),
+      'X-AP2-Delivery-Id': 'del_live_sync_001',
+      'X-AP2-Event': activeScenario === 'a2a' ? 'ap2.subscription.provisioned' : 'ap2.workload.dispatched',
     },
     body: {
-      event: activeScenario === 'a2a' ? 'a2a.subscription.provisioned' : 'fieldsmith.lead.created',
-      contractor: {
-        name: contractor.contractorName,
-        entity: contractor.businessEntity,
-        email: contractor.contractorEmail,
+      event: activeScenario === 'a2a' ? 'ap2.subscription.provisioned' : 'ap2.workload.dispatched',
+      agent: {
+        name: agentSubscription.contractorName,
+        entity: agentSubscription.businessEntity,
+        email: agentSubscription.contractorEmail,
       },
       subscription: activeScenario === 'a2a' ? {
-        paypal_subscription_id: contractor.paypalSubscriptionId,
-        monthly_fee: contractor.monthlyFee,
+        paypal_subscription_id: agentSubscription.paypalSubscriptionId,
+        monthly_fee: agentSubscription.monthlyFee,
         currency: 'USD',
-        allocated_did: contractor.allocatedDid,
-        trade_vertical: contractor.tradeVertical,
+        allocated_node_endpoint: agentSubscription.allocatedDid,
+        trade_vertical: agentSubscription.tradeVertical,
         mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
       } : undefined,
-      jobber_export: jobberPreview,
+      cloudevents_export: cloudEventsPreview,
       qbo_export: qboPreview,
     },
     status: 200,
@@ -261,119 +244,188 @@ export function ZapierMcpView({
         width: '100%',
         height: '100%',
         backgroundColor: '#0f172a',
-        padding: '24px',
+        padding: '12px 16px',
         overflowY: 'auto',
       }}
     >
-      {/* Title & Scenario Selector Bar */}
+      {/* 1. UNIFIED MCP ERP & EVENTBUS BRIDGE CARD */}
       <div
         style={{
+          backgroundColor: '#0f172a',
+          border: '1px solid #1e293b',
+          borderRadius: '12px',
+          padding: isMcpControlsCollapsed ? '10px 16px' : '14px 18px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '16px',
-          flexWrap: 'wrap',
-          gap: '12px',
+          flexDirection: 'column',
+          gap: isMcpControlsCollapsed ? '6px' : '12px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+          marginBottom: '12px',
+          flexShrink: 0,
         }}
       >
-        <div>
-          <h2
-            style={{
-              fontSize: '18px',
-              fontWeight: 700,
-              color: '#f8fafc',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              margin: 0,
-            }}
-          >
-            <Network size={20} color="#38bdf8" /> Zapier MCP Autonomous Business Bridge
-          </h2>
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-            {activeScenario === 'a2a'
-              ? 'Autonomous AP2 Post-Payment Chain: Wires Marcus Miller’s accounting, CRM line routing, and morning briefs automatically.'
-              : 'FieldSmith Inbound Lead CRM Chain: Dispatches homeowner project quote, deposit receipt, and jobsite booking.'}
-          </p>
+        {/* Card Header Row */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            width: '100%',
+          }}
+        >
+          {/* Left: Icon + Title + Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <div
+              style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Network size={14} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <span style={{ fontSize: '13px', fontWeight: 800, letterSpacing: '-0.01em', color: '#f8fafc', whiteSpace: 'nowrap' }}>
+                Zapier MCP Enterprise ERP &amp; EventBus Bridge
+              </span>
+              <span
+                style={{
+                  fontSize: '10px',
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  padding: '1px 6px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                FAST-MCP PROTOCOL
+              </span>
+              <span
+                style={{
+                  fontSize: '10px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                  color: '#34d399',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  padding: '1px 6px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                QBO GL 6300 &bull; CLOUDEVENTS v1.0
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action: Run Workflow Button + Collapse Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={handleRunWorkflow}
+              disabled={isRunning}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 12px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: isRunning ? '#0369a1' : '#0284c7',
+                color: '#fff',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: isRunning ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+              title={activeScenario === 'a2a' ? 'Run Autonomous AP2 Subscription Chain' : 'Run AP2 Workload Dispatch Chain'}
+            >
+              <Play size={12} />
+              {isRunning
+                ? 'Running...'
+                : activeScenario === 'a2a'
+                ? 'Run Subscription Chain'
+                : 'Run Workload Dispatch'}
+            </button>
+
+            <button
+              onClick={toggleMcpControlsCollapsed}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 10px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: isMcpControlsCollapsed ? '#38bdf8' : '#94a3b8',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+              title={isMcpControlsCollapsed ? 'Expand Controls' : 'Collapse Controls to maximize inspector workspace'}
+            >
+              {isMcpControlsCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              <span>{isMcpControlsCollapsed ? 'Expand' : 'Collapse'}</span>
+            </button>
+          </div>
         </div>
 
-        {/* Scenario Selector Pills */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Row 2: Subtitle text */}
+        <div style={{ fontSize: '11px', color: '#94a3b8', paddingLeft: '34px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {activeScenario === 'a2a'
+            ? 'Autonomous AP2 Post-Settlement Chain: Wires buyer agent accounting, ERP ledger synchronization, and worker node execution logs.'
+            : 'AP2 Workload Execution Dispatch Chain: Emits CloudEvents v1.0 payload, logs PayPal receipt to QuickBooks, and routes execution tokens.'}
+        </div>
+
+        {/* Expanded Protocol Details Strip (Only when expanded) */}
+        {!isMcpControlsCollapsed && (
           <div
             style={{
               display: 'flex',
-              backgroundColor: '#1e293b',
-              borderRadius: '8px',
-              padding: '3px',
-              border: '1px solid #334155',
-            }}
-          >
-            <button
-              onClick={() => setActiveScenario('a2a')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                backgroundColor: activeScenario === 'a2a' ? '#0284c7' : 'transparent',
-                color: activeScenario === 'a2a' ? '#fff' : '#94a3b8',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              <Sparkles size={13} color={activeScenario === 'a2a' ? '#fde047' : '#94a3b8'} />
-              AP2 Contractor Onboarding (Active Demo)
-            </button>
-            <button
-              onClick={() => setActiveScenario('lead')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                backgroundColor: activeScenario === 'lead' ? '#0284c7' : 'transparent',
-                color: activeScenario === 'lead' ? '#fff' : '#94a3b8',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              <Building2 size={13} />
-              FieldSmith Homeowner CRM (Sarah Jenkins)
-            </button>
-          </div>
-
-          <button
-            onClick={handleRunWorkflow}
-            disabled={isRunning}
-            style={{
-              display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 18px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: '#0284c7',
-              color: '#fff',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              justifyContent: 'space-between',
+              gap: '12px',
+              paddingTop: '6px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+              fontSize: '11px',
+              color: '#94a3b8',
+              paddingLeft: '34px',
+              flexWrap: 'wrap',
             }}
           >
-            <Play size={15} />{' '}
-            {isRunning
-              ? 'Invoking Zapier MCP...'
-              : activeScenario === 'a2a'
-              ? 'Run Autonomous AP2 Onboarding Chain'
-              : 'Run Homeowner CRM Chain'}
-          </button>
-        </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Scenario:</span>
+                <span style={{ color: '#38bdf8', fontWeight: 700 }}>
+                  {activeScenario === 'a2a' ? 'AP2 Agent Onboarding (Subscription)' : 'AP2 Workload Dispatch (50k Tokens)'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Endpoint:</span>
+                <code style={{ color: '#34d399', fontFamily: 'monospace', fontSize: '10px' }}>POST /api/mcp/zapier-event</code>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Payload:</span>
+                <span style={{ color: '#f8fafc' }}>CloudEvents v1.0 (QBO GL 6300)</span>
+              </div>
+            </div>
+            <span style={{ fontSize: '10px', color: '#64748b' }}>
+              Execution trace and webhook telemetry log live below
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Grid: Left Context Card, Right Output Execution Trace */}
@@ -419,32 +471,33 @@ export function ZapierMcpView({
                   color: '#34d399',
                 }}
               >
-                VERIFIED &bull; KYC BOUND
+                VERIFIED &bull; MANDATE BOUND
               </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
               <div>
-                <span style={{ color: '#94a3b8' }}>Contractor Principal:</span>
-                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{contractor.contractorName}</div>
+                <span style={{ color: '#94a3b8' }}>Buyer Agent ID:</span>
+                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{agentSubscription.contractorName}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Verified Legal Entity (PayPal KYC):</span>
-                <div style={{ color: '#38bdf8', fontWeight: 600 }}>{contractor.businessEntity}</div>
+                <span style={{ color: '#94a3b8' }}>Verified Principal Entity:</span>
+                <div style={{ color: '#38bdf8', fontWeight: 600 }}>{agentSubscription.businessEntity}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Allocated Carrier DID:</span>
+                <span style={{ color: '#94a3b8' }}>Allocated Worker Node Endpoint:</span>
                 <div style={{ color: '#fbbf24', fontFamily: 'monospace', fontWeight: 600 }}>
-                  {contractor.allocatedDid} <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Telnyx LLC)</span>
+                  {agentSubscription.allocatedDid}{' '}
+                  <span style={{ color: '#94a3b8', fontWeight: 400 }}>(AP2 Worker Node)</span>
                 </div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Trade Specialty &amp; Prompt Preset:</span>
-                <div style={{ color: '#f8fafc' }}>{contractor.tradeVertical}</div>
+                <span style={{ color: '#94a3b8' }}>Service Capability Tier:</span>
+                <div style={{ color: '#f8fafc' }}>{agentSubscription.tradeVertical}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Executive Dispatch Contact:</span>
-                <div style={{ color: '#f8fafc' }}>{contractor.contractorEmail}</div>
+                <span style={{ color: '#94a3b8' }}>Agent Settlement Inbox:</span>
+                <div style={{ color: '#f8fafc' }}>{agentSubscription.contractorEmail}</div>
               </div>
 
               {/* PayPal Subscription Mandate Box */}
@@ -462,15 +515,24 @@ export function ZapierMcpView({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#34d399', fontWeight: 700, fontSize: '13px' }}>
-                    Recurring PayPal Subscription: ${contractor.monthlyFee.toFixed(2)}/mo
+                    Recurring PayPal Subscription: ${agentSubscription.monthlyFee.toFixed(2)}/mo
                   </span>
-                  <span style={{ fontSize: '11px', color: '#6ee7b7' }}>Plan: FieldSmith Pro</span>
+                  <span style={{ fontSize: '11px', color: '#6ee7b7' }}>Tier: {agentSubscription.tradeVertical}</span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                  PayPal Agreement Token: {contractor.paypalSubscriptionId}
+                  PayPal Agreement Token: {agentSubscription.paypalSubscriptionId}
                 </div>
-                <div style={{ fontSize: '11px', color: '#34d399', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                  <ShieldCheck size={12} /> TCPA Guard: 100% Inbound Screening (No unsolicited robocalls)
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: '#34d399',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginTop: '2px',
+                  }}
+                >
+                  <ShieldCheck size={12} /> Anti-Tamper Guard: RFC 8032 Ed25519 Verified (Monotonic Nonce Bound)
                 </div>
               </div>
             </div>
@@ -495,32 +557,32 @@ export function ZapierMcpView({
                 gap: '8px',
               }}
             >
-              <Building2 size={16} color="#38bdf8" /> Inbound Lead Qualified by Gemini Live
+              <Cpu size={16} color="#38bdf8" /> Autonomous Workload Execution Dispatch
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
               <div>
-                <span style={{ color: '#94a3b8' }}>Homeowner Name:</span>
-                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{lead.callerName}</div>
+                <span style={{ color: '#94a3b8' }}>Requesting Buyer Agent:</span>
+                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{workloadDispatch.callerName}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Phone Number:</span>
-                <div style={{ color: '#f8fafc', fontFamily: 'monospace' }}>{lead.callerPhone}</div>
+                <span style={{ color: '#94a3b8' }}>Assigned Node Endpoint:</span>
+                <div style={{ color: '#fbbf24', fontFamily: 'monospace' }}>{workloadDispatch.callerPhone}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Jobsite Address:</span>
-                <div style={{ color: '#f8fafc' }}>{lead.propertyAddress}</div>
+                <span style={{ color: '#94a3b8' }}>Workload Specification:</span>
+                <div style={{ color: '#f8fafc' }}>{workloadDispatch.propertyAddress}</div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Trade &amp; Scope:</span>
+                <span style={{ color: '#94a3b8' }}>Target Capability &amp; Batch Size:</span>
                 <div style={{ color: '#f8fafc' }}>
-                  {lead.tradeVertical} &bull; {lead.scopeSummary}
+                  {workloadDispatch.tradeVertical} &bull; 50,000 Operations Unit
                 </div>
               </div>
               <div>
-                <span style={{ color: '#94a3b8' }}>Territory Zone &amp; Slot:</span>
+                <span style={{ color: '#94a3b8' }}>Cluster Execution Enclave &amp; Window:</span>
                 <div style={{ color: '#38bdf8', fontWeight: 600 }}>
-                  [{lead.territoryZone}] &bull; {lead.appointmentTime}
+                  [{workloadDispatch.territoryZone}] &bull; {workloadDispatch.appointmentTime}
                 </div>
               </div>
               <div
@@ -533,10 +595,10 @@ export function ZapierMcpView({
                 }}
               >
                 <div style={{ color: '#34d399', fontWeight: 600 }}>
-                  Verified PayPal Deposit: ${lead.depositAmount.toFixed(2)}
+                  Autonomous Escrow Settlement: ${workloadDispatch.depositAmount.toFixed(2)}
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                  Transaction ID: {lead.paypalTransactionId}
+                  PayPal Vault MIT Txn: {workloadDispatch.paypalTransactionId}
                 </div>
               </div>
             </div>
@@ -608,8 +670,8 @@ export function ZapierMcpView({
               <Network size={36} style={{ marginBottom: '10px', opacity: 0.5 }} />
               <p style={{ margin: 0, maxWidth: '300px' }}>
                 {activeScenario === 'a2a'
-                  ? 'Click "Run Autonomous AP2 Onboarding Chain" to execute the live multi-app setup into QuickBooks, Jobber, and Google Workspace.'
-                  : 'Click "Run Homeowner CRM Chain" to dispatch Sarah Jenkins quote and deposit intake.'}
+                  ? 'Click "Run Autonomous AP2 Subscription Chain" to execute the live multi-app setup into QuickBooks Online, CloudEvents v1.0, and Zapier EventBus.'
+                  : 'Click "Run AP2 Workload Dispatch Chain" to dispatch CloudEvents token allocation and QBO settlement receipt.'}
               </p>
             </div>
           )}
@@ -660,12 +722,8 @@ export function ZapierMcpView({
                       }}
                     >
                       {log.targetApp === 'QuickBooks Online' && <Receipt size={15} color="#10b981" />}
-                      {log.targetApp === 'Jobber' && (
-                        activeScenario === 'a2a' ? <PhoneCall size={15} color="#38bdf8" /> : <FileText size={15} color="#38bdf8" />
-                      )}
-                      {(log.targetApp === 'Google Calendar' || log.targetApp === 'Google Workspace') && (
-                        <Calendar size={15} color="#fbbf24" />
-                      )}
+                      {log.targetApp === 'CloudEvents v1.0' && <Layers size={15} color="#38bdf8" />}
+                      {log.targetApp === 'Zapier MCP EventBus' && <Network size={15} color="#a78bfa" />}
                       <span>{log.targetApp}</span>
                       <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
                         ({log.toolName})
@@ -709,7 +767,7 @@ export function ZapierMcpView({
         </div>
       </div>
 
-      {/* Full-Width Schema & Wire Inspector Panel (APIMatic & Zapier Tracks) */}
+      {/* Full-Width Schema & Wire Inspector Panel */}
       <div
         style={{
           marginTop: '20px',
@@ -760,7 +818,7 @@ export function ZapierMcpView({
               </span>
             </h3>
             <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-              Inspect authentic Intuit REST v3 JSON, Jobber GraphQL v2 mutations, and cryptographically signed HMAC-SHA256 webhook envelopes.
+              Inspect authentic Intuit REST v3 JSON, CloudEvents v1.0 specifications, and cryptographically signed HMAC-SHA256 webhook envelopes.
             </p>
           </div>
 
@@ -793,7 +851,7 @@ export function ZapierMcpView({
               <Receipt size={14} /> QuickBooks Online v3 (GL 6300)
             </button>
             <button
-              onClick={() => setActiveInspectorTab('jobber')}
+              onClick={() => setActiveInspectorTab('cloudevents')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -801,14 +859,14 @@ export function ZapierMcpView({
                 padding: '6px 14px',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: activeInspectorTab === 'jobber' ? '#0284c7' : 'transparent',
-                color: activeInspectorTab === 'jobber' ? '#ffffff' : '#94a3b8',
+                backgroundColor: activeInspectorTab === 'cloudevents' ? '#0284c7' : 'transparent',
+                color: activeInspectorTab === 'cloudevents' ? '#ffffff' : '#94a3b8',
                 fontSize: '12px',
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
             >
-              <FileText size={14} /> Jobber GraphQL v2
+              <Layers size={14} /> CloudEvents v1.0 (JSON-RPC)
             </button>
             <button
               onClick={() => setActiveInspectorTab('webhook')}
@@ -846,7 +904,7 @@ export function ZapierMcpView({
                   PaymentType: CreditCard (PayPal Clearing)
                 </span>
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#78350f', color: '#fde68a' }}>
-                  DocNumber: {qboPreview?.purchase_id || 'FS-A2A-186492'}
+                  DocNumber: {qboPreview?.purchase_id || 'AP2-SUB-186492'}
                 </span>
               </div>
               <button
@@ -891,35 +949,28 @@ export function ZapierMcpView({
             </div>
 
             <div style={{ fontSize: '12px', color: '#94a3b8', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <strong style={{ color: '#38bdf8' }}>🏆 APIMatic Best Use Criteria:</strong> Generates fully compliant Intuit API v3 Purchase entities mapping contractor expenses to GL Account 6300 without human bookkeeping.
+              <strong style={{ color: '#38bdf8' }}>🏆 APIMatic Best Use Criteria:</strong> Generates fully compliant Intuit API v3 Purchase entities mapping autonomous agent software expenses to GL Account 6300 without human bookkeeping.
             </div>
           </div>
         )}
 
-        {/* Tab 2: Jobber GraphQL v2 */}
-        {activeInspectorTab === 'jobber' && (
+        {/* Tab 2: CloudEvents v1.0 (JSON-RPC) */}
+        {activeInspectorTab === 'cloudevents' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#075985', color: '#7dd3fc' }}>
-                  Jobber GraphQL API v2
+                  CloudEvents v1.0 Specification
                 </span>
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#064e3b', color: '#6ee7b7' }}>
-                  CustomField: Telephony Routing
+                  Type: {cloudEventsPreview?.type || 'com.ap2.settlement'}
                 </span>
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#78350f', color: '#fde68a' }}>
-                  DID: {activeScenario === 'a2a' ? contractor.allocatedDid : lead.callerPhone}
+                  Node: {activeScenario === 'a2a' ? agentSubscription.allocatedDid : workloadDispatch.callerPhone}
                 </span>
               </div>
               <button
-                onClick={() =>
-                  copyToClipboard(
-                    typeof jobberPreview?.mutation === 'string'
-                      ? `${jobberPreview.mutation}\n\n# Variables:\n${JSON.stringify(jobberPreview.variables, null, 2)}`
-                      : JSON.stringify(jobberPreview, null, 2),
-                    'jobber'
-                  )
-                }
+                onClick={() => copyToClipboard(JSON.stringify(cloudEventsPreview, null, 2), 'cloudevents')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -928,14 +979,14 @@ export function ZapierMcpView({
                   borderRadius: '6px',
                   border: '1px solid #475569',
                   backgroundColor: '#0f172a',
-                  color: copiedTab === 'jobber' ? '#34d399' : '#e2e8f0',
+                  color: copiedTab === 'cloudevents' ? '#34d399' : '#e2e8f0',
                   fontSize: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}
               >
-                {copiedTab === 'jobber' ? <Check size={14} /> : <Copy size={14} />}
-                {copiedTab === 'jobber' ? 'Copied GraphQL!' : 'Copy GraphQL Mutation'}
+                {copiedTab === 'cloudevents' ? <Check size={14} /> : <Copy size={14} />}
+                {copiedTab === 'cloudevents' ? 'Copied CloudEvents!' : 'Copy CloudEvents JSON'}
               </button>
             </div>
 
@@ -955,14 +1006,12 @@ export function ZapierMcpView({
               }}
             >
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                {typeof jobberPreview?.mutation === 'string'
-                  ? `${jobberPreview.mutation}\n\n# --- Input Variables ---\n${JSON.stringify(jobberPreview.variables, null, 2)}`
-                  : JSON.stringify(jobberPreview, null, 2)}
+                {JSON.stringify(cloudEventsPreview, null, 2)}
               </pre>
             </div>
 
             <div style={{ fontSize: '12px', color: '#94a3b8', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <strong style={{ color: '#38bdf8' }}>⚡ Autonomous Routing Mutation:</strong> Jobber GraphQL v2 clientCreate mutation dynamically assigns the newly allocated Telnyx DID and binds the AI Voice Screener webhook directly to the contractor profile.
+              <strong style={{ color: '#38bdf8' }}>⚡ Autonomous Routing Event:</strong> CloudEvents v1.0 specification guarantees machine-to-machine interop across distributed MCP agent clusters, binding settlement tokens directly to the execution node.
             </div>
           </div>
         )}

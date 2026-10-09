@@ -9,12 +9,6 @@
 }
 
 .app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
-  background-color: #0f172a;
-  border-bottom: 1px solid #1e293b;
   flex-shrink: 0;
 }
 
@@ -28,12 +22,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #0284c7, #38bdf8);
-  color: white;
-  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: #090e17;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .brand-titles h1 {
@@ -150,7 +144,7 @@
   width: 100%;
   height: calc(100vh - 72px);
   position: relative;
-  background-color: #0f172a;
+  background-color: #0b1120;
   overflow: hidden;
 }
 
@@ -283,6 +277,21 @@
 .b-sch-event {
   transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, transform 0.25s ease !important;
   border-radius: 6px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+
+.b-sch-event .b-sch-event-content {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 4px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
 
 .b-sch-event.b-sch-color-green {
@@ -459,4 +468,25 @@
 
 .ag-studio .ag-cell {
   border-right: 1px solid rgba(30, 41, 59, 0.5) !important;
+}
+
+@keyframes voice-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes spin-fast {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

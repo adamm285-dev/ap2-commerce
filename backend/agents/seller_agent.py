@@ -636,6 +636,22 @@ class SellerAgent:
                 contractor_email=email,
             )
             if not mandate_res.get("approved"):
+                ref = f"neg_rej_{uuid.uuid4().hex[:12]}"
+                err_desc = mandate_res.get("reason") or "Budget exhausted."
+                chk_receipt = create_checkout_receipt_jwt(
+                    order_id=f"ord_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=err_desc,
+                )
+                pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"pay_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=err_desc,
+                )
                 rejection = {
                     "status": "REJECTED",
                     "approved": False,
@@ -643,7 +659,9 @@ class SellerAgent:
                     "tier_id": tier_id,
                     "error": "BUDGET_EXHAUSTED",
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
-                    "reason": mandate_res.get("reason"),
+                    "reason": err_desc,
+                    "checkout_receipt": chk_receipt,
+                    "payment_receipt": pay_receipt,
                 }
                 if active_sub_id:
                     rejection["active_subscription_id"] = active_sub_id
@@ -711,6 +729,26 @@ class SellerAgent:
                     f"[A2A_SELLER] Subscriber {email} requested {tier_id} (${standard_price:.2f}), cap ${monthly_budget_cap:.2f}, "
                     f"already on best viable plan {active_sub_id} ({down_tier_id})"
                 )
+                ref = f"neg_rej_{uuid.uuid4().hex[:12]}"
+                err_desc = (
+                    f"Requested tier '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
+                    f"Buyer is already subscribed to the highest viable plan within budget ('{active_sub.get('tier_id')}' at ${active_sub.get('agreed_monthly_rate', 49.99):.2f}/mo, Subscription: {active_sub_id}). "
+                    f"No better offer available under current budget cap."
+                )
+                chk_receipt = create_checkout_receipt_jwt(
+                    order_id=f"ord_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=err_desc,
+                )
+                pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"pay_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=err_desc,
+                )
                 return {
                     "status": "NO_BETTER_OFFER",
                     "approved": False,
@@ -721,11 +759,9 @@ class SellerAgent:
                     "active_subscription_id": active_sub_id,
                     "current_tier_id": active_sub.get("tier_id"),
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
-                    "reason": (
-                        f"Requested tier '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
-                        f"Buyer is already subscribed to the highest viable plan within budget ('{active_sub.get('tier_id')}' at ${active_sub.get('agreed_monthly_rate', 49.99):.2f}/mo, Subscription: {active_sub_id}). "
-                        f"No better offer available under current budget cap."
-                    ),
+                    "reason": err_desc,
+                    "checkout_receipt": chk_receipt,
+                    "payment_receipt": pay_receipt,
                 }
             issued = self._issue_mandate(
                 buyer_agent_id, email, down_tier_id, 49.99,
@@ -808,6 +844,22 @@ class SellerAgent:
 
         # 3. Budget below minimum viable tier ($49.99)
         min_tier_name = "High-Throughput Batch Worker at $49.99/mo"
+        err_desc = f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier ({min_tier_name})."
+        ref = f"neg_rej_{uuid.uuid4().hex[:12]}"
+        chk_receipt = create_checkout_receipt_jwt(
+            order_id=f"ord_{uuid.uuid4().hex[:8]}",
+            closed_mandate_reference=ref,
+            status="Error",
+            error=ERR_INVALID_MANDATE,
+            error_description=err_desc,
+        )
+        pay_receipt = create_payment_receipt_jwt(
+            payment_id=f"pay_{uuid.uuid4().hex[:8]}",
+            closed_mandate_reference=ref,
+            status="Error",
+            error=ERR_INVALID_MANDATE,
+            error_description=err_desc,
+        )
         rejection = {
             "status": "REJECTED",
             "approved": False,
@@ -817,7 +869,9 @@ class SellerAgent:
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
             "monthly_cap_remaining": round(ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email), 2),
-            "reason": f"Monthly budget cap of ${monthly_budget_cap:.2f} is below minimum viable tier ({min_tier_name}).",
+            "reason": err_desc,
+            "checkout_receipt": chk_receipt,
+            "payment_receipt": pay_receipt,
         }
         if active_sub_id:
             rejection["active_subscription_id"] = active_sub_id
@@ -993,12 +1047,20 @@ class SellerAgent:
                     error=err_code,
                     error_description=reason,
                 )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=err_code,
+                    error_description=reason,
+                )
                 return {
                     "status": "REJECTED",
                     "error": "MANDATE_SECURITY_BREACH",
                     "reason": reason,
                     "message": f"Purchase rejected: {reason}",
                     "checkout_receipt": err_receipt,
+                    "payment_receipt": err_pay_receipt,
                 }
 
             # 1b. Price integrity: a subscription settles only at its tier's catalog price
@@ -1018,12 +1080,20 @@ class SellerAgent:
                     error=ERR_INVALID_MANDATE,
                     error_description="RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
                 )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description="RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
+                )
                 return {
                     "status": "REJECTED",
                     "error": "RATE_TAMPERING_DETECTED",
                     "reason": "RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
                     "message": "Purchase rejected: agreed_monthly_rate must equal the catalog price of the requested tier.",
                     "checkout_receipt": err_receipt,
+                    "payment_receipt": err_pay_receipt,
                 }
 
             # 2. Idempotency Check for legacy path: only reached after verification succeeded
@@ -1091,26 +1161,32 @@ class SellerAgent:
                 f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
             )
             ref = mandate_proof_hash or offer_id or "unknown_ref"
+            desc = (
+                f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
+                f"${effective_available:.2f} (budget cap: ${cap:.2f})."
+            )
             err_receipt = create_payment_receipt_jwt(
                 payment_id=f"err_{uuid.uuid4().hex[:8]}",
                 closed_mandate_reference=ref,
                 status="Error",
                 error=ERR_INVALID_MANDATE,
-                error_description=(
-                    f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
-                    f"${effective_available:.2f} (budget cap: ${cap:.2f})."
-                ),
+                error_description=desc,
+            )
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
             )
             return {
                 "status": "REJECTED",
                 "error": "BUDGET_EXHAUSTED",
-                "reason": (
-                    f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
-                    f"${effective_available:.2f} (budget cap: ${cap:.2f})."
-                ),
+                "reason": desc,
                 "monthly_budget_cap": round(cap, 2),
                 "monthly_cap_remaining": round(remaining_before, 2),
                 "active_subscription_id": old_sub_id,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 

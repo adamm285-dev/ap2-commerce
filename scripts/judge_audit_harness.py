@@ -41,19 +41,35 @@ if not ("--remote" in sys.argv or os.environ.get("REMOTE_AUDIT") == "1"):
                     pass
 
         atexit.register(_cleanup_judge_temp_db)
+        from backend.database import init_db
+        init_db()
 
 import argparse
 import httpx
 from fastapi.testclient import TestClient
 from backend.server import app
 from backend.services.crypto_mandate import (
-    generate_dynamic_mandate_proof,
-    verify_mandate_proof,
     generate_ed25519_keypair,
     sign_ed25519_message,
 )
 from backend.services.backoffice.qbo_exporter import qbo_exporter
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
+from ap2.sdk.mandate import MandateClient
+from ap2.sdk.generated.checkout_mandate import CheckoutMandate
+from ap2.sdk.generated.payment_mandate import PaymentMandate
+from ap2.sdk.generated.types.amount import Amount
+from ap2.sdk.generated.types.merchant import Merchant
+from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
+from backend.services.ap2_service import (
+    AP2_MERCHANT_ID,
+    AP2_MERCHANT_NAME,
+    verify_ap2_chains,
+    ERR_INVALID_MANDATE,
+)
+from backend.services.trusted_surface_service import (
+    create_trusted_surface_open_mandates,
+    get_demo_agent_key,
+)
 
 # Terminal color helpers
 GREEN = "\033[92m"
@@ -126,25 +142,85 @@ def run_judge_audit():
     print_pass(f"Registered MCP Tools ({len(tools)}): {', '.join(tool_names)}")
 
     # -------------------------------------------------------------------------
-    # CHECK 2: Standard AP2 Negotiation ($79.99/mo Plan under $100 Cap)
+    # CHECK 2: Standard AP2 Negotiation & Mandate Chain Generation ($79.99/mo Plan under $100 Cap)
     # -------------------------------------------------------------------------
-    print_step(2, "Standard AP2 Negotiation ($79.99/mo Plan under $100 Cap)")
-    mandate_req = {
-        "buyerAgentId": "usr_judge_01",
-        "amount": 79.99,
-        "recurrence": "monthly",
-        "category": "autonomous-compute",
-        "monthlyBudgetCap": 100.00,
+    print_step(2, "Standard AP2 Negotiation & Mandate Chain Generation (ES256 SD-JWT)")
+    neg_req = {
+        "jsonrpc": "2.0",
+        "id": "judge-neg-02",
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "usr_judge_01",
+                "buyer_email": "agent-alpha@nexus-systems.io",
+                "tier_id": "ap2-gateway",
+                "monthly_budget_cap": 100.00,
+            },
+        },
     }
-    res = client.post("/api/agent/spending-mandate/evaluate", json=mandate_req)
+    mcp_endpoint = "/a2a/mcp" if (args.remote or os.environ.get("REMOTE_AUDIT") == "1") else "/mcp"
+    res = client.post(mcp_endpoint, json=neg_req)
     assert res.status_code == 200
-    mandate_res = res.json()
-    assert mandate_res.get("approved") is True
-    assert mandate_res.get("authorizedAmount") == 79.99
-    assert mandate_res.get("mandateProofHash") is not None
-    sig = mandate_res["mandateProofHash"]
+    neg_body = res.json().get("result", {})
+    if "content" in neg_body and neg_body["content"]:
+        neg_res = json.loads(neg_body["content"][0]["text"])
+    else:
+        neg_res = neg_body
+
+    assert neg_res.get("status") == "APPROVED"
+    assert neg_res.get("agreed_monthly_rate") == 79.99
+    chk_jwt = neg_res.get("checkout_jwt")
+    chk_hash = neg_res.get("checkout_hash")
+    nonce = neg_res.get("nonce")
+    assert chk_jwt is not None
+    assert chk_hash is not None
+    assert len(chk_hash) == 64
+
+    # Generate AP2 v0.2 Mandate Chains (ES256 SD-JWT)
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+    open_mandates = create_trusted_surface_open_mandates(
+        monthly_budget_cap=100.00,
+        buyer_email="agent-alpha@nexus-systems.io",
+        allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
+        agent_key=agent_key,
+    )
+    open_chk_tok = open_mandates["open_checkout_mandate_token"]
+    open_pay_tok = open_mandates["open_payment_mandate_token"]
+
+    closed_chk = CheckoutMandate(
+        vct="mandate.checkout.1",
+        checkout_jwt=chk_jwt,
+        checkout_hash=chk_hash,
+    )
+    chk_chain = mandate_client.present(
+        holder_key=agent_key,
+        mandate_token=open_chk_tok,
+        payloads=[closed_chk],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_hash,
+        payment_amount=Amount(amount=7999, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_judge_01"),
+    )
+    pay_chain = mandate_client.present(
+        holder_key=agent_key,
+        mandate_token=open_pay_tok,
+        payloads=[closed_pay],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+
+    assert "~~" in chk_chain
+    assert "~~" in pay_chain
     print_pass("Mandate Evaluated: APPROVED at $79.99/mo (Within $100.00 Cap)")
-    print_pass(f"HMAC-SHA256 Authorization Proof: {sig[:20]}...{sig[-10:]} (64 chars)")
+    print_pass(f"AP2 v0.2 Mandate Chains Generated: ES256 SD-JWT ({len(chk_chain)} chars chk, {len(pay_chain)} chars pay)")
 
     # -------------------------------------------------------------------------
     # CHECK 3: Dynamic Multi-Tier Counter-Offer Negotiation
@@ -169,47 +245,103 @@ def run_judge_audit():
     print_pass(f"Reasoning: {counter_res.get('reason')}")
 
     # -------------------------------------------------------------------------
-    # CHECK 4: Cryptographic Anti-Tamper Verification Suite
+    # CHECK 4: AP2 v0.2 Cryptographic Anti-Tamper Verification Suite
     # -------------------------------------------------------------------------
-    print_step(4, "Interactive Cryptographic Anti-Tamper Verification (HMAC-SHA256)")
-    proof = generate_dynamic_mandate_proof(
-        contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems Corp",
-        monthly_cap_usd=100.00,
-        agreed_price_usd=79.99,
-        nonce="nonce_judge_test"
-    )
-    canonical = proof["canonical_payload"]
-    signature = proof["signature"]
+    print_step(4, "Interactive Cryptographic Anti-Tamper Verification (AP2 v0.2 ES256 SD-JWT)")
 
     # 4a: Untampered baseline
-    valid, reason = verify_mandate_proof(canonical, signature)
-    assert valid is True
-    print_pass("Baseline Untampered Payload: VERIFIED (Status 200 OK)")
+    valid_eval = verify_ap2_chains(
+        checkout_mandate_token=chk_chain,
+        payment_mandate_token=pay_chain,
+        checkout_jwt=chk_jwt,
+        expected_nonce=nonce,
+        buyer_email="agent-alpha@nexus-systems.io",
+    )
+    assert valid_eval.get("valid") is True
+    print_pass("Baseline Untampered AP2 v0.2 Chains: VERIFIED (Status 200 OK)")
 
-    # 4b: 1-cent inflation tampering
-    tampered_price = dict(canonical)
-    tampered_price["agreed_price_usd"] = 80.00  # Inflated by 1 cent
-    valid, reason = verify_mandate_proof(tampered_price, signature)
-    assert valid is False
-    assert reason == "SIGNATURE_MISMATCH"
-    print_pass(f"Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED ({reason})")
+    # 4b: 1-cent inflation tampering ($79.99 -> $80.00)
+    tampered_pay_inflated = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_hash,
+        payment_amount=Amount(amount=8000, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_judge_01"),
+    )
+    tampered_pay_chain_inflated = mandate_client.present(
+        holder_key=agent_key,
+        mandate_token=open_pay_tok,
+        payloads=[tampered_pay_inflated],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+    eval_inflated = verify_ap2_chains(
+        checkout_mandate_token=chk_chain,
+        payment_mandate_token=tampered_pay_chain_inflated,
+        checkout_jwt=chk_jwt,
+        expected_nonce=nonce,
+        buyer_email="agent-alpha@nexus-systems.io",
+    )
+    assert eval_inflated.get("valid") is False
+    assert eval_inflated.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
+    assert eval_inflated.get("checkout_receipt") is not None
+    assert eval_inflated.get("payment_receipt") is not None
+    print_pass(f"Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED ({eval_inflated['error']}, Dual Signed Error Receipts)")
 
-    # 4c: Entity name alteration
-    tampered_entity = dict(canonical)
-    tampered_entity["business_name"] = "Attacker Systems LLC"
-    valid, reason = verify_mandate_proof(tampered_entity, signature)
-    assert valid is False
-    assert reason == "SIGNATURE_MISMATCH"
-    print_pass(f"Tamper Test (Entity Alteration): REJECTED ({reason})")
+    # 4c: Payee alteration (Altered payee entity)
+    tampered_pay_payee = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_hash,
+        payment_amount=Amount(amount=7999, currency="USD"),
+        payee=Merchant(id="forged-payee-id", name="Attacker Systems LLC"),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_judge_01"),
+    )
+    tampered_pay_chain_payee = mandate_client.present(
+        holder_key=agent_key,
+        mandate_token=open_pay_tok,
+        payloads=[tampered_pay_payee],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+    eval_payee = verify_ap2_chains(
+        checkout_mandate_token=chk_chain,
+        payment_mandate_token=tampered_pay_chain_payee,
+        checkout_jwt=chk_jwt,
+        expected_nonce=nonce,
+        buyer_email="agent-alpha@nexus-systems.io",
+    )
+    assert eval_payee.get("valid") is False
+    assert eval_payee.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
+    assert eval_payee.get("checkout_receipt") is not None
+    assert eval_payee.get("payment_receipt") is not None
+    print_pass(f"Tamper Test (Payee Alteration): REJECTED ({eval_payee['error']}, Dual Signed Error Receipts)")
 
-    # 4d: Spending cap breach
-    tampered_cap = dict(canonical)
-    tampered_cap["monthly_cap_usd"] = 70.00  # Below agreed $79.99
-    valid, reason = verify_mandate_proof(tampered_cap, signature)
-    assert valid is False
-    assert reason == "BUDGET_CAP_BREACH"
-    print_pass(f"Tamper Test (Budget Cap Breach): REJECTED ({reason})")
+    # 4d: Spending cap breach ($70.00 cap vs $79.99 agreed price)
+    low_cap_open = create_trusted_surface_open_mandates(
+        monthly_budget_cap=70.00,
+        buyer_email="agent-alpha@nexus-systems.io",
+        allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
+        agent_key=agent_key,
+    )
+    breach_pay_chain = mandate_client.present(
+        holder_key=agent_key,
+        mandate_token=low_cap_open["open_payment_mandate_token"],
+        payloads=[closed_pay],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+    eval_cap = verify_ap2_chains(
+        checkout_mandate_token=chk_chain,
+        payment_mandate_token=breach_pay_chain,
+        checkout_jwt=chk_jwt,
+        expected_nonce=nonce,
+        buyer_email="agent-alpha@nexus-systems.io",
+    )
+    assert eval_cap.get("valid") is False
+    assert eval_cap.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
+    assert eval_cap.get("checkout_receipt") is not None
+    assert eval_cap.get("payment_receipt") is not None
+    print_pass(f"Tamper Test (Budget Cap Breach $70.00 Cap vs $79.99 Price): REJECTED ({eval_cap['error']}, Dual Signed Error Receipts)")
 
     # -------------------------------------------------------------------------
     # CHECK 5: Autonomous Compute Node Provisioning & KYC Identity Enforcement

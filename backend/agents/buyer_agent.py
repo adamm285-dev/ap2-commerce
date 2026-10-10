@@ -1,6 +1,6 @@
 """
 Autonomous Buyer Agent for AP2 Protocol.
-Operates under strict programmatic financial guardrails (Ed25519 dual mandates),
+Operates under strict programmatic financial guardrails (AP2 v0.2 ES256 SD-JWT dual mandate chains),
 negotiates with Seller Nodes over Model Context Protocol (MCP),
 and autonomously executes approved compute infrastructure commitments.
 """
@@ -35,6 +35,22 @@ if not os.environ.get("A2A_DB_PATH"):
 
 from .seller_agent import seller_agent
 from ..models import RecurrenceType
+from ..services.trusted_surface_service import (
+    create_trusted_surface_open_mandates,
+    get_demo_agent_key,
+)
+from ap2.sdk.mandate import MandateClient
+from ap2.sdk.generated.checkout_mandate import CheckoutMandate
+from ap2.sdk.generated.payment_mandate import PaymentMandate
+from ap2.sdk.generated.types.amount import Amount
+from ap2.sdk.generated.types.merchant import Merchant
+from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
+from ..services.ap2_service import (
+    AP2_MERCHANT_ID,
+    AP2_MERCHANT_NAME,
+    verify_receipt_jwt,
+    dollars_to_minor_units,
+)
 
 logger = logging.getLogger("buyer_agent")
 
@@ -54,9 +70,9 @@ class BuyerAgent:
     async def run_autonomous_onboarding_cycle(
         self, target_trade: str = "ap2-gateway"
     ) -> Dict[str, Any]:
-        """Executes the full 5-phase Agent-to-Agent autonomous commerce cycle."""
+        """Executes the full 5-phase Agent-to-Agent autonomous commerce cycle with AP2 v0.2 chains."""
         print(f"\n=======================================================")
-        print(f"🤖 [BUYER AGENT {self.agent_id}] Starting Autonomous Cycle")
+        print(f"🤖 [BUYER AGENT {self.agent_id}] Starting Autonomous AP2 v0.2 Cycle")
         print(f"   Monthly Spending Mandate Cap: ${self.monthly_budget_cap:.2f}/mo")
         print(f"   Target Compute Tier:          {target_trade}")
         print(f"=======================================================\n")
@@ -76,7 +92,6 @@ class BuyerAgent:
             None,
         )
         if not matching_tier:
-            # Fallback to default tier
             matching_tier = next(
                 (p for p in catalog.get("plans", []) if p["tier_id"] == "ap2-gateway"),
                 catalog.get("plans", [{}])[0] if catalog.get("plans") else None,
@@ -85,94 +100,164 @@ class BuyerAgent:
         if not matching_tier:
             raise RuntimeError(f"No matching service tier found for tier '{target_trade}'")
 
-        monthly_price = matching_tier["monthly_price"]
+        standard_price = matching_tier["monthly_price"]
         print(f"   Found Provider: {catalog.get('provider')}")
         print(f"   Tier Title:     {matching_tier['title']}")
-        print(f"   Monthly Price:  ${monthly_price:.2f}/mo (USD)")
+        print(f"   Monthly Price:  ${standard_price:.2f}/mo (USD)")
         print(f"   Features:       {', '.join(matching_tier.get('features', []))}\n")
 
-        # Phase 3: Evaluate Spending Mandate Guardrails
-        print("⚖️  [Phase 3: Programmatic Spending Mandate Verification]")
-        mandate_result = await seller_agent.verify_spending_mandate(
-            buyer_agent_id=self.agent_id,
-            amount=monthly_price,
-            recurrence=RecurrenceType.MONTHLY.value,
-            category="COMPUTE_NODE_SERVICE",
+        # Phase 3: Mint Trusted Surface Open Mandates & Negotiate Terms (AP2 v0.2)
+        print("⚖️  [Phase 3: AP2 v0.2 Mandate Verification & Term Negotiation]")
+        agent_key = get_demo_agent_key()
+        mandate_client = MandateClient()
+        open_mandates = create_trusted_surface_open_mandates(
             monthly_budget_cap=self.monthly_budget_cap,
-            contractor_email=self.contractor_email,
+            buyer_email=self.contractor_email,
+            allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
+            agent_key=agent_key,
         )
+        open_chk_tok = open_mandates["open_checkout_mandate_token"]
+        open_pay_tok = open_mandates["open_payment_mandate_token"]
 
-        approved = mandate_result.get("approved", False)
-        proof_hash = mandate_result.get("mandateProofHash", "")
-        remaining_cap = mandate_result.get("monthlyCapRemaining", 0.0)
-
-        op = "<=" if monthly_price <= self.monthly_budget_cap else ">"
-        print(
-            f"   Policy Check:   ${monthly_price:.2f} {op} ${self.monthly_budget_cap:.2f} Cap"
-        )
-        print(f"   Decision:       {'APPROVED' if approved else 'REJECTED'}")
-        if approved:
-            print(
-                f"   Remaining Cap:  ${remaining_cap:.2f} (After this authorization)"
-            )
-            print(f"   Mandate Proof:  {proof_hash[:24]}...\n")
-        else:
-            print()
-
-        if not approved:
-            counter_available = mandate_result.get("counterOfferAvailable") or mandate_result.get("counter_offer_available")
-            counter_amount = mandate_result.get("counterOfferAmount") or mandate_result.get("counter_offer_amount")
-            counter_tier_id = mandate_result.get("counterOfferTierId") or mandate_result.get("counter_offer_tier_id") or "ap2-batch"
-            counter_tier_title = mandate_result.get("counterOfferTier") or mandate_result.get("counter_offer_tier") or "High-Throughput Batch Worker"
-            counter_proof = mandate_result.get("counterOfferMandateHash") or mandate_result.get("counter_offer_mandate_hash") or mandate_result.get("mandateProofHash")
-
-            if counter_available and counter_amount and counter_amount <= self.monthly_budget_cap:
-                # Phase 3b: Counter-Offer Bargaining & Acceptance
-                print("🤝 [Phase 3b: Counter-Offer Bargaining & Acceptance]")
-                print(f"   Seller Offer:   {counter_tier_title} ({counter_tier_id}) at ${counter_amount:.2f}/mo")
-                op_c = "<=" if counter_amount <= self.monthly_budget_cap else ">"
-                print(
-                    f"   Policy Check:   ${counter_amount:.2f} {op_c} ${self.monthly_budget_cap:.2f} Cap (Remaining: ${self.monthly_budget_cap - counter_amount:.2f})"
-                )
-                print(f"   Decision:       ACCEPTED (Within ${self.monthly_budget_cap:.2f} Budget Cap)")
-                print(f"   Mandate Proof:  {counter_proof[:24]}...\n")
-
-                # Adopt counter-offer plan and proof for purchase and provisioning
-                monthly_price = counter_amount
-                matching_tier = next(
-                    (p for p in catalog.get("plans", []) if p["tier_id"] == counter_tier_id),
-                    {"tier_id": counter_tier_id, "title": counter_tier_title},
-                )
-                proof_hash = counter_proof
-                approved = True
-            else:
-                print(f"❌ Mandate violation: {mandate_result.get('reason')}")
-                return {"status": "REJECTED", "reason": mandate_result.get("reason")}
-
-        # Phase 4: Delegate PayPal Subscription Session
-        print("💳 [Phase 4: Delegated PayPal Subscription Initiation]")
-        purchase_result = await seller_agent.purchase_subscription(
-            tier_id=matching_tier.get("tier_id", "ap2-gateway"),
-            agreed_monthly_rate=monthly_price,
-            mandate_proof_hash=proof_hash,
-            contractor_email=self.contractor_email,
+        negotiate_res = await seller_agent.negotiate_tier_terms(
             buyer_agent_id=self.agent_id,
+            buyer_email=self.contractor_email,
+            tier_id=target_tier_id,
+            monthly_budget_cap=self.monthly_budget_cap,
+        )
+
+        status = negotiate_res.get("status")
+        agreed_tier_id = target_tier_id
+        monthly_price = standard_price
+        chk_jwt = None
+        chk_hash = None
+        nonce = None
+
+        if status == "APPROVED":
+            chk_jwt = negotiate_res.get("checkout_jwt")
+            chk_hash = negotiate_res.get("checkout_hash")
+            nonce = negotiate_res.get("nonce")
+            order_id = negotiate_res.get("order_id")
+            rem_cap = negotiate_res.get("monthly_cap_remaining", self.monthly_budget_cap - monthly_price)
+
+            print(f"   Policy Check:   ${monthly_price:.2f} <= ${self.monthly_budget_cap:.2f} Cap")
+            print(f"   Decision:       APPROVED")
+            print(f"   Remaining Cap:  ${rem_cap:.2f} (After this commitment)")
+            print(f"   Merchant Order: {order_id}")
+            print(f"   Checkout Hash:  {chk_hash[:24]}...\n")
+
+        elif status == "COUNTER_OFFER":
+            c_amount = float(negotiate_res.get("counter_offer_amount", 49.99))
+            c_tier_id = negotiate_res.get("counter_offer_tier_id", "ap2-batch")
+            c_title = negotiate_res.get("counter_offer_tier", "High-Throughput Batch Worker")
+            chk_jwt = negotiate_res.get("checkout_jwt") or negotiate_res.get("counter_offer_checkout_jwt")
+            chk_hash = negotiate_res.get("checkout_hash") or negotiate_res.get("counter_offer_checkout_hash")
+            nonce = negotiate_res.get("nonce")
+            order_id = negotiate_res.get("order_id")
+
+            print("🤝 [Phase 3b: Counter-Offer Bargaining & Acceptance]")
+            print(f"   Seller Offer:   {c_title} ({c_tier_id}) at ${c_amount:.2f}/mo")
+            op_c = "<=" if c_amount <= self.monthly_budget_cap else ">"
+            print(f"   Policy Check:   ${c_amount:.2f} {op_c} ${self.monthly_budget_cap:.2f} Cap (Remaining: ${self.monthly_budget_cap - c_amount:.2f})")
+
+            if c_amount <= self.monthly_budget_cap:
+                print(f"   Decision:       ACCEPTED (Within ${self.monthly_budget_cap:.2f} Budget Cap)")
+                print(f"   Merchant Order: {order_id}")
+                print(f"   Checkout Hash:  {chk_hash[:24]}...\n")
+                agreed_tier_id = c_tier_id
+                monthly_price = c_amount
+                matching_tier = next(
+                    (p for p in catalog.get("plans", []) if p["tier_id"] == c_tier_id),
+                    {"tier_id": c_tier_id, "title": c_title},
+                )
+            else:
+                reason = f"Counter-offer ${c_amount:.2f} exceeds remaining monthly budget cap of ${self.monthly_budget_cap:.2f}."
+                print(f"❌ Mandate violation: {reason}")
+                return {"status": "REJECTED", "reason": reason}
+
+        else:
+            raw_reason = negotiate_res.get("reason", "Budget cap exceeded or policy violation")
+            full_reason = raw_reason
+            if "exceeds" not in full_reason.lower() and "below minimum" in full_reason.lower():
+                full_reason = f"{raw_reason} (exceeds remaining monthly budget cap of ${self.monthly_budget_cap:.2f})"
+            print(f"❌ Mandate violation: {full_reason}")
+            chk_rec = negotiate_res.get("checkout_receipt")
+            pay_rec = negotiate_res.get("payment_receipt")
+            if chk_rec:
+                print(f"   Signed Checkout Receipt: {chk_rec[:24]}...")
+            if pay_rec:
+                print(f"   Signed Payment Receipt:  {pay_rec[:24]}...")
+            print()
+            return {
+                "status": "REJECTED",
+                "reason": full_reason,
+                "checkout_receipt": chk_rec,
+                "payment_receipt": pay_rec,
+            }
+
+        # Present closed AP2 v0.2 Checkout and Payment Mandates
+        print("🔐 [Presenting Closed AP2 v0.2 Mandate Chains]")
+        price_cents = dollars_to_minor_units(monthly_price)
+        closed_chk = CheckoutMandate(
+            vct="mandate.checkout.1",
+            checkout_jwt=chk_jwt,
+            checkout_hash=chk_hash,
+        )
+        chk_chain = mandate_client.present(
+            holder_key=agent_key,
+            mandate_token=open_chk_tok,
+            payloads=[closed_chk],
+            aud=AP2_MERCHANT_ID,
+            nonce=nonce,
+        )
+
+        closed_pay = PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=chk_hash,
+            payment_amount=Amount(amount=price_cents, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_agent_mit"),
+        )
+        pay_chain = mandate_client.present(
+            holder_key=agent_key,
+            mandate_token=open_pay_tok,
+            payloads=[closed_pay],
+            aud=AP2_MERCHANT_ID,
+            nonce=nonce,
+        )
+        print(f"   Checkout Mandate Chain: {chk_chain[:32]}... ({len(chk_chain)} chars)")
+        print(f"   Payment Mandate Chain:  {pay_chain[:32]}... ({len(pay_chain)} chars)\n")
+
+        # Phase 4: Delegate PayPal Subscription Session with AP2 v0.2 Chains
+        print("💳 [Phase 4: Delegated PayPal Subscription Initiation (AP2 v0.2 Chains)]")
+        purchase_result = await seller_agent.purchase_subscription(
+            tier_id=agreed_tier_id,
+            agreed_monthly_rate=monthly_price,
+            checkout_mandate_chain=chk_chain,
+            payment_mandate_chain=pay_chain,
+            checkout_jwt=chk_jwt,
+            buyer_email=self.contractor_email,
+            contractor_email=self.contractor_email,
+            nonce=nonce,
         )
         subscription_id = purchase_result.get("subscription_id")
+        chk_receipt = purchase_result.get("checkout_receipt")
+        pay_receipt = purchase_result.get("payment_receipt")
+
         print(f"   PayPal Vault Subscription: {subscription_id}")
-        print(
-            f"   Payment Channel:           PayPal Subscriptions Vault"
-        )
-        print(
-            f"   Billing Cycle:             ${monthly_price:.2f} / month (Auto-debit)\n"
-        )
+        print(f"   Payment Channel:           PayPal Subscriptions Vault")
+        print(f"   Billing Cycle:             ${monthly_price:.2f} / month (Auto-debit)")
+        if chk_receipt:
+            print(f"   Signed Checkout Receipt:   {chk_receipt[:32]}...")
+        if pay_receipt:
+            print(f"   Signed Payment Receipt:    {pay_receipt[:32]}...\n")
 
         # Phase 5: FastMCP Compute Node Provisioning
         print("🖥️ [Phase 5: FastMCP Compute Node Provisioning]")
         provision_result = await seller_agent.provision_compute_node(
             subscription_id=subscription_id,
             contractor_email=self.contractor_email,
-            tier_id=matching_tier.get("tier_id", "ap2-gateway"),
+            tier_id=agreed_tier_id,
         )
 
         assigned_endpoint = provision_result.get("endpoint")
@@ -194,7 +279,7 @@ class BuyerAgent:
             monthly_subscription_fee=monthly_price,
             paypal_subscription_id=subscription_id,
             contractor_email=self.contractor_email,
-            mandate_proof_hash=proof_hash,
+            mandate_proof_hash=chk_hash,
         )
         print(
             f"   QuickBooks Online: Recorded recurring software expense ({zapier_result.get('qboDraftInvoiceId')})"
@@ -206,9 +291,12 @@ class BuyerAgent:
         # Summary Ledger Record
         ledger_entry = {
             "buyer_agent_id": self.agent_id,
-            "tier_id": matching_tier.get("tier_id", "ap2-gateway"),
+            "tier_id": agreed_tier_id,
             "monthly_amount": monthly_price,
-            "mandate_proof": proof_hash,
+            "mandate_proof": chk_hash,
+            "checkout_hash": chk_hash,
+            "checkout_receipt": chk_receipt,
+            "payment_receipt": pay_receipt,
             "subscription_id": subscription_id,
             "allocated_did": assigned_endpoint,
             "status": "ACTIVE_SUBSCRIPTION",

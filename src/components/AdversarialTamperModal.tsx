@@ -36,7 +36,7 @@ const ATTACK_VECTORS: AttackVector[] = [
     tamperedValue: '80.00',
     signedMandateHash: 'SHA256: e9948ede8562597cae18f296338ad7308c909f279da1640a3f62c620ecd504',
     expectedErrorCode: '401 SIGNATURE_MISMATCH',
-    expectedErrorReason: 'RFC 8032 Ed25519 signature mismatch: Reconstructed canonical payload does not match cryptographic signature. Price alteration detected.',
+    expectedErrorReason: 'AP2 v0.2 ES256 SD-JWT constraint violation: Payment amount does not match checkout total. Price alteration detected.',
   },
   {
     id: 'atk-02',
@@ -48,7 +48,7 @@ const ATTACK_VECTORS: AttackVector[] = [
     tamperedValue: 'Malicious Syndicate Botnet Corp',
     signedMandateHash: 'SHA256: 77a1bc92e01f558ac2e99df8a221b7c9e1248b4010a3f62c620ecd504',
     expectedErrorCode: '401 KEY_IDENTITY_MISMATCH',
-    expectedErrorReason: 'Ed25519 Public Key (0x9f8a...) is registered strictly to Acme Autonomous Systems LLC. Unauthorized entity routing blocked.',
+    expectedErrorReason: 'Buyer Key (P-256) is registered strictly to Acme Autonomous Systems LLC. Unauthorized entity routing blocked.',
   },
   {
     id: 'atk-03',
@@ -108,7 +108,7 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
     const logs = [
       `[T+0.0ms] Ingress payload received via /mcp/evaluate_spending_mandate`,
       `[T+0.4ms] Normalizing canonical JSON RFC 8785: ${selectedVector.tamperedField} = "${selectedVector.tamperedValue}"`,
-      `[T+0.9ms] Querying Ed25519 Public Key Registry: Key 0x9f8a221b... (Status: ENROLLED)`,
+      `[T+0.9ms] Querying P-256 Buyer Key Registry: Key 0x9f8a221b... (Status: ENROLLED)`,
       `[T+1.4ms] Verifying RFC 8032 Signature against canonical byte payload...`,
       `[T+1.8ms] ✕ CRYPTOGRAPHIC VERIFICATION FAILED: Computed hash does not match signature header`,
       `[T+2.1ms] [POLICY INTERCEPTOR] Tamper Category: ${selectedVector.category}`,
@@ -201,7 +201,7 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     fontWeight: 700,
                   }}
                 >
-                  RFC 8032 ED25519 GUARANTEED
+                  AP2 v0.2 ES256 SD-JWT GUARANTEED
                 </span>
               </div>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
@@ -292,7 +292,7 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                   <Fingerprint size={14} color="#38bdf8" /> Signed Canonical Mandate vs Injected Tamper
                 </span>
                 <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#64748b' }}>
-                  Ed25519 Curve25519
+                  AP2 v0.2 ES256 SD-JWT
                 </span>
               </div>
 

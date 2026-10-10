@@ -326,17 +326,17 @@ export function buildTradeImpactFromTransactions(transactions: A2aTransaction[])
     {
       trade: 'High-Throughput Batch Worker',
       planRate: 49.99,
-      leads_captured: 120000,
+      taskQuota: 125,
     },
     {
       trade: 'Dedicated AI Service Gateway',
       planRate: 79.99,
-      leads_captured: 300000,
+      taskQuota: 450,
     },
     {
       trade: 'Enterprise Cluster Node',
       planRate: 179.99,
-      leads_captured: 90000,
+      taskQuota: 1800,
     },
   ];
 
@@ -370,7 +370,7 @@ export function buildTradeImpactFromTransactions(transactions: A2aTransaction[])
       monthly_settlement: roundedMonthly,
       annualized_gmv: annualized,
       recovered_revenue: annualized,
-      leads_captured: tier.leads_captured,
+      leads_captured: tier.taskQuota * count,
       missed_calls_prevented: 0,
       subscription_cost: tier.planRate,
       roi_multiple: 12.0,

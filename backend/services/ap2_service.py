@@ -524,12 +524,20 @@ def verify_ap2_chains(
                 error=code,
                 error_description=msg,
             )
+            pay_ref = f"pay_{checkout_hash[:16]}"
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=pay_ref,
+                status="Error",
+                error=code,
+                error_description=msg,
+            )
             return {
                 "valid": False,
                 "error": code,
                 "error_description": msg,
                 "checkout_receipt": err_receipt,
-                "payment_receipt": None,
+                "payment_receipt": err_pay_receipt,
             }
 
         try:
@@ -549,12 +557,20 @@ def verify_ap2_chains(
                     error=ERR_INVALID_MANDATE,
                     error_description=detail,
                 )
+                pay_ref = f"pay_{checkout_hash[:16]}"
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=pay_ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=detail,
+                )
                 return {
                     "valid": False,
                     "error": ERR_INVALID_MANDATE,
                     "error_description": detail,
                     "checkout_receipt": err_receipt,
-                    "payment_receipt": None,
+                    "payment_receipt": err_pay_receipt,
                 }
         except Exception as e:
             detail = str(e)
@@ -567,12 +583,20 @@ def verify_ap2_chains(
                 error=ERR_INVALID_MANDATE,
                 error_description=detail,
             )
+            pay_ref = f"pay_{checkout_hash[:16]}"
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=pay_ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=detail,
+            )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": detail,
                 "checkout_receipt": err_receipt,
-                "payment_receipt": None,
+                "payment_receipt": err_pay_receipt,
             }
 
         # Step 3: Verify Payment Mandate chain
@@ -598,11 +622,19 @@ def verify_ap2_chains(
                 error=code,
                 error_description=msg,
             )
+            chk_ref = checkout_chain.closed_mandate.checkout_hash if 'checkout_chain' in locals() and hasattr(checkout_chain, 'closed_mandate') else f"chk_{checkout_hash[:16]}"
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=chk_ref,
+                status="Error",
+                error=code,
+                error_description=msg,
+            )
             return {
                 "valid": False,
                 "error": code,
                 "error_description": msg,
-                "checkout_receipt": None,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 
@@ -632,11 +664,19 @@ def verify_ap2_chains(
                     error=ERR_INVALID_MANDATE,
                     error_description=detail,
                 )
+                chk_ref = checkout_chain.closed_mandate.checkout_hash
+                err_chk_receipt = create_checkout_receipt_jwt(
+                    order_id=order_id,
+                    closed_mandate_reference=chk_ref,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=detail,
+                )
                 return {
                     "valid": False,
                     "error": ERR_INVALID_MANDATE,
                     "error_description": detail,
-                    "checkout_receipt": None,
+                    "checkout_receipt": err_chk_receipt,
                     "payment_receipt": err_receipt,
                 }
         except Exception as e:
@@ -650,11 +690,19 @@ def verify_ap2_chains(
                 error=ERR_INVALID_MANDATE,
                 error_description=detail,
             )
+            chk_ref = checkout_chain.closed_mandate.checkout_hash
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=chk_ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=detail,
+            )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": detail,
-                "checkout_receipt": None,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 
@@ -682,11 +730,18 @@ def verify_ap2_chains(
                 error=ERR_INVALID_MANDATE,
                 error_description=msg,
             )
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=closed_chk.checkout_hash,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=msg,
+            )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": msg,
-                "checkout_receipt": None,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 
@@ -704,11 +759,18 @@ def verify_ap2_chains(
                 error=ERR_INVALID_MANDATE,
                 error_description=msg,
             )
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=closed_chk.checkout_hash,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=msg,
+            )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": msg,
-                "checkout_receipt": None,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 
@@ -727,11 +789,18 @@ def verify_ap2_chains(
                 error=ERR_INVALID_MANDATE,
                 error_description=msg,
             )
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=closed_chk.checkout_hash,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=msg,
+            )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
                 "error_description": msg,
-                "checkout_receipt": None,
+                "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
             }
 
@@ -749,12 +818,19 @@ def verify_ap2_chains(
                     error=ERR_INVALID_MANDATE,
                     error_description=msg,
                 )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=closed_pay.transaction_id,
+                    status="Error",
+                    error=ERR_INVALID_MANDATE,
+                    error_description=msg,
+                )
                 return {
                     "valid": False,
                     "error": ERR_INVALID_MANDATE,
                     "error_description": msg,
                     "checkout_receipt": err_receipt,
-                    "payment_receipt": None,
+                    "payment_receipt": err_pay_receipt,
                 }
 
         # Step 6: Extract verified transaction details & authoritative budget cap

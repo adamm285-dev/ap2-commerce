@@ -250,15 +250,15 @@ function getEd25519Fingerprint(name: string): string {
 
 function getExecutionSpecifications(name: string, trade: string): string {
   if (trade.includes('Gateway') || trade.includes('Inference') || name.includes('Synthesis')) {
-    return '142,500 Tokens Processed • Gemini 3.8 / Flash Tier • Time-to-First-Token: 120ms • Temperature: 0.2 • Memory Footprint: 2.1 GB • SLA: 99.99%';
+    return 'Catalog Quota: 450 tasks/mo • Dedicated AI Service Gateway ($79.99/mo) • Real-time low-latency routing • SLA: 99.99%';
   }
   if (trade.includes('Batch') || trade.includes('Worker') || trade.includes('Vector') || name.includes('RAG')) {
-    return '50,000 Chunks Embedded • Model: text-embedding-3-large (3072 dims) • HNSW Cosine Index • Pipeline Throughput: 1,250 chunks/sec • 0 Errors';
+    return 'Catalog Quota: 125 tasks/mo • High-Throughput Batch Worker ($49.99/mo) • High-throughput execution • 0 Errors';
   }
   if (trade.includes('Cluster') || trade.includes('Security') || name.includes('Audit')) {
-    return '18 Smart Contract AST Files Analyzed • Mythril + Slither Sandbox • 0 Reentrancy / 0 Overflow Bugs • Cryptographic Attestation Sealed';
+    return 'Catalog Quota: 1,800 tasks/mo • Enterprise Cluster Node ($179.99/mo) • High-priority execution • Cryptographic Attestation Sealed';
   }
-  return 'Enterprise Cluster Node • Dual-Agent Review Consensus • 100% Policy Grounded • Outlier Triage Signed by Principal Org';
+  return 'Enterprise Cluster Node • Catalog Quota: 1,800 tasks/mo • Dual-Agent Review Consensus • 100% Policy Grounded';
 }
 
 function getShortWorkloadTitle(name: string): string {
@@ -269,7 +269,7 @@ function getShortWorkloadTitle(name: string): string {
   if (name.includes('Consensus Inference')) return '#102 Consensus Eval';
   if (name.includes('Sandbox')) return '#103 FastMCP Sandbox';
   if (name.includes('Vector Ingestion')) return '#201 Vector RAG Ingest';
-  if (name.includes('Context Embeddings')) return '#202 1M Token Embed';
+  if (name.includes('Context Embeddings')) return '#202 Task Quota Allocation';
   if (name.includes('Semantic Graph')) return '#203 Semantic Index';
   if (name.includes('Smart Contract')) return '#301 Smart Contract Audit';
   if (name.includes('Vulnerability Scan') || name.includes('AST')) return '#302 AST Perimeter Scan';
@@ -477,7 +477,7 @@ export function BryntumDispatchScheduler({
       entity: 'Ashburn Zone 1 • NVIDIA H100 SXM5',
       did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
       status: isDepositLocked ? 'ACTIVE_STREAMING' : 'PENDING_SUBSCRIPTION',
-      throughput: '48k tok/sec',
+      throughput: '450 tasks/mo',
       latency: '14ms',
       health: '98.2%',
       color: '#38bdf8',
@@ -491,7 +491,7 @@ export function BryntumDispatchScheduler({
       entity: 'Dallas Zone 2 • 4x NVIDIA A100 (80GB)',
       did: 'node-cluster-02.ap2.net',
       status: isSlotLocked ? 'SLOT_LOCKED' : 'ACTIVE_STREAMING',
-      throughput: '1.2M chunks/hr',
+      throughput: '125 tasks/mo',
       latency: '28ms',
       health: '100%',
       color: '#34d399',
@@ -780,7 +780,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Dedicated AI Service Gateway',
         did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
         status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
-        throughput: '48.2k tok/sec • 120ms P95',
+        throughput: '450 tasks/mo • Low-Latency P95',
         health: '98.4%',
         enclave: 'Sealed Enclave (AMD SEV-SNP)',
       },
@@ -791,7 +791,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'High-Throughput Batch Worker',
         did: 'node-cluster-02.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '1.25M vec/hr • 85ms P95',
+        throughput: '125 tasks/mo • Batch Pipeline',
         health: '100%',
         enclave: 'Sealed Enclave (AWS Nitro)',
       },
@@ -802,7 +802,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Enterprise Cluster Node',
         did: 'node-cluster-03.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '18 AST audits/hr • Static Pass',
+        throughput: '1,800 tasks/mo • Cluster Enclave',
         health: '100%',
         enclave: 'Sealed Enclave (TPM 2.0 Attested)',
       },
@@ -813,7 +813,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Dedicated AI Service Gateway',
         did: 'node-cluster-04.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: 'Sub-350ms Duplex • 0.0% Jitter',
+        throughput: '450 tasks/mo • FastMCP Gateway',
         health: '99.9%',
         enclave: 'Sealed Enclave (Edge Isolated)',
       },
@@ -824,7 +824,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Enterprise Cluster Node',
         did: 'node-cluster-05.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '2.4m Triage SLA • Dual-Agent Verified',
+        throughput: '1,800 tasks/mo • Supervised Cluster',
         health: '100%',
         enclave: 'Supervised Enclave (Operator Guard)',
       },
@@ -1054,12 +1054,12 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-202',
         resourceId: 'node-2',
-        name: '#202 1M Token Embed ($250)',
+        name: '#202 125 Task Quota Allocation ($49.99)',
         startDate: '2026-10-08 10:45',
         endDate: '2026-10-08 12:15',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'PAID $250.00 (PAYPAL VAULT)',
+        depositStatus: 'PAID $49.99 (PAYPAL VAULT)',
         paypalTxn: 'TXN-SETTLE-7725',
       },
       {
@@ -1308,7 +1308,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                   <span style="font-family:ui-monospace, monospace;color:#cbd5e1;font-size:9px;">${record.did ? record.did.replace('.ap2.net', '') : ''}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;margin-top:2px;font-size:9px;">
-                  <span style="color:#38bdf8;font-weight:600;">⚡ ${record.throughput ? record.throughput.split('•')[0].trim() : '48k tok/s'}</span>
+                  <span style="color:#38bdf8;font-weight:600;">⚡ ${record.throughput ? record.throughput.split('•')[0].trim() : '450 tasks/mo'}</span>
                   <span style="color:#475569;">&bull;</span>
                   <span style="color:#34d399;font-weight:600;">${record.health || '100%'}</span>
                 </div>
@@ -1871,7 +1871,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Vaulted: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Velocity: <strong style={{ color: '#38bdf8' }}>48.2k Tok/s</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Demo</span></span>
+            <span>Tier Quotas: <strong style={{ color: '#38bdf8' }}>125 / 450 / 1,800</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span></span>
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>SLA: <strong style={{ color: '#a78bfa' }}>&lt;120s (99.98%)</strong></span>
           </div>
@@ -1933,11 +1933,11 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 <Zap size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Cluster Velocity</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Catalog Quotas</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  48.2k Tok/Sec <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Demo</span>
+                  125 / 450 / 1,800 <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span>
                 </div>
-                <div style={{ fontSize: '9px', color: '#38bdf8' }}>64% Capacity Allocated</div>
+                <div style={{ fontSize: '9px', color: '#38bdf8' }}>Catalog Tier Quotas</div>
               </div>
             </div>
 

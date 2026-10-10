@@ -3473,7 +3473,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <Key size={14} /> 1. Programmatic Spending Mandate Verification
                       </span>
                       <span style={{ fontSize: '10px', backgroundColor: 'rgba(52, 211, 153, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        HMAC-SHA256 SIGNED
+                        AP2 v0.2 ES256 SD-JWT
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
@@ -3649,7 +3649,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                     fontWeight: 600,
                     cursor: 'pointer',
                   }}
-                  title="Reset payload to valid untampered state and re-generate HMAC proof"
+                  title="Reset payload to valid untampered state and re-generate AP2 mandate proof"
                 >
                   Reset Untampered
                 </button>
@@ -4102,7 +4102,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                       <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                        <strong>Cryptographic Mandate Proof (HMAC-SHA256):</strong>
+                        <strong>Cryptographic Mandate Proof (AP2 v0.2 ES256 SD-JWT):</strong>
                       </span>
                       <code style={{ fontSize: '11px', color: '#fbbf24', wordBreak: 'break-all', fontFamily: 'monospace' }}>
                         {inspectorData.mandate_hash || 'N/A'}

@@ -17,7 +17,24 @@ import argparse
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
-import httpx
+import tempfile
+import atexit
+
+# Ensure isolated temp DB in external buyer harness to protect development DB
+if not os.environ.get("A2A_DB_PATH"):
+    _temp_ext_buyer_db = os.path.join(tempfile.gettempdir(), f"a2a_ext_buyer_{os.getpid()}_{uuid.uuid4().hex[:8]}.db")
+    os.environ["A2A_DB_PATH"] = _temp_ext_buyer_db
+
+    def _cleanup_ext_buyer_temp_db():
+        for ext in ["", "-wal", "-shm", "-journal"]:
+            f = _temp_ext_buyer_db + ext
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except OSError:
+                pass
+
+    atexit.register(_cleanup_ext_buyer_temp_db)
 
 logger = logging.getLogger("external_buyer_agent")
 
@@ -147,7 +164,7 @@ class ExternalBuyerAgent:
         2. Tool discovery
         3. Catalog inspection
         4. Quote calculation
-        5. Spending mandate check & HMAC proof
+        5. Spending mandate check & AP2 v0.2 mandate proof
         6. Compute node endpoint allocation
         7. Back-office ERP & QBO export
         """
@@ -298,7 +315,7 @@ class ExternalBuyerAgent:
                 "audit_log": self.audit_log,
             }
 
-        self.log(f"   HMAC-SHA256:     {proof_hash[:24]}... ({len(proof_hash)} chars)\n")
+        self.log(f"   AP2 Mandate Hash: {proof_hash[:24]}... ({len(proof_hash)} chars)\n")
 
         # Step 6: Bind to PayPal Recurring Vault via purchase_subscription
         self.log("💳 [Step 6: Autonomous PayPal Subscription Vault Binding (purchase_subscription)]")
@@ -316,6 +333,8 @@ class ExternalBuyerAgent:
         purchase_resp = await self._call_tool("purchase_subscription", purchase_args)
         sub_status = purchase_resp.get("status")
         subscription_id = purchase_resp.get("subscription_id")
+        chk_rec = purchase_resp.get("checkout_receipt")
+        pay_rec = purchase_resp.get("payment_receipt")
         if not subscription_id or sub_status not in ("ACTIVE", "APPROVAL_PENDING"):
             err_msg = purchase_resp.get("reason") or purchase_resp.get("error") or f"Status: {sub_status}"
             self.log(f"\n❌ [ABORT] PayPal Purchase Failed: {err_msg}")
@@ -327,7 +346,12 @@ class ExternalBuyerAgent:
 
         self.log(f"   Vault Subscription ID: {subscription_id} (Status: {sub_status})")
         self.log(f"   PayPal Vault Status:   {purchase_resp.get('paypal_vault_status', 'VAULT_BOUND')}")
-        self.log(f"   Monthly Billing Rate:  ${monthly_price:.2f}/mo (Auto-debit)\n")
+        self.log(f"   Monthly Billing Rate:  ${monthly_price:.2f}/mo (Auto-debit)")
+        if chk_rec:
+            self.log(f"   Signed Checkout Receipt: {chk_rec[:24]}...")
+        if pay_rec:
+            self.log(f"   Signed Payment Receipt:  {pay_rec[:24]}...")
+        self.log("")
 
         # Step 6b: If sub_status == "APPROVAL_PENDING" (live PayPal Sandbox flow), simulate buyer approval
         if sub_status == "APPROVAL_PENDING":
@@ -470,6 +494,10 @@ class ExternalBuyerAgent:
         if node_endpoint:
             res_dict["node_endpoint"] = node_endpoint
             res_dict["allocated_node_id"] = allocated_node_id
+        if chk_rec:
+            res_dict["checkout_receipt"] = chk_rec
+        if pay_rec:
+            res_dict["payment_receipt"] = pay_rec
         return res_dict
 
 

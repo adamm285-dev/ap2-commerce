@@ -93,7 +93,7 @@ def main():
             "name": "negotiate_tier_terms",
             "arguments": {
                 "buyer_agent_id": "agent-audit-buyer-001",
-                "buyer_email": "audit.buyer@acme-systems.io",
+                "buyer_email": "audit.buyer@example.com",
                 "tier_id": "ap2-gateway",
                 "monthly_budget_cap": 60.00,
             },
@@ -120,7 +120,7 @@ def main():
                 "tier_id": counter_tier,
                 "agreed_monthly_rate": counter_amount,
                 "mandate_proof_hash": counter_hash,
-                "buyer_email": "audit.buyer@acme-systems.io",
+                "buyer_email": "audit.buyer@example.com",
             },
         },
     }
@@ -140,7 +140,7 @@ def main():
             "name": "provision_compute_node",
             "arguments": {
                 "subscription_id": sub_id,
-                "buyer_email": "audit.buyer@acme-systems.io",
+                "buyer_email": "audit.buyer@example.com",
                 "node_type": "batch",
             },
         },
@@ -158,7 +158,7 @@ def main():
             "name": "provision_compute_node",
             "arguments": {
                 "subscription_id": "I-FAKE-SUB-DOES-NOT-EXIST",
-                "buyer_email": "audit.buyer@acme-systems.io",
+                "buyer_email": "audit.buyer@example.com",
                 "node_type": "batch",
             },
         },
@@ -192,7 +192,7 @@ def main():
             "name": "unregistered_tool_call",
             "arguments": {
                 "subscription_id": sub_id,
-                "buyer_email": "audit.buyer@acme-systems.io",
+                "buyer_email": "audit.buyer@example.com",
             },
         },
     }

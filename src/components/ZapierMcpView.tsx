@@ -86,7 +86,7 @@ export function ZapierMcpView({
     tradeVertical,
     monthlyFee,
     paypalSubscriptionId: isDepositLocked ? 'I-AUTONOMOUS-186492' : paypalSubscriptionId,
-    contractorEmail: 'procure@acme-autonomous.io',
+    contractorEmail: 'procure@example.com',
   };
 
   // Scenario 2: Workload Execution Dispatch Dossier

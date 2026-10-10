@@ -24,10 +24,10 @@ def test_qbo_purchase_expense_format():
     qbo_pkg = qbo_exporter.format_purchase_expense_payload(
         contractor_name="Nexus Autonomous Buyer",
         business_entity="Nexus Autonomous Systems Corp",
-        contractor_email="agent-alpha@nexus-systems.io",
+        contractor_email="agent-alpha@example.com",
         monthly_fee=79.99,
         paypal_subscription_id="I-AUTONOMOUS-8902",
-        allocated_did="mcp+https://gateway-01.acme-systems.io/mcp",
+        allocated_did="mcp+https://gateway-01.example.com/mcp",
         mandate_proof_hash="PROOF-HASH-5678",
         trade_vertical="Dedicated AI Service Gateway",
         txn_date="2026-10-03",
@@ -39,7 +39,7 @@ def test_qbo_purchase_expense_format():
     assert purchase["CurrencyRef"]["value"] == "USD"
     assert purchase["EntityRef"]["name"] == "AP2 Autonomous Node Network Inc."
     assert purchase["EntityRef"]["type"] == "Vendor"
-    assert "mcp+https://gateway-01.acme-systems.io/mcp" in purchase["PrivateNote"]
+    assert "mcp+https://gateway-01.example.com/mcp" in purchase["PrivateNote"]
     assert "I-AUTONOMOUS-8902" in purchase["PrivateNote"]
     assert "PROOF-HASH-5678" in purchase["PrivateNote"]
 
@@ -55,7 +55,7 @@ def test_qbo_vendor_payload_format():
     """Verifies QBO API v3 Vendor representation for AP2 Autonomous Node Network Inc."""
     vendor = qbo_exporter.format_vendor_payload()
     assert vendor["Vendor"]["DisplayName"] == "AP2 Autonomous Node Network Inc."
-    assert vendor["Vendor"]["PrimaryEmailAddr"]["Address"] == "billing@autonomous-procurement.org"
+    assert vendor["Vendor"]["PrimaryEmailAddr"]["Address"] == "billing@example.com"
     assert vendor["Vendor"]["PrimaryPhone"]["FreeFormNumber"] == "+1 (800) 555-0199"
 
 
@@ -130,11 +130,11 @@ async def test_zapier_mcp_dispatcher_exports_authentic_payloads():
         workflowType="a2a_onboarding",
         contractorName="Nexus Autonomous Buyer",
         businessEntity="Nexus Autonomous Systems Corp",
-        allocatedDid="mcp+https://gateway-01.acme-systems.io/mcp",
+        allocatedDid="mcp+https://gateway-01.example.com/mcp",
         tradeVertical="Dedicated AI Service Gateway",
         monthlySubscriptionFee=79.99,
         paypalSubscriptionId="I-AUTONOMOUS-8902",
-        contractorEmail="agent-alpha@nexus-systems.io",
+        contractorEmail="agent-alpha@example.com",
         mandateProofHash="HMAC-VERIFIED-HASH",
     )
 
@@ -157,11 +157,11 @@ def test_api_export_backoffice_endpoint():
         "workflowType": "a2a_onboarding",
         "contractorName": "Nexus Autonomous Buyer",
         "businessEntity": "Nexus Autonomous Systems Corp",
-        "allocatedDid": "mcp+https://gateway-01.acme-systems.io/mcp",
+        "allocatedDid": "mcp+https://gateway-01.example.com/mcp",
         "tradeVertical": "Dedicated AI Service Gateway",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": "I-AUTONOMOUS-8902",
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
         "mandateProofHash": "0530c4b618a5f1cd287477bf9d551bff52c100eeaf1811de3036fa2c4bb29560",
     }
     res = client.post("/api/export/backoffice", json=payload)

@@ -91,7 +91,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     summary: 'RFC 8032 Ed25519 mandate anti-tamper signature verified',
     category: 'Security',
     request: {
-      contractor_id: 'contractor_acme_863',
+      contractor_id: 'contractor_acme_01',
       monthly_cap_usd: 100.0,
       agreed_price_usd: 79.99,
       signature: 'ed25519_sig_4a9f82c0b7...d181c2',
@@ -118,7 +118,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
       plan_id: 'P-4KA989014W524233ANLCRSFQ',
       subscriber: {
         name: { given_name: 'agent:acme-procure' },
-        email_address: 'buyer-agent-ops@acme-autonomous.net',
+        email_address: 'buyer-agent-ops@example.com',
       },
       application_context: {
         user_action: 'SUBSCRIBE_NOW',
@@ -1567,7 +1567,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           subscription_id: simulatedSubId,
           business_entity: 'Acme Autonomous Systems LLC',
           trade_vertical: 'Dedicated AI Service Gateway',
-          preferred_area_code: '863',
+          preferred_area_code: '703',
           monthly_fee: 79.99,
         },
         response: {

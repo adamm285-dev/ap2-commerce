@@ -134,7 +134,7 @@ def test_mcp_post_jsonrpc_tools_call():
 async def test_provision_compute_node_mcp_endpoint():
     """Verify that provision_compute_node allocates a dedicated FastMCP compute endpoint."""
     sub_id = "I-TEST-COMPUTE-NODE-01"
-    contractor_email = "node.buyer@nexus-systems.io"
+    contractor_email = "node.buyer@example.com"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
@@ -150,7 +150,7 @@ async def test_provision_compute_node_mcp_endpoint():
         node_type="gateway",
     )
     assert res["status"] == "PROVISIONED"
-    assert res["endpoint"].startswith("mcp+https://gateway-01.acme-systems.io/agents/node-gateway-")
+    assert res["endpoint"].startswith("mcp+https://gateway-01.example.com/agents/node-gateway-")
     assert res["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
     assert res["routing_state"] == "ACTIVE_COMPUTE_NODE"
 
@@ -183,7 +183,7 @@ async def test_provision_foreign_subscriber_rejected():
 def test_rest_provision_endpoint_success_and_error():
     """POST /api/agent/provision allocates compute nodes for active subscriptions."""
     sub_id = "I-TEST-REST-COMPUTE-01"
-    contractor_email = "rest.buyer@nexus-systems.io"
+    contractor_email = "rest.buyer@example.com"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",

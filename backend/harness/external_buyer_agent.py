@@ -54,7 +54,7 @@ class ExternalBuyerAgent:
         contractor_email: Optional[str] = None,
         trade_id: Optional[str] = None,
         budget_cap: float = 100.00,
-        area_code: str = "863",
+        area_code: str = "703",
         webhook_url: Optional[str] = None,
         verbose: bool = True,
         reset_ledger: bool = True,
@@ -67,7 +67,7 @@ class ExternalBuyerAgent:
         self.profile = "ap2"
         self.contractor_name = contractor_name or "Nexus Autonomous Buyer"
         self.business_entity = business_entity or "Nexus Autonomous Systems Corp"
-        self.contractor_email = contractor_email or "agent-alpha@nexus-systems.io"
+        self.contractor_email = contractor_email or "agent-alpha@example.com"
         self.trade_id = trade_id or "ap2-gateway"
         self.category = "AUTONOMOUS_NODE_SERVICE"
 
@@ -548,7 +548,7 @@ async def main():
     )
     parser.add_argument(
         "--email",
-        default="agent-alpha@nexus-systems.io",
+        default="agent-alpha@example.com",
         help="Buyer email address",
     )
     parser.add_argument(
@@ -578,8 +578,8 @@ async def main():
     )
     parser.add_argument(
         "--area-code",
-        default="863",
-        help="Local area code for region allocation (default: 863)",
+        default="703",
+        help="Local area code for region allocation (default: 703)",
     )
     parser.add_argument(
         "--simulate-exhaustion",

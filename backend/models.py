@@ -116,7 +116,7 @@ class ProvisionRequest(BaseModel):
 
     subscription_id: str = Field(alias="subscriptionId")
     contractor_email: str = Field(alias="contractorEmail")
-    area_code: str = Field(default="863", alias="areaCode")
+    area_code: str = Field(default="703", alias="areaCode")
     simulate_exhaustion: Optional[bool] = Field(
         default=False, alias="simulateExhaustion"
     )
@@ -182,11 +182,11 @@ class ZapierSyncRequest(BaseModel):
     # A2A Contractor Onboarding specific attributes
     contractor_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="contractorName")
     business_entity: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="businessEntity")
-    allocated_did: Optional[str] = Field(default="mcp+https://gateway-01.acme-systems.io/agents/gateway", alias="allocatedDid")
+    allocated_did: Optional[str] = Field(default="mcp+https://gateway-01.example.com/agents/gateway", alias="allocatedDid")
     trade_vertical: Optional[str] = Field(default="Dedicated AI Service Gateway", alias="tradeVertical")
     monthly_subscription_fee: Optional[float] = Field(default=79.99, alias="monthlySubscriptionFee")
     paypal_subscription_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalSubscriptionId")
-    contractor_email: Optional[str] = Field(default="agent@acme-systems.io", alias="contractorEmail")
+    contractor_email: Optional[str] = Field(default="agent@example.com", alias="contractorEmail")
     mandate_proof_hash: Optional[str] = Field(default=None, alias="mandateProofHash")
     webhook_url: Optional[str] = Field(default=None, alias="webhookUrl")
     dry_run: Optional[bool] = Field(default=True, alias="dryRun")

@@ -76,7 +76,7 @@ export function SellerCopilotView({
   contractorName = 'agent:acme-procure',
   businessEntity = 'Acme Autonomous Systems LLC',
   tradeVertical = 'Dedicated AI Service Gateway',
-  areaCode = '863',
+  areaCode = '703',
   budgetCap = 100.0,
   onA2aCompleted,
   onNavigateTab,
@@ -358,7 +358,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
 
   // Quick-Action In-Chat Form State (Step 1-5 Cards)
   const [formStep1Company, setFormStep1Company] = useState(nodeSettings.businessEntity || localBusinessEntity);
-  const [formStep1Email, setFormStep1Email] = useState(nodeSettings.supportEmail || 'ops@acme-systems.io');
+  const [formStep1Email, setFormStep1Email] = useState(nodeSettings.supportEmail || 'ops@example.com');
   const [formStep1Service, setFormStep1Service] = useState(nodeSettings.tradeVertical || localTradeVertical);
   const [formStep1Capabilities, setFormStep1Capabilities] = useState<ServiceCapabilityItem[]>(
     () => (nodeSettings.capabilities && nodeSettings.capabilities.length > 0) ? nodeSettings.capabilities : DEFAULT_NODE_SETTINGS.capabilities
@@ -374,7 +374,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
       name: `Tier ${nextIdx} Custom Service Plan`,
       monthly_price_usd: 99.99,
       quota: '500 operations/mo',
-      sla: '99.95% Availability',
+      sla: '',
       enclave: 'Dedicated Worker Node',
       paypal_plan_id: `P-${randomPlanSuffix}44454362WXN`,
     };
@@ -394,7 +394,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
 
   useEffect(() => {
     setFormStep1Company(nodeSettings.businessEntity);
-    setFormStep1Email(nodeSettings.supportEmail || 'ops@acme-systems.io');
+    setFormStep1Email(nodeSettings.supportEmail || 'ops@example.com');
     setFormStep1Service(nodeSettings.tradeVertical);
     if (nodeSettings.capabilities && nodeSettings.capabilities.length > 0) {
       setFormStep1Capabilities(nodeSettings.capabilities);
@@ -855,7 +855,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     hasUserInteractedRef.current = true;
     const trimmedCompany = companyName.trim() || localBusinessEntity;
     const trimmedService = serviceTitle.trim() || localTradeVertical;
-    const trimmedEmail = email?.trim() || nodeSettings.supportEmail || 'ops@acme-systems.io';
+    const trimmedEmail = email?.trim() || nodeSettings.supportEmail || 'ops@example.com';
 
     const capsToApply = (capabilities && capabilities.length > 0)
       ? capabilities
@@ -1061,30 +1061,30 @@ To publish your company's capabilities to autonomous buyer agents, configure you
 \`\`\`json
 {
   "company_name": "${localBusinessEntity}",
-  "support_email": "${nodeSettings.supportEmail || 'ops@acme-systems.io'}",
+  "support_email": "${nodeSettings.supportEmail || 'ops@example.com'}",
   "capabilities": [
     {
       "id": "tier_batch_worker",
       "name": "${nodeSettings.capabilities?.[0]?.name || 'High-Throughput Batch Worker'}",
       "monthly_price_usd": ${nodeSettings.capabilities?.[0]?.monthly_price_usd || 49.99},
-      "quota": "125 operations/mo",
-      "sla": "99.95% Availability",
+      "quota": "${nodeSettings.capabilities?.[0]?.quota || '125 tasks/mo'}",
+      "sla": "${nodeSettings.capabilities?.[0]?.sla || ''}",
       "enclave": "US-Central Batch RAG"
     },
     {
       "id": "tier_inference_gateway",
       "name": "${nodeSettings.capabilities?.[1]?.name || 'Dedicated AI Service Gateway'}",
       "monthly_price_usd": ${nodeSettings.capabilities?.[1]?.monthly_price_usd || 79.99},
-      "quota": "450 operations/mo",
-      "sla": "99.98% Low Latency (<350ms)",
+      "quota": "${nodeSettings.capabilities?.[1]?.quota || '450 tasks/mo'}",
+      "sla": "${nodeSettings.capabilities?.[1]?.sla || ''}",
       "enclave": "US-East Low-Latency Gateway"
     },
     {
       "id": "tier_enterprise_cluster",
       "name": "${nodeSettings.capabilities?.[2]?.name || 'Enterprise Cluster Node'}",
       "monthly_price_usd": ${nodeSettings.capabilities?.[2]?.monthly_price_usd || 179.99},
-      "quota": "1,500 operations/mo",
-      "sla": "99.99% Multi-Region Failover",
+      "quota": "${nodeSettings.capabilities?.[2]?.quota || '1,200 tasks/mo'}",
+      "sla": "${nodeSettings.capabilities?.[2]?.sla || ''}",
       "enclave": "Multi-Region Distributed Cluster"
     }
   ]
@@ -2484,7 +2484,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 type="email"
                                 value={formStep1Email}
                                 onChange={(e) => setFormStep1Email(e.target.value)}
-                                placeholder="e.g. ops@acme-systems.io"
+                                placeholder="e.g. ops@example.com"
                                 style={{
                                   width: '100%',
                                   backgroundColor: '#0f172a',
@@ -2675,7 +2675,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                             handleUpdateStep1Capability(cap.id, 'sla', e.target.value);
                                             handleUpdateStep1Capability(cap.id, 'enclave', e.target.value);
                                           }}
-                                          placeholder="e.g. 99.98% Low Latency (<350ms)"
+                                          placeholder="e.g. Standard SLA"
                                           style={{
                                             width: '100%',
                                             backgroundColor: '#090e17',

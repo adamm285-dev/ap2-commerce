@@ -53,7 +53,7 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
         server_url=mcp_endpoint,
         contractor_name="Nexus Autonomous Buyer",
         business_entity="Nexus Cloud Systems LLC",
-        contractor_email="buyer@nexus-systems.io",
+        contractor_email="buyer@example.com",
         trade_id="ap2-gateway",
         budget_cap=120.00,
         area_code="US",
@@ -116,7 +116,7 @@ async def run_scenario_cryptographic_buyer_onboarding(client: httpx.AsyncClient)
         json={
             "kid": f"stress-agent-{uuid_short()}",
             "publicKeyHex": pub,
-            "contractorEmail": "stress_agent@nexus-systems.io",
+            "contractorEmail": "stress_agent@example.com",
             "businessEntity": "Apex Autonomous Cloud Corp",
             "challenge": nonce,
             "challengeSignature": sig,
@@ -148,7 +148,7 @@ async def run_scenario_adversarial_tamper_attack(client: httpx.AsyncClient) -> D
         json={
             "kid": f"malicious-counterfeit-agent-{int(time.time())}",
             "publicKeyHex": "0" * 64,
-            "contractorEmail": "attacker@evil.org",
+            "contractorEmail": "attacker@example.com",
             "businessEntity": "Forged Agent Group",
             "challenge": real_challenge,
             "challengeSignature": bad_sig,

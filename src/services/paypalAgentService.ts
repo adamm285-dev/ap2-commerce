@@ -170,7 +170,7 @@ export async function evaluateAgentNegotiation(
       const counterAvailable = Boolean(data.counter_offer_available ?? data.counterOfferAvailable);
       const counterAmount = data.counter_offer_amount ?? data.counterOfferAmount;
       const counterTierRaw = data.counter_offer_tier ?? data.counterOfferTier;
-      const counterTier = (counterTierRaw === 'Solo Starter' || !counterTierRaw) ? 'High-Throughput Batch Worker' : counterTierRaw;
+      const counterTier = counterTierRaw || 'High-Throughput Batch Worker';
       const isCounterOffer = !approved && counterAvailable;
       const finalMonthlyRate = approved
         ? sellerMonthlyRate
@@ -312,8 +312,8 @@ export async function executeProvisioningAfterSubscription(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscriptionId: subscriptionId,
-        contractorEmail: 'merchant@ap2protocol.org',
-        areaCode: '863',
+        contractorEmail: 'merchant@example.com',
+        areaCode: '703',
       }),
     });
 
@@ -337,13 +337,13 @@ export async function executeProvisioningAfterSubscription(
   // Graceful client-side fallback matching AP2 MCP node endpoints
   await new Promise((resolve) => setTimeout(resolve, 600));
   const capLower = (capability || '').toLowerCase();
-  let allocatedDid = 'mcp+https://gateway-01.acme-systems.io/mcp';
+  let allocatedDid = 'mcp+https://gateway-01.example.com/mcp';
   if (capLower.includes('batch') || capLower.includes('starter') || capLower.includes('solo') || capLower.includes('49.99')) {
-    allocatedDid = 'mcp+https://batch-01.acme-systems.io/mcp';
+    allocatedDid = 'mcp+https://batch-01.example.com/mcp';
   } else if (capLower.includes('cluster') || capLower.includes('enterprise') || capLower.includes('179.99')) {
-    allocatedDid = 'mcp+https://cluster-01.acme-systems.io/mcp';
+    allocatedDid = 'mcp+https://cluster-01.example.com/mcp';
   } else {
-    allocatedDid = 'mcp+https://gateway-01.acme-systems.io/mcp';
+    allocatedDid = 'mcp+https://gateway-01.example.com/mcp';
   }
 
   return {
@@ -398,7 +398,7 @@ export async function executeDeckAp2Purchase(
         openCheckoutMandateToken: options.negotiation?.openCheckoutMandateToken,
         openPaymentMandateToken: options.negotiation?.openPaymentMandateToken,
         paypalSubscriptionId: options.subscriptionId,
-        areaCode: options.areaCode || '863',
+        areaCode: options.areaCode || '703',
       }),
     });
 
@@ -577,7 +577,7 @@ export async function fetchFleetSchedule(): Promise<FleetScheduleResponse | null
 }
 
 /**
- * Locks a territory dispatch slot for an enterprise crew via POST /api/agent/dispatch/lock-slot.
+ * Locks a territory dispatch slot for an enterprise node via POST /api/agent/dispatch/lock-slot.
  */
 export async function lockTerritorySlot(
   leadId: string,

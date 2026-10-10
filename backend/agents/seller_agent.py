@@ -1168,7 +1168,7 @@ class SellerAgent:
         paypal_result = await paypal_service.create_subscription(
             tier_id=tier_id,
             agreed_monthly_rate=agreed_monthly_rate,
-            contractor_email=contractor_email or "buyer-agent@autonomous-procurement.org",
+            contractor_email=contractor_email or "buyer-agent@example.com",
             contractor_name="Autonomous Buyer Agent",
             offer_id=offer_id,
             mandate_proof_hash=mandate_proof_hash,
@@ -1512,7 +1512,7 @@ class SellerAgent:
         clean_node_type = "batch" if "batch" in tier_id else ("cluster" if "cluster" in tier_id else "gateway")
         node_id = f"node-{clean_node_type}-{sub_hash}"
         host_prefix = "batch-01" if clean_node_type == "batch" else ("cluster-01" if clean_node_type == "cluster" else "gateway-01")
-        endpoint = f"mcp+https://{host_prefix}.acme-systems.io/agents/{node_id}"
+        endpoint = f"mcp+https://{host_prefix}.example.com/agents/{node_id}"
 
         sub["allocated_node_id"] = node_id
         sub["node_endpoint"] = endpoint
@@ -1579,9 +1579,9 @@ class SellerAgent:
         """Tool implementation: Dispatches downline business automation through Zapier MCP."""
         sub_name = subscriber_name or contractor_name or "Autonomous Buyer Agent"
         biz_entity = business_entity or "Autonomous Node Network"
-        endpoint = node_endpoint or allocated_did or "mcp+https://gateway-01.acme-systems.io/agents/gateway"
+        endpoint = node_endpoint or allocated_did or "mcp+https://gateway-01.example.com/agents/gateway"
         vertical = service_vertical or trade_vertical or "Autonomous Compute"
-        email = buyer_email or contractor_email or "buyer-agent@autonomous-procurement.org"
+        email = buyer_email or contractor_email or "buyer-agent@example.com"
 
         req = ZapierSyncRequest(
             workflowType=workflow_type,

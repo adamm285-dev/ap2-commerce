@@ -175,7 +175,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
                 "buyer_agent_id": "buyer-agent-ap2",
                 "tier_id": "ap2-gateway",
                 "monthly_budget_cap": 60.00,
-                "buyer_email": "buyer-01@acme-agents.ai",
+                "buyer_email": "buyer-01@example.com",
                 "category": "autonomous-node-service",
             },
         },
@@ -202,7 +202,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
     tamper_chains = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=39.99,
-        buyer_email="buyer-01@acme-agents.ai",
+        buyer_email="buyer-01@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": chk_jwt,
@@ -226,7 +226,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
                 "checkout_mandate_chain": tamper_chains["checkout_mandate_chain"],
                 "payment_mandate_chain": tamper_chains["payment_mandate_chain"],
                 "checkout_jwt": chk_jwt,
-                "buyer_email": "buyer-01@acme-agents.ai",
+                "buyer_email": "buyer-01@example.com",
                 "nonce": neg_data["nonce"],
             },
         },
@@ -240,7 +240,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
     valid_chains = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer-01@acme-agents.ai",
+        buyer_email="buyer-01@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": chk_jwt,
@@ -262,7 +262,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
                 "checkout_mandate_chain": valid_chains["checkout_mandate_chain"],
                 "payment_mandate_chain": valid_chains["payment_mandate_chain"],
                 "checkout_jwt": chk_jwt,
-                "buyer_email": "buyer-01@acme-agents.ai",
+                "buyer_email": "buyer-01@example.com",
                 "nonce": neg_data["nonce"],
             },
         },
@@ -291,7 +291,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
                 "name": "provision_compute_node",
                 "arguments": {
                     "subscription_id": sub_id,
-                    "buyer_email": "buyer-01@acme-agents.ai",
+                    "buyer_email": "buyer-01@example.com",
                     "node_type": "batch",
                 },
             },
@@ -301,7 +301,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
         prov_data = json.loads(prov_resp["result"]["content"][0]["text"])
 
         assert prov_data["status"] == "PROVISIONED"
-        assert prov_data["endpoint"].startswith("mcp+https://batch-01.acme-systems.io/agents/node-batch-")
+        assert prov_data["endpoint"].startswith("mcp+https://batch-01.example.com/agents/node-batch-")
         assert "did" not in prov_data["endpoint"].lower()
 
 

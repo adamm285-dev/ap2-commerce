@@ -640,7 +640,7 @@ class CopilotChatRequest(BaseModel):
     contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
     businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
     tradeVertical: Optional[str] = Field(default="Autonomous Compute & Worker Nodes", alias="trade_vertical")
-    areaCode: Optional[str] = Field(default="863", alias="area_code")
+    areaCode: Optional[str] = Field(default="703", alias="area_code")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
 
@@ -656,7 +656,7 @@ async def copilot_chat_endpoint(req: CopilotChatRequest):
         contractor_name=req.contractorName or "Nexus Autonomous Buyer",
         business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
         trade_vertical=req.tradeVertical or "Autonomous Compute & Worker Nodes",
-        area_code=req.areaCode or "863",
+        area_code=req.areaCode or "703",
         budget_cap=req.budgetCap or 100.00,
         simulate_exhaustion=req.simulateExhaustion or False,
     )
@@ -827,7 +827,7 @@ class DeckPurchaseRequest(BaseModel):
     open_checkout_mandate_token: Optional[str] = Field(default=None, alias="openCheckoutMandateToken")
     open_payment_mandate_token: Optional[str] = Field(default=None, alias="openPaymentMandateToken")
     paypal_subscription_id: Optional[str] = Field(default=None, alias="paypalSubscriptionId")
-    area_code: Optional[str] = Field(default="863", alias="areaCode")
+    area_code: Optional[str] = Field(default=None, alias="areaCode")
 
 
 @app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
@@ -836,7 +836,14 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     Executes an AP2 v0.2 purchase and provisioning flow for the UI deck simulator.
     Uses owner-signed limits (mock Trusted Surface) and closes mandates via the
     buyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.
+    Only available when MOCK_EXTERNAL_APIS=true (AGENTS.md rule 5).
     """
+    if not getattr(settings, "mock_external_apis", True):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck purchase simulation is only available when MOCK_EXTERNAL_APIS=true.",
+        )
+
     from ap2.sdk.mandate import MandateClient
     from ap2.sdk.generated.checkout_mandate import CheckoutMandate
     from ap2.sdk.generated.payment_mandate import PaymentMandate
@@ -947,7 +954,7 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         buyer_email=buyer_email,
         node_type="gateway" if "gateway" in tier else "batch" if "batch" in tier else "cluster",
         contractor_email=buyer_email,
-        area_code=req.area_code or "863",
+        area_code=req.area_code or "703",
     )
 
     return {
@@ -998,11 +1005,11 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
     if len(_RECENT_SLOT_LOCKS) >= _MAX_SLOT_LOCKS_PER_HOUR:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Dispatch slot lock rate exceeded; try again later.")
     _RECENT_SLOT_LOCKS.append(now.timestamp())
-    crew_map = {
-        "Zone 1 - North Lakeland": "Crew A - Heavy Restoration & Tearout",
-        "Zone 2 - South Lakeland": "Crew B - Custom Tile & Precision Master",
-        "Zone 3 - East Polk / Winter Haven": "Crew C - Hardwood & Substrate Leveling",
-        "Zone 4 - West Lakeland / Plant City": "Crew D - Commercial Bid Estimator",
+    zone_cluster_map = {
+        "Zone 1 - US-East": "Cluster Alpha - High-Throughput Batch Worker",
+        "Zone 2 - US-Central": "Cluster Beta - Dedicated AI Service Gateway",
+        "Zone 3 - US-West": "Cluster Gamma - Enterprise Compute Node",
+        "Zone 4 - Global-Edge": "Cluster Delta - Edge Inference Gateway",
     }
     tz_lower = (request.territory_zone or "").lower()
     is_ap2_workload = (
@@ -1018,8 +1025,8 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         assigned_crew = request.territory_zone if ("cluster" in tz_lower or "node" in tz_lower or "gateway" in tz_lower or "batch" in tz_lower) else "Cluster Alpha - Dedicated AI Service Gateway"
         contractor_id = "buyer_agent_alpha_01"
     else:
-        assigned_crew = crew_map.get(
-            request.territory_zone, "Crew B - Custom Tile & Precision Master"
+        assigned_crew = zone_cluster_map.get(
+            request.territory_zone, "Cluster Beta - Dedicated AI Service Gateway"
         )
         contractor_id = "buyer_agent_alpha_01"
 
@@ -1447,7 +1454,7 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
         "parameters": {
             "subscription_id": sub_id,
             "contractor_email": sub_record.get("contractor_email"),
-            "area_code": "863",
+            "area_code": "703",
         },
     }
     _COMPLETED_SUBSCRIPTIONS[sub_id] = sub_record
@@ -1554,7 +1561,7 @@ async def paypal_webhook_receiver(request: Request):
                 "parameters": {
                     "subscription_id": sub_id,
                     "contractor_email": sub_record.get("contractor_email"),
-                    "area_code": "863",
+                    "area_code": "703",
                 },
             }
             email = sub_record.get("contractor_email")
@@ -1653,10 +1660,10 @@ class RunBuyerAgentRequest(BaseModel):
     transport: Optional[str] = "http"
     contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
     businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
-    contractorEmail: Optional[str] = Field(default="agent-alpha@nexus-systems.io", alias="contractor_email")
+    contractorEmail: Optional[str] = Field(default="agent-alpha@example.com", alias="contractor_email")
     tradeId: Optional[str] = Field(default="ap2-gateway", alias="trade_id")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
-    areaCode: Optional[str] = Field(default="863", alias="area_code")
+    areaCode: Optional[str] = Field(default="703", alias="area_code")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
     webhookUrl: Optional[str] = Field(default=None, alias="webhook_url")
     resetLedger: Optional[bool] = Field(default=False, alias="reset_ledger")
@@ -1702,10 +1709,10 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
         server_url=f"http://127.0.0.1:{settings.server_port}/mcp",
         contractor_name=req.contractorName or "Nexus Autonomous Buyer",
         business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
-        contractor_email=req.contractorEmail or "agent-alpha@nexus-systems.io",
+        contractor_email=req.contractorEmail or "agent-alpha@example.com",
         trade_id=req.tradeId or "ap2-gateway",
         budget_cap=req.budgetCap or 100.00,
-        area_code=req.areaCode or "863",
+        area_code=req.areaCode or "703",
         webhook_url=req.webhookUrl,
         verbose=False,
         simulate_exhaustion=req.simulateExhaustion or False,

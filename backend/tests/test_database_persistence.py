@@ -48,7 +48,7 @@ def test_subscription_persistence_across_connections(persist_db: Path):
     sub_data = {
         "subscription_id": "I-PERSIST-TEST-001",
         "status": "ACTIVE",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "contractor_name": "Autonomous Compute Buyer",
         "business_entity": "Nexus Autonomous Systems Corp",
         "tier_id": "ap2-gateway",
@@ -76,7 +76,7 @@ def test_subscription_persistence_across_connections(persist_db: Path):
     
     assert hydrated["subscription_id"] == "I-PERSIST-TEST-001"
     assert hydrated["status"] == "ACTIVE"
-    assert hydrated["contractor_email"] == "agent-alpha@nexus-systems.io"
+    assert hydrated["contractor_email"] == "agent-alpha@example.com"
     assert hydrated["agreed_monthly_rate"] == 79.99
     assert hydrated["assigned_did"] == "mcp+https://gateway-01.ap2.market"
     assert hydrated["vault_billing_authorized"] is True
@@ -92,7 +92,7 @@ def test_subscription_aliases_and_in_place_mutations(persist_db: Path):
     sub_data = {
         "subscription_id": "I-MAIN-SUB-77",
         "status": "ACTIVE",
-        "contractor_email": "alias@contractor.com",
+        "contractor_email": "alias@example.com",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
@@ -141,11 +141,11 @@ def test_mandate_persistence_and_email_locking(persist_db: Path):
     assert mandate.get("contractor_email") is None
     
     # Lock to first contractor
-    mandate["contractor_email"] = "first@contractor.com"
+    mandate["contractor_email"] = "first@example.com"
     
     # Verify persistence of contractor email lock
     locked_check = AuthorizedMandatesProxy(db_path=db_file)[token]
-    assert locked_check["contractor_email"] == "first@contractor.com"
+    assert locked_check["contractor_email"] == "first@example.com"
 
 
 def test_webhook_deduplication_persists_across_reconnect(persist_db: Path):
@@ -168,7 +168,7 @@ def test_webhook_deduplication_persists_across_reconnect(persist_db: Path):
 def test_contractor_budget_and_spend_commitments(persist_db: Path):
     """Contractor budgets, committed spend, and audit history must survive process disconnects."""
     db_file = persist_db
-    email = "persist-ledger@contractor.com"
+    email = "persist-ledger@example.com"
     
     db_set_contractor_cap(email, 150.00, db_path=db_file)
     db_sync_contractor_commitment(email, 79.99, agent_id="buyer-agent-99", db_path=db_file)
@@ -215,7 +215,7 @@ def test_active_contractor_subscriptions_pointer(persist_db: Path):
     db_file = persist_db
     
     active_ptr = ActiveContractorSubscriptionsProxy(db_path=db_file)
-    email = "pointer@contractor.com"
+    email = "pointer@example.com"
     sub_id = "I-POINTER-SUB-10"
     
     active_ptr[email] = sub_id

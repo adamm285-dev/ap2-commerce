@@ -76,7 +76,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
   companyName: 'Acme Autonomous Systems LLC',
   businessEntity: 'Acme Autonomous Systems LLC',
   tradeVertical: 'Dedicated AI Compute & Vector RAG',
-  supportEmail: 'ops@acme-systems.io',
+  supportEmail: 'ops@example.com',
   primaryRegion: 'US-East (N. Virginia)',
   currency: 'USD',
   mcpPort: 8001,
@@ -111,7 +111,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       name: 'High-Throughput Batch Worker',
       monthly_price_usd: 49.99,
       quota: '125 operations/mo',
-      sla: '99.95% Availability',
+      sla: '',
       enclave: 'US-Central Batch RAG',
       paypal_plan_id: 'P-5ML4271244454362WXNWU5NQ',
     },
@@ -120,7 +120,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       name: 'Dedicated AI Service Gateway',
       monthly_price_usd: 79.99,
       quota: '450 operations/mo',
-      sla: '99.98% Low Latency (<350ms)',
+      sla: '',
       enclave: 'US-East Low-Latency Gateway',
       paypal_plan_id: 'P-1GH8273644454362WXNWU7ZZ',
     },
@@ -129,7 +129,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       name: 'Enterprise Cluster Node',
       monthly_price_usd: 179.99,
       quota: '1,200 operations/mo',
-      sla: '99.99% Multi-Region Failover',
+      sla: '',
       enclave: 'Multi-Region Distributed Cluster',
       paypal_plan_id: 'P-9KL9921444454362WXNWU9AA',
     },
@@ -696,7 +696,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                   value={settings.supportEmail}
                   onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
                   style={{ width: '100%', padding: '8px 12px', backgroundColor: '#090e17', border: '1px solid #334155', borderRadius: '6px', color: '#f8fafc', fontSize: '12px' }}
-                  placeholder="e.g. ops@acme-systems.io"
+                  placeholder="e.g. ops@example.com"
                 />
               </div>
 
@@ -824,6 +824,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                       type="text"
                       value={cap.sla}
                       onChange={(e) => handleUpdateCapability(idx, 'sla', e.target.value)}
+                      placeholder="e.g. Standard SLA"
                       style={{ width: '100%', marginTop: '4px', padding: '6px 8px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '4px', color: '#38bdf8', fontSize: '11px' }}
                     />
                   </div>

@@ -104,7 +104,7 @@ export class AP2CommerceClient {
         tradeVertical: params.tradeVertical || 'Autonomous Cloud Compute',
         monthlySubscriptionFee: params.monthlyFee || 79.99,
         paypalSubscriptionId: params.paypalSubId || 'I-AUTONOMOUS-8902',
-        contractorEmail: params.contractorEmail || 'agent-alpha@nexus-systems.io',
+        contractorEmail: params.contractorEmail || 'agent-alpha@example.com',
       }),
     });
     if (!res.ok) throw new Error(`Zapier MCP sync failed: ${res.statusText}`);

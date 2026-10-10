@@ -116,7 +116,7 @@ class QboExporter:
                 "CompanyName": self.vendor_name,
                 "PrintOnCheckName": self.vendor_name,
                 "PrimaryEmailAddr": {
-                    "Address": "billing@autonomous-procurement.org",
+                    "Address": "billing@example.com",
                 },
                 "WebAddr": {
                     "URI": "https://ap2-commerce.org",

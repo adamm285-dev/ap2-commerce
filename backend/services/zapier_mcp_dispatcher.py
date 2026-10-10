@@ -39,10 +39,10 @@ class ZapierMcpDispatcher:
             contractor = request.contractor_name or "Nexus Autonomous Systems Corp"
             entity = request.business_entity or "Nexus Autonomous Systems Corp"
             fee = request.monthly_subscription_fee or 79.99
-            did = request.allocated_did or "mcp+https://gateway-01.acme-systems.io/mcp"
+            did = request.allocated_did or "mcp+https://gateway-01.example.com/mcp"
             sub_id = request.paypal_subscription_id or "I-AUTONOMOUS-8902"
             vertical = request.trade_vertical or "Dedicated AI Service Gateway"
-            email = request.contractor_email or "agent-alpha@nexus-systems.io"
+            email = request.contractor_email or "agent-alpha@example.com"
             proof_hash = request.mandate_proof_hash or "HMAC-MANDATE-VERIFIED-01"
 
             erp_pkg = {"status": "SKIPPED", "service": "QBO_ONLY"}

@@ -1007,7 +1007,7 @@ def create_closed_mandate_chains(
         payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
         payment_instrument=PaymentInstrument(
             type="paypal_vault",
-            id=f"vault_{contractor_email or 'agent-alpha@nexus-systems.io'}",
+            id=f"vault_{contractor_email or 'agent-alpha@example.com'}",
         ),
     )
     pay_chain = client.present(

@@ -31,7 +31,7 @@ def test_get_fleet_ledger_endpoint():
     nexus = next((t for t in txns if t["contractor_name"] == "AutonomousBuyerAgent-Nexus-Gateway"), None)
     assert nexus is not None
     assert nexus["status"] == "ACTIVE_STREAMING"
-    assert nexus["allocated_did"] == "mcp+https://gateway-01.acme-systems.io/mcp"
+    assert nexus["allocated_did"] == "mcp+https://gateway-01.example.com/mcp"
     assert "Ed25519" in nexus["kyc_status"]
 
 
@@ -66,7 +66,7 @@ def test_get_fleet_schedule_and_lock_slot():
     # 2. Lock a dispatch slot via POST /api/agent/dispatch/lock-slot
     lock_payload = {
         "leadId": "lead_test_bryntum_01",
-        "territoryZone": "Zone 2 - South Lakeland",
+        "territoryZone": "Zone 2 - US-Central",
         "slotStartIso": "2026-10-02 14:00",
         "paypalTransactionId": "PAY-DEP-9921",
     }
@@ -94,7 +94,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "contractor_name": "AutonomousBuyerAgent-Alpha-Batch",
         "business_entity": "Nexus Autonomous Systems Corp",
         "tier_id": "ap2-batch",
@@ -103,7 +103,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
         "carrier": "Dual-Transport FastMCP (RFC 8032)",
         "routing_state": "ACTIVE_COMPUTE_NODE",
         "subscriber_country_code": "US",
-        "assigned_did": "mcp+https://batch-01.acme-systems.io/mcp",
+        "assigned_did": "mcp+https://batch-01.example.com/mcp",
     }
 
     # Provision node via API
@@ -111,7 +111,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
         "/api/agent/provision",
         json={
             "subscriptionId": sub_id,
-            "contractorEmail": "agent-alpha@nexus-systems.io",
+            "contractorEmail": "agent-alpha@example.com",
             "tierId": "ap2-batch",
         },
     )

@@ -53,7 +53,7 @@ async def test_external_buyer_agent_negotiates_under_budget():
         transport="stdio",
         contractor_name="Nexus Autonomous Buyer",
         business_entity="Nexus Autonomous Systems Corp",
-        contractor_email="agent-alpha@nexus-systems.io",
+        contractor_email="agent-alpha@example.com",
         trade_id="ap2-gateway",
         budget_cap=60.00,
         verbose=False,

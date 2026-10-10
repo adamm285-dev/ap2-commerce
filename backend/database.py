@@ -204,7 +204,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
                         INSERT OR IGNORE INTO buyer_keys (kid, public_key_hex, contractor_email, business_name, registered_at)
                         VALUES (?, ?, ?, ?, ?)
                         """,
-                        (kid, buyer_pub, "agent-alpha@nexus-systems.io", "Nexus Autonomous Systems Corp", now_iso),
+                        (kid, buyer_pub, "agent-alpha@example.com", "Nexus Autonomous Systems Corp", now_iso),
                     )
     finally:
         conn.close()
@@ -1092,7 +1092,7 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "allocated_did": "AWAITING_ENDPOINT",
         "tcpa_guard": "PENDING ED25519 ACTIVATION",
         "status": "PENDING_DEPOSIT",
-        "email": "agent-alpha@nexus-systems.io",
+        "email": "agent-alpha@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1107,10 +1107,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-BW452NX993L2",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Apex Enterprise AI Inc",
-        "allocated_did": "mcp+https://gateway-01.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-01.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-nexus@apex-enterprise.ai",
+        "email": "agent-nexus@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1125,10 +1125,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-SC994ZZ331A8",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Sentinel Code Security Corp",
-        "allocated_did": "mcp+https://cluster-01.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://cluster-01.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-sentinel@sentinel-sec.com",
+        "email": "agent-sentinel@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1143,10 +1143,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-VG551PP882B4",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Vanguard Machine Intelligence LLC",
-        "allocated_did": "mcp+https://gateway-02.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-02.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-vanguard@vanguard-ai.io",
+        "email": "agent-vanguard@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1161,10 +1161,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-CX119CC447T1",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Cortex Labs International",
-        "allocated_did": "mcp+https://batch-02.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://batch-02.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-cortex@cortexlabs.org",
+        "email": "agent-cortex@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1179,10 +1179,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-HY882GG990W3",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Hyperion Agentic Works",
-        "allocated_did": "mcp+https://cluster-02.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://cluster-02.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-hyperion@hyperion-agentic.com",
+        "email": "agent-hyperion@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1197,10 +1197,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-VT771MM220K1",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Vector Semantic Systems",
-        "allocated_did": "mcp+https://batch-03.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://batch-03.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-vector@vectorsemantics.io",
+        "email": "agent-vector@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1215,10 +1215,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-DF449EE881V9",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "DeepFlow Compute PBC",
-        "allocated_did": "mcp+https://gateway-03.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-03.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-deepflow@deepflowcompute.com",
+        "email": "agent-deepflow@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1233,10 +1233,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-MR662SS331B2",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Meridian Cloud Solutions",
-        "allocated_did": "mcp+https://cluster-03.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://cluster-03.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-meridian@meridiancloud.net",
+        "email": "agent-meridian@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1251,10 +1251,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-CD551AA994M7",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Cyberdyne Agentic Ltd",
-        "allocated_did": "mcp+https://gateway-04.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-04.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-cyberdyne@cyberdyne.ai",
+        "email": "agent-cyberdyne@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1269,10 +1269,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-OM882JJ115X4",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "OmniModel Operations Corp",
-        "allocated_did": "mcp+https://batch-04.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://batch-04.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-omni@omnimodel.io",
+        "email": "agent-omni@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1287,10 +1287,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-PR331DD772Z8",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Prisma Cognitive Systems",
-        "allocated_did": "mcp+https://gateway-05.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-05.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-prisma@prismacognitive.com",
+        "email": "agent-prisma@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1305,10 +1305,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-QS224RR661K3",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "QuantScale Infrastructure",
-        "allocated_did": "mcp+https://batch-05.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://batch-05.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-quant@quantscale.org",
+        "email": "agent-quant@example.com",
         "data_source": "Demo data",
     },
     {
@@ -1323,10 +1323,10 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
         "paypal_sub_id": "I-AR118CC559W2",
         "kyc_status": "VERIFIED (Ed25519 Mandate Bound)",
         "kyc_legal_entity": "Apex Reasoning Group",
-        "allocated_did": "mcp+https://gateway-06.acme-systems.io/mcp",
+        "allocated_did": "mcp+https://gateway-06.example.com/mcp",
         "tcpa_guard": "100% ED25519 SIGNED MANDATE",
         "status": "ACTIVE_STREAMING",
-        "email": "agent-apex@apexreasoning.com",
+        "email": "agent-apex@example.com",
         "data_source": "Demo data",
     },
 ]
@@ -1454,7 +1454,7 @@ def get_fleet_ledger(
             """
             SELECT * FROM subscriptions 
             WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
-              AND contractor_email = 'agent-alpha@nexus-systems.io'
+              AND contractor_email = 'agent-alpha@example.com'
               AND subscription_id != 'TXN-AP2-9021'
             ORDER BY updated_at DESC, created_at DESC
             LIMIT 1
@@ -1472,7 +1472,7 @@ def get_fleet_ledger(
             for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
                 c_email = (s_data.get("contractor_email") or "").lower()
                 if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and (
-                    c_email == "agent-alpha@nexus-systems.io"
+                    c_email == "agent-alpha@example.com"
                 ) and s_id != "TXN-AP2-9021":
                     active_sub = s_data
                     break
@@ -1490,7 +1490,7 @@ def get_fleet_ledger(
             if assigned and str(assigned).startswith("mcp+https://"):
                 display_endpoint = str(assigned)
             else:
-                display_endpoint = "mcp+https://gateway-01.acme-systems.io/agents/batch-alpha"
+                display_endpoint = "mcp+https://gateway-01.example.com/agents/batch-alpha"
             kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
             anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
         else:

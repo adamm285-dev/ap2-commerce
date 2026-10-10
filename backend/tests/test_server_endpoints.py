@@ -93,8 +93,8 @@ def test_reset_mandate_ledger_endpoint():
 def test_provision_line_unauthorized_subscription_fails():
     payload = {
         "subscriptionId": "I-FAKE-UNREGISTERED-9999",
-        "contractorEmail": "test@ap2-procure.org",
-        "areaCode": "863",
+        "contractorEmail": "test@example.com",
+        "areaCode": "202",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 404
@@ -107,13 +107,13 @@ def test_provision_line_identity_mismatch_fails():
     _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
         "subscription_id": "I-TEST-SUB-9941",
         "status": "ACTIVE",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     payload = {
         "subscriptionId": "I-TEST-SUB-9941",
-        "contractorEmail": "attacker@evil.com",
+        "contractorEmail": "attacker@example.com",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 403
@@ -126,13 +126,13 @@ def test_provision_line_endpoint():
     _COMPLETED_SUBSCRIPTIONS["I-TEST-SUB-9941"] = {
         "subscription_id": "I-TEST-SUB-9941",
         "status": "ACTIVE",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     payload = {
         "subscriptionId": "I-TEST-SUB-9941",
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 201
@@ -263,7 +263,7 @@ def test_provision_approval_pending_rejected_until_webhook_activated():
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "APPROVAL_PENDING",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "approval_url": "https://www.sandbox.paypal.com/checkoutnow?token=TEST_TOKEN_9942",
@@ -272,7 +272,7 @@ def test_provision_approval_pending_rejected_until_webhook_activated():
     # 1. Provisioning must be rejected while APPROVAL_PENDING
     prov_req = {
         "subscriptionId": sub_id,
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
     }
     res_pending = client.post("/api/agent/provision", json=prov_req)
     assert res_pending.status_code == 402
@@ -351,7 +351,7 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
     from ..services.mandate_evaluator import ledger, register_authorized_mandate
     from ..services.paypal_service import paypal_service
 
-    email = "dana@contractor.com"
+    email = "dana@example.com"
     ledger.set_contractor_cap(email, 200.0)
 
     # 1. Dana has an active ap2-batch subscription
@@ -440,7 +440,7 @@ def test_webhook_activated_transitions_old_plan_to_replaced():
     from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
     from ..services.paypal_service import paypal_service
 
-    email = "dana-activate@contractor.com"
+    email = "dana-activate@example.com"
     old_sub_id = "I-DANA-ACTIVE-PLAN"
     new_sub_id = "I-DANA-UPGRADE-ACTIVATING"
 
@@ -500,7 +500,7 @@ def test_webhook_cancelled_suspended_failed_updates_status_and_releases_ledger()
     from ..services.mandate_evaluator import ledger
     from ..services.paypal_service import paypal_service
 
-    email = "cancel-test@contractor.com"
+    email = "cancel-test@example.com"
     sub_id = "I-CANCEL-TEST-88"
     ledger.set_contractor_cap(email, 100.0)
     ledger.record_spend(49.99, {"contractor_email": email})
@@ -563,7 +563,7 @@ def test_resolve_tier_from_paypal_plan():
 def test_lock_dispatch_slot():
     payload = {
         "leadId": "lead-sarah-jenkins",
-        "territoryZone": "Zone 2 - South Lakeland",
+        "territoryZone": "Zone 2 - US-Central",
         "slotStartIso": "2026-10-06T10:00:00-04:00",
         "paypalTransactionId": "TXN-998811",
     }
@@ -571,14 +571,14 @@ def test_lock_dispatch_slot():
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert "Crew B" in data["crewAssigned"]
+    assert "Cluster Beta" in data["crewAssigned"]
 
 
 def test_trigger_zapier_mcp_sync():
     payload = {
         "leadId": "workload-nexus-01",
         "customerName": "Autonomous Compute Client",
-        "customerPhone": "+18635550199",
+        "customerPhone": "+15555550199",
         "propertyAddress": "Data Center Rack B4, US-East",
         "depositAmount": 250.00,
         "paypalTxnId": "TXN-998811",
@@ -601,7 +601,7 @@ def test_trigger_zapier_mcp_a2a_onboarding_sync():
         "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": "I-AUTONOMOUS-8902",
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
     }
     res = client.post("/api/mcp/zapier-sync", json=payload)
     assert res.status_code == 200
@@ -670,7 +670,7 @@ def test_m2m_audit_payloads_endpoint():
         "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": "I-AUTONOMOUS-8902",
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
         "mandateProofHash": "HMAC-TEST-PROOF-99",
     }
     sync_res = client.post("/api/mcp/zapier-sync", json=payload)
@@ -805,7 +805,7 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
     from ..services.mandate_evaluator import ledger, register_authorized_mandate
     from ..services.paypal_service import paypal_service
 
-    email = "edge1@contractor.com"
+    email = "edge1@example.com"
     ledger.set_contractor_cap(email, 200.0)
 
     # 1. Existing active plan at $49.99
@@ -878,7 +878,7 @@ def test_edge_case_paypal_cancels_old_plan_after_switch_does_not_deduct_from_led
     from ..services.mandate_evaluator import ledger
     from ..services.paypal_service import paypal_service
 
-    email = "edge2@contractor.com"
+    email = "edge2@example.com"
     ledger.set_contractor_cap(email, 200.0)
 
     old_id = "I-EDGE2-OLD-REPLACED"
@@ -932,7 +932,7 @@ def test_edge_case_duplicate_cancelled_webhook_and_deduplication():
     from ..services.mandate_evaluator import ledger
     from ..services.paypal_service import paypal_service
 
-    email = "edge3@contractor.com"
+    email = "edge3@example.com"
     ledger.set_contractor_cap(email, 100.0)
 
     sub_id = "I-EDGE3-SUB"
@@ -984,7 +984,7 @@ def test_edge_case_pending_upgrade_cancelled_clears_pending_replacement_and_reta
     from ..services.mandate_evaluator import ledger
     from ..services.paypal_service import paypal_service
 
-    email = "edge4@contractor.com"
+    email = "edge4@example.com"
     ledger.set_contractor_cap(email, 200.0)
 
     old_id = "I-EDGE4-ACTIVE"
@@ -1039,7 +1039,7 @@ def test_edge_case_suspended_then_activated_recommits_spend():
     from ..services.mandate_evaluator import ledger
     from ..services.paypal_service import paypal_service
 
-    email = "edge5@contractor.com"
+    email = "edge5@example.com"
     ledger.set_contractor_cap(email, 100.0)
 
     sub_id = "I-EDGE5-SUB"
@@ -1093,7 +1093,7 @@ def test_simulate_paypal_approval_endpoint():
     from ..config import settings
 
     test_sub_id = "I-SIM-APPROVAL-TEST-01"
-    test_email = "sim_test@contractorhub.io"
+    test_email = "sim_test@example.com"
     _COMPLETED_SUBSCRIPTIONS[test_sub_id] = {
         "subscription_id": test_sub_id,
         "status": "APPROVAL_PENDING",
@@ -1274,6 +1274,23 @@ def test_deck_purchase_endpoint_v02_flow():
     assert data["workloadTasksPerMonth"] == 450
     assert data["routingState"] == "ACTIVE_STREAMING"
     assert data["receipt"] is not None
+
+
+def test_deck_purchase_endpoint_returns_404_in_live_mode(monkeypatch):
+    """
+    Verifies that POST /api/agent/deck-purchase returns HTTP 404 when
+    MOCK_EXTERNAL_APIS is False (AGENTS.md rule 5).
+    """
+    from backend.config import settings
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+    req_payload = {
+        "tierId": "ap2-gateway",
+        "agreedMonthlyRate": 79.99,
+        "buyerEmail": "deck-buyer@example.com",
+    }
+    res = client.post("/api/agent/deck-purchase", json=req_payload)
+    assert res.status_code == 404
+
 
 
 

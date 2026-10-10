@@ -58,7 +58,7 @@ async def test_dual_sided_ap2_mandates():
         buyer_agent_id="buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     assert neg["status"] == "COUNTER_OFFER"
     assert neg["offer_id"].startswith("off_ap2_batch_")
@@ -96,7 +96,7 @@ async def test_machine_readable_next_action_and_offer_id_binding():
         buyer_agent_id="buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     assert "next_action" in neg
     next_action_1 = neg["next_action"]
@@ -109,7 +109,7 @@ async def test_machine_readable_next_action_and_offer_id_binding():
     chains1 = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg["checkout_jwt"],
@@ -122,8 +122,8 @@ async def test_machine_readable_next_action_and_offer_id_binding():
         offer_id=params_1["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains1["checkout_mandate_chain"],
         payment_mandate_chain=chains1["payment_mandate_chain"],
         checkout_jwt=neg["checkout_jwt"],
@@ -146,7 +146,7 @@ async def test_machine_readable_next_action_and_offer_id_binding():
     # Step 3: Compute node provisioning
     node = await seller_agent.provision_compute_node(
         subscription_id=params_2["subscription_id"],
-        buyer_email=params_2.get("buyer_email") or params_2.get("contractor_email") or "buyer@ap2-procure.org",
+        buyer_email=params_2.get("buyer_email") or params_2.get("contractor_email") or "buyer@example.com",
     )
     assert node["status"] == "PROVISIONED"
     assert node["endpoint"].startswith("mcp+https://")
@@ -166,7 +166,7 @@ async def test_ttl_alignment_and_offer_expiry():
         buyer_agent_id="buyer-ttl",
         tier_id="ap2-batch",
         monthly_budget_cap=100.00,
-        contractor_email="ttl@buyer.com",
+        contractor_email="ttl@example.com",
     )
     intent = neg["ap2_intent_mandate"]
     cart = neg["ap2_cart_mandate"]
@@ -188,14 +188,14 @@ async def test_cumulative_budget_tracking():
         buyer_agent_id="budget-tracker-agent",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="tracker@buyer.com",
+        contractor_email="tracker@example.com",
     )
     assert neg["monthly_cap_remaining"] == 10.01
 
     chains = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="tracker@buyer.com",
+        buyer_email="tracker@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg["checkout_jwt"],
@@ -208,8 +208,8 @@ async def test_cumulative_budget_tracking():
         offer_id=neg["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="tracker@buyer.com",
-        buyer_email="tracker@buyer.com",
+        contractor_email="tracker@example.com",
+        buyer_email="tracker@example.com",
         checkout_mandate_chain=chains["checkout_mandate_chain"],
         payment_mandate_chain=chains["payment_mandate_chain"],
         checkout_jwt=neg["checkout_jwt"],
@@ -250,7 +250,7 @@ async def test_buyer_signed_intent_mandate_acceptance():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     assert verify_ap2_intent_mandate(custom_mandate) is True
 
@@ -258,7 +258,7 @@ async def test_buyer_signed_intent_mandate_acceptance():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "COUNTER_OFFER"
@@ -268,7 +268,7 @@ async def test_buyer_signed_intent_mandate_acceptance():
     chains = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg["checkout_jwt"],
@@ -281,8 +281,8 @@ async def test_buyer_signed_intent_mandate_acceptance():
         offer_id=neg["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains["checkout_mandate_chain"],
         payment_mandate_chain=chains["payment_mandate_chain"],
         checkout_jwt=neg["checkout_jwt"],
@@ -302,7 +302,7 @@ async def test_tampered_buyer_signed_intent_mandate_rejected():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     tampered = dict(custom_mandate)
     tampered["amount"] = {"value": "999.00", "currency_code": "USD"}
@@ -311,7 +311,7 @@ async def test_tampered_buyer_signed_intent_mandate_rejected():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=tampered,
     )
     assert neg["status"] == "REJECTED"
@@ -327,14 +327,14 @@ async def test_buyer_signed_intent_mandate_identity_mismatch():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="attacker@evil.com",
+        contractor_email="attacker@example.com",
     )
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -350,7 +350,7 @@ async def test_untrusted_buyer_key_rejected():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     custom_mandate["kid"] = "untrusted-rogue-key"
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
@@ -359,7 +359,7 @@ async def test_untrusted_buyer_key_rejected():
         buyer_agent_id="hacker-buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -375,7 +375,7 @@ async def test_expired_buyer_mandate_rejected():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     custom_mandate["expires_at"] = time.time() - 3600  # Expired 1 hour ago
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
@@ -384,7 +384,7 @@ async def test_expired_buyer_mandate_rejected():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -400,7 +400,7 @@ async def test_unauthorized_category_buyer_mandate_rejected():
         recurrence="monthly",
         category="GAMING_VIRTUAL_CURRENCY",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
 
@@ -408,7 +408,7 @@ async def test_unauthorized_category_buyer_mandate_rejected():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -427,7 +427,7 @@ async def test_signed_cap_overrides_unsigned_param():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
 
     # Caller tries to pass an inflated unsigned monthly_budget_cap of $200.00
@@ -435,7 +435,7 @@ async def test_signed_cap_overrides_unsigned_param():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=200.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "COUNTER_OFFER"
@@ -453,7 +453,7 @@ async def test_provision_compute_node_subscription_validation():
     # 1. Non-existent subscription ID is rejected
     res_unknown = await seller_agent.provision_compute_node(
         subscription_id="SUB-NONEXISTENT-9999",
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
     )
     assert res_unknown["status"] == "REJECTED"
     assert res_unknown["error"] == "SUBSCRIPTION_NOT_FOUND"
@@ -463,12 +463,12 @@ async def test_provision_compute_node_subscription_validation():
         buyer_agent_id="buyer-01",
         tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     chains = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg["checkout_jwt"],
@@ -481,8 +481,8 @@ async def test_provision_compute_node_subscription_validation():
         offer_id=neg["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains["checkout_mandate_chain"],
         payment_mandate_chain=chains["payment_mandate_chain"],
         checkout_jwt=neg["checkout_jwt"],
@@ -493,7 +493,7 @@ async def test_provision_compute_node_subscription_validation():
 
     res_mismatch = await seller_agent.provision_compute_node(
         subscription_id=sub_id,
-        buyer_email="attacker@evil.com",
+        buyer_email="attacker@example.com",
     )
     assert res_mismatch["status"] == "REJECTED"
     assert res_mismatch["error"] == "IDENTITY_MISMATCH_DETECTED"
@@ -508,7 +508,7 @@ async def test_missing_expires_at_rejected():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     custom_mandate.pop("expires_at", None)
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
@@ -517,7 +517,7 @@ async def test_missing_expires_at_rejected():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -533,7 +533,7 @@ async def test_missing_payer_email_rejected():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-gateway",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     custom_mandate["payer"] = {}
     custom_mandate = sign_ap2_intent_mandate(custom_mandate)
@@ -542,7 +542,7 @@ async def test_missing_payer_email_rejected():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=custom_mandate,
     )
     assert neg["status"] == "REJECTED"
@@ -574,7 +574,7 @@ async def test_repo_seed_cannot_forge_mandate():
         recurrence="monthly",
         category="autonomous-node-service",
         tier_id="ap2-cluster",
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     forged = sign_ap2_intent_mandate(custom_mandate, private_key_hex=old_priv.private_bytes_raw().hex())
 
@@ -582,7 +582,7 @@ async def test_repo_seed_cannot_forge_mandate():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-cluster",
         monthly_budget_cap=500.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
         buyer_intent_mandate=forged,
     )
     assert neg["status"] == "REJECTED"
@@ -599,12 +599,12 @@ async def test_consecutive_purchases_budget_accounting():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     chains1 = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg1["checkout_jwt"],
@@ -617,8 +617,8 @@ async def test_consecutive_purchases_budget_accounting():
         offer_id=neg1["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains1["checkout_mandate_chain"],
         payment_mandate_chain=chains1["payment_mandate_chain"],
         checkout_jwt=neg1["checkout_jwt"],
@@ -632,7 +632,7 @@ async def test_consecutive_purchases_budget_accounting():
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     assert neg2["status"] == "ALREADY_SUBSCRIBED"
     assert neg2["subscription_id"] == p1["subscription_id"]
@@ -642,8 +642,8 @@ async def test_consecutive_purchases_budget_accounting():
         offer_id=neg1["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains1["checkout_mandate_chain"],
         payment_mandate_chain=chains1["payment_mandate_chain"],
         checkout_jwt=neg1["checkout_jwt"],
@@ -664,13 +664,13 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
         buyer_agent_id="buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     neg2 = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
 
     # Offers must have distinct offer_ids and distinct proof hashes
@@ -681,7 +681,7 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     chains1 = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg1["checkout_jwt"],
@@ -694,8 +694,8 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
         offer_id=neg1["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains1["checkout_mandate_chain"],
         payment_mandate_chain=chains1["payment_mandate_chain"],
         checkout_jwt=neg1["checkout_jwt"],
@@ -712,7 +712,7 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     chains2 = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg2["checkout_jwt"],
@@ -725,8 +725,8 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
         offer_id=neg2["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains2["checkout_mandate_chain"],
         payment_mandate_chain=chains2["payment_mandate_chain"],
         checkout_jwt=neg2["checkout_jwt"],
@@ -750,12 +750,12 @@ async def test_budget_exhausted_machine_readable_rejection():
         buyer_agent_id="buyer-01",
         tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     chains1 = build_test_ap2_chains(
         tier_id="ap2-batch",
         monthly_price=49.99,
-        buyer_email="buyer@ap2-procure.org",
+        buyer_email="buyer@example.com",
         budget_cap=60.0,
         checkout_record={
             "checkout_jwt": neg1["checkout_jwt"],
@@ -768,8 +768,8 @@ async def test_budget_exhausted_machine_readable_rejection():
         offer_id=neg1["offer_id"],
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        contractor_email="buyer@ap2-procure.org",
-        buyer_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
+        buyer_email="buyer@example.com",
         checkout_mandate_chain=chains1["checkout_mandate_chain"],
         payment_mandate_chain=chains1["payment_mandate_chain"],
         checkout_jwt=neg1["checkout_jwt"],
@@ -782,7 +782,7 @@ async def test_budget_exhausted_machine_readable_rejection():
         buyer_agent_id="buyer-01",
         tier_id="ap2-gateway",
         monthly_budget_cap=10.01,
-        contractor_email="buyer@ap2-procure.org",
+        contractor_email="buyer@example.com",
     )
     assert neg_low["status"] == "REJECTED"
     assert neg_low["approved"] is False
@@ -797,7 +797,7 @@ async def test_negotiate_same_plan_returns_already_subscribed():
     Verifies Guard 1: When a subscriber is actively subscribed to a tier,
     negotiating for the identical tier returns ALREADY_SUBSCRIBED and the existing subscription_id.
     """
-    email = "buyer@ap2-procure.org"
+    email = "buyer@example.com"
 
     # Step 1: Buy Batch Worker
     neg1 = await seller_agent.negotiate_tier_terms(
@@ -853,7 +853,7 @@ async def test_negotiate_counter_offer_guard_no_better_offer():
     with a $60 cap, requesting an upgrade to Service Gateway ($79.99) cannot be afforded,
     and rather than counter-offering the plan already held, the seller returns NO_BETTER_OFFER.
     """
-    email = "subscriber@ap2-procure.org"
+    email = "subscriber@example.com"
 
     # Step 1: Subscribe to Batch Worker
     neg1 = await seller_agent.negotiate_tier_terms(
@@ -912,7 +912,7 @@ async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
     4. Provisioning the new Cluster Node allocates with cluster quota (1,200 tasks).
     5. Active spend is $179.99/mo, with $20.01 headroom remaining.
     """
-    email = "dana@ap2-procure.org"
+    email = "dana@example.com"
 
     # Step 1: Initial Batch Worker subscription & provisioning
     neg1 = await seller_agent.negotiate_tier_terms(
@@ -1013,7 +1013,7 @@ async def test_provision_rejects_superseded_subscription():
     Verifies that calling provision_compute_node with a replaced/superseded subscription
     is rejected with SUBSCRIPTION_SUPERSEDED error.
     """
-    email = "buyer@ap2-procure.org"
+    email = "buyer@example.com"
 
     # Buy plan 1
     neg1 = await seller_agent.negotiate_tier_terms(
@@ -1104,7 +1104,7 @@ async def test_multiple_rapid_purchases_worst_case_in_process():
     Three offers generated prior to any purchase. When bought in sequence,
     each replaces the previous one so active spend is ALWAYS <= cap ($49.99 <= $60).
     """
-    email = "buyer@ap2-procure.org"
+    email = "buyer@example.com"
 
     neg_a = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="buyer-01", tier_id="ap2-batch",

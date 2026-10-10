@@ -35,7 +35,7 @@ def test_successful_buyer_key_registration():
     """POST /api/agent/keys/register accepts valid challenge signature and enrolls buyer key."""
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "buyer-agent-tampa-compute-v1"
-    email = "tampa@tampabaycompute.com"
+    email = "tampa@example.com"
     entity = "Tampa Bay Compute Solutions LLC"
 
     # 1. Fetch challenge nonce
@@ -104,7 +104,7 @@ def test_rejected_registration_tampered_signature():
         json={
             "kid": "forged-buyer-agent",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "hacker@evilcorp.com",
+            "contractorEmail": "hacker@example.com",
             "businessEntity": "Evil Corp LLC",
             "challenge": challenge,
             "challengeSignature": forged_sig,
@@ -131,7 +131,7 @@ def test_rejected_registration_expired_challenge():
         json={
             "kid": "expired-chal-agent",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "contractor@floridaroof.com",
+            "contractorEmail": "contractor@example.com",
             "businessEntity": "Florida Roof Pro LLC",
             "challenge": challenge,
             "challengeSignature": sig_hex,
@@ -146,7 +146,7 @@ def test_newly_registered_buyer_key_can_evaluate_mandate():
     """A newly onboarded buyer agent can immediately sign and evaluate spending mandates."""
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "buyer-agent-orlando-cluster-v1"
-    email = "orlando@centralfloridacluster.com"
+    email = "orlando@example.com"
     entity = "Central Florida Cluster Solutions LLC"
 
     # 1. Onboard buyer agent
@@ -199,7 +199,7 @@ def test_rejected_registration_reserved_key_id():
         json={
             "kid": "ap2-seller-ed25519-v1",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "hacker@evil.com",
+            "contractorEmail": "hacker@example.com",
             "businessEntity": "Rogue Agent LLC",
             "challenge": challenge,
             "challengeSignature": sig_hex,
@@ -213,7 +213,7 @@ def test_rejected_registration_key_collision():
     """POST /api/agent/keys/register rejects overwriting an existing registered key ID with HTTP 409."""
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "unique-test-buyer-001"
-    email = "unique@floridabuilder.com"
+    email = "unique@example.com"
     entity = "Florida Unique Builder LLC"
 
     # Register first time
@@ -243,7 +243,7 @@ def test_rejected_registration_key_collision():
         json={
             "kid": kid,
             "publicKeyHex": other_pub,
-            "contractorEmail": "intruder@evil.com",
+            "contractorEmail": "intruder@example.com",
             "businessEntity": "Intruder LLC",
             "challenge": challenge2,
             "challengeSignature": sig_hex2,
@@ -264,7 +264,7 @@ def test_rejected_registration_unissued_challenge():
         json={
             "kid": "unissued-chal-agent",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "contractor@validhub.com",
+            "contractorEmail": "contractor@example.com",
             "businessEntity": "Valid Hub LLC",
             "challenge": fake_challenge,
             "challengeSignature": sig_hex,
@@ -287,7 +287,7 @@ def test_rejected_registration_single_use_consumed_challenge():
         json={
             "kid": "single-use-agent-01",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "burn1@builder.com",
+            "contractorEmail": "burn1@example.com",
             "businessEntity": "Burn Test LLC",
             "challenge": challenge,
             "challengeSignature": sig_hex,
@@ -301,7 +301,7 @@ def test_rejected_registration_single_use_consumed_challenge():
         json={
             "kid": "single-use-agent-02",
             "publicKeyHex": pub_hex,
-            "contractorEmail": "burn2@builder.com",
+            "contractorEmail": "burn2@example.com",
             "businessEntity": "Burn Test LLC",
             "challenge": challenge,
             "challengeSignature": sig_hex,

@@ -2431,7 +2431,7 @@
               }
             ],
             "title": "Contractor Email",
-            "default": "agent-alpha@nexus-systems.io"
+            "default": "agent-alpha@example.com"
           },
           "trade_id": {
             "anyOf": [
@@ -3017,7 +3017,7 @@
               }
             ],
             "title": "Allocateddid",
-            "default": "mcp+https://gateway-01.acme-systems.io/agents/gateway"
+            "default": "mcp+https://gateway-01.example.com/agents/gateway"
           },
           "tradeVertical": {
             "anyOf": [
@@ -3065,7 +3065,7 @@
               }
             ],
             "title": "Contractoremail",
-            "default": "agent@acme-systems.io"
+            "default": "agent@example.com"
           },
           "mandateProofHash": {
             "anyOf": [

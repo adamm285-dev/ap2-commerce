@@ -20,7 +20,7 @@ LIVE_SANDBOX_ENABLED = os.environ.get("RUN_LIVE_SANDBOX") == "1"
 def test_compliance_note_in_provision_response():
     resp = ProvisionResponse(
         status="ALLOCATED",
-        endpoint="mcp+https://gateway-01.acme-systems.io/mcp",
+        endpoint="mcp+https://gateway-01.example.com/mcp",
         carrier="Dual-Transport FastMCP (RFC 8032)",
         routingState="ACTIVE_COMPUTE_NODE",
         subscriptionId="I-TEST-SUB-01",

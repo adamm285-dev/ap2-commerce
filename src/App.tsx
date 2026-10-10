@@ -131,8 +131,8 @@ export function App() {
   const [businessEntity, setBusinessEntity] = useState('Acme Autonomous Systems LLC');
   const [tradeVertical, setTradeVertical] = useState('Dedicated AI Service Gateway');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
-  const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA - 863)');
-  const [preferredAreaCode, setPreferredAreaCode] = useState('863');
+  const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA - 703)');
+  const [preferredAreaCode, setPreferredAreaCode] = useState('703');
 
   // Dynamic trade impact dataset computed from live active transactions (Batch -> Gateway -> Cluster)
   const dynamicTradeImpact = useMemo(() => {
@@ -1267,7 +1267,7 @@ export function App() {
                       fontSize: '13px',
                     }}
                   >
-                    <option value="US-East Cluster (Ashburn, VA - 863)">US-East Cluster (Ashburn, VA - 863)</option>
+                    <option value="US-East Cluster (Ashburn, VA - 703)">US-East Cluster (Ashburn, VA - 703)</option>
                     <option value="US-Central Cluster (Council Bluffs, IA - 515)">US-Central Cluster (Council Bluffs, IA - 515)</option>
                     <option value="US-West Cluster (The Dalles, OR - 541)">US-West Cluster (The Dalles, OR - 541)</option>
                     <option value="EU-West Cluster (Frankfurt, DE - 49)">EU-West Cluster (Frankfurt, DE - 49)</option>
@@ -1281,7 +1281,7 @@ export function App() {
                   <input
                     type="text"
                     maxLength={3}
-                    placeholder="e.g. 863, 515, 541"
+                    placeholder="e.g. 703, 515, 541"
                     value={preferredAreaCode}
                     onChange={(e) => setPreferredAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
                     style={{
@@ -1582,7 +1582,7 @@ export function App() {
       <TrustedSurfaceLimitsModal
         isOpen={isTrustedSurfaceOpen}
         onClose={() => setIsTrustedSurfaceOpen(false)}
-        initialEmail="agent-alpha@nexus-systems.io"
+        initialEmail="agent-alpha@example.com"
         initialBudgetCap={maxMonthlyBudget}
         onMandatesSigned={(tokens) => {
           setTrustedSurfaceTokens(tokens);

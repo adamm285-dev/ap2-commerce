@@ -26,7 +26,7 @@ class ContractorCopilot:
         trade_vertical: str = "Dedicated AI Service Gateway",
         area_code: str = "US",
         budget_cap: float = 100.00,
-        contractor_email: str = "agent-alpha@nexus-systems.io",
+        contractor_email: str = "agent-alpha@example.com",
         simulate_exhaustion: bool = False,
     ):
         self.contractor_name = contractor_name
@@ -53,13 +53,13 @@ class ContractorCopilot:
             "recent_missed_leads": [
                 {
                     "caller_name": "Nexus High-Throughput Worker",
-                    "caller_phone": "mcp+https://batch-01.acme-systems.io/mcp",
+                    "caller_phone": "mcp+https://batch-01.example.com/mcp",
                     "estimated_job_value": 3250.00,
                     "voicemail_transcript": "Queued 125 batch synthesis jobs awaiting gateway execution.",
                 },
                 {
                     "caller_name": "Enterprise Cluster Node",
-                    "caller_phone": "mcp+https://cluster-01.acme-systems.io/mcp",
+                    "caller_phone": "mcp+https://cluster-01.example.com/mcp",
                     "estimated_job_value": 1800.00,
                     "voicemail_transcript": "Dedicated AI service gateway needed to route reasoning queries.",
                 },
@@ -80,7 +80,7 @@ class ContractorCopilot:
         # Priority 1: Approval / Execution
         if any(w in msg for w in ["approve", "setup", "activate", "execute", "go ahead", "do it"]) or msg in ["yes", "yep", "yeah", "ok", "okay"]:
             exec_result = await self.execute_autonomous_a2a_cycle()
-            did = exec_result.get("assigned_did", "mcp+https://gateway-01.acme-systems.io/mcp")
+            did = exec_result.get("assigned_did", "mcp+https://gateway-01.example.com/mcp")
             qbo = exec_result.get("zapier_sync", {}).get("qbo_draft_invoice_id", "QBO-EXP-9921")
             sub_price = 79.99
             if exec_result.get("protocol_trace") and len(exec_result["protocol_trace"]) > 0:
@@ -419,7 +419,7 @@ class ContractorCopilot:
         }
         prov_resp = await process_mcp_request(prov_req)
         prov_data = json.loads(prov_resp["result"]["content"][0]["text"])
-        assigned_did = prov_data.get("mcp_endpoint") or prov_data.get("assigned_did") or "mcp+https://gateway-01.acme-systems.io/mcp"
+        assigned_did = prov_data.get("mcp_endpoint") or prov_data.get("assigned_did") or "mcp+https://gateway-01.example.com/mcp"
         protocol_trace.append({
             "step": 3,
             "timestamp": t3,

@@ -44,7 +44,7 @@ async def test_negotiate_below_minimum_budget_issues_dual_signed_error_receipts(
     """Verifies below-minimum budget returns status=REJECTED and valid signed error receipts."""
     res = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-low",
-        buyer_email="buyer-low@nexus-systems.io",
+        buyer_email="buyer-low@example.com",
         tier_id="ap2-gateway",
         monthly_budget_cap=40.00,  # Below $49.99 minimum
     )
@@ -69,7 +69,7 @@ async def test_negotiate_unauthorized_category_issues_dual_signed_error_receipts
     """Verifies that an unauthorized spending category returns REJECTED and dual signed error receipts."""
     res = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-cat",
-        buyer_email="buyer-cat@nexus-systems.io",
+        buyer_email="buyer-cat@example.com",
         tier_id="ap2-batch",
         monthly_budget_cap=100.00,
         category="unauthorized-hardware-procurement",
@@ -96,7 +96,7 @@ async def test_negotiate_no_better_offer_issues_dual_signed_error_receipts():
     """Verifies that when buyer is already on best viable tier within budget, negotiate returns NO_BETTER_OFFER with dual signed error receipts."""
     from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
 
-    email = "already-best@nexus-systems.io"
+    email = "already-best@example.com"
     sub_id = "I-A2A-EXISTING-BATCH"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
@@ -134,7 +134,7 @@ async def test_negotiate_no_better_offer_issues_dual_signed_error_receipts():
 async def test_purchase_tampered_price_issues_dual_signed_error_receipts():
     """Verifies purchase_subscription with mismatched price returns REJECTED and dual error receipts."""
     # Step 1: Negotiate valid terms
-    email = "tamper-price@nexus-systems.io"
+    email = "tamper-price@example.com"
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-tamper",
         buyer_email=email,
@@ -202,7 +202,7 @@ async def test_purchase_tampered_price_issues_dual_signed_error_receipts():
 @pytest.mark.asyncio
 async def test_purchase_tampered_payee_issues_dual_signed_error_receipts():
     """Verifies purchase_subscription with unauthorized payee returns REJECTED and dual error receipts."""
-    email = "tamper-payee@nexus-systems.io"
+    email = "tamper-payee@example.com"
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-payee",
         buyer_email=email,
@@ -261,7 +261,7 @@ async def test_purchase_tampered_payee_issues_dual_signed_error_receipts():
 @pytest.mark.asyncio
 async def test_purchase_budget_cap_breach_issues_dual_signed_error_receipts():
     """Verifies purchase_subscription with open mandate cap lower than checkout returns dual error receipts."""
-    email = "cap-breach@nexus-systems.io"
+    email = "cap-breach@example.com"
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-cap",
         buyer_email=email,
@@ -324,7 +324,7 @@ async def test_buyer_agent_autonomous_cycle_records_ap2_receipts():
     buyer = BuyerAgent(
         agent_id="test-ap2-agent-01",
         monthly_budget_cap=100.00,
-        contractor_email="agent-stage3-c2@nexus-systems.io",
+        contractor_email="agent-stage3-c2@example.com",
     )
     result = await buyer.run_autonomous_onboarding_cycle(target_trade="ap2-gateway")
 

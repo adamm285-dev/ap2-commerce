@@ -40,7 +40,7 @@ def test_complete_autonomous_a2a_lifecycle():
         "recurrence": "monthly",
         "category": "COMPUTE_NODE_SERVICE",
         "monthlyBudgetCap": 100.00,
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
     }
     res_mandate = client.post("/api/agent/spending-mandate/evaluate", json=mandate_payload)
     assert res_mandate.status_code == 200
@@ -68,7 +68,7 @@ def test_complete_autonomous_a2a_lifecycle():
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",
-        "contractor_email": "agent-alpha@nexus-systems.io",
+        "contractor_email": "agent-alpha@example.com",
         "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
     }
@@ -76,7 +76,7 @@ def test_complete_autonomous_a2a_lifecycle():
     # Step 5: Provision Dedicated Compute Node Endpoint
     prov_payload = {
         "subscriptionId": sub_id,
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
         "areaCode": "US",
     }
     res_prov = client.post("/api/agent/provision", json=prov_payload)
@@ -95,7 +95,7 @@ def test_complete_autonomous_a2a_lifecycle():
         "tradeVertical": "Dedicated AI Service Gateway",
         "monthlySubscriptionFee": 79.99,
         "paypalSubscriptionId": sub_id,
-        "contractorEmail": "agent-alpha@nexus-systems.io",
+        "contractorEmail": "agent-alpha@example.com",
         "mandateProofHash": proof_hash,
     }
     res_zap_a2a = client.post("/api/mcp/zapier-sync", json=zapier_a2a_payload)

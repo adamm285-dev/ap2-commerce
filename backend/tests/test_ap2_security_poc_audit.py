@@ -53,7 +53,7 @@ def _build_test_chains_custom(
     price_cents: int = 7999,
     monthly_price: float = 79.99,
     max_cap_cents: int = 10000,
-    contractor_email: str = "agent-alpha@nexus-systems.io",
+    contractor_email: str = "agent-alpha@example.com",
     nonce: str | None = None,
     aud: str = AP2_MERCHANT_ID,
     payee_id: str = AP2_MERCHANT_ID,
@@ -232,7 +232,7 @@ def test_reject_buyer_email_binding_mismatch(monkeypatch, mock_mode):
     register_buyer_key(
         kid="registered-bob-key",
         public_key_hex=bob_pub_json,
-        contractor_email="bob@nexus-systems.io",
+        contractor_email="bob@example.com",
         business_name="Bob Systems",
     )
 
@@ -241,17 +241,17 @@ def test_reject_buyer_email_binding_mismatch(monkeypatch, mock_mode):
     chk_chain, pay_chain, chk_jwt, chk_hash, nonce = _build_test_chains_custom(
         user_key=bob_key,
         agent_key=agent_key,
-        contractor_email="bob@nexus-systems.io",
+        contractor_email="bob@example.com",
     )
 
-    # 1. Attacker attempts purchase for mallory@evil.io using Bob's key
+    # 1. Attacker attempts purchase for mallory@example.com using Bob's key
     res_mismatch = verify_ap2_chains(
         checkout_mandate_token=chk_chain,
         payment_mandate_token=pay_chain,
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
         enforce_replay_defense=False,
-        buyer_email="mallory@evil.io",
+        buyer_email="mallory@example.com",
     )
     assert res_mismatch["valid"] is False
     assert res_mismatch["error"] == ERR_INVALID_CREDENTIAL
@@ -264,7 +264,7 @@ def test_reject_buyer_email_binding_mismatch(monkeypatch, mock_mode):
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
         enforce_replay_defense=False,
-        buyer_email="bob@nexus-systems.io",
+        buyer_email="bob@example.com",
     )
     assert res_match["valid"] is True
 
@@ -380,11 +380,11 @@ async def test_cluster_tier_purchase_succeeds_under_adequate_signed_cap():
         price_cents=17999,
         monthly_price=179.99,
         max_cap_cents=20000,  # $200 cap > $179.99
-        contractor_email="cluster-buyer@nexus-systems.io",
+        contractor_email="cluster-buyer@example.com",
     )
 
     pur = await seller_agent.purchase_subscription(
-        buyer_email="cluster-buyer@nexus-systems.io",
+        buyer_email="cluster-buyer@example.com",
         checkout_mandate_chain=chk_chain,
         payment_mandate_chain=pay_chain,
         checkout_jwt=chk_jwt,
@@ -414,11 +414,11 @@ async def test_cluster_tier_purchase_rejected_when_cap_below_price():
         price_cents=17999,
         monthly_price=179.99,
         max_cap_cents=10000,  # $100 cap < $179.99
-        contractor_email="cluster-low-cap@nexus-systems.io",
+        contractor_email="cluster-low-cap@example.com",
     )
 
     pur = await seller_agent.purchase_subscription(
-        buyer_email="cluster-low-cap@nexus-systems.io",
+        buyer_email="cluster-low-cap@example.com",
         checkout_mandate_chain=chk_chain,
         payment_mandate_chain=pay_chain,
         checkout_jwt=chk_jwt,

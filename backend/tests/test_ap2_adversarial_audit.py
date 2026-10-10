@@ -219,7 +219,7 @@ def test_unregistered_buyer_key_mandate_rejected():
 def test_verify_tamper_rejects_self_signed_payload_with_embedded_key():
     attacker = ed25519.Ed25519PrivateKey.generate()
     payload = {
-        "vct": "ap2.mandate.intent.1", "contractor_id": "buyer_node_863",
+        "vct": "ap2.mandate.intent.1", "contractor_id": "buyer_node_01",
         "business_name": "AP2 Node Network LLC", "monthly_cap_usd": 100,
         "agreed_price_usd": 0.01, "nonce": "aud04", "timestamp": int(time.time()),
         "public_key": attacker.public_key().public_bytes_raw().hex(),
@@ -463,7 +463,7 @@ def _slot(**overrides):
     import datetime as _dt
     body = {
         "leadId": "lead-audit-1",
-        "territoryZone": "Zone 1 - North Lakeland",
+        "territoryZone": "Zone 1 - US-East",
         "slotStartIso": (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=2)).isoformat(),
         "paypalTransactionId": "TXN-AUDIT-1",
     }

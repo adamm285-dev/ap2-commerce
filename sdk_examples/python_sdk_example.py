@@ -89,7 +89,7 @@ class AP2CommerceClient:
         trade_vertical: str = "Autonomous Cloud Compute",
         monthly_fee: float = 79.99,
         paypal_sub_id: str = "I-AUTONOMOUS-8902",
-        contractor_email: str = "agent-alpha@nexus-systems.io",
+        contractor_email: str = "agent-alpha@example.com",
     ) -> Dict[str, Any]:
         """Execute autonomous downline back-office automation via Zapier MCP."""
         payload = {

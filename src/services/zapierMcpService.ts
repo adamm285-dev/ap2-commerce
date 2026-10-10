@@ -77,9 +77,9 @@ export async function executeZapierA2aWorkflow(
   const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
   const agentName = buyer.buyerAgentName || buyer.contractorName || 'AutonomousBuyerAgent';
   const entity = buyer.principalEntity || buyer.businessEntity || 'Nexus Autonomous Systems Corp';
-  const endpoint = buyer.allocatedEndpoint || buyer.allocatedDid || 'mcp+https://gateway-01.acme-systems.io/mcp';
+  const endpoint = buyer.allocatedEndpoint || buyer.allocatedDid || 'mcp+https://gateway-01.example.com/mcp';
   const capability = buyer.serviceCapability || buyer.tradeVertical || 'Dedicated AI Service Gateway';
-  const email = buyer.principalEmail || buyer.contractorEmail || 'merchant@ap2protocol.org';
+  const email = buyer.principalEmail || buyer.contractorEmail || 'merchant@example.com';
 
   try {
     const res = await fetch('/api/mcp/zapier-sync', {
@@ -344,7 +344,7 @@ export async function executeZapierMcpWorkflow(
   const dispatchId = `DISPATCH-${Math.floor(10000 + Math.random() * 90000)}`;
   const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
   const capability = lead.tradeVertical || 'Dedicated AI Service Gateway';
-  const targetNode = lead.callerPhone || 'mcp+https://gateway-01.acme-systems.io/mcp';
+  const targetNode = lead.callerPhone || 'mcp+https://gateway-01.example.com/mcp';
   const scope = lead.propertyAddress || 'Autonomous AP2 Workload Execution';
 
   await new Promise((resolve) => setTimeout(resolve, 600));

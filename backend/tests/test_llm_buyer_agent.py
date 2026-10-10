@@ -120,8 +120,7 @@ async def test_llm_buyer_agent_rejection_below_minimum_tier():
     assert "below minimum viable tier" in res["reason"] or "budget" in res["reason"].lower()
     assert res.get("checkout_receipt") is not None
     assert res.get("payment_receipt") is not None
-    assert any("checkout_receipt=" in s for s in res["step_log"])
-    assert any("payment_receipt=" in s for s in res["step_log"])
+    assert any("signed checkout + payment error receipts attached" in s for s in res["step_log"])
     # Ensure no closed mandates were signed
     assert not any("STEP 5: SIGNED" in s for s in res["step_log"])
     assert not any("STEP 6: PURCHASED" in s for s in res["step_log"])

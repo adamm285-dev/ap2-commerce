@@ -283,8 +283,8 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 )
 
             elif tool_name == "dispatch_zapier_mcp":
-                email = arguments.get("buyer_email") or arguments.get("contractor_email") or "buyer-agent@autonomous-procurement.org"
-                endpoint = arguments.get("node_endpoint") or arguments.get("allocated_did") or "mcp+https://gateway-01.acme-systems.io/agents/gateway"
+                email = arguments.get("buyer_email") or arguments.get("contractor_email") or "buyer-agent@example.com"
+                endpoint = arguments.get("node_endpoint") or arguments.get("allocated_did") or "mcp+https://gateway-01.example.com/agents/gateway"
                 vertical = arguments.get("service_vertical") or arguments.get("trade_vertical") or "Autonomous Compute"
                 sub_name = arguments.get("subscriber_name") or arguments.get("contractor_name") or "Autonomous Buyer Agent"
                 entity = arguments.get("business_entity") or "Autonomous Node Network"

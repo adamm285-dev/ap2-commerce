@@ -83,7 +83,7 @@ async def test_provision_compute_node_rejects_unknown_subscription(monkeypatch):
     # Unknown ID not in completed records
     res = await seller.provision_compute_node(
         subscription_id="I-NONEXISTENT-SUB-99999",
-        buyer_email="buyer@acme-systems.io",
+        buyer_email="buyer@example.com",
         node_type="gateway",
     )
     assert res["status"] == "REJECTED"
@@ -99,7 +99,7 @@ async def test_provision_compute_node_rejects_unknown_subscription(monkeypatch):
             "name": "provision_compute_node",
             "arguments": {
                 "subscription_id": "I-NONEXISTENT-RPC-SUB",
-                "buyer_email": "buyer@acme-systems.io",
+                "buyer_email": "buyer@example.com",
             },
         },
     }
@@ -122,13 +122,13 @@ async def test_provision_compute_node_rejects_inactive_subscription(monkeypatch)
     _COMPLETED_SUBSCRIPTIONS[pending_sub_id] = {
         "subscription_id": pending_sub_id,
         "status": "APPROVAL_PENDING",
-        "buyer_email": "buyer@acme-systems.io",
+        "buyer_email": "buyer@example.com",
         "tier_id": "ap2-gateway",
     }
 
     res_pending = await seller.provision_compute_node(
         subscription_id=pending_sub_id,
-        buyer_email="buyer@acme-systems.io",
+        buyer_email="buyer@example.com",
     )
     assert res_pending["status"] == "REJECTED"
     assert res_pending["error"] == "SUBSCRIPTION_NOT_CAPTURED"
@@ -138,13 +138,13 @@ async def test_provision_compute_node_rejects_inactive_subscription(monkeypatch)
     _COMPLETED_SUBSCRIPTIONS[cancelled_sub_id] = {
         "subscription_id": cancelled_sub_id,
         "status": "CANCELLED",
-        "buyer_email": "buyer@acme-systems.io",
+        "buyer_email": "buyer@example.com",
         "tier_id": "ap2-gateway",
     }
 
     res_cancelled = await seller.provision_compute_node(
         subscription_id=cancelled_sub_id,
-        buyer_email="buyer@acme-systems.io",
+        buyer_email="buyer@example.com",
     )
     assert res_cancelled["status"] == "REJECTED"
     assert res_cancelled["error"] == "SUBSCRIPTION_NOT_ACTIVE"
@@ -163,16 +163,16 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     _COMPLETED_SUBSCRIPTIONS[batch_sub_id] = {
         "subscription_id": batch_sub_id,
         "status": "ACTIVE",
-        "buyer_email": "batch-buyer@acme.io",
+        "buyer_email": "batch-buyer@example.com",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
     }
     batch_res = await seller.provision_compute_node(
         subscription_id=batch_sub_id,
-        buyer_email="batch-buyer@acme.io",
+        buyer_email="batch-buyer@example.com",
     )
     assert batch_res["status"] == "PROVISIONED"
-    assert batch_res["endpoint"].startswith("mcp+https://batch-01.acme-systems.io/agents/node-batch-")
+    assert batch_res["endpoint"].startswith("mcp+https://batch-01.example.com/agents/node-batch-")
     assert batch_res["workload_tasks_per_month"] == 125
 
     # 2. Service Gateway
@@ -180,16 +180,16 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     _COMPLETED_SUBSCRIPTIONS[gw_sub_id] = {
         "subscription_id": gw_sub_id,
         "status": "ACTIVE",
-        "buyer_email": "gw-buyer@acme.io",
+        "buyer_email": "gw-buyer@example.com",
         "tier_id": "ap2-gateway",
         "agreed_monthly_rate": 79.99,
     }
     gw_res = await seller.provision_compute_node(
         subscription_id=gw_sub_id,
-        buyer_email="gw-buyer@acme.io",
+        buyer_email="gw-buyer@example.com",
     )
     assert gw_res["status"] == "PROVISIONED"
-    assert gw_res["endpoint"].startswith("mcp+https://gateway-01.acme-systems.io/agents/node-gateway-")
+    assert gw_res["endpoint"].startswith("mcp+https://gateway-01.example.com/agents/node-gateway-")
     assert gw_res["workload_tasks_per_month"] == 450
 
     # 3. Enterprise Cluster
@@ -197,16 +197,16 @@ async def test_provision_compute_node_endpoint_hosts_by_tier(monkeypatch):
     _COMPLETED_SUBSCRIPTIONS[cl_sub_id] = {
         "subscription_id": cl_sub_id,
         "status": "ACTIVE",
-        "buyer_email": "cl-buyer@acme.io",
+        "buyer_email": "cl-buyer@example.com",
         "tier_id": "ap2-cluster",
         "agreed_monthly_rate": 179.99,
     }
     cl_res = await seller.provision_compute_node(
         subscription_id=cl_sub_id,
-        buyer_email="cl-buyer@acme.io",
+        buyer_email="cl-buyer@example.com",
     )
     assert cl_res["status"] == "PROVISIONED"
-    assert cl_res["endpoint"].startswith("mcp+https://cluster-01.acme-systems.io/agents/node-cluster-")
+    assert cl_res["endpoint"].startswith("mcp+https://cluster-01.example.com/agents/node-cluster-")
     assert cl_res["workload_tasks_per_month"] == 1200
 
 
@@ -232,13 +232,13 @@ async def test_provision_compute_node_per_tier_workload_tasks_quota(monkeypatch)
         _COMPLETED_SUBSCRIPTIONS[sub_id] = {
             "subscription_id": sub_id,
             "status": "ACTIVE",
-            "buyer_email": f"buyer-{tier_id}@acme.io",
+            "buyer_email": f"buyer-{tier_id}@example.com",
             "tier_id": tier_id,
             "agreed_monthly_rate": price,
         }
         res = await seller.provision_compute_node(
             subscription_id=sub_id,
-            buyer_email=f"buyer-{tier_id}@acme.io",
+            buyer_email=f"buyer-{tier_id}@example.com",
         )
         assert res["status"] == "PROVISIONED"
         assert res["workload_tasks_per_month"] == expected_quota, (

@@ -153,7 +153,7 @@ def run_judge_audit():
             "name": "negotiate_tier_terms",
             "arguments": {
                 "buyer_agent_id": "usr_judge_01",
-                "buyer_email": "agent-alpha@nexus-systems.io",
+                "buyer_email": "agent-alpha@example.com",
                 "tier_id": "ap2-gateway",
                 "monthly_budget_cap": 100.00,
             },
@@ -182,7 +182,7 @@ def run_judge_audit():
     mandate_client = MandateClient()
     open_mandates = create_trusted_surface_open_mandates(
         monthly_budget_cap=100.00,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
         allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
         agent_key=agent_key,
     )
@@ -255,7 +255,7 @@ def run_judge_audit():
         payment_mandate_token=pay_chain,
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
     )
     assert valid_eval.get("valid") is True
     print_pass("Baseline Untampered AP2 v0.2 Chains: VERIFIED (Status 200 OK)")
@@ -280,7 +280,7 @@ def run_judge_audit():
         payment_mandate_token=tampered_pay_chain_inflated,
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
     )
     assert eval_inflated.get("valid") is False
     assert eval_inflated.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
@@ -308,7 +308,7 @@ def run_judge_audit():
         payment_mandate_token=tampered_pay_chain_payee,
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
     )
     assert eval_payee.get("valid") is False
     assert eval_payee.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
@@ -319,7 +319,7 @@ def run_judge_audit():
     # 4d: Spending cap breach ($70.00 cap vs $79.99 agreed price)
     low_cap_open = create_trusted_surface_open_mandates(
         monthly_budget_cap=70.00,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
         allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
         agent_key=agent_key,
     )
@@ -335,7 +335,7 @@ def run_judge_audit():
         payment_mandate_token=breach_pay_chain,
         checkout_jwt=chk_jwt,
         expected_nonce=nonce,
-        buyer_email="agent-alpha@nexus-systems.io",
+        buyer_email="agent-alpha@example.com",
     )
     assert eval_cap.get("valid") is False
     assert eval_cap.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
@@ -377,7 +377,7 @@ def run_judge_audit():
     qbo_pkg = qbo_exporter.format_purchase_expense_payload(
         contractor_name="Autonomous Compute Buyer",
         business_entity="Nexus Autonomous Systems Corp",
-        contractor_email="agent-alpha@nexus-systems.io",
+        contractor_email="agent-alpha@example.com",
         monthly_fee=79.99,
         paypal_subscription_id="I-AUTONOMOUS-8902",
         allocated_did="mcp+https://gateway-01.ap2.market",
@@ -504,7 +504,7 @@ def run_judge_audit():
         json={
             "kid": f"tampered-buyer-{uuid.uuid4().hex[:6]}",
             "publicKeyHex": new_pub,
-            "contractorEmail": "hacker@evil.com",
+            "contractorEmail": "hacker@example.com",
             "businessEntity": "Forged Agent LLC",
             "challenge": bad_challenge,
             "challengeSignature": bad_sig,

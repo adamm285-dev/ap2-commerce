@@ -801,12 +801,12 @@ class LLMBuyerAgent:
                         pay_rec = purch_res.get("payment_receipt")
                         step_meta: Dict[str, Any] = {}
                         msg = f"Purchase rejected: {purch_res.get('error')} - {purch_res.get('reason')}"
-                        if chk_rec:
-                            step_meta["checkout_receipt"] = chk_rec
-                            msg += f" [checkout_receipt={chk_rec}]"
-                        if pay_rec:
-                            step_meta["payment_receipt"] = pay_rec
-                            msg += f" [payment_receipt={pay_rec}]"
+                        if chk_rec or pay_rec:
+                            msg += " (signed checkout + payment error receipts attached)"
+                            if chk_rec:
+                                step_meta["checkout_receipt"] = "attached"
+                            if pay_rec:
+                                step_meta["payment_receipt"] = "attached"
                         self._log_step(
                             "PURCHASE_FAILED",
                             msg,
@@ -880,12 +880,12 @@ class LLMBuyerAgent:
                         pay_rec = tool_res.get("payment_receipt")
                         step_meta: Dict[str, Any] = {}
                         msg = f"Seller rejected request: {tool_res.get('reason')}"
-                        if chk_rec:
-                            step_meta["checkout_receipt"] = chk_rec
-                            msg += f" [checkout_receipt={chk_rec}]"
-                        if pay_rec:
-                            step_meta["payment_receipt"] = pay_rec
-                            msg += f" [payment_receipt={pay_rec}]"
+                        if chk_rec or pay_rec:
+                            msg += " (signed checkout + payment error receipts attached)"
+                            if chk_rec:
+                                step_meta["checkout_receipt"] = "attached"
+                            if pay_rec:
+                                step_meta["payment_receipt"] = "attached"
                         self._log_step(
                             "REJECTED",
                             msg,

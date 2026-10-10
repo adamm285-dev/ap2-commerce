@@ -31,7 +31,7 @@ async def test_external_buyer_agent_ap2_stdio_success(monkeypatch):
     assert result["status"] == "COMPLETED"
     assert result["monthly_amount"] == 79.99
     assert len(result["mandate_proof_hash"]) == 64
-    assert result["node_endpoint"].startswith("mcp+https://gateway-01.acme-systems.io/agents/node-gateway-")
+    assert result["node_endpoint"].startswith("mcp+https://gateway-01.example.com/agents/node-gateway-")
     assert result["allocated_node_id"].startswith("node-gateway-")
     assert len(result["audit_log"]) == 5  # 5 tools called (catalog, mandate, purchase, provision_node, zapier)
 
@@ -53,7 +53,7 @@ async def test_external_buyer_agent_ap2_counter_offer(monkeypatch):
     assert result["status"] == "COMPLETED"
     assert result["monthly_amount"] == 49.99
     assert "Batch" in result["selected_tier"]
-    assert result["node_endpoint"].startswith("mcp+https://batch-01.acme-systems.io/agents/node-batch-")
+    assert result["node_endpoint"].startswith("mcp+https://batch-01.example.com/agents/node-batch-")
     assert result["allocated_node_id"].startswith("node-batch-")
 
 
@@ -67,7 +67,7 @@ async def test_external_buyer_agent_rejects_budget_overrun(monkeypatch):
         profile="ap2",
         contractor_name="Tight Budget Buyer",
         business_entity="Low Cap Compute LLC",
-        contractor_email="lowcap@compute.org",
+        contractor_email="lowcap@example.com",
         trade_id="ap2-batch",
         budget_cap=40.00,  # Below $49.99/mo minimum tier cost
         verbose=False,
@@ -88,7 +88,7 @@ async def test_external_buyer_agent_ap2_cluster_success(monkeypatch):
         profile="ap2",
         contractor_name="Enterprise AI Fleet Buyer",
         business_entity="Enterprise AI Fleets Corp",
-        contractor_email="procure@enterprise-ai.org",
+        contractor_email="procure@example.com",
         trade_id="ap2-cluster",
         budget_cap=250.00,
         verbose=False,
@@ -98,5 +98,5 @@ async def test_external_buyer_agent_ap2_cluster_success(monkeypatch):
     assert result["status"] == "COMPLETED"
     assert result["monthly_amount"] == 179.99
     assert "Cluster" in result["selected_tier"]
-    assert result["node_endpoint"].startswith("mcp+https://cluster-01.acme-systems.io/agents/node-cluster-")
+    assert result["node_endpoint"].startswith("mcp+https://cluster-01.example.com/agents/node-cluster-")
     assert result["allocated_node_id"].startswith("node-cluster-")

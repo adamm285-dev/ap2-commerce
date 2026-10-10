@@ -32,7 +32,7 @@ async def test_copilot_proposal_intent():
 
 @pytest.mark.asyncio
 async def test_copilot_approval_and_a2a_execution():
-    copilot = ContractorCopilot(area_code="863")
+    copilot = ContractorCopilot(area_code="202")
     resp = await copilot.handle_message("Yes, approve and setup ($79.99/mo via PayPal)")
     assert resp["phase"] == "COMPLETED"
     assert "autonomous a2a setup complete" in resp["reply"].lower()

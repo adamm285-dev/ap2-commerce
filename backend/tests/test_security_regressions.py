@@ -330,6 +330,22 @@ def test_repeat_purchase_requires_a_valid_mandate():
         assert field not in res
 
 
+@KNOWN_ISSUE(
+    "purchase_subscription still accepts the pre-AP2 path (offer_id + server-issued "
+    "mandate_proof_hash) with no owner-signed mandate, so the owner's signed limits are optional."
+)
+def test_purchase_requires_owner_signed_ap2_mandates():
+    email = _email("legacy")
+    neg = _run(seller_agent.negotiate_tier_terms(
+        buyer_agent_id="regression-legacy", buyer_email=email, tier_id="ap2-gateway", monthly_budget_cap=100.0,
+    ))
+    res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-gateway", agreed_monthly_rate=79.99,
+        mandate_proof_hash=neg.get("mandate_proof_hash"), contractor_email=email, offer_id=neg.get("offer_id"),
+    ))
+    assert res.get("status") not in SETTLED
+
+
 # ── 5. The buyer agent ───────────────────────────────────────────────────
 
 

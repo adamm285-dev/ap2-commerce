@@ -36,4 +36,5 @@ These rules apply to every task in this repo. The owner has an independent revie
 ## Scope
 
 - Work only inside this repository. Commit locally; never push.
+- **Never discard changes you didn't make.** If the working tree has edits you don't recognize, don't run `git checkout`, `git restore`, `git stash` or `git reset` on them. Leave them in place, stage only your own files by path, and mention the unrecognized changes in your report. The owner's reviewer may have added them.
 - Never `pip install ap2` from PyPI. That name belongs to an unrelated package; the real SDK is vendored here.

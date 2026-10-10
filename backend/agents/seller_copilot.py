@@ -181,10 +181,10 @@ class SellerCopilot:
             reply = (
                 f"📊 **AP2 Enterprise Fleet Ledger Command Center:**\n\n"
                 f"The **Fleet Ledger** provides real-time enterprise telemetry across all active node subscribers:\n"
-                f"• **Active Nodes**: 14 Verified FastMCP nodes across North America\n"
-                f"• **MRR**: $1,119.86/mo tracked via PayPal Subscriptions\n"
-                f"• **Mandate Verification Rate**: 100% Ed25519 cryptographic integrity\n"
-                f"• **Annualized GMV**: $13,438.32 across 3 compute tiers\n\n"
+                f"• **Active Nodes**: 13 Active of 14 Provisioned Nodes across North America\n"
+                f"• **MRR**: $1,219.87/mo tracked via PayPal Subscriptions\n"
+                f"• **Mandate Verification Rate**: 100% ES256 cryptographic integrity\n"
+                f"• **Annualized GMV**: $14,638.44 across 3 compute tiers\n\n"
                 f"Select the **AG Studio Fleet Ledger** tab in the top navigation to view the live command center dashboard and interactive analytics."
             )
             return {

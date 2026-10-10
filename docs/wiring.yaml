@@ -1,0 +1,48 @@
+# Declarative Topology (The Mesh)
+# SPEC-001 v1.9.0 Pillar 2 | Mutability: STATIC (Explicit PR)
+
+version: "1.9.0"
+subsystems:
+  core:
+    path: "src/"
+    responsibilities: "Core domain logic and data pipelines"
+    allowed_dependencies: []
+  interfaces:
+    path: "src/interfaces/"
+    responsibilities: "External APIs, CLI controllers, adapters"
+    allowed_dependencies: ["core"]
+
+tool_boundaries:
+  allowed_binaries: ["pytest", "git", "python", "ruff"]
+  forbidden_flags: ["--no-verify", "-f", "--force"]
+
+sandbox:
+  protected_paths:
+    - ".env*"
+    - "*.jks"
+    - "*.pem"
+    - "*.key"
+    - "credentials/**"
+  allowed_commands:
+    - "pytest"
+    - "git"
+    - "python"
+    - "ruff"
+    - "sdcs"
+  prohibited_flags:
+    - "--no-verify"
+    - "-f"
+    - "--force"
+
+contracts:
+  strict_imports: true
+  circular_dependencies: false
+
+# Central Cognitive Warehouse Integration (SPEC-001 v1.6.0)
+warehouse:
+  source: ""                  # Local path or git URL to central warehouse repository
+  cache_dir: "~/.sdcs/warehouse"
+  subscriptions:
+    tags: []                  # Subscribed tags (e.g., ["telecom", "android", "stripe"])
+    severity_floor: "advisory" # critical | high | medium | advisory
+  auto_sync: false            # false = use local cache without blocking network calls

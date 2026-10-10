@@ -15,71 +15,101 @@
 ## 1. Project Title & Tagline
 
 * **Project Title:** AP2 Autonomous Commerce &mdash; Agent Payments Protocol Operations Deck
-* **Elevator Pitch (Tagline):** Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) engine for distributed AI compute &mdash; enabling AI Buyer Agents to negotiate within strict spending mandates, execute recurring PayPal subscriptions, provision dedicated compute node endpoints, and automate downline back-office accounting with zero human friction.
+* **Elevator Pitch (Tagline):** Built on Google's AP2 (Agent Payments Protocol) v0.2, actively prototyping what its official roadmap says comes next: recurring subscriptions, Human-Not-Present (HNP) autonomous purchases, Untrusted Courier MCP isolation, and dynamic agent-to-agent counter-offer negotiation for distributed AI compute.
 * **Interactive Operations Deck:** `/portal/`
 * **FastMCP Server Endpoint:** `/mcp` (Model Context Protocol JSON-RPC 2.0)
+* **Untrusted Courier Buyer Wallet:** Stdio / JSON-RPC 2.0 (`backend.wallet.mcp_server`)
 * **Live SSE Stream Endpoint:** `/sse` (Server-Sent Events)
 * **Interactive OpenAPI Docs:** `/docs` (Swagger UI)
 
 ---
 
-## 2. Inspiration
+## 2. Inspiration & The AP2 V1 Roadmap
 
-Autonomous software agents and developer teams hit severe compute capacity bottlenecks. Procuring dedicated worker nodes or specialized AI service gateways still suffers from critical failure modes:
-1. **Human Onboarding Friction:** Autonomous agents cannot interact with 15-field checkout forms, manual credit card typing, or human verification captchas.
-2. **Uncontrolled Budget Risk:** Enterprise spending mandates require mathematically enforceable, tamper-proof budget caps before an agent can commit company funds.
-3. **Downline Integration Overhead:** Once an infrastructure subscription is active, manual entry is required to log accounting expenses into ERP systems (e.g. QuickBooks Online).
-4. **Identity & Accountability:** Anonymous autonomous agents create counterparty risk unless commitments are cryptographically anchored to verified business entities.
+Google published the **AP2 (Agent Payments Protocol) v0.2** specification to define cryptographic Selective Disclosure JWT (SD-JWT) standards for agentic transactions. However, AP2 v0.2 targets single, human-present checkouts. On its public roadmap, AP2 highlights four major open problems for V1.x:
 
-We asked: **What if an engineering organization had an Autonomous Buyer Agent that acts like an executive procurement officer?**
-The Buyer Agent detects compute queue backlogs, consults the local programmatic spending mandate ($100/mo cap), negotiates with the AP2 Seller Node over Model Context Protocol (MCP), executes a verified PayPal subscription, provisions dedicated compute node endpoints, and dispatches the entire back-office accounting workflow into QuickBooks Online and Google Workspace without a single keystroke.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 AP2 AUTONOMOUS COMMERCE INNOVATION MATRIX                   │
+├─────────────────────────┬─────────────────────────┬─────────────────────────┤
+│ AP2 V1.x Roadmap Item   │ Official AP2 Status     │ AP2 Autonomous Commerce │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ 1. Recurring Payments   │ Open design question    │ Implemented via PayPal  │
+│    & Subscriptions      │ on public roadmap       │ Vault MIT & Webhooks    │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ 2. Human-Not-Present    │ Stated milestone for    │ Fully autonomous buyer  │
+│    (HNP) Purchases      │ post-v0.2 releases      │ agent under signed caps │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ 3. MCP Client / Wallet  │ Identified as ecosystem │ Two-process FastMCP     │
+│    Isolation            │ requirement             │ architecture (Untrusted)│
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ 4. Dynamic Negotiation  │ Stated long-term vision │ Multi-tier fallback     │
+│    & Counter-Offers     │ on roadmap              │ bargaining engine       │
+└─────────────────────────┴─────────────────────────┴─────────────────────────┘
+```
+
+When procuring AI cloud compute, engineering organizations encounter severe bottlenecks:
+1. **The Untrusted Courier Threat:** Giving an LLM direct access to corporate private signing keys exposes treasury funds to prompt injection and context leakage.
+2. **The Recurring Billing Blindspot:** AP2 v0.2 has no protocol for recurring subscriptions; renewal webhooks arrive after money has moved, creating severe budget leak risk.
+3. **Rigid Catalog Failures:** If an autonomous buyer's spending cap is slightly below standard pricing, transactions abort rather than negotiating an agreeable sub-budget tier.
+4. **Disconnected Downline Accounting:** Once compute is provisioned, human finance teams are bogged down manually recording recurring SaaS expenses into ERPs (e.g. QuickBooks Online).
 
 ---
 
 ## 3. What It Does
 
-AP2 Autonomous Commerce delivers a complete, end-to-end multi-agent commerce and operations ecosystem across four integrated portals:
+AP2 Autonomous Commerce delivers an end-to-end multi-agent commerce and operations ecosystem:
 
-### 1. Autonomous Buyer Agent & Agentic Commerce Command Center
-* **Autonomous Buyer Agent:** Analyzes workload task queues, evaluates local spending mandates (`amount <= $100.00/mo`), and generates asymmetric Ed25519 authorization proofs (`X-AP2-Signature`) conforming to the Google & PayPal AP2 Intent Mandate specification.
-* **Seller Agent (MCP Server):** Exposes machine-readable compute tiers over Model Context Protocol (`get_service_catalog`, `inspect_subscription_tiers`, `negotiate_tier_terms`, `evaluate_spending_mandate`, `purchase_subscription`, `provision_compute_node`, `dispatch_zapier_mcp`, `get_subscription_details`).
-* **Dynamic Multi-Tier Counter-Offer Negotiation:** When the buyer's spending cap is below the standard asking price (e.g. $60 cap vs $79.99 Dedicated Gateway), the Seller Agent autonomously calculates and returns a dynamic counter-offer: *High-Throughput Batch Worker (125 workload tasks/mo) available at $49.99/mo*. The Buyer Agent evaluates the counter-offer autonomously and signs.
-* **Interactive Anti-Tamper Verifier (Live Byte-Level Mismatch):** Judges can edit any single byte of the canonical JSON payload (e.g., inflating price from $79.99 to $80.00 or changing the buyer identity) and watch the cryptographic verifier immediately reject authorization with `401 Signature Mismatch: Budget Policy Violated`.
-* **Live SSE Wire Protocol Inspector:** Streams real-time Server-Sent Events (SSE) displaying raw JSON-RPC 2.0 frames (`initialize` &rarr; `tools/list` &rarr; `tools/call` &rarr; `vault/token`) with sub-millisecond timestamps.
-* **Delegated PayPal Subscriptions & Vault MIT:** Executes recurring **$79.99/month** subscriptions using `@paypal/react-paypal-js` and PayPal Server SDK backed by PayPal Vault setup tokens for off-session, merchant-initiated overage settlements.
-* **Dedicated Compute Node Provisioning:** Automatically provisions dedicated compute node endpoints (`batch-01`, `gateway-01`, `cluster-01`) anchored directly to verified PayPal subscriber identity with workload task quotas (125, 450, or 1,200 tasks/month).
-* **Self-Service Buyer Key Onboarding:** Cryptographic Ed25519 challenge-response enrollment (`GET /api/agent/keys/challenge` & `POST /api/agent/keys/register`) allowing any third-party autonomous agent to register verified public keys.
+### 1. Untrusted Courier Architecture (Two-Process MCP Model)
+* **Threat Model Mitigation:** Private keys are isolated entirely outside the LLM context. In Claude Desktop, Claude operates strictly as an **Untrusted Courier** running between the local **Buyer Wallet MCP Server** (`backend.wallet.mcp_server`) and the **Seller Node MCP Server** (`backend.mcp_server`).
+* **Deterministic Limits Enforcement:** The local wallet holds the agent's key and owner-signed spending limits—never the owner's private key. The wallet independently parses the merchant's signature on `checkout_jwt`. If an injection or hallucination attempts to purchase an unauthorized or over-budget tier, the wallet raises a hard `WalletRefusal` before any signature is generated.
 
-### 2. AG Studio v3.0.0 & AG Grid Operations Fleet Ledger
-* Embedded high-density executive operations deck using `ag-studio-react`, `ag-studio` (v3.0.0), and AG Grid Community with floating filters.
-* **Full AG Grid Floating Column Filters:** Dynamic filtering across all columns (Subscriber, Plan, MRR, Status, Node Endpoint) with `floatingFilter: true` and 34px filter height.
-* **Dynamic SQLite WAL Persistence:** Live asynchronous data refresh (`onRefreshData`) pulling directly from persistent database records with zero hardcoded metrics.
-* **Simulated Live Fleet Telemetry:** Every metric reconciles to the penny across 14 simulated compute nodes:
-  * **Active Fleet MRR:** $1,039.87/mo pending &rarr; $1,119.86/mo fully settled.
-  * **Autonomous Agentic Commerce Settlement GMV:** $13,438.32 ARR.
-  * **Mandates Settled:** 168 Autonomous Cycles (14 nodes &times; 12 monthly cycles).
-  * **Policy Enforcement:** 100% Policy Enforced &bull; 0 Budget Leaks.
-* Features runtime **View / Drag & Drop Editor Mode switching**, allowing fleet managers to visually customize charts, rearrange widgets, or slice metrics by compute workload.
+### 2. Month-2 Renewal Verification & Advance Cancellation Engine
+* **AP2-Enforced Recurring Billing:** Built in `backend/services/recurring_mandate_service.py`. On each PayPal `PAYMENT.SALE.COMPLETED` webhook, the engine re-verifies the stored owner mandate signature using Google's AP2 SDK, checking expiration, budget caps, cycle count limits (12 monthly payments), and agreed unit price.
+* **Advance Cancellation:** Because webhooks report charges that already occurred, the engine evaluates the *next* billing cycle in advance. If the upcoming charge would breach authorization, it triggers immediate advance cancellation on PayPal before unauthorized funds can move.
+* **Decoupled Authorization Windows:** The owner's initial authorization grants a 24-hour window to complete checkout, while the recurring payment authority extends for 372 days.
 
-### 3. Bryntum Workload Fleet & Dispatch Scheduler
-* Built on `@bryntum/scheduler` 7.3.7 (evaluated with Bryntum Dispatch Scheduler trial build) across regional workload zones.
-* **24/7 Compute Execution Shifts:** Synchronized directly with backend `/api/fleet/schedule` to display active monitoring shifts and allocated compute nodes.
-* **Live In-Place Reactive Transition:** Displays subscriber node allocation in real time. A new node begins in amber/orange (`AWAITING PAYMENT`). When the autonomous PayPal subscription is executed, the timeline card reactively shifts in place to vibrant green (`NODE ACTIVE: gateway-01.ap2.net:8443`).
+### 3. Dynamic Multi-Tier Counter-Offer Negotiation
+* When the buyer agent's spending cap is below standard pricing ($60 cap vs $79.99 Dedicated Gateway), the Seller Agent autonomously calculates and returns a dynamic counter-offer: *High-Throughput Batch Worker (125 workload tasks/mo) available at $49.99/mo*. The Buyer Agent evaluates the counter-offer autonomously and signs.
 
-### 4. Zapier MCP Autonomous Business Bridge
-* Bridges verified PayPal payments into enterprise accounting and monitoring via Model Context Protocol:
-  * **QuickBooks Online:** Automatically records the recurring software subscription expense under *COGS: AI Infrastructure & Worker Nodes* linked to PayPal Token `I-A2A-VAULT-...` and mapped to General Ledger Account 6300.
-  * **Operational Routing:** Registers the allocated node endpoint into operational monitoring.
-  * **Google Workspace:** Automatically schedules the morning node health audit on Google Calendar.
+### 4. Interactive Cryptographic Anti-Tamper Engine
+* Evaluates ES256 SD-JWT and Ed25519 mandate chains. Altering even 1¢ ($79.99 &rarr; $80.00) or modifying payee identity immediately triggers `invalid_mandate` with dual-signed cryptographic error receipts.
+
+### 5. AG Studio v3.0.0 & AG Grid Operations Fleet Ledger
+* High-density executive operations deck using `ag-studio-react`, `ag-studio` (v3.0.0), and AG Grid Community with floating column filters.
+* Live SQLite WAL data hydration reconciling **$14,638.44 annualized ARR** ($1,219.87 MRR across 13 active nodes, 14 total provisioned).
+* Interactive View / Drag & Drop Editor modes for fleet managers.
+
+### 6. Bryntum Workload Fleet & Dispatch Scheduler
+* Evaluated with Bryntum Dispatch Scheduler trial build across regional workload zones.
+* Manages 24/7 compute execution shifts with live in-place reactive color state transitions (Orange `AWAITING PAYMENT` &rarr; Green `NODE ACTIVE`).
+
+### 7. Zapier MCP Autonomous Business Bridge
+* Automatically records recurring subscription expenses in QuickBooks Online mapped to General Ledger Account 6300 (Software & SaaS) linked to PayPal Vault tokens and schedules health audits in Google Calendar.
 
 ---
 
-## 4. Multi-Sponsor Track Alignment ($18,000+ Purse)
+## 4. Executive Slide Deck Summary (8-Slide Architecture)
+
+| Slide | Title | Core Technical Innovation | Verified Code Anchor |
+| :---: | :--- | :--- | :--- |
+| **01** | **AP2 v0.2 Baseline & V1 Roadmap** | Working Google AP2 v0.2 implementation prototyping 4 public roadmap items | `backend/vendor/ap2/`, `backend/tests/conformance/` |
+| **02** | **The Untrusted Courier Threat** | Threat model proving why LLMs must never possess private cryptographic signing keys | `backend/wallet/wallet.py`, `backend/tests/test_buyer_wallet.py` |
+| **03** | **Two-Process MCP Architecture** | Buyer Wallet holds agent key and owner limits (never owner's private key); courier blocked on overspend | `backend/wallet/mcp_server.py`, `scripts/setup_claude_desktop_demo.py` |
+| **04** | **Recurring Billing & Renewal Enforcement** | PayPal webhook re-verification + advance cancellation before unauthorized charges occur | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
+| **05** | **Dynamic Bargaining & Anti-Tamper** | Autonomous counter-offers ($49.99 Batch Worker) + 1¢ inflation rejection under real AP2 ES256 verifier | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
+| **06** | **Simulated Fleet Operations** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`) + Bryntum Scheduler + Zapier QBO GL 6300 export | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
+| **07** | **The Production Gap Report** | Candid 4-pillar gap analysis: Hardware passkeys, shared state, revocation checks, and rail convergence | `backend/services/ap2_keys.py`, `backend/server.py` |
+| **08** | **Empirical Verification** | 557 passing tests (188 SDK + 369 project), 9/9 zero-dependency judge checks in <0.2s | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+
+---
+
+## 5. Multi-Sponsor Track Alignment ($18,000+ Purse)
 
 | Sponsor Track | Prize | How AP2 Autonomous Commerce Fulfills the Track Requirements |
 | :--- | :--- | :--- |
 | **Best Use of Agentic Commerce** | **$5,000** | Autonomous multi-tier negotiation between Buyer Agent and Seller MCP Server, budget cap enforcement with HMAC-SHA256 proofs, interactive anti-tamper testing, delegated PayPal Subscriptions (Vault setup tokens for off-session MIT), and compute node provisioning. |
-| **Best Use of AG Grid / AG Studio** | **$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community with floating filters, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling $13,438.32 ARR GMV across 14 simulated compute nodes. |
+| **Best Use of AG Grid / AG Studio** | **$5,000** | Embedded `ag-studio-react` and `ag-studio` (v3.0.0) with AG Grid Community floating filters, live SQLite WAL data hydration, grouped bar charts, and runtime View/Edit reporting modes reconciling $14,638.44 ARR GMV across 13 active nodes (14 total). |
 | **Best Use of PayPal + AI** | **$5,000** | Real-time FastMCP 2024-11-05 streamable HTTP/SSE wire protocol inspector, autonomous multi-turn negotiation, and intelligent autonomous counter-offer generation. |
 | **Best Use of Bryntum** | **$1,000** | Evaluated with Bryntum Scheduler trial build managing 24/7 compute node execution shifts, workload timeline visualization, and live in-place reactive color state transitions (Orange &rarr; Green). |
 | **Best Use of Zapier** | **$1,000** | Autonomous Model Context Protocol bridge (`dispatch_zapier_mcp` tool) executing QBO v3 (GL 6300 SaaS expense), operational monitoring routing, and SSRF-safe HMAC-SHA256 signed webhook envelopes. |
@@ -87,23 +117,10 @@ AP2 Autonomous Commerce delivers a complete, end-to-end multi-agent commerce and
 
 ---
 
-## 5. Technical Architecture & Protocol Specifications
-
-* **Protocol Layer:** Model Context Protocol (MCP) standard `2024-11-05` running over dual transports:
-  * **Streamable HTTP & SSE Transport:** Standard JSON-RPC 2.0 at `/mcp`, SSE endpoint discovery at `/sse`.
-  * **Stdio Transport:** Standard I/O loop (`backend/mcp_server.py`) for desktop MCP clients (Claude Desktop, Cursor, external autonomous harnesses).
-* **Payment Rails:** PayPal Subscriptions API (`I-A2A-VAULT-...`) backed by PayPal Vault setup tokens for off-session, merchant-initiated transactions (MIT).
-* **Policy Enforcement:** Cryptographic spending mandate evaluator generating 64-character HMAC-SHA256 authorization proofs (`X-AP2-Signature`) enforcing strict budget caps.
-* **Anti-Tamper Layer:** Byte-level canonical JSON digest verifier detecting price inflation, budget cap breaches, timestamp expiry, and unauthorized entity modification.
-* **ERP Settlement:** Immediate QuickBooks Online API v3 expense mapping to general ledger Account 6300 (Software & SaaS).
-* **Persistent Database Layer:** SQLite WAL database engine (`ap2_commerce.db`) with 5000ms busy timeout, surviving process restarts across subscriptions, mandates, ledger commitments, processed webhook event IDs, and buyer key records.
-
----
-
 ## 6. Verification & One-Click Judge Audit
 
 ### One-Click In-Memory Audit (Zero Dependencies)
-Hackathon judges can verify all 9 critical operational and cryptographic checks with a single command:
+Hackathon judges can verify all 9 critical operational and cryptographic checks with a single command in <0.2 seconds:
 ```bash
 python scripts/judge_audit_harness.py
 # 9/9 checks passed (100% green)
@@ -112,7 +129,13 @@ python scripts/judge_audit_harness.py
 ### Automated Test Suite
 ```bash
 pytest backend/tests/ -q -n 4
-# 227 passed, 6 skipped (100% green)
+# 557 passed, 9 skipped (100% green; 188 Google SDK tests + 369 project tests)
+```
+
+### Checkable Mocks Gate (SDCS Gate L)
+```bash
+python scripts/check_mocks.py
+# docs/MOCKS.md matches the MOCK markers in the code (19 mocks verified)
 ```
 
 ---
@@ -120,12 +143,12 @@ pytest backend/tests/ -q -n 4
 ## 7. The 9 Judge Audit Verification Checks
 
 1. **[CHECK 1] MCP JSON-RPC 2.0 Handshake:** Validates `initialize` and `tools/list` protocol handshake returning 8 registered seller tools.
-2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates $79.99/mo Service Gateway under $100 budget cap with HMAC-SHA256 cryptographic authorization proof.
+2. **[CHECK 2] Standard AP2 Negotiation:** Evaluates $79.99/mo Service Gateway under $100 budget cap with ES256 SD-JWT cryptographic authorization proof.
 3. **[CHECK 3] Sub-Budget Counter-Offer Bargaining:** Generates scaled-down *Batch Worker* ($49.99/mo) counter-offer when cap is $60.00.
-4. **[CHECK 4] Anti-Tamper Verification:** Proves 1-cent inflation tampering, entity name alteration, and budget breaches are strictly rejected.
+4. **[CHECK 4] Anti-Tamper Verification:** Proves 1-cent inflation tampering, entity name alteration, and budget breaches are strictly rejected under Google's AP2 verifier.
 5. **[CHECK 5] Compute Node Provisioning:** Validates subscription verification and compute node endpoint allocation (`batch-01`, `gateway-01`, `cluster-01`).
 6. **[CHECK 6] Back-Office ERP Payloads:** Generates authentic QuickBooks Online v3 Purchase mapped to GL Account 6300.
-7. **[CHECK 7] Financial Telemetry Reconciliation:** Reconciles 14 simulated subscriber nodes, $1,119.86/mo MRR, and $13,438.32 ARR GMV to the penny.
+7. **[CHECK 7] Financial Telemetry Reconciliation:** Reconciles 14 subscriber nodes (13 active, 1 pending), $1,219.87/mo MRR, and $14,638.44 ARR GMV to the penny.
 8. **[CHECK 8] AG Studio & Bryntum Scheduling:** Hydrates 14 nodes from SQLite WAL and verifies 24/7 compute execution shifts.
 9. **[CHECK 9] Dynamic Buyer Key Onboarding:** Generates 300s ephemeral Ed25519 challenge nonce, validates cryptographic signature, enrolls buyer key, and rejects forged signatures.
 
@@ -133,4 +156,4 @@ pytest backend/tests/ -q -n 4
 
 ## 8. Built With
 
-`paypal-subscriptions-api`, `paypal-vault`, `model-context-protocol-mcp`, `zapier-mcp`, `ag-studio-v3`, `ag-grid-community`, `bryntum-scheduler-trial`, `fastapi`, `python-3.13`, `react-19`, `typescript`, `vite-8`, `sqlite-wal`, `ed25519-cryptography`, `hmac-sha256`, `quickbooks-online-v3`, `openapi-3.1`
+`paypal-subscriptions-api`, `paypal-vault`, `google-ap2-sdk`, `model-context-protocol-mcp`, `zapier-mcp`, `ag-studio-v3`, `ag-grid-community`, `bryntum-scheduler-trial`, `fastapi`, `python-3.13`, `react-19`, `typescript`, `vite-8`, `sqlite-wal`, `es256-sd-jwt`, `ed25519-cryptography`, `quickbooks-online-v3`, `openapi-3.1`

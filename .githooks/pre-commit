@@ -1,0 +1,282 @@
+#!/bin/sh
+# SDCS SPEC-001 Pre-Commit Invariant & State Guard
+# Enforces OS-level defense against autonomous invariant tampering.
+
+# 1. Invariant Protection Gate (spine.md & wiring.yaml)
+if [ "$ALLOW_INVARIANT_MUTATION" != "1" ] && [ "$SDCS_ALLOW_INVARIANT_MUTATION" != "1" ] && [ "$SDCS_ALLOW_CONSTITUTIONAL_MUTATION" != "1" ]; then
+  TAMPERED_INVARIANTS=$(git diff --cached --name-only | grep -E '^(spine\.md|wiring\.yaml|\.agent/spine\.md|\.agent/wiring\.yaml|docs/spine\.md|docs/wiring\.yaml)$')
+  if [ -n "$TAMPERED_INVARIANTS" ]; then
+    echo "===================================================================="
+    echo " [SDCS VIOLATION] CONSTITUTIONAL INVARIANT TAMPERING DETECTED"
+    echo "===================================================================="
+    echo "Autonomous agents are prohibited from modifying invariants:"
+    echo "  $TAMPERED_INVARIANTS"
+    echo ""
+    echo "To override as a human architect, rerun with:"
+    echo "  ALLOW_INVARIANT_MUTATION=1 git commit"
+    echo "===================================================================="
+    exit 1
+  fi
+fi
+
+# 2. Working Memory Synchronization Gate (state.md)
+SDCS_MODE=$(git config sdcs.mode || echo "advisory")
+DIFF_LINES=$(git diff --cached --shortstat | awk '{print $4+$6}')
+STATE_TOUCHED=$(git diff --cached --name-only | grep -E '^(state\.md|\.agent/state\.md|docs/state\.md)$' || true)
+
+if [ "${DIFF_LINES:-0}" -ge 40 ]; then
+  if [ -z "$STATE_TOUCHED" ]; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS ERROR] STATE SYNCHRONIZATION REQUIRED (Strict Mode)"
+      echo "===================================================================="
+      echo "Commit affects >= 40 lines but state.md was not updated."
+      echo "Please stage an updated state.md reflecting current working memory."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Working memory warning: >= 40 lines modified"
+      echo " Remember to sync active objectives in state.md."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+# Resolve Python interpreter for static verification gates (Gate T, Gate M)
+PYTHON_BIN=""
+if [ -n "$VIRTUAL_ENV" ]; then
+  if [ -x "$VIRTUAL_ENV/Scripts/python.exe" ]; then
+    PYTHON_BIN="$VIRTUAL_ENV/Scripts/python.exe"
+  elif [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON_BIN="$VIRTUAL_ENV/bin/python"
+  fi
+fi
+
+if [ -z "$PYTHON_BIN" ]; then
+  for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      if "$candidate" -c "import sys" >/dev/null 2>&1; then
+        PYTHON_BIN="$candidate"
+        break
+      fi
+    fi
+  done
+fi
+
+# 2b. Working Memory Token Budget & Schema Gate (Gate S: state.md <= 350 tokens)
+STATE_FILE=""
+if [ -f "state.md" ]; then
+  STATE_FILE="state.md"
+elif [ -f ".agent/state.md" ]; then
+  STATE_FILE=".agent/state.md"
+elif [ -f "docs/state.md" ]; then
+  STATE_FILE="docs/state.md"
+fi
+
+if [ -n "$STATE_FILE" ] && [ -n "$STATE_TOUCHED" ]; then
+  if [ -n "$PYTHON_BIN" ]; then
+    if ! "$PYTHON_BIN" -m sdcs.cli verify --state --max-tokens 350; then
+      if [ "$SDCS_MODE" = "strict" ]; then
+        echo "===================================================================="
+        echo " [SDCS ERROR] GATE S: WORKING MEMORY TOKEN BUDGET EXCEEDED"
+        echo "===================================================================="
+        echo "state.md exceeds the 350-token budget ceiling or has schema violations."
+        echo "Please prune state.md to <= 300 tokens before committing."
+        echo "===================================================================="
+        exit 1
+      else
+        echo "--------------------------------------------------------------------"
+        echo " [SDCS ADVISORY] Gate S: state.md exceeds 350 tokens or has schema warnings."
+        echo "--------------------------------------------------------------------"
+      fi
+    fi
+  fi
+fi
+
+# 2c. Declarative Sandbox & Protected Paths Gate (Gate P: wiring.yaml sandbox)
+if [ "$SDCS_ALLOW_SANDBOX_OVERRIDE" != "1" ]; then
+  if [ -n "$PYTHON_BIN" ]; then
+    if ! "$PYTHON_BIN" -m sdcs.cli verify --sandbox; then
+      if [ "$SDCS_MODE" = "strict" ]; then
+        echo "===================================================================="
+        echo " [SDCS ERROR] GATE P: SANDBOX PROTECTED PATH VIOLATION"
+        echo "===================================================================="
+        echo "Staged files violate sandbox protected_paths declared in wiring.yaml."
+        echo "To override: export SDCS_ALLOW_SANDBOX_OVERRIDE=1"
+        echo "===================================================================="
+        exit 1
+      else
+        echo "--------------------------------------------------------------------"
+        echo " [SDCS ADVISORY] Gate P: Sandbox protected path modification detected."
+        echo "--------------------------------------------------------------------"
+      fi
+    fi
+  fi
+fi
+
+# 3. Topological Invariant Gate (Gate T: wiring.yaml AST audit)
+WIRING_FILE=""
+if [ -f "wiring.yaml" ]; then
+  WIRING_FILE="wiring.yaml"
+elif [ -f ".agent/wiring.yaml" ]; then
+  WIRING_FILE=".agent/wiring.yaml"
+elif [ -f "docs/wiring.yaml" ]; then
+  WIRING_FILE="docs/wiring.yaml"
+fi
+
+if [ -n "$WIRING_FILE" ]; then
+  if [ -z "$PYTHON_BIN" ]; then
+    echo "⚠️ [SDCS Warning] No functional Python interpreter found to run Gate T verification."
+  else
+    if ! "$PYTHON_BIN" -m sdcs.cli verify --topology --append-rejections; then
+      if [ "$SDCS_MODE" = "strict" ]; then
+        echo "===================================================================="
+        echo " [SDCS VIOLATION] GATE T: TOPOLOGICAL BOUNDARY VIOLATION DETECTED"
+        echo "===================================================================="
+        echo "Import boundaries declared in $WIRING_FILE were violated."
+        echo "Failure signature appended to decisions.md."
+        echo "Please refactor code, stage the fix and decisions.md, then re-commit."
+        echo "===================================================================="
+        exit 1
+      else
+        echo "--------------------------------------------------------------------"
+        echo " [SDCS ADVISORY] Gate T: Topology boundary violation detected."
+        echo "--------------------------------------------------------------------"
+      fi
+    fi
+  fi
+fi
+
+# 4. Cartography Drift Gate (Gate M: app_map.md drift audit)
+MAP_FILE=""
+if [ -f "app_map.md" ]; then
+  MAP_FILE="app_map.md"
+elif [ -f ".agent/app_map.md" ]; then
+  MAP_FILE=".agent/app_map.md"
+elif [ -f "docs/app_map.md" ]; then
+  MAP_FILE="docs/app_map.md"
+fi
+
+if [ -n "$MAP_FILE" ]; then
+  if [ -z "$PYTHON_BIN" ]; then
+    echo "⚠️ [SDCS Warning] No functional Python interpreter found to run Gate M verification."
+  else
+    if ! "$PYTHON_BIN" -m sdcs.cli map --check; then
+      if [ "$SDCS_MODE" = "strict" ]; then
+        echo "===================================================================="
+        echo " [SDCS VIOLATION] GATE M: CARTOGRAPHY DRIFT DETECTED"
+        echo "===================================================================="
+        echo "One or more files on disk are unmapped in $MAP_FILE or orphaned."
+        echo "Run 'sdcs map --sync' to reconcile cartography with disk."
+        echo "Stage $MAP_FILE and re-commit:"
+        echo "  sdcs map --sync && git add $MAP_FILE"
+        echo "===================================================================="
+        exit 1
+      else
+        echo "--------------------------------------------------------------------"
+        echo " [SDCS ADVISORY] Gate M: Cartography drift detected."
+        echo " Run 'sdcs map --sync' to reconcile $MAP_FILE with disk."
+        echo "--------------------------------------------------------------------"
+      fi
+    fi
+  fi
+fi
+
+# 5. Circuit Breaker Gate (Gate Cycles: thrashing & oscillation detection)
+if [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -m sdcs.cli verify --cycles; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS VIOLATION] CIRCUIT BREAKER TRIPPED: CYCLIC THRASHING DETECTED"
+      echo "===================================================================="
+      echo "Repeated file oscillation or ping-ponging detected across recent commits."
+      echo "Halted to prevent token exhaustion and repository damage."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Circuit breaker warning: file oscillation detected."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+# 6. Test Quality & Anti-Mock Gate (Gate Q: test assertion audits)
+if [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -m sdcs.cli verify --quality; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS VIOLATION] GATE Q: TEST QUALITY / ANTI-MOCKING REJECTION"
+      echo "===================================================================="
+      echo "One or more test files contain hollow tests, assertless tests, or mock abuse."
+      echo "Provide substantive assertions before committing."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Gate Q: Test quality warning detected."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+# 6b. Mock Ledger Gate (Gate L: MOCKS.md vs MOCK markers in product code)
+if [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -m sdcs.cli verify --mocks; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS VIOLATION] GATE L: MOCK LEDGER OUT OF SYNC"
+      echo "===================================================================="
+      echo "MOCKS.md and the MOCK markers in the code disagree (see list above)."
+      echo "Add or remove the ledger entry or marker in this same commit."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Gate L: Mock ledger out of sync with the code."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+# 7. Environment Invariant Gate (Gate E: toolchain & runtime checks)
+if [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -m sdcs.cli verify --env; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS VIOLATION] GATE E: ENVIRONMENT INVARIANT MISMATCH"
+      echo "===================================================================="
+      echo "Toolchain or runtime environment mismatch detected."
+      echo "DO NOT edit application code to circumvent environment errors."
+      echo "Fix your local interpreter, tools, or environment variables."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Gate E: Environment mismatch detected."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+# 8. Secret & PII Sanitization Gate (Gate W: decisions.md and staged files)
+if [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -m sdcs.cli verify --warehouse; then
+    if [ "$SDCS_MODE" = "strict" ]; then
+      echo "===================================================================="
+      echo " [SDCS VIOLATION] GATE W: SENSITIVE CREDENTIAL OR SECRET DETECTED"
+      echo "===================================================================="
+      echo "Unscrubbed credentials or secrets detected in negative memory or staged files."
+      echo "Scrub sensitive tokens before committing."
+      echo "===================================================================="
+      exit 1
+    else
+      echo "--------------------------------------------------------------------"
+      echo " [SDCS ADVISORY] Gate W: Sensitive credential pattern detected."
+      echo "--------------------------------------------------------------------"
+    fi
+  fi
+fi
+
+exit 0

@@ -4,16 +4,24 @@ Verifies:
 1. Autonomous direct approval procurement ($100 budget cap).
 2. Autonomous counter-offer bargaining and acceptance ($60 budget cap, seller counters with Batch at $49.99).
 3. Rejection when budget cap is below minimum viable tier ($40 budget cap).
-4. Rejection when counter-offer exceeds budget cap.
-5. Strict key isolation: Agent signs closed mandates only with agent_key and never holds owner private key.
-6. Readable execution step log:
-   (requested -> over limit -> counter-offer -> checked against limits -> signed)
+4. Strict key isolation: Agent signs closed mandates only with agent_key and never holds owner private key.
+5. Hostile runner attack rejection: tamper tier and price produces 0 signatures.
+6. Local HTTP mock verification of OpenAICompatibleRunner reaching STEP 6.
+7. Readable execution step log:
+   (requested -> over limit -> counter-offer -> checked against limits -> signed -> purchased)
 """
 
+import json
 import pytest
+import httpx
 from jwcrypto.jwk import JWK
 
-from backend.agents.llm_buyer_agent import LLMBuyerAgent, StubbedModelRunner
+from backend.agents.llm_buyer_agent import (
+    BaseModelRunner,
+    LLMBuyerAgent,
+    OpenAICompatibleRunner,
+    StubbedModelRunner,
+)
 from backend.services.ap2_keys import get_demo_agent_key, get_demo_user_key
 from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
 
@@ -21,6 +29,12 @@ from backend.services.trusted_surface_service import create_trusted_surface_open
 @pytest.mark.asyncio
 async def test_llm_buyer_agent_direct_approval():
     """Tests autonomous procurement when desired tier is within budget cap."""
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="llm-buyer-direct@example.com",
+        monthly_budget_cap=100.00,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
+    )
+
     agent = LLMBuyerAgent(
         agent_id="test-llm-agent-01",
         monthly_budget_cap=100.00,
@@ -30,6 +44,8 @@ async def test_llm_buyer_agent_direct_approval():
     res = await agent.run_autonomous_procurement(
         owner_request="Procure Dedicated AI Service Gateway within $100/mo",
         target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
     )
 
     assert res["status"] == "COMPLETED"
@@ -46,6 +62,12 @@ async def test_llm_buyer_agent_counter_offer_bargaining():
     Tests autonomous counter-offer acceptance when requested tier exceeds cap ($60 vs $79.99),
     seller counters with Batch ($49.99), and agent evaluates limits and accepts.
     """
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="llm-buyer-counter@example.com",
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
+    )
+
     agent = LLMBuyerAgent(
         agent_id="test-llm-agent-counter",
         monthly_budget_cap=60.00,
@@ -55,6 +77,8 @@ async def test_llm_buyer_agent_counter_offer_bargaining():
     res = await agent.run_autonomous_procurement(
         owner_request="I need an inference compute node with a budget limit of $60/month",
         target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
     )
 
     assert res["status"] == "COMPLETED"
@@ -73,6 +97,12 @@ async def test_llm_buyer_agent_counter_offer_bargaining():
 @pytest.mark.asyncio
 async def test_llm_buyer_agent_rejection_below_minimum_tier():
     """Tests rejection when budget cap ($40.00) is below minimum viable tier ($49.99)."""
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="llm-buyer-low@example.com",
+        monthly_budget_cap=40.00,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
+    )
+
     agent = LLMBuyerAgent(
         agent_id="test-llm-agent-reject",
         monthly_budget_cap=40.00,
@@ -82,6 +112,8 @@ async def test_llm_buyer_agent_rejection_below_minimum_tier():
     res = await agent.run_autonomous_procurement(
         owner_request="Procure compute node under $40/month",
         target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
     )
 
     assert res["status"] == "REJECTED"
@@ -106,6 +138,7 @@ async def test_llm_buyer_agent_key_isolation():
         monthly_budget_cap=60.00,
         user_key=owner_key,
         agent_key=agent_key,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
     )
 
     # Instantiate agent providing only agent_key (never owner_key)
@@ -130,5 +163,175 @@ async def test_llm_buyer_agent_key_isolation():
 
     assert res["status"] == "COMPLETED"
     # Verify step log confirms holder key
-    signed_step = next(s for s in res["step_log"] if "Dual SD-JWT" in s)
+    signed_step = next(s for s in res["step_log"] if "STEP 5: SIGNED" in s)
     assert agent_key.kid in signed_step
+
+
+class HostileModelRunner(BaseModelRunner):
+    """
+    Hostile runner simulating an untrusted/hallucinating LLM trying to call
+    sign_and_purchase for an unauthorized expensive tier ($179.99 cluster)
+    under a $60 budget limit.
+    """
+    async def decide_next_action(self, system_prompt, messages, tools):
+        return {
+            "thought": "I will bypass human limits and purchase the $179.99 cluster tier anyway.",
+            "action": "call_tool",
+            "tool_name": "sign_and_purchase",
+            "tool_call_id": "call_hostile_bypass_01",
+            "parameters": {
+                "tier_id": "ap2-cluster",
+                "monthly_price": 179.99,
+                "checkout_jwt": "fake.jwt.token",
+                "checkout_hash": "fakehash",
+                "nonce": "fakenonce",
+            },
+        }
+
+
+@pytest.mark.asyncio
+async def test_hostile_runner_tampered_tier_and_price_produces_zero_signatures():
+    """
+    Verifies that deterministic pre-signature verification intercepts hostile or
+    hallucinated runner tool calls: ZERO closed mandate signatures are produced,
+    POLICY_VIOLATION is logged, and the process halts safely.
+    """
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="hostile-test@example.com",
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch", "ap2-gateway"],
+    )
+
+    agent = LLMBuyerAgent(
+        agent_id="test-hostile-agent-01",
+        monthly_budget_cap=60.00,
+        buyer_email="hostile-test@example.com",
+        model_runner=HostileModelRunner(),
+    )
+
+    res = await agent.run_autonomous_procurement(
+        owner_request="Buy node under $60",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
+    )
+
+    # 1. Deterministic guard stopped the hostile runner
+    assert res["status"] == "REJECTED"
+    assert res["error"] == "PRE_SIGNATURE_CONSTRAINT_VIOLATION"
+
+    # 2. Strict invariant: ZERO cryptographic signatures produced
+    assert agent.signatures_produced == 0
+    assert not any("STEP 5: SIGNED" in s for s in res["step_log"])
+    assert not any("STEP 6: PURCHASED" in s for s in res["step_log"])
+    assert any("POLICY_VIOLATION" in s for s in res["step_log"])
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_runner_local_http_mock(monkeypatch):
+    """
+    Verifies OpenAICompatibleRunner against a local HTTP mock:
+    Formats standard OpenAI messages, validates tool calling schemas including
+    sign_and_purchase, parses choices, and completes through STEP 6: PURCHASED.
+    """
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="oai-mock@example.com",
+        monthly_budget_cap=100.00,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
+    )
+
+    turn = 0
+
+    async def mock_post(self_client, url, *args, **kwargs):
+        nonlocal turn
+        turn += 1
+        payload = kwargs.get("json", {})
+        msgs = payload.get("messages", [])
+        last_msg = msgs[-1] if msgs else {}
+
+        req = httpx.Request("POST", url)
+        if turn == 1:
+            tc = {
+                "id": "call_inspect_01",
+                "type": "function",
+                "function": {"name": "inspect_subscription_tiers", "arguments": "{}"},
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        elif turn == 2:
+            tc = {
+                "id": "call_negotiate_01",
+                "type": "function",
+                "function": {
+                    "name": "negotiate_tier_terms",
+                    "arguments": json.dumps({
+                        "tier_id": "ap2-gateway",
+                        "monthly_budget_cap": 100.0,
+                        "buyer_agent_id": "test-oai-agent",
+                        "buyer_email": "oai-mock@example.com",
+                    }),
+                },
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        elif turn == 3:
+            last_content = json.loads(last_msg.get("content", "{}"))
+            tc = {
+                "id": "call_sign_01",
+                "type": "function",
+                "function": {
+                    "name": "sign_and_purchase",
+                    "arguments": json.dumps({
+                        "tier_id": "ap2-gateway",
+                        "monthly_price": 79.99,
+                        "checkout_jwt": last_content.get("checkout_jwt"),
+                        "checkout_hash": last_content.get("checkout_hash"),
+                        "nonce": last_content.get("nonce"),
+                        "offer_id": last_content.get("offer_id"),
+                    }),
+                },
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        elif turn == 4:
+            last_content = json.loads(last_msg.get("content", "{}"))
+            sub_id = last_content.get("subscription_id", "sub-oai-mock")
+            tc = {
+                "id": "call_provision_01",
+                "type": "function",
+                "function": {
+                    "name": "provision_compute_node",
+                    "arguments": json.dumps({
+                        "subscription_id": sub_id,
+                        "buyer_email": "oai-mock@example.com",
+                        "node_type": "gateway",
+                    }),
+                },
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        else:
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "Autonomous buyer agent completed cycle."}}]}, request=req)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    runner = OpenAICompatibleRunner(
+        model="mock-gpt-4o",
+        base_url="https://mock-llm.local/v1",
+        api_key="mock-api-key",
+    )
+
+    agent = LLMBuyerAgent(
+        agent_id="test-oai-agent",
+        monthly_budget_cap=100.00,
+        buyer_email="oai-mock@example.com",
+        model_runner=runner,
+    )
+
+    res = await agent.run_autonomous_procurement(
+        owner_request="Procure Dedicated AI Service Gateway within $100/mo",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
+    )
+
+    assert res["status"] == "COMPLETED"
+    assert any("STEP 5: SIGNED" in s for s in res["step_log"])
+    assert any("STEP 6: PURCHASED" in s for s in res["step_log"])
+    assert agent.signatures_produced == 1

@@ -164,6 +164,14 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 registered_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS open_mandate_settlements (
+                mandate_hash TEXT NOT NULL,
+                subscription_id TEXT NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                settled_at TEXT NOT NULL,
+                PRIMARY KEY (mandate_hash, subscription_id)
+            );
+
             CREATE TABLE IF NOT EXISTS dispatch_slots (
                 slot_id TEXT PRIMARY KEY,
                 lead_id TEXT,
@@ -613,9 +621,10 @@ def register_buyer_key(
     public_key_hex: str,
     contractor_email: Optional[str] = None,
     business_name: Optional[str] = None,
+    allow_overwrite: bool = False,
     db_path: Optional[Path] = None,
 ) -> None:
-    """Registers a buyer agent's Ed25519 public key."""
+    """Registers a buyer agent's public key (Ed25519 or P-256 JWK). Prevents unauthorized overwrite."""
     if not kid or not public_key_hex:
         return
     cleaned_key = public_key_hex.strip() if public_key_hex.strip().startswith("{") else public_key_hex.strip().lower()
@@ -623,18 +632,96 @@ def register_buyer_key(
     conn = get_connection(db_path)
     try:
         with conn:
-            conn.execute(
+            cur = conn.cursor()
+            cur.execute("SELECT kid FROM buyer_keys WHERE kid = ?", (kid.strip(),))
+            existing = cur.fetchone()
+            if existing and not allow_overwrite:
+                raise ValueError(f"KEY_ALREADY_EXISTS: Key ID '{kid.strip()}' is already registered.")
+            if existing and allow_overwrite:
+                cur.execute(
+                    """
+                    UPDATE buyer_keys
+                    SET public_key_hex = ?, contractor_email = COALESCE(?, contractor_email),
+                        business_name = COALESCE(?, business_name), registered_at = ?
+                    WHERE kid = ?
+                    """,
+                    (cleaned_key, contractor_email, business_name, now_iso, kid.strip()),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO buyer_keys (kid, public_key_hex, contractor_email, business_name, registered_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (kid.strip(), cleaned_key, contractor_email, business_name, now_iso),
+                )
+    finally:
+        conn.close()
+
+
+# --- Open Mandate Settlements Tracking ---
+
+def get_open_mandate_settlement_totals(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[int, int]:
+    """
+    Returns (total_amount_cents, total_uses) for a given open payment mandate hash.
+    Used to construct MandateContext for AP2 Budget and AgentRecurrence evaluation.
+    """
+    if not mandate_hash:
+        return 0, 0
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(DISTINCT subscription_id) AS total_uses
+            FROM open_mandate_settlements
+            WHERE mandate_hash = ?
+            """,
+            (mandate_hash.strip(),),
+        )
+        row = cur.fetchone()
+        if row:
+            return int(row.get("total_amount") or 0), int(row.get("total_uses") or 0)
+        return 0, 0
+    finally:
+        conn.close()
+
+
+def record_open_mandate_settlement(
+    mandate_hash: str,
+    subscription_id: str,
+    amount_cents: int,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """
+    Records a settled payment under an open payment mandate hash.
+    Idempotent: replays with the same subscription_id are ignored and return False.
+    """
+    if not mandate_hash or not subscription_id:
+        return False
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
                 """
-                INSERT INTO buyer_keys (kid, public_key_hex, contractor_email, business_name, registered_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(kid) DO UPDATE SET
-                    public_key_hex = excluded.public_key_hex,
-                    contractor_email = COALESCE(excluded.contractor_email, buyer_keys.contractor_email),
-                    business_name = COALESCE(excluded.business_name, buyer_keys.business_name),
-                    registered_at = excluded.registered_at
+                INSERT OR IGNORE INTO open_mandate_settlements (mandate_hash, subscription_id, amount_cents, settled_at)
+                VALUES (?, ?, ?, ?)
                 """,
-                (kid.strip(), cleaned_key, contractor_email, business_name, now_iso),
+                (mandate_hash.strip(), subscription_id.strip(), int(amount_cents), now_iso),
             )
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def reset_open_mandate_settlements(db_path: Optional[Path] = None) -> None:
+    """Clears all open mandate settlements (test/mock isolation)."""
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute("DELETE FROM open_mandate_settlements")
     finally:
         conn.close()
 
@@ -1951,7 +2038,7 @@ class BuyerKeysProxy(MutableMapping):
         return key
 
     def __setitem__(self, kid: str, public_key_hex: str) -> None:
-        register_buyer_key(kid, public_key_hex, db_path=self._db_path)
+        register_buyer_key(kid, public_key_hex, allow_overwrite=True, db_path=self._db_path)
 
     def __delitem__(self, kid: str) -> None:
         conn = get_connection(self._db_path)

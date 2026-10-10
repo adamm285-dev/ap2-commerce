@@ -16,6 +16,7 @@ Verifies:
 
 import pytest
 from fastapi.testclient import TestClient
+from jwcrypto.jwk import JWK
 
 from ap2.sdk.generated.checkout_mandate import CheckoutMandate
 from ap2.sdk.generated.payment_mandate import PaymentMandate
@@ -24,18 +25,26 @@ from ap2.sdk.generated.types.merchant import Merchant
 from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
 from ap2.sdk.mandate import MandateClient
 
+from backend.config import settings
+from backend.database import (
+    get_buyer_key,
+    get_open_mandate_settlement_totals,
+    record_open_mandate_settlement,
+)
 from backend.server import app
 from backend.services.ap2_keys import get_demo_agent_key, get_demo_user_key
 from backend.services.ap2_service import (
     AP2_MERCHANT_ID,
     AP2_MERCHANT_NAME,
+    compute_open_payment_mandate_hash,
     create_merchant_checkout,
     verify_ap2_chains,
 )
+from backend.services.crypto_mandate import sign_es256_challenge
 from backend.services.trusted_surface_service import (
     create_trusted_surface_open_mandates,
-    enroll_trusted_surface_key,
 )
+from backend.agents.seller_agent import seller_agent
 
 client = TestClient(app)
 
@@ -108,26 +117,263 @@ def test_trusted_surface_sign_limits_requires_human_confirmation():
     assert detail["error"] == "HUMAN_CONFIRMATION_REQUIRED"
 
 
-def test_trusted_surface_enroll_endpoint():
-    """Tests POST /api/trusted-surface/enroll endpoint."""
-    user_key = get_demo_user_key()
-    pub_jwk = user_key.export_public(as_dict=True)
+def test_attack_enroll_without_valid_challenge_rejected():
+    """
+    Verifies that open enrollment routes are removed (404),
+    and registering without a valid challenge is rejected.
+    """
+    # 1. Old unauthenticated enrollment endpoints return 404
+    assert client.post("/api/trusted-surface/enroll", json={}).status_code == 404
+    assert client.post("/api/agent/trusted-surface/enroll", json={}).status_code == 404
 
-    resp = client.post(
-        "/api/trusted-surface/enroll",
+    attacker_key = JWK.generate(kty="EC", crv="P-256", kid="attacker-p256-01")
+    attacker_pub = attacker_key.export_public(as_dict=True)
+
+    # 2. Registering with an unissued challenge returns 400
+    res_fake = client.post(
+        "/api/agent/keys/register",
         json={
-            "kid": "owner-p256-test-01",
-            "public_key_jwk": pub_jwk,
-            "buyer_email": "owner-enrolled@example.com",
-            "business_name": "Enrolled Owner LLC",
-            "monthly_budget_cap": 150.00,
+            "kid": "attacker-p256-01",
+            "publicKeyJwk": attacker_pub,
+            "contractorEmail": "attacker@example.com",
+            "businessEntity": "Attacker Systems LLC",
+            "challenge": "fake-challenge-" + "a" * 50,
+            "challengeSignature": "00" * 64,
         },
     )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["status"] == "REGISTERED"
-    assert data["kid"] == "owner-p256-test-01"
-    assert data["buyer_email"] == "owner-enrolled@example.com"
+    assert res_fake.status_code == 400
+
+    # 3. Registering with a valid challenge but forged/invalid signature returns 401
+    chal = client.get("/api/agent/keys/challenge").json()["challenge"]
+    res_bad_sig = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": "attacker-p256-01",
+            "publicKeyJwk": attacker_pub,
+            "contractorEmail": "attacker@example.com",
+            "businessEntity": "Attacker Systems LLC",
+            "challenge": chal,
+            "challengeSignature": "00" * 64,
+        },
+    )
+    assert res_bad_sig.status_code == 401
+
+
+def test_attack_duplicate_kid_registration_returns_409():
+    """
+    Verifies that attempting to re-register an existing kid returns 409 Conflict,
+    and the original registered key is never overwritten.
+    """
+    victim_kid = "owner-p256-victim-key"
+    victim_email = "victim@example.com"
+    victim_key = JWK.generate(kty="EC", crv="P-256", kid=victim_kid)
+    victim_pub = victim_key.export_public(as_dict=True)
+
+    # 1. Legitimate owner registers key
+    chal1 = client.get("/api/agent/keys/challenge").json()["challenge"]
+    sig1 = sign_es256_challenge(chal1, victim_key)
+    res1 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": victim_kid,
+            "publicKeyJwk": victim_pub,
+            "contractorEmail": victim_email,
+            "businessEntity": "Victim Autonomous Inc",
+            "challenge": chal1,
+            "challengeSignature": sig1,
+        },
+    )
+    assert res1.status_code == 201
+
+    # 2. Attacker attempts to overwrite the victim's kid with attacker key
+    attacker_key = JWK.generate(kty="EC", crv="P-256", kid=victim_kid)
+    attacker_pub = attacker_key.export_public(as_dict=True)
+    chal2 = client.get("/api/agent/keys/challenge").json()["challenge"]
+    sig2 = sign_es256_challenge(chal2, attacker_key)
+
+    res2 = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": victim_kid,
+            "publicKeyJwk": attacker_pub,
+            "contractorEmail": "attacker@example.com",
+            "businessEntity": "Attacker Systems LLC",
+            "challenge": chal2,
+            "challengeSignature": sig2,
+        },
+    )
+    assert res2.status_code == 409
+    assert "KEY_ALREADY_EXISTS" in res2.json()["detail"]["error"]
+
+    # 3. Invariant: Original owner's public key remains unaltered in persistent registry
+    stored_raw = get_buyer_key(victim_kid)
+    assert victim_pub["x"] in stored_raw
+    assert attacker_pub["x"] not in stored_raw
+
+
+def test_trusted_surface_sign_limits_disabled_outside_mock_mode(monkeypatch):
+    """Verifies POST /api/trusted-surface/sign-limits returns 404 when mock mode is disabled."""
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+    resp = client.post(
+        "/api/trusted-surface/sign-limits",
+        json={
+            "buyer_email": "real-buyer@example.com",
+            "monthly_budget_cap": 80.00,
+            "human_confirmed": True,
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_enforce_agent_recurrence_13th_payment_rejected():
+    """
+    Verifies that when AgentRecurrence specifies max_occurrences = 12,
+    the 13th settlement attempt is rejected with ERR_UNRESOLVED_CONSTRAINT.
+    """
+    ts_res = create_trusted_surface_open_mandates(
+        buyer_email="recurrence@example.com",
+        monthly_budget_cap=60.00,
+        yearly_budget_ceiling=1200.00,
+        allowed_tiers=["ap2-batch"],
+    )
+    open_chk_tok = ts_res["open_checkout_mandate_token"]
+    open_pay_tok = ts_res["open_payment_mandate_token"]
+    open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
+
+    # Simulate 12 prior settled subscription payments (total_uses = 12)
+    for i in range(12):
+        record_open_mandate_settlement(open_pay_hash, f"sub-prior-{i}", 4999)
+
+    tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+    assert tot_uses == 12
+
+    # Attempt 13th settlement
+    chk_rec = create_merchant_checkout("ap2-batch", 49.99, "recurrence@example.com")
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+
+    closed_chk = CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk_rec["checkout_jwt"], checkout_hash=chk_rec["checkout_hash"])
+    chk_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_chk_tok, payloads=[closed_chk], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_rec["checkout_hash"],
+        payment_amount=Amount(amount=4999, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_recurrence"),
+    )
+    pay_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_pay_tok, payloads=[closed_pay], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    v_res = verify_ap2_chains(chk_chain, pay_chain, chk_rec["checkout_jwt"], buyer_email="recurrence@example.com")
+    assert v_res["valid"] is False
+    assert v_res["error"] in ("invalid_mandate", "unresolved_constraint")
+    assert "recurrence" in v_res.get("error_description", "").lower() or "occurrences" in v_res.get("error_description", "").lower()
+
+
+def test_enforce_budget_exceeded_rejected():
+    """
+    Verifies that when cumulative spend exceeds the open payment mandate's Budget.max ceiling,
+    the purchase is rejected with ERR_UNRESOLVED_CONSTRAINT.
+    """
+    ts_res = create_trusted_surface_open_mandates(
+        buyer_email="budget-ceiling@example.com",
+        monthly_budget_cap=60.00,
+        yearly_budget_ceiling=100.00,  # $100.00 yearly ceiling (10,000 cents)
+        allowed_tiers=["ap2-batch"],
+    )
+    open_chk_tok = ts_res["open_checkout_mandate_token"]
+    open_pay_tok = ts_res["open_payment_mandate_token"]
+    open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
+
+    # Prior spend of $70.00 (7,000 cents)
+    record_open_mandate_settlement(open_pay_hash, "sub-prior-spend-01", 7000)
+
+    # Attempt new purchase of $49.99 (4,999 cents) -> Total would be 11,999 cents > 10,000 cents
+    chk_rec = create_merchant_checkout("ap2-batch", 49.99, "budget-ceiling@example.com")
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+
+    closed_chk = CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk_rec["checkout_jwt"], checkout_hash=chk_rec["checkout_hash"])
+    chk_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_chk_tok, payloads=[closed_chk], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_rec["checkout_hash"],
+        payment_amount=Amount(amount=4999, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_budget"),
+    )
+    pay_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_pay_tok, payloads=[closed_pay], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    v_res = verify_ap2_chains(chk_chain, pay_chain, chk_rec["checkout_jwt"], buyer_email="budget-ceiling@example.com")
+    assert v_res["valid"] is False
+    assert v_res["error"] in ("invalid_mandate", "unresolved_constraint")
+    assert "budget" in v_res.get("error_description", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_does_not_increment_settlement():
+    """
+    Verifies that replaying an identical purchase returns the existing subscription
+    and does NOT increment the open mandate's recorded settlement usage or cumulative spend.
+    """
+    ts_res = create_trusted_surface_open_mandates(
+        buyer_email="replay-settle@example.com",
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch"],
+    )
+    open_chk_tok = ts_res["open_checkout_mandate_token"]
+    open_pay_tok = ts_res["open_payment_mandate_token"]
+    open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
+
+    chk_rec = create_merchant_checkout("ap2-batch", 49.99, "replay-settle@example.com")
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+
+    closed_chk = CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk_rec["checkout_jwt"], checkout_hash=chk_rec["checkout_hash"])
+    chk_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_chk_tok, payloads=[closed_chk], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_rec["checkout_hash"],
+        payment_amount=Amount(amount=4999, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_replay"),
+    )
+    pay_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_pay_tok, payloads=[closed_pay], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    offer_id = chk_rec["checkout_hash"][:16]
+
+    # Initial purchase
+    res1 = await seller_agent.purchase_subscription(
+        offer_id=offer_id,
+        contractor_email="replay-settle@example.com",
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=chk_rec["checkout_jwt"],
+    )
+    assert res1["status"] in ("ACTIVE", "APPROVAL_PENDING")
+    sub_id = res1["subscription_id"]
+
+    tot_amt1, tot_uses1 = get_open_mandate_settlement_totals(open_pay_hash)
+    assert tot_uses1 == 1
+    assert tot_amt1 == 4999
+
+    # Replay identical purchase
+    res2 = await seller_agent.purchase_subscription(
+        offer_id=offer_id,
+        contractor_email="replay-settle@example.com",
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=chk_rec["checkout_jwt"],
+    )
+    assert res2["status"] in ("ACTIVE", "APPROVAL_PENDING")
+    assert res2["subscription_id"] == sub_id
+
+    # Usage and amount MUST NOT increase
+    tot_amt2, tot_uses2 = get_open_mandate_settlement_totals(open_pay_hash)
+    assert tot_uses2 == 1
+    assert tot_amt2 == 4999
 
 
 def test_trusted_surface_end_to_end_verification():

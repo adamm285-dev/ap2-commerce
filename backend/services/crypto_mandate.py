@@ -335,3 +335,78 @@ def sign_ed25519_message(message: str, private_key_hex: str) -> str:
     priv = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex.strip()))
     return priv.sign(message.encode("utf-8")).hex()
 
+
+def verify_es256_challenge_signature(
+    challenge: str,
+    signature_str: str,
+    public_key_jwk: Dict[str, Any],
+) -> bool:
+    """
+    Verifies an ES256 (ECDSA P-256 SHA-256) signature over a challenge string.
+    Supports IEEE P1363 raw 64-byte signatures (from WebCrypto / JWS) and DER signatures,
+    in hex or base64/base64url format.
+    """
+    try:
+        if not challenge or not signature_str or not public_key_jwk:
+            return False
+
+        from jwcrypto.jwk import JWK
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from cryptography.hazmat.primitives import hashes
+        import base64
+
+        jwk = JWK(**public_key_jwk)
+        pyca_key = jwk.get_op_key("verify")
+
+        challenge_bytes = challenge.encode("utf-8")
+        clean_sig = signature_str.strip()
+
+        sig_bytes = None
+        # Try hex decode
+        try:
+            sig_bytes = bytes.fromhex(clean_sig)
+        except ValueError:
+            pass
+
+        if sig_bytes is None:
+            # Try base64url / base64
+            padded = clean_sig + "=" * (-len(clean_sig) % 4)
+            try:
+                sig_bytes = base64.urlsafe_b64decode(padded)
+            except Exception:
+                try:
+                    sig_bytes = base64.b64decode(padded)
+                except Exception:
+                    return False
+
+        # Convert IEEE P1363 (64 bytes raw r||s) to DER if needed
+        if len(sig_bytes) == 64:
+            r = int.from_bytes(sig_bytes[:32], "big")
+            s = int.from_bytes(sig_bytes[32:], "big")
+            der_sig = utils.encode_dss_signature(r, s)
+        else:
+            der_sig = sig_bytes
+
+        pyca_key.verify(der_sig, challenge_bytes, ec.ECDSA(hashes.SHA256()))
+        return True
+    except Exception as e:
+        logger.warning(f"ES256 challenge signature verification failed: {e}")
+        return False
+
+
+def sign_es256_challenge(challenge: str, private_key: Any) -> str:
+    """
+    Signs a challenge string with a P-256 JWK using ES256, returning raw IEEE P1363 signature in hex.
+    """
+    from cryptography.hazmat.primitives.asymmetric import ec, utils
+    from cryptography.hazmat.primitives import hashes
+    from jwcrypto.jwk import JWK
+
+    if isinstance(private_key, dict):
+        private_key = JWK(**private_key)
+    pyca_priv = private_key.get_op_key("sign")
+    der_sig = pyca_priv.sign(challenge.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
+    r, s = utils.decode_dss_signature(der_sig)
+    raw_sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+    return raw_sig.hex()
+

@@ -13,6 +13,7 @@
 credentials.json
 service_account.json
 client_secret*.json
+owner_limits.json
 
 # ==========================================
 # Node & Frontend Build Artifacts

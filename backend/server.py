@@ -51,6 +51,7 @@ from .services.crypto_mandate import (
     generate_dynamic_mandate_proof,
     verify_mandate_proof,
     verify_ed25519_challenge_signature,
+    verify_es256_challenge_signature,
     canonicalize_mandate_payload,
     DEFAULT_SELLER_KID,
     DEFAULT_SELLER_PUBLIC_KEY_HEX,
@@ -578,26 +579,23 @@ class TrustedSurfaceSignLimitsRequest(BaseModel):
     allowedTiers: Optional[List[str]] = Field(default=None, alias="allowed_tiers", description="Allowed compute tier IDs")
     agentPublicJwk: Optional[Dict[str, Any]] = Field(default=None, alias="agent_public_jwk", description="Agent public key JWK to bind in cnf claim")
     validityHours: int = Field(default=24, alias="validity_hours", description="Hours until open mandate expires")
-    humanConfirmed: bool = Field(default=True, alias="human_confirmed", description="Explicit human confirmation flag")
-
-
-class TrustedSurfaceEnrollRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
-    kid: str = Field(..., description="Unique key identifier for the human owner")
-    publicKeyJwk: Dict[str, Any] = Field(..., alias="public_key_jwk", description="Owner P-256 public key JWK")
-    buyerEmail: str = Field(..., alias="buyer_email", description="Owner billing email")
-    businessName: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_name")
-    monthlyBudgetCap: Optional[float] = Field(default=None, alias="monthly_budget_cap")
+    humanConfirmed: bool = Field(..., alias="human_confirmed", description="Explicit human confirmation flag")
 
 
 @app.post("/api/trusted-surface/sign-limits", tags=["Trusted Surface"])
-@app.post("/api/agent/trusted-surface/sign-limits", tags=["Trusted Surface"])
 async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequest):
     """
     Non-agentic Trusted Surface endpoint: Human owner sets programmatic limits and signs
     AP2 v0.2 Open Checkout and Open Payment Mandates.
     Enforces non-agentic human authorization (explicit confirmation required).
+    Available only in mock/demo mode; in live mode, client must sign locally via WebCrypto.
     """
+    if not settings.mock_external_apis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trusted Surface server signing is disabled in live mode. Client must sign limits locally.",
+        )
+
     if not req.humanConfirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -628,26 +626,6 @@ async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequ
         return res
     except Exception as e:
         logger.error(f"Trusted surface mandate signing error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/trusted-surface/enroll", status_code=status.HTTP_201_CREATED, tags=["Trusted Surface"])
-@app.post("/api/agent/trusted-surface/enroll", status_code=status.HTTP_201_CREATED, tags=["Trusted Surface"])
-async def trusted_surface_enroll_endpoint(req: TrustedSurfaceEnrollRequest):
-    """
-    Enrolls a human owner's P-256 public key (JWK) bound to buyer_email in the buyer key registry.
-    """
-    try:
-        res = enroll_trusted_surface_key(
-            kid=req.kid,
-            public_key_jwk=req.publicKeyJwk,
-            buyer_email=req.buyerEmail,
-            business_name=req.businessName or "Nexus Autonomous Systems Corp",
-            monthly_budget_cap=req.monthlyBudgetCap,
-        )
-        return res
-    except Exception as e:
-        logger.error(f"Trusted surface enrollment error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1071,16 +1049,54 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
             detail={"status": "REJECTED", "error": "CHALLENGE_EXPIRED", "reason": "Registration challenge nonce expired."},
         )
 
-    # 2. Cryptographic Ed25519 challenge-response verification
-    is_valid = verify_ed25519_challenge_signature(
-        challenge=request.challenge,
-        signature_hex=request.challenge_signature,
-        public_key_hex=request.public_key_hex,
-    )
-    if not is_valid:
+    # 2. Cryptographic challenge-response verification (Ed25519 or ES256 P-256)
+    stored_pub_key = None
+    if request.public_key_jwk:
+        is_valid = verify_es256_challenge_signature(
+            challenge=request.challenge,
+            signature_str=request.challenge_signature,
+            public_key_jwk=request.public_key_jwk,
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic ES256 challenge signature verification failed."},
+            )
+        stored_pub_key = json.dumps(request.public_key_jwk)
+    elif request.public_key_hex:
+        clean_pub = request.public_key_hex.strip()
+        if clean_pub.startswith("{"):
+            try:
+                jwk_dict = json.loads(clean_pub)
+                is_valid = verify_es256_challenge_signature(
+                    challenge=request.challenge,
+                    signature_str=request.challenge_signature,
+                    public_key_jwk=jwk_dict,
+                )
+                if not is_valid:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic ES256 challenge signature verification failed."},
+                    )
+                stored_pub_key = json.dumps(jwk_dict)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON JWK")
+        else:
+            is_valid = verify_ed25519_challenge_signature(
+                challenge=request.challenge,
+                signature_hex=request.challenge_signature,
+                public_key_hex=clean_pub,
+            )
+            if not is_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic Ed25519 challenge signature verification failed."},
+                )
+            stored_pub_key = clean_pub.lower()
+    else:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic Ed25519 challenge signature verification failed."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "MISSING_PUBLIC_KEY", "reason": "Either publicKeyHex or publicKeyJwk is required."},
         )
 
     # 3. US-domestic contractor identity validation
@@ -1097,30 +1113,38 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
             detail={"status": "REJECTED", "error": "INVALID_ENTITY", "reason": "Valid US contractor business entity required (minimum 3 characters)."},
         )
 
-    # 4. Register key in SQLite WAL persistence
-    register_buyer_key(
-        kid=request.kid,
-        public_key_hex=request.public_key_hex,
-        contractor_email=norm_email,
-        business_name=request.business_entity,
-    )
-    REGISTERED_BUYER_KEYS[request.kid] = request.public_key_hex.strip().lower()
+    # 4. Register key in SQLite WAL persistence (Strict collision check: 409 Conflict)
+    try:
+        register_buyer_key(
+            kid=request.kid,
+            public_key_hex=stored_pub_key,
+            contractor_email=norm_email,
+            business_name=request.business_entity,
+            allow_overwrite=False,
+        )
+    except ValueError as e:
+        if "KEY_ALREADY_EXISTS" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"status": "REJECTED", "error": "KEY_ALREADY_EXISTS", "reason": f"Key ID '{request.kid}' is already registered. Overwriting keys is strictly prohibited."},
+            )
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # 5. Save the contractor budget cap ONLY if the registrant sent one and none is established
+
+    # Save contractor budget cap only if explicitly sent by an agent registration (AUD-14)
     cap_sent = "monthly_budget_cap" in request.model_fields_set and request.monthly_budget_cap is not None
     if cap_sent and math.isfinite(request.monthly_budget_cap) and request.monthly_budget_cap > 0:
         from .services.mandate_evaluator import ledger
         existing_cap = ledger.get_saved_cap(norm_email)
         if existing_cap is None:
             ledger.set_contractor_cap(norm_email, float(request.monthly_budget_cap), source="key_registration")
-        else:
-            logger.info(f"[A2A_KEY] Contractor {norm_email} already has established budget cap ${existing_cap:.2f}; retaining existing cap.")
+
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return BuyerKeyRegistrationResponse(
         status="REGISTERED",
         kid=request.kid,
-        publicKeyHex=request.public_key_hex.strip().lower(),
+        publicKeyHex=stored_pub_key,
         contractorEmail=norm_email,
         businessEntity=request.business_entity,
         registeredAt=now_iso,

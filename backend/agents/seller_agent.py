@@ -866,6 +866,56 @@ class SellerAgent:
         if not contractor_email and buyer_email:
             contractor_email = buyer_email
 
+        # 0. Idempotency Check: a verified replay returns the existing subscription
+        cache_key = offer_id or mandate_proof_hash
+        if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
+            cached = _COMPLETED_SUBSCRIPTIONS[cache_key]
+            if isinstance(cached, dict):
+                c_status = str(cached.get("status", "")).upper()
+                if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_ALREADY_REDEEMED",
+                        "reason": "Mandate already redeemed; negotiate again.",
+                        "message": "Purchase rejected: mandate already redeemed; negotiate again.",
+                    }
+
+                # Identity check on replay: an attacker cannot hijack a completed subscription
+                cached_email = cached.get("contractor_email") or cached.get("buyer_email")
+                if contractor_email and cached_email and contractor_email.strip().lower() != cached_email.strip().lower():
+                    reason = f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{cached_email}', cannot be redeemed by '{contractor_email}'."
+                    logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_SECURITY_BREACH",
+                        "reason": reason,
+                        "message": f"Purchase rejected: {reason}",
+                    }
+                cached_tier = cached.get("tier_id")
+                if tier_id and cached_tier and tier_id != cached_tier:
+                    reason = f"TIER_MISMATCH_DETECTED: Mandate is bound to '{cached_tier}', cannot be redeemed for '{tier_id}'."
+                    logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_SECURITY_BREACH",
+                        "reason": reason,
+                        "message": f"Purchase rejected: {reason}",
+                    }
+                cached_rate = cached.get("agreed_monthly_rate")
+                if agreed_monthly_rate is not None and cached_rate and round(agreed_monthly_rate, 2) != round(cached_rate, 2):
+                    reason = "RATE_TAMPERING_DETECTED: agreed_monthly_rate does not match cached purchase."
+                    logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
+                    return {
+                        "status": "REJECTED",
+                        "error": "RATE_TAMPERING_DETECTED",
+                        "reason": reason,
+                        "message": f"Purchase rejected: {reason}",
+                    }
+                if c_status in ("ACTIVE", "ACTIVE_STREAMING", "APPROVAL_PENDING", "PENDING", "PENDING_DEPOSIT"):
+                    return cached
+                return cached
+            return cached
+
         verified_chk_receipt = None
         verified_pay_receipt = None
 
@@ -882,6 +932,14 @@ class SellerAgent:
                     if not expected_nonce:
                         expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
 
+            from ..services.ap2_service import compute_open_payment_mandate_hash
+            from ..database import get_open_mandate_settlement_totals
+            from ap2.sdk.constraints import MandateContext
+
+            open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_chain)
+            tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+            settlement_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
+
             ap2_verify_res = verify_ap2_chains(
                 checkout_mandate_token=checkout_mandate_chain,
                 payment_mandate_token=payment_mandate_chain,
@@ -889,6 +947,7 @@ class SellerAgent:
                 expected_aud=AP2_MERCHANT_ID,
                 expected_nonce=expected_nonce,
                 buyer_email=contractor_email,
+                mandate_context=settlement_ctx,
             )
             if not ap2_verify_res.get("valid"):
                 err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
@@ -1128,6 +1187,18 @@ class SellerAgent:
                         "mandate_proof_hash": mandate_proof_hash,
                     },
                 )
+
+        # Record open payment mandate settlement upon successful purchase
+        if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
+            from ..database import record_open_mandate_settlement
+            from ..services.ap2_service import compute_open_payment_mandate_hash, dollars_to_minor_units
+            open_pay_hash = ap2_verify_res.get("open_payment_mandate_hash") or compute_open_payment_mandate_hash(payment_mandate_chain)
+            amount_cents = dollars_to_minor_units(agreed_monthly_rate)
+            record_open_mandate_settlement(
+                mandate_hash=open_pay_hash,
+                subscription_id=sub_id,
+                amount_cents=amount_cents,
+            )
 
         remaining_budget = ledger.get_remaining_budget(
             agent_id=buyer_id, cap=cap, contractor_email=contractor_email

@@ -134,7 +134,7 @@ def create_trusted_surface_open_mandates(
     pay_constraints = [
         AmountRange(currency="USD", min=1, max=monthly_cap_cents),
         AgentRecurrence(frequency=Frequency.MONTHLY, max_occurrences=12),
-        Budget(currency="USD", max=yearly_ceiling_cents),
+        Budget(currency="USD", max=float(yearly_ceiling_dollars)),
         AllowedPayees(
             allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]
         ),
@@ -155,9 +155,6 @@ def create_trusted_surface_open_mandates(
 
     owner_kid = getattr(actual_user_key, "kid", None) or "owner-trusted-surface"
     agent_kid = getattr(actual_agent_key, "kid", None) or "buyer-agent"
-
-    # Synchronize ledger cap with the signed open mandate
-    ledger.set_contractor_cap(norm_email, monthly_budget_cap, source="trusted_surface")
 
     summary = {
         "buyer_email": norm_email,
@@ -210,9 +207,6 @@ def enroll_trusted_surface_key(
         contractor_email=norm_email,
         business_name=business_name,
     )
-
-    if monthly_budget_cap is not None and monthly_budget_cap > 0:
-        ledger.set_contractor_cap(norm_email, monthly_budget_cap, source="key_registration")
 
     return {
         "status": "REGISTERED",

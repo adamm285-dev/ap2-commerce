@@ -236,12 +236,13 @@ class BuyerKeyRegistrationRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     kid: str = Field(min_length=3, max_length=64, description="Unique key identifier for buyer agent")
-    public_key_hex: str = Field(alias="publicKeyHex", min_length=64, max_length=64, description="64-hex-character Ed25519 public key")
+    public_key_hex: Optional[str] = Field(default=None, alias="publicKeyHex", description="64-hex-character Ed25519 public key or serialized JWK")
+    public_key_jwk: Optional[Dict[str, Any]] = Field(default=None, alias="publicKeyJwk", description="P-256 JWK public key")
     contractor_email: str = Field(alias="contractorEmail", description="Contractor email address (US domestic)")
     business_entity: str = Field(alias="businessEntity", min_length=2, max_length=128, description="Verified legal business entity name")
     challenge: str = Field(min_length=10, description="Challenge string provided by /api/agent/keys/challenge")
-    challenge_signature: str = Field(alias="challengeSignature", min_length=128, max_length=128, description="128-hex-character Ed25519 challenge signature")
-    monthly_budget_cap: Optional[float] = Field(default=100.0, alias="monthlyBudgetCap", description="Monthly spending cap in USD")
+    challenge_signature: str = Field(alias="challengeSignature", min_length=32, max_length=1024, description="Signature over challenge nonce (hex or base64url)")
+    monthly_budget_cap: Optional[float] = Field(default=None, alias="monthlyBudgetCap", description="Monthly spending cap in USD")
     allowed_tiers: Optional[List[str]] = Field(default=["ap2-batch", "ap2-gateway"], alias="allowedTiers", description="Permitted subscription tiers")
 
 

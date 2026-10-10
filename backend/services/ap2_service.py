@@ -315,6 +315,22 @@ def get_issued_checkout(identifier: str) -> Optional[Dict[str, Any]]:
     return _ISSUED_CHECKOUTS.get(identifier)
 
 
+def compute_open_payment_mandate_hash(payment_mandate_token: str) -> str:
+    """Computes a canonical SHA-256 hash of the root open payment mandate from an SD-JWT token or presentation chain."""
+    token = payment_mandate_token.strip()
+    if "~~" in token:
+        token = token.split("~~")[0].strip()
+    if not token.endswith("~"):
+        token = token + "~"
+    try:
+        parsed = common.parse_token(token)
+        canonical = parsed.sd_jwt
+    except Exception:
+        canonical = token
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+
 def resolve_root_public_key(
     parsed_token: common.ParsedToken,
     override_key: Optional[JWK] = None,
@@ -590,9 +606,16 @@ def verify_ap2_chains(
                 "payment_receipt": err_receipt,
             }
 
+        open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_token)
+        if mandate_context is not None:
+            ctx = mandate_context
+        else:
+            from ..database import get_open_mandate_settlement_totals
+            tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+            ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
+
         try:
             payment_chain = PaymentMandateChain.parse(payment_payloads)
-            ctx = mandate_context if mandate_context is not None else MandateContext(total_amount=0, total_uses=0)
             pay_violations = payment_chain.verify(
                 expected_transaction_id=checkout_hash,
                 expected_open_checkout_hash=checkout_hash,
@@ -783,6 +806,7 @@ def verify_ap2_chains(
             "closed_checkout_mandate": closed_chk,
             "open_payment_mandate": payment_chain.open_mandate,
             "closed_payment_mandate": closed_pay,
+            "open_payment_mandate_hash": open_pay_hash,
         }
 
     except Exception as e:

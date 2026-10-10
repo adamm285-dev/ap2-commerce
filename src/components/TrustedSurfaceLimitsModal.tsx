@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
 import {
   ShieldCheck,
-  ShieldAlert,
   X,
   Lock,
   Key,
   CheckCircle2,
-  Calendar,
-  DollarSign,
   Layers,
   Copy,
   Check,
-  ExternalLink,
 } from 'lucide-react';
 
 export interface TrustedSurfaceLimitsModalProps {
@@ -29,7 +25,7 @@ export interface TrustedSurfaceLimitsModalProps {
 export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps> = ({
   isOpen,
   onClose,
-  initialEmail = 'agent-alpha@nexus-systems.io',
+  initialEmail = 'agent-alpha@example.com',
   initialBudgetCap = 60.0,
   onMandatesSigned,
 }) => {
@@ -41,7 +37,7 @@ export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps>
     'ap2-gateway',
   ]);
   const [validityHours, setValidityHours] = useState(24);
-  const [humanConfirmed, setHumanConfirmed] = useState(true);
+  const [humanConfirmed, setHumanConfirmed] = useState(false);
 
   const [isSigning, setIsSigning] = useState(false);
   const [signedResult, setSignedResult] = useState<any | null>(null);
@@ -193,10 +189,10 @@ export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps>
         <div
           style={{
             padding: '10px 20px',
-            backgroundColor: 'rgba(2, 132, 199, 0.08)',
-            borderBottom: '1px solid rgba(2, 132, 199, 0.2)',
+            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            borderBottom: '1px solid rgba(245, 158, 11, 0.3)',
             fontSize: '12px',
-            color: '#7dd3fc',
+            color: '#fcd34d',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -204,7 +200,7 @@ export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps>
         >
           <Lock size={14} />
           <span>
-            <strong>Mandate Segregation Invariant:</strong> AI Agents cannot self-authorize financial ceilings. The human owner signs the Open Mandates here using an ES256 P-256 key.
+            <strong>Demo: signed by the server's demo owner key (mock mode only)</strong> — AI Agents cannot self-authorize financial ceilings. The human owner signs Open Mandates here using an ES256 P-256 key.
           </span>
         </div>
 

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: AP2 Autonomous Agent Commerce & Compute API
-  description: Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo
-    Trade Contractors
+  description: Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Distributed
+    AI Compute
   version: 1.0.0
 paths:
   /m2m/payloads/latest:
@@ -408,6 +408,193 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/keys/jwks.json:
+    get:
+      tags:
+      - Discovery
+      summary: Get Jwks
+      description: Returns the merchant public JWKS for verifying Checkout JWTs and
+        Receipts.
+      operationId: get_jwks_api_agent_keys_jwks_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /.well-known/jwks.json:
+    get:
+      tags:
+      - Discovery
+      summary: Get Jwks
+      description: Returns the merchant public JWKS for verifying Checkout JWTs and
+        Receipts.
+      operationId: get_jwks__well_known_jwks_json_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/agent/receipts/{reference}:
+    get:
+      tags:
+      - AP2 Mandates & Receipts
+      summary: Get Receipt Endpoint
+      description: 'Retrieves or verifies an authentic AP2 v0.2 Checkout or Payment
+        Receipt.
+
+        Supports lookup by closed mandate reference or direct JWT signature verification.'
+      operationId: get_receipt_endpoint_api_agent_receipts__reference__get
+      parameters:
+      - name: reference
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Reference
+      - name: jwt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Jwt
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/receipts/{reference}:
+    get:
+      tags:
+      - AP2 Mandates & Receipts
+      summary: Get Receipt Endpoint
+      description: 'Retrieves or verifies an authentic AP2 v0.2 Checkout or Payment
+        Receipt.
+
+        Supports lookup by closed mandate reference or direct JWT signature verification.'
+      operationId: get_receipt_endpoint_api_receipts__reference__get
+      parameters:
+      - name: reference
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Reference
+      - name: jwt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Jwt
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agent/checkout/{order_id}:
+    get:
+      tags:
+      - AP2 Mandates & Receipts
+      summary: Get Checkout Endpoint
+      description: Retrieves an issued merchant Checkout JWT by order_id or checkout_hash.
+      operationId: get_checkout_endpoint_api_agent_checkout__order_id__get
+      parameters:
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Order Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/checkout/{order_id}:
+    get:
+      tags:
+      - AP2 Mandates & Receipts
+      summary: Get Checkout Endpoint
+      description: Retrieves an issued merchant Checkout JWT by order_id or checkout_hash.
+      operationId: get_checkout_endpoint_api_checkout__order_id__get
+      parameters:
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Order Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/trusted-surface/sign-limits:
+    post:
+      tags:
+      - Trusted Surface
+      summary: Trusted Surface Sign Limits Endpoint
+      description: 'Non-agentic Trusted Surface endpoint: Human owner sets programmatic
+        limits and signs
+
+        AP2 v0.2 Open Checkout and Open Payment Mandates.
+
+        Enforces non-agentic human authorization (explicit confirmation required).
+
+        Available only in mock/demo mode; in live mode, client must sign locally via
+        WebCrypto.'
+      operationId: trusted_surface_sign_limits_endpoint_api_trusted_surface_sign_limits_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrustedSurfaceSignLimitsRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/copilot/chat:
     post:
       tags:
@@ -680,7 +867,7 @@ paths:
       tags:
       - Zapier MCP Integration
       summary: Trigger Zapier Mcp Sync
-      description: Dispatches qualified contractor lead into Jobber, QuickBooks Online,
+      description: Dispatches qualified compute subscriber into ERP, QuickBooks Online,
         and Google Calendar via Zapier MCP.
       operationId: trigger_zapier_mcp_sync_api_mcp_zapier_sync_post
       requestBody:
@@ -709,8 +896,7 @@ paths:
       summary: Export Backoffice Endpoint
       description: 'Dedicated Back-Office Export Endpoint.
 
-        Generates authentic Jobber GraphQL/REST mutations and QuickBooks Online API
-        v3 Expense
+        Generates authentic ERP routing mutations and QuickBooks Online API v3 Expense
 
         payloads for autonomous A2A subscriptions, with optional HMAC-signed webhook
         forwarding.'
@@ -966,11 +1152,18 @@ components:
           title: Kid
           description: Unique key identifier for buyer agent
         publicKeyHex:
-          type: string
-          maxLength: 64
-          minLength: 64
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Publickeyhex
-          description: 64-hex-character Ed25519 public key
+          description: 64-hex-character Ed25519 public key or serialized JWK
+        publicKeyJwk:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Publickeyjwk
+          description: P-256 JWK public key
         contractorEmail:
           type: string
           title: Contractoremail
@@ -988,17 +1181,16 @@ components:
           description: Challenge string provided by /api/agent/keys/challenge
         challengeSignature:
           type: string
-          maxLength: 128
-          minLength: 128
+          maxLength: 1024
+          minLength: 32
           title: Challengesignature
-          description: 128-hex-character Ed25519 challenge signature
+          description: Signature over challenge nonce (hex or base64url)
         monthlyBudgetCap:
           anyOf:
           - type: number
           - type: 'null'
           title: Monthlybudgetcap
           description: Monthly spending cap in USD
-          default: 100.0
         allowedTiers:
           anyOf:
           - items:
@@ -1013,7 +1205,6 @@ components:
       type: object
       required:
       - kid
-      - publicKeyHex
       - contractorEmail
       - businessEntity
       - challenge
@@ -1658,6 +1849,52 @@ components:
       - depositRange
       - description
       title: TradeService
+    TrustedSurfaceSignLimitsRequest:
+      properties:
+        buyer_email:
+          type: string
+          title: Buyer Email
+          description: Human owner billing email bound to registered key
+        monthly_budget_cap:
+          type: number
+          title: Monthly Budget Cap
+          description: Monthly spending limit in USD (AmountRange.max)
+        yearly_budget_ceiling:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Yearly Budget Ceiling
+          description: Yearly spend ceiling in USD (Budget.max)
+        allowed_tiers:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Allowed Tiers
+          description: Allowed compute tier IDs
+        agent_public_jwk:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Agent Public Jwk
+          description: Agent public key JWK to bind in cnf claim
+        validity_hours:
+          type: integer
+          title: Validity Hours
+          description: Hours until open mandate expires
+          default: 24
+        human_confirmed:
+          type: boolean
+          title: Human Confirmed
+          description: Explicit human confirmation flag
+      type: object
+      required:
+      - buyer_email
+      - monthly_budget_cap
+      - human_confirmed
+      title: TrustedSurfaceSignLimitsRequest
     ValidationError:
       properties:
         loc:
@@ -1803,9 +2040,10 @@ components:
       title: ZapierSyncRequest
     ZapierSyncResponse:
       properties:
-        jobberQuoteId:
+        erpRoutingId:
           type: string
-          title: Jobberquoteid
+          title: Erproutingid
+          default: ''
         qboDraftInvoiceId:
           type: string
           title: Qbodraftinvoiceid
@@ -1819,12 +2057,12 @@ components:
           type: string
           title: Workflowtype
           default: a2a_onboarding
-        jobberPayload:
+        erpPayload:
           anyOf:
           - additionalProperties: true
             type: object
           - type: 'null'
-          title: Jobberpayload
+          title: Erppayload
         qboPayload:
           anyOf:
           - additionalProperties: true
@@ -1849,7 +2087,6 @@ components:
           title: Webhookstatuscode
       type: object
       required:
-      - jobberQuoteId
       - qboDraftInvoiceId
       - googleCalendarEventId
       - status

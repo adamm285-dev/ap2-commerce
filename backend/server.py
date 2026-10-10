@@ -120,7 +120,7 @@ def _has_admin_key(request: Request) -> bool:
 
 app = FastAPI(
     title="AP2 Autonomous Agent Commerce & Compute API",
-    description="Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Solo Trade Contractors",
+    description="Autonomous Agentic Commerce & AP2 (Agent Payments Protocol) for Distributed AI Compute",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -935,7 +935,7 @@ def _guard_backoffice_request(sync_request: ZapierSyncRequest, http_request: Req
     tags=["Zapier MCP Integration"],
 )
 async def trigger_zapier_mcp_sync(request: ZapierSyncRequest, http_request: Request):
-    """Dispatches qualified lead into ERP, QuickBooks Online, and Google Calendar via Zapier MCP."""
+    """Dispatches qualified compute subscriber into ERP, QuickBooks Online, and Google Calendar via Zapier MCP."""
     _guard_backoffice_request(request, http_request)
     try:
         return await zapier_mcp_dispatcher.execute_downline_sync(request)

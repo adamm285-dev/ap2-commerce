@@ -8,7 +8,7 @@
 [![AG Studio: v3.0.0](https://img.shields.io/badge/AG%20Studio-v3.0.0-blue.svg)](https://www.ag-grid.com/studio/react/)
 [![PayPal Agentic Commerce](https://img.shields.io/badge/PayPal-Agentic%20Commerce-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 233 Passed](https://img.shields.io/badge/Tests-233%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
+[![Tests: 505 Passed](https://img.shields.io/badge/Tests-505%20Passed%20(100%25)-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed%20(100%25)-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -30,6 +30,15 @@
 
 > **⚠️ Judge Evaluation Note:** Execute **`python scripts/judge_audit_harness.py`** as your primary evaluation command. It requires **zero external API keys or configuration**, runs in <0.2 seconds, and asserts all 9 protocol, cryptographic (Ed25519/HMAC-SHA256 dual mandates), and operational invariants directly.
 
+### 0. Clone & Environment Setup
+Run the initial setup to configure the local mock environment, install dependencies, and launch the frontend:
+```bash
+cp .env.example .env
+pip install -r backend/requirements.txt
+npm install
+npm run dev
+```
+
 ### 1. One-Click In-Memory Audit (Zero Dependencies)
 Run the 9-step audit locally against the autonomous seller engine:
 ```bash
@@ -41,13 +50,13 @@ python scripts/judge_audit_harness.py
 Run the comprehensive test suite across all cryptographic, negotiation, and persistence modules:
 ```bash
 pytest backend/tests/ -q -n 4
-# 227 passed, 6 skipped (live PayPal credentials optional)
+# 505 passed, 6 skipped (live PayPal credentials optional)
 ```
 
-### 3. Run Autonomous Buyer Agent CLI Simulation
-Simulate an end-to-end autonomous buyer agent negotiating and provisioning a compute node under a $100 spending mandate:
+### 3. Run Autonomous AI Buyer Agent CLI Simulation
+Simulate an end-to-end LLM-driven buyer agent negotiating and provisioning a compute node under a spending mandate:
 ```bash
-python -m backend.agents.buyer_agent --budget 100 --tier ap2-gateway
+python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway
 ```
 
 ---

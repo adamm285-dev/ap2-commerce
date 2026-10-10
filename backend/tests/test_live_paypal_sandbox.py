@@ -3,6 +3,7 @@ Tests for Live PayPal Sandbox OAuth & Plan Verification,
 Agent Discoverability (llms.txt), and Node Compliance Disclosures.
 """
 
+import os
 import pytest
 import httpx
 from fastapi.testclient import TestClient
@@ -12,6 +13,8 @@ from backend.services.paypal_service import PayPalService
 from backend.models import ProvisionResponse
 
 client = TestClient(app)
+
+LIVE_SANDBOX_ENABLED = os.environ.get("RUN_LIVE_SANDBOX") == "1"
 
 
 def test_compliance_note_in_provision_response():
@@ -44,6 +47,8 @@ def test_llms_txt_endpoints():
 @pytest.mark.asyncio
 async def test_live_paypal_sandbox_oauth_token():
     """Verify live OAuth2 token acquisition from PayPal Sandbox REST API."""
+    if not LIVE_SANDBOX_ENABLED:
+        pytest.skip("Live PayPal sandbox tests disabled unless RUN_LIVE_SANDBOX=1 is set")
     if not settings.paypal_client_id or not settings.paypal_client_secret:
         pytest.skip("PayPal client ID/secret not configured")
 
@@ -59,6 +64,8 @@ async def test_live_paypal_sandbox_oauth_token():
 @pytest.mark.asyncio
 async def test_live_paypal_sandbox_billing_plans():
     """Verify all 3 configured billing plans exist and are accessible in PayPal Sandbox."""
+    if not LIVE_SANDBOX_ENABLED:
+        pytest.skip("Live PayPal sandbox tests disabled unless RUN_LIVE_SANDBOX=1 is set")
     if not settings.paypal_client_id or not settings.paypal_client_secret:
         pytest.skip("PayPal client ID/secret not configured")
 
@@ -118,6 +125,8 @@ async def test_proactive_oauth_token_caching_and_refresh():
 
 def test_official_paypal_agent_toolkit_integration():
     """Verify that official paypal_agent_toolkit queries live subscription plans and details."""
+    if not LIVE_SANDBOX_ENABLED:
+        pytest.skip("Live PayPal sandbox tests disabled unless RUN_LIVE_SANDBOX=1 is set")
     if not settings.paypal_client_id or not settings.paypal_client_secret:
         pytest.skip("PayPal Sandbox credentials not configured for live toolkit test")
 
@@ -139,6 +148,8 @@ def test_official_paypal_agent_toolkit_integration():
 
 def test_official_paypal_agent_toolkit_subscription_lookup():
     """Verify official toolkit can query live subscription details on PayPal Sandbox."""
+    if not LIVE_SANDBOX_ENABLED:
+        pytest.skip("Live PayPal sandbox tests disabled unless RUN_LIVE_SANDBOX=1 is set")
     if not settings.paypal_client_id or not settings.paypal_client_secret:
         pytest.skip("PayPal Sandbox credentials not configured for live toolkit test")
 

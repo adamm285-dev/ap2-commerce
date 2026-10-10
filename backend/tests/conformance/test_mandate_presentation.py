@@ -111,7 +111,7 @@ def test_present_closed_mandate_injects_binding_claims_when_provided(
     """Closed mandate KB-SD-JWT injects aud/nonce when explicitly provided.
 
     Per dSD-JWT spec §5.1.4, KB-SD-JWTs should include aud and nonce.
-    When the presenter passes them to present(), they are embedded in the payload.
+    When the caller passes them to present(), they are embedded in the payload.
     iat is always present for delegation hops.
     """
     client = MandateClient()

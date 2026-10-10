@@ -306,7 +306,7 @@ def test_present_closed_payload_creates_terminal_kb_sd_jwt(issuer_key):
     )
 
     closed_payload = PaymentMandate(
-        transaction_id='tx_order',
+        transaction_id='tx_dispatch',
         payee=Merchant(id='m-1', name='Shop'),
         payment_amount=Amount(amount=10, currency='USD'),
         payment_instrument=PaymentInstrument(id='pi-1', type='credit'),

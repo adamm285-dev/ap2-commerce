@@ -36,6 +36,7 @@ _WIRE_SUBSCRIBERS: Set[asyncio.Queue] = set()
 _REDACTED_KEYS = {
     "contractor_email", "contractorEmail", "email", "payer_email", "buyer_email", "buyerEmail",
     "offer_id", "offerId", "mandate_proof_hash", "mandateProofHash", "proof_hash",
+    "checkout_hash", "checkoutHash",
     "counter_offer_mandate_hash", "counterOfferMandateHash", "traceable_proof",
     "subscription_id", "active_subscription_id", "replaces_subscription_id",
     "current_subscription_id", "paypal_subscription_id", "approval_url",

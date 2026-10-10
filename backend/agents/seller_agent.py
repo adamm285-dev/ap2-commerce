@@ -21,14 +21,12 @@ from ..models import (
 )
 from ..services.mandate_evaluator import (
     evaluate_spending_mandate,
-    verify_authorized_mandate,
     register_authorized_mandate,
     get_authorized_mandate,
     bind_mandate_email,
     build_ap2_intent_mandate,
     build_ap2_cart_mandate,
     validate_buyer_intent_mandate,
-    sign_mandate_token,
     ledger,
 )
 from ..services.paypal_service import paypal_service
@@ -413,14 +411,13 @@ class SellerAgent:
         email = contractor_email.strip().lower()
         clean_tier = tier_id.replace("-", "_").lower()
         offer_id = f"off_{clean_tier}_{int(amount)}_{uuid.uuid4().hex[:8]}"
-        proof_hash = sign_mandate_token(
-            agent_id=buyer_agent_id,
-            amount=amount,
-            recurrence=recurrence,
-            secret=settings.a2a_mandate_secret,
+        chk_record = create_merchant_checkout(
+            tier_id=tier_id,
+            monthly_price=amount,
             contractor_email=email,
-            offer_id=offer_id,
+            order_id=offer_id,
         )
+        proof_hash = chk_record["checkout_hash"]
         negotiation_id = f"neg_{hashlib.sha256(proof_hash.encode()).hexdigest()[:12]}"
 
         kid = buyer_intent_mandate.get("kid") if isinstance(buyer_intent_mandate, dict) else None
@@ -450,12 +447,6 @@ class SellerAgent:
             contractor_email=email,
             negotiation_id=negotiation_id,
             category=category,
-        )
-        chk_record = create_merchant_checkout(
-            tier_id=tier_id,
-            monthly_price=amount,
-            contractor_email=email,
-            order_id=offer_id,
         )
         auth_entry = {
             "tier_id": tier_id,
@@ -923,203 +914,186 @@ class SellerAgent:
         verified_chk_receipt = None
         verified_pay_receipt = None
 
-        # 0. AP2 v0.2 Mandate Chain Verification
-        ap2_verify_res = None
-        if checkout_mandate_chain and payment_mandate_chain:
-            chk_jwt = checkout_jwt
-            expected_nonce = kwargs.get("nonce")
-            if offer_id:
-                auth_lookup = get_authorized_mandate(offer_id)
-                if auth_lookup:
-                    if not chk_jwt:
-                        chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
-                    if not expected_nonce:
-                        expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
-
-            from ..services.ap2_service import (
-                compute_open_payment_mandate_hash,
-                compute_checkout_hash,
+        # 0. AP2 v0.2 Mandate Chain Verification (Strictly Required)
+        if not (checkout_mandate_chain and payment_mandate_chain):
+            ref = mandate_proof_hash or offer_id or "missing_chains"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description="MISSING_MANDATE_CHAINS: AP2 v0.2 checkout and payment mandate chains are strictly required on every purchase.",
             )
-            from ..database import get_open_mandate_settlement_totals
-            from ap2.sdk.constraints import MandateContext
-
-            # Identify if this is a candidate replay of an already completed subscription
-            computed_chk_hash = None
-            if chk_jwt:
-                try:
-                    computed_chk_hash = compute_checkout_hash(chk_jwt)
-                except Exception:
-                    pass
-
-            candidate_replay_sub = None
-            for k in (offer_id, mandate_proof_hash, computed_chk_hash):
-                if k and k in _COMPLETED_SUBSCRIPTIONS:
-                    candidate_replay_sub = _COMPLETED_SUBSCRIPTIONS[k]
-                    break
-
-            open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_chain)
-            exclude_sub_id = (
-                candidate_replay_sub.get("subscription_id")
-                if isinstance(candidate_replay_sub, dict)
-                else None
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description="MISSING_MANDATE_CHAINS: AP2 v0.2 checkout and payment mandate chains are strictly required on every purchase.",
             )
-            tot_amt, tot_uses = get_open_mandate_settlement_totals(
-                open_pay_hash, exclude_subscription_id=exclude_sub_id
-            )
-            settlement_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
+            return {
+                "status": "REJECTED",
+                "error": ERR_INVALID_MANDATE,
+                "reason": "MISSING_MANDATE_CHAINS: AP2 v0.2 checkout and payment mandate chains are strictly required on every purchase.",
+                "message": "Purchase rejected: AP2 v0.2 checkout and payment mandate chains are strictly required on every purchase.",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
 
-            ap2_verify_res = verify_ap2_chains(
-                checkout_mandate_token=checkout_mandate_chain,
-                payment_mandate_token=payment_mandate_chain,
-                checkout_jwt=chk_jwt,
-                expected_aud=AP2_MERCHANT_ID,
-                expected_nonce=expected_nonce,
-                enforce_replay_defense=(candidate_replay_sub is None),
-                buyer_email=contractor_email,
-                mandate_context=settlement_ctx,
-            )
-            if not ap2_verify_res.get("valid"):
-                err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
-                err_desc = ap2_verify_res.get("error_description", "Mandate chain verification failed")
-                logger.warning(f"[AP2_VERIFIER] Purchase rejected: {err_code} - {err_desc}")
+        chk_jwt = checkout_jwt
+        expected_nonce = kwargs.get("nonce")
+        if offer_id:
+            auth_lookup = get_authorized_mandate(offer_id)
+            if auth_lookup:
+                if not chk_jwt:
+                    chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
+                if not expected_nonce:
+                    expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
+
+        from ..services.ap2_service import (
+            compute_open_payment_mandate_hash,
+            compute_checkout_hash,
+        )
+        from ..database import get_open_mandate_settlement_totals
+        from ap2.sdk.constraints import MandateContext
+
+        # Identify if this is a candidate replay of an already completed subscription
+        computed_chk_hash = None
+        if chk_jwt:
+            try:
+                computed_chk_hash = compute_checkout_hash(chk_jwt)
+            except Exception:
+                pass
+
+        candidate_replay_sub = None
+        for k in (offer_id, mandate_proof_hash, computed_chk_hash):
+            if k and k in _COMPLETED_SUBSCRIPTIONS:
+                candidate_replay_sub = _COMPLETED_SUBSCRIPTIONS[k]
+                break
+
+        open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_chain)
+        exclude_sub_id = (
+            candidate_replay_sub.get("subscription_id")
+            if isinstance(candidate_replay_sub, dict)
+            else None
+        )
+        tot_amt, tot_uses = get_open_mandate_settlement_totals(
+            open_pay_hash, exclude_subscription_id=exclude_sub_id
+        )
+        settlement_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
+
+        ap2_verify_res = verify_ap2_chains(
+            checkout_mandate_token=checkout_mandate_chain,
+            payment_mandate_token=payment_mandate_chain,
+            checkout_jwt=chk_jwt,
+            expected_aud=AP2_MERCHANT_ID,
+            expected_nonce=expected_nonce,
+            enforce_replay_defense=(candidate_replay_sub is None),
+            buyer_email=contractor_email,
+            mandate_context=settlement_ctx,
+        )
+        if not ap2_verify_res.get("valid"):
+            err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
+            err_desc = ap2_verify_res.get("error_description", "Mandate chain verification failed")
+            logger.warning(f"[AP2_VERIFIER] Purchase rejected: {err_code} - {err_desc}")
+            return {
+                "status": "REJECTED",
+                "error": err_code,
+                "reason": err_desc,
+                "message": f"Purchase rejected: {err_desc}",
+                "checkout_receipt": ap2_verify_res.get("checkout_receipt"),
+                "payment_receipt": ap2_verify_res.get("payment_receipt"),
+            }
+
+        # If this is a replay of an already-settled subscription and verification succeeded:
+        if candidate_replay_sub and isinstance(candidate_replay_sub, dict):
+            c_status = str(candidate_replay_sub.get("status", "")).upper()
+            if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
                 return {
                     "status": "REJECTED",
-                    "error": err_code,
-                    "reason": err_desc,
-                    "message": f"Purchase rejected: {err_desc}",
-                    "checkout_receipt": ap2_verify_res.get("checkout_receipt"),
-                    "payment_receipt": ap2_verify_res.get("payment_receipt"),
+                    "error": "MANDATE_ALREADY_REDEEMED",
+                    "reason": "Mandate already redeemed; negotiate again.",
+                    "message": "Purchase rejected: mandate already redeemed; negotiate again.",
                 }
-
-            # If this is a replay of an already-settled subscription and verification succeeded:
-            if candidate_replay_sub and isinstance(candidate_replay_sub, dict):
-                c_status = str(candidate_replay_sub.get("status", "")).upper()
-                if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
-                    return {
-                        "status": "REJECTED",
-                        "error": "MANDATE_ALREADY_REDEEMED",
-                        "reason": "Mandate already redeemed; negotiate again.",
-                        "message": "Purchase rejected: mandate already redeemed; negotiate again.",
-                    }
-                cached_email = candidate_replay_sub.get("contractor_email") or candidate_replay_sub.get("buyer_email")
-                if contractor_email and cached_email and contractor_email.strip().lower() != cached_email.strip().lower():
-                    reason = f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{cached_email}', cannot be redeemed by '{contractor_email}'."
-                    logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
-                    return {
-                        "status": "REJECTED",
-                        "error": "MANDATE_SECURITY_BREACH",
-                        "reason": reason,
-                        "message": f"Purchase rejected: {reason}",
-                    }
-                return candidate_replay_sub
-
-            tier_id = ap2_verify_res.get("tier_id") or tier_id
-            agreed_monthly_rate = ap2_verify_res.get("monthly_price", agreed_monthly_rate)
-            verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
-            verified_pay_receipt = ap2_verify_res.get("payment_receipt")
-            mandate_proof_hash = mandate_proof_hash or ap2_verify_res.get("checkout_hash")
-        else:
-            # Resolve parameters from offer_id if caller omitted them
-            if offer_id and not (tier_id and agreed_monthly_rate and mandate_proof_hash):
-                auth_lookup = get_authorized_mandate(offer_id)
-                if auth_lookup:
-                    tier_id = tier_id or auth_lookup.get("tier_id")
-                    agreed_monthly_rate = agreed_monthly_rate if agreed_monthly_rate is not None else auth_lookup.get("amount")
-                    mandate_proof_hash = mandate_proof_hash or auth_lookup.get("mandate_proof_hash") or auth_lookup.get("proof_hash") or offer_id
-                    contractor_email = contractor_email or auth_lookup.get("contractor_email")
-
-            # 1. Anti-Tamper & Identity Verification (always runs, even for replays)
-            valid, reason = verify_authorized_mandate(
-                proof_hash=mandate_proof_hash,
-                tier_id=tier_id,
-                agreed_rate=agreed_monthly_rate,
-                contractor_email=contractor_email,
-                offer_id=offer_id,
-            )
-            if not valid:
-                logger.warning(f"[SECURITY] Mandate verification failed for {tier_id}: {reason}")
-                ref = mandate_proof_hash or offer_id or "unknown_ref"
-                err_code = ERR_INVALID_CREDENTIAL if "signature" in reason.lower() else ERR_INVALID_MANDATE
-                err_receipt = create_checkout_receipt_jwt(
-                    order_id=offer_id or "unknown_order",
-                    closed_mandate_reference=ref,
-                    status="Error",
-                    error=err_code,
-                    error_description=reason,
-                )
-                err_pay_receipt = create_payment_receipt_jwt(
-                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                    closed_mandate_reference=ref,
-                    status="Error",
-                    error=err_code,
-                    error_description=reason,
-                )
+            cached_email = candidate_replay_sub.get("contractor_email") or candidate_replay_sub.get("buyer_email")
+            if contractor_email and cached_email and contractor_email.strip().lower() != cached_email.strip().lower():
+                reason = f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{cached_email}', cannot be redeemed by '{contractor_email}'."
+                logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
                 return {
                     "status": "REJECTED",
                     "error": "MANDATE_SECURITY_BREACH",
                     "reason": reason,
                     "message": f"Purchase rejected: {reason}",
-                    "checkout_receipt": err_receipt,
-                    "payment_receipt": err_pay_receipt,
                 }
+            return candidate_replay_sub
 
-            # 1b. Price integrity: a subscription settles only at its tier's catalog price
-            plan = resolve_plan(tier_id) if tier_id else None
-            if (
-                plan is None
-                or agreed_monthly_rate is None
-                or not math.isfinite(agreed_monthly_rate)
-                or round(agreed_monthly_rate, 2) != round(plan["monthly_price"], 2)
-            ):
-                logger.warning(f"[SECURITY] Purchase rate does not match catalog price for tier '{tier_id}'")
-                ref = mandate_proof_hash or offer_id or "unknown_ref"
-                err_receipt = create_checkout_receipt_jwt(
-                    order_id=offer_id or "unknown_order",
-                    closed_mandate_reference=ref,
-                    status="Error",
-                    error=ERR_INVALID_MANDATE,
-                    error_description="RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
-                )
-                err_pay_receipt = create_payment_receipt_jwt(
-                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                    closed_mandate_reference=ref,
-                    status="Error",
-                    error=ERR_INVALID_MANDATE,
-                    error_description="RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
-                )
-                return {
-                    "status": "REJECTED",
-                    "error": "RATE_TAMPERING_DETECTED",
-                    "reason": "RATE_TAMPERING_DETECTED: agreed_monthly_rate must equal the catalog price of the requested tier.",
-                    "message": "Purchase rejected: agreed_monthly_rate must equal the catalog price of the requested tier.",
-                    "checkout_receipt": err_receipt,
-                    "payment_receipt": err_pay_receipt,
-                }
+        verified_tier = ap2_verify_res.get("tier_id")
+        verified_price = ap2_verify_res.get("monthly_price")
 
-            # 2. Idempotency Check for legacy path: only reached after verification succeeded
-            cache_key = offer_id or mandate_proof_hash
-            if cache_key and cache_key in _COMPLETED_SUBSCRIPTIONS:
-                cached = _COMPLETED_SUBSCRIPTIONS[cache_key]
-                if isinstance(cached, dict):
-                    c_status = str(cached.get("status", "")).upper()
-                    if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
-                        return {
-                            "status": "REJECTED",
-                            "error": "MANDATE_ALREADY_REDEEMED",
-                            "reason": "Mandate already redeemed; negotiate again.",
-                            "message": "Purchase rejected: mandate already redeemed; negotiate again.",
-                        }
-                    cached_email = cached.get("contractor_email") or cached.get("buyer_email")
-                    if contractor_email and cached_email and contractor_email.strip().lower() != cached_email.strip().lower():
-                        reason = f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{cached_email}', cannot be redeemed by '{contractor_email}'."
-                        logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
-                        return {
-                            "status": "REJECTED",
-                            "error": "MANDATE_SECURITY_BREACH",
-                            "reason": reason,
-                            "message": f"Purchase rejected: {reason}",
-                        }
-                    return cached
+        # Parameter integrity: if caller provided tier_id or rate, they must match verified chain
+        if tier_id and verified_tier and tier_id != verified_tier:
+            desc = f"TIER_MISMATCH_DETECTED: Requested tier '{tier_id}' does not match mandate chain tier '{verified_tier}'."
+            logger.warning(f"[SECURITY] {desc}")
+            ref = mandate_proof_hash or offer_id or "unknown_ref"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            return {
+                "status": "REJECTED",
+                "error": "TIER_MISMATCH_DETECTED",
+                "reason": desc,
+                "message": f"Purchase rejected: {desc}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
+
+        if agreed_monthly_rate is not None and verified_price is not None and round(agreed_monthly_rate, 2) != round(verified_price, 2):
+            desc = f"RATE_TAMPERING_DETECTED: Agreed monthly rate ${agreed_monthly_rate:.2f} does not match mandate chain price ${verified_price:.2f}."
+            logger.warning(f"[SECURITY] {desc}")
+            ref = mandate_proof_hash or offer_id or "unknown_ref"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            return {
+                "status": "REJECTED",
+                "error": "RATE_TAMPERING_DETECTED",
+                "reason": desc,
+                "message": f"Purchase rejected: {desc}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
+
+        tier_id = verified_tier or tier_id
+        agreed_monthly_rate = verified_price if verified_price is not None else agreed_monthly_rate
+        verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
+        verified_pay_receipt = ap2_verify_res.get("payment_receipt")
+        if not mandate_proof_hash and offer_id:
+            auth_entry_lookup = get_authorized_mandate(offer_id)
+            if auth_entry_lookup:
+                mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
+        mandate_proof_hash = mandate_proof_hash or ap2_verify_res.get("checkout_hash")
 
         # Mandates issued without an email are locked to their first redeemer
         if mandate_proof_hash and contractor_email:

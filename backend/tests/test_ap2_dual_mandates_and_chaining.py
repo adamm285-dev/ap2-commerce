@@ -27,6 +27,7 @@ from backend.services.crypto_mandate import (
     DEFAULT_SELLER_PUBLIC_KEY_HEX,
     DEFAULT_BUYER_PUBLIC_KEY_HEX,
 )
+from backend.tests.ap2_test_utils import build_test_ap2_chains
 
 client = TestClient(app)
 
@@ -104,10 +105,29 @@ async def test_machine_readable_next_action_and_offer_id_binding():
     params_1 = next_action_1["parameters"]
     assert params_1["offer_id"] == neg["offer_id"]
 
-    # Step 2: Purchase using offer_id
+    # Step 2: Purchase using offer_id and AP2 v0.2 chains
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
     purchase = await seller_agent.purchase_subscription(
         offer_id=params_1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg["checkout_jwt"],
+        nonce=neg["nonce"],
     )
     assert purchase["status"] == "ACTIVE"
     assert purchase["tier_id"] == "ap2-batch"
@@ -172,9 +192,28 @@ async def test_cumulative_budget_tracking():
     )
     assert neg["monthly_cap_remaining"] == 10.01
 
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="tracker@buyer.com",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="tracker@buyer.com",
+        buyer_email="tracker@buyer.com",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=neg["checkout_jwt"],
+        nonce=neg["nonce"],
     )
     assert purchase["monthly_budget_cap"] == 60.00
     assert purchase["monthly_cap_remaining"] == 10.01
@@ -226,9 +265,28 @@ async def test_buyer_signed_intent_mandate_acceptance():
     assert neg["offer_id"] is not None
     assert neg["ap2_intent_mandate"] == custom_mandate
 
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=neg["checkout_jwt"],
+        nonce=neg["nonce"],
     )
     assert purchase["status"] == "ACTIVE"
     assert purchase["agreed_monthly_rate"] == 49.99
@@ -407,9 +465,28 @@ async def test_provision_compute_node_subscription_validation():
         monthly_budget_cap=60.00,
         contractor_email="buyer@ap2-procure.org",
     )
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
     purchase = await seller_agent.purchase_subscription(
         offer_id=neg["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=neg["checkout_jwt"],
+        nonce=neg["nonce"],
     )
     assert purchase["status"] == "ACTIVE"
     sub_id = purchase["subscription_id"]
@@ -524,9 +601,28 @@ async def test_consecutive_purchases_budget_accounting():
         monthly_budget_cap=60.00,
         contractor_email="buyer@ap2-procure.org",
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     assert p1["status"] == "ACTIVE"
     assert p1["monthly_cap_remaining"] == 10.01
@@ -544,7 +640,14 @@ async def test_consecutive_purchases_budget_accounting():
     # Replay of the existing offer returns the active subscription idempotently
     p2 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     assert p2["status"] == "ACTIVE"
     assert p2["monthly_cap_remaining"] == 10.01
@@ -575,9 +678,28 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     assert neg1["mandate_proof_hash"] != neg2["mandate_proof_hash"]
 
     # Purchase offer 1
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     assert p1["status"] == "ACTIVE"
     assert p1["offer_id"] == neg1["offer_id"]
@@ -587,9 +709,28 @@ async def test_rapid_consecutive_offers_retain_isolated_mandates():
     assert p1["offer_id"] != neg2["offer_id"]
 
     # Purchase offer 2 independently
+    chains2 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg2["checkout_jwt"],
+            "checkout_hash": neg2["checkout_hash"],
+            "nonce": neg2["nonce"],
+            "order_id": neg2["offer_id"],
+        },
+    )
     p2 = await seller_agent.purchase_subscription(
         offer_id=neg2["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains2["checkout_mandate_chain"],
+        payment_mandate_chain=chains2["payment_mandate_chain"],
+        checkout_jwt=neg2["checkout_jwt"],
+        nonce=neg2["nonce"],
     )
     assert p2["status"] == "ACTIVE"
     assert p2["offer_id"] == neg2["offer_id"]
@@ -611,9 +752,28 @@ async def test_budget_exhausted_machine_readable_rejection():
         monthly_budget_cap=60.00,
         contractor_email="buyer@ap2-procure.org",
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer@ap2-procure.org",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email="buyer@ap2-procure.org",
+        buyer_email="buyer@ap2-procure.org",
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     active_sub_id = p1["subscription_id"]
     assert active_sub_id.startswith("I-A2A-VAULT-")
@@ -646,9 +806,28 @@ async def test_negotiate_same_plan_returns_already_subscribed():
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     sub1_id = p1["subscription_id"]
 
@@ -683,9 +862,28 @@ async def test_negotiate_counter_offer_guard_no_better_offer():
         monthly_budget_cap=60.00,
         contractor_email=email,
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     sub1_id = p1["subscription_id"]
 
@@ -723,9 +921,28 @@ async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
         monthly_budget_cap=200.00,
         contractor_email=email,
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=200.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     sub1_id = p1["subscription_id"]
 
@@ -747,9 +964,28 @@ async def test_plan_change_upgrade_retains_phone_number_and_replaces_old_sub():
     assert neg_upgrade["replaces_subscription_id"] == sub1_id
 
     # Step 3: Purchase upgrade
+    chains_upgrade = build_test_ap2_chains(
+        tier_id="ap2-cluster",
+        monthly_price=179.99,
+        buyer_email=email,
+        budget_cap=200.0,
+        checkout_record={
+            "checkout_jwt": neg_upgrade["checkout_jwt"],
+            "checkout_hash": neg_upgrade["checkout_hash"],
+            "nonce": neg_upgrade["nonce"],
+            "order_id": neg_upgrade["offer_id"],
+        },
+    )
     p_upgrade = await seller_agent.purchase_subscription(
         offer_id=neg_upgrade["offer_id"],
+        tier_id="ap2-cluster",
+        agreed_monthly_rate=179.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains_upgrade["checkout_mandate_chain"],
+        payment_mandate_chain=chains_upgrade["payment_mandate_chain"],
+        checkout_jwt=neg_upgrade["checkout_jwt"],
+        nonce=neg_upgrade["nonce"],
     )
     sub2_id = p_upgrade["subscription_id"]
     assert p_upgrade["status"] == "ACTIVE"
@@ -786,9 +1022,28 @@ async def test_provision_rejects_superseded_subscription():
         monthly_budget_cap=100.00,
         contractor_email=email,
     )
+    chains1 = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=100.0,
+        checkout_record={
+            "checkout_jwt": neg1["checkout_jwt"],
+            "checkout_hash": neg1["checkout_hash"],
+            "nonce": neg1["nonce"],
+            "order_id": neg1["offer_id"],
+        },
+    )
     p1 = await seller_agent.purchase_subscription(
         offer_id=neg1["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains1["checkout_mandate_chain"],
+        payment_mandate_chain=chains1["payment_mandate_chain"],
+        checkout_jwt=neg1["checkout_jwt"],
+        nonce=neg1["nonce"],
     )
     sub1_id = p1["subscription_id"]
 
@@ -799,9 +1054,28 @@ async def test_provision_rejects_superseded_subscription():
         monthly_budget_cap=100.00,
         contractor_email=email,
     )
+    chains2 = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        buyer_email=email,
+        budget_cap=100.0,
+        checkout_record={
+            "checkout_jwt": neg2["checkout_jwt"],
+            "checkout_hash": neg2["checkout_hash"],
+            "nonce": neg2["nonce"],
+            "order_id": neg2["offer_id"],
+        },
+    )
     p2 = await seller_agent.purchase_subscription(
         offer_id=neg2["offer_id"],
+        tier_id="ap2-gateway",
+        agreed_monthly_rate=79.99,
         contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains2["checkout_mandate_chain"],
+        payment_mandate_chain=chains2["payment_mandate_chain"],
+        checkout_jwt=neg2["checkout_jwt"],
+        nonce=neg2["nonce"],
     )
     sub2_id = p2["subscription_id"]
 
@@ -845,14 +1119,80 @@ async def test_multiple_rapid_purchases_worst_case_in_process():
         monthly_budget_cap=60.00, contractor_email=email,
     )
 
-    p_a = await seller_agent.purchase_subscription(offer_id=neg_a["offer_id"], contractor_email=email)
+    chains_a = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg_a["checkout_jwt"],
+            "checkout_hash": neg_a["checkout_hash"],
+            "nonce": neg_a["nonce"],
+            "order_id": neg_a["offer_id"],
+        },
+    )
+    p_a = await seller_agent.purchase_subscription(
+        offer_id=neg_a["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains_a["checkout_mandate_chain"],
+        payment_mandate_chain=chains_a["payment_mandate_chain"],
+        checkout_jwt=neg_a["checkout_jwt"],
+        nonce=neg_a["nonce"],
+    )
     assert p_a["status"] == "ACTIVE"
 
-    p_b = await seller_agent.purchase_subscription(offer_id=neg_b["offer_id"], contractor_email=email)
+    chains_b = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg_b["checkout_jwt"],
+            "checkout_hash": neg_b["checkout_hash"],
+            "nonce": neg_b["nonce"],
+            "order_id": neg_b["offer_id"],
+        },
+    )
+    p_b = await seller_agent.purchase_subscription(
+        offer_id=neg_b["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains_b["checkout_mandate_chain"],
+        payment_mandate_chain=chains_b["payment_mandate_chain"],
+        checkout_jwt=neg_b["checkout_jwt"],
+        nonce=neg_b["nonce"],
+    )
     assert p_b["status"] == "ACTIVE"
     assert p_b["replaces_subscription_id"] == p_a["subscription_id"]
 
-    p_c = await seller_agent.purchase_subscription(offer_id=neg_c["offer_id"], contractor_email=email)
+    chains_c = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg_c["checkout_jwt"],
+            "checkout_hash": neg_c["checkout_hash"],
+            "nonce": neg_c["nonce"],
+            "order_id": neg_c["offer_id"],
+        },
+    )
+    p_c = await seller_agent.purchase_subscription(
+        offer_id=neg_c["offer_id"],
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        contractor_email=email,
+        buyer_email=email,
+        checkout_mandate_chain=chains_c["checkout_mandate_chain"],
+        payment_mandate_chain=chains_c["payment_mandate_chain"],
+        checkout_jwt=neg_c["checkout_jwt"],
+        nonce=neg_c["nonce"],
+    )
     assert p_c["status"] == "ACTIVE"
     assert p_c["replaces_subscription_id"] == p_b["subscription_id"]
 

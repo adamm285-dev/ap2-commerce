@@ -121,8 +121,29 @@ def test_purchase_rejects_tier_upgrade_on_down_tier_offer():
 
 def test_legitimate_counter_offer_purchase_still_works():
     neg = negotiate("ap2-cluster", "aud01d@example.com", 60)
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="aud01d@example.com",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
     res = tool("purchase_subscription", {
-        "offer_id": neg["offer_id"], "contractor_email": "aud01d@example.com",
+        "offer_id": neg["offer_id"],
+        "tier_id": "ap2-batch",
+        "agreed_monthly_rate": 49.99,
+        "contractor_email": "aud01d@example.com",
+        "buyer_email": "aud01d@example.com",
+        "checkout_mandate_chain": chains["checkout_mandate_chain"],
+        "payment_mandate_chain": chains["payment_mandate_chain"],
+        "checkout_jwt": neg["checkout_jwt"],
+        "nonce": neg["nonce"],
     })
     assert res.get("status") in ("ACTIVE", "APPROVAL_PENDING"), res
     assert res["agreed_monthly_rate"] == 49.99
@@ -390,7 +411,30 @@ def test_wire_frames_redact_contractor_identity_and_offer_tokens():
 @finding("AUD-08")
 def test_subscription_details_do_not_leak_email():
     neg = negotiate("ap2-gateway", "details08@example.com", 100)
-    sub = tool("purchase_subscription", {"offer_id": neg["offer_id"], "contractor_email": "details08@example.com"})
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        buyer_email="details08@example.com",
+        budget_cap=100.0,
+        checkout_record={
+            "checkout_jwt": neg["checkout_jwt"],
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
+    sub = tool("purchase_subscription", {
+        "offer_id": neg["offer_id"],
+        "tier_id": "ap2-gateway",
+        "agreed_monthly_rate": 79.99,
+        "contractor_email": "details08@example.com",
+        "buyer_email": "details08@example.com",
+        "checkout_mandate_chain": chains["checkout_mandate_chain"],
+        "payment_mandate_chain": chains["payment_mandate_chain"],
+        "checkout_jwt": neg["checkout_jwt"],
+        "nonce": neg["nonce"],
+    })
     details = tool("get_subscription_details", {"subscription_id": sub["subscription_id"]})
     assert details.get("contractor_email") != "details08@example.com"
 

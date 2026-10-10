@@ -97,7 +97,7 @@ export function ZapierMcpView({
     tradeVertical: 'High-Throughput Batch Worker',
     scopeSummary: 'Autonomous inference dispatch reserved for 50k operations batch with Ed25519 signature proof',
     territoryZone: 'Cluster Zone 2 - US East (High-Memory)',
-    appointmentTime: 'Execution SLA: Sub-350ms Latency',
+    appointmentTime: 'Execution Latency: Sub-350ms',
     depositAmount: 15.0,
     paypalTransactionId: 'PAYPAL-TXN-998811',
   });
@@ -126,7 +126,7 @@ export function ZapierMcpView({
       DocNumber: `AP2-SUB-${agentSubscription.paypalSubscriptionId.slice(-6)}`,
       TotalAmt: agentSubscription.monthlyFee,
       CurrencyRef: { value: 'USD', name: 'United States Dollar' },
-      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${agentSubscription.paypalSubscriptionId} | Monthly: $${agentSubscription.monthlyFee.toFixed(2)} USD\nDedicated Node: ${agentSubscription.allocatedDid} | Capability: ${agentSubscription.tradeVertical}\nMandate Proof Hash: HMAC-MANDATE-VERIFIED-01\nCryptographic Attestation: RFC 8032 Ed25519 Mandate Bound\nPurchaser: ${agentSubscription.contractorName} (${agentSubscription.businessEntity})`,
+      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${agentSubscription.paypalSubscriptionId} | Monthly: $${agentSubscription.monthlyFee.toFixed(2)} USD\nDedicated Node: ${agentSubscription.allocatedDid} | Capability: ${agentSubscription.tradeVertical}\nMandate Chain: AP2-MANDATE-CHAIN-VERIFIED-v02\nCryptographic Attestation: AP2 v0.2 Dual Mandate Chain\nPurchaser: ${agentSubscription.contractorName} (${agentSubscription.businessEntity})`,
       GlobalTaxCalculation: 'NotApplicable',
       Line: [
         {

@@ -128,7 +128,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       id: 'tier_enterprise_cluster',
       name: 'Enterprise Cluster Node',
       monthly_price_usd: 179.99,
-      quota: '1,500 operations/mo',
+      quota: '1,200 operations/mo',
       sla: '99.99% Multi-Region Failover',
       enclave: 'Multi-Region Distributed Cluster',
       paypal_plan_id: 'P-9KL9921444454362WXNWU9AA',

@@ -797,12 +797,29 @@ class LLMBuyerAgent:
                             {"subscription_id": sub_id},
                         )
                     else:
+                        chk_rec = purch_res.get("checkout_receipt")
+                        pay_rec = purch_res.get("payment_receipt")
+                        step_meta: Dict[str, Any] = {}
+                        msg = f"Purchase rejected: {purch_res.get('error')} - {purch_res.get('reason')}"
+                        if chk_rec:
+                            step_meta["checkout_receipt"] = chk_rec
+                            msg += f" [checkout_receipt={chk_rec}]"
+                        if pay_rec:
+                            step_meta["payment_receipt"] = pay_rec
+                            msg += f" [payment_receipt={pay_rec}]"
                         self._log_step(
                             "PURCHASE_FAILED",
-                            f"Purchase rejected: {purch_res.get('error')} - {purch_res.get('reason')}",
+                            msg,
+                            step_meta or None,
                         )
                         active = False
-                        result_payload = purch_res
+                        result_payload = dict(purch_res)
+                        result_payload["step_log"] = list(self.step_log)
+                        result_payload["signatures_produced"] = self.signatures_produced
+                        if chk_rec:
+                            result_payload["checkout_receipt"] = chk_rec
+                        if pay_rec:
+                            result_payload["payment_receipt"] = pay_rec
                     continue
 
                 # Standard MCP Tool execution on seller_agent
@@ -859,9 +876,20 @@ class LLMBuyerAgent:
                             f"Seller approved requested tier '{target_tier}' within budget cap.",
                         )
                     elif status == "REJECTED":
+                        chk_rec = tool_res.get("checkout_receipt")
+                        pay_rec = tool_res.get("payment_receipt")
+                        step_meta: Dict[str, Any] = {}
+                        msg = f"Seller rejected request: {tool_res.get('reason')}"
+                        if chk_rec:
+                            step_meta["checkout_receipt"] = chk_rec
+                            msg += f" [checkout_receipt={chk_rec}]"
+                        if pay_rec:
+                            step_meta["payment_receipt"] = pay_rec
+                            msg += f" [payment_receipt={pay_rec}]"
                         self._log_step(
                             "REJECTED",
-                            f"Seller rejected request: {tool_res.get('reason')}",
+                            msg,
+                            step_meta or None,
                         )
 
                 elif tname == "provision_compute_node":
@@ -881,12 +909,19 @@ class LLMBuyerAgent:
 
             elif action == "reject":
                 active = False
+                last_tool_res = messages[-1].get("result", {}) if messages and messages[-1].get("role") == "tool" else {}
+                chk_rec = last_tool_res.get("checkout_receipt")
+                pay_rec = last_tool_res.get("payment_receipt")
                 result_payload = {
                     "status": "REJECTED",
                     "reason": decision.get("content", "Rejected by buyer agent policy."),
                     "signatures_produced": self.signatures_produced,
                     "step_log": list(self.step_log),
                 }
+                if chk_rec:
+                    result_payload["checkout_receipt"] = chk_rec
+                if pay_rec:
+                    result_payload["payment_receipt"] = pay_rec
 
             elif action == "finish":
                 active = False

@@ -54,14 +54,33 @@ async def test_purchase_idempotency_approval_pending_replay(monkeypatch):
     assert mandate_res["status"] == "APPROVED"
     offer_id = mandate_res["offer_id"]
     proof_hash = mandate_res["mandate_proof_hash"]
+    chk_jwt = mandate_res["checkout_jwt"]
+
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        buyer_email=email,
+        budget_cap=150.0,
+        checkout_record={
+            "checkout_jwt": chk_jwt,
+            "checkout_hash": mandate_res["checkout_hash"],
+            "nonce": mandate_res["nonce"],
+            "order_id": offer_id,
+        },
+    )
 
     # 2. First purchase attempt
     res1 = await seller_agent.purchase_subscription(
         tier_id="ap2-gateway",
         agreed_monthly_rate=79.99,
-        mandate_proof_hash=proof_hash,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chk_jwt,
         contractor_email=email,
+        buyer_email=email,
         offer_id=offer_id,
+        nonce=mandate_res["nonce"],
     )
     assert res1["status"] == "APPROVAL_PENDING"
     first_sub_id = res1["subscription_id"]
@@ -72,9 +91,13 @@ async def test_purchase_idempotency_approval_pending_replay(monkeypatch):
     res2 = await seller_agent.purchase_subscription(
         tier_id="ap2-gateway",
         agreed_monthly_rate=79.99,
-        mandate_proof_hash=proof_hash,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chk_jwt,
         contractor_email=email,
+        buyer_email=email,
         offer_id=offer_id,
+        nonce=mandate_res["nonce"],
     )
 
     # Must return the existing subscription without creating another PayPal subscription
@@ -99,21 +122,44 @@ async def test_purchase_terminal_state_rejects_reuse():
     assert mandate_res["status"] == "APPROVED"
     offer_id = mandate_res["offer_id"]
     proof_hash = mandate_res["mandate_proof_hash"]
+    chk_jwt = mandate_res["checkout_jwt"]
+
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        buyer_email=email,
+        budget_cap=150.0,
+        checkout_record={
+            "checkout_jwt": chk_jwt,
+            "checkout_hash": mandate_res["checkout_hash"],
+            "nonce": mandate_res["nonce"],
+            "order_id": offer_id,
+        },
+    )
 
     # Seed cache with terminal state
-    _COMPLETED_SUBSCRIPTIONS[offer_id] = {
+    terminal_sub = {
         "status": "CANCELLED",
         "subscription_id": "I-CANCELLED-SUB-999",
         "message": "Subscription cancelled",
+        "contractor_email": email,
+        "buyer_email": email,
     }
-    _COMPLETED_SUBSCRIPTIONS[proof_hash] = _COMPLETED_SUBSCRIPTIONS[offer_id]
+    _COMPLETED_SUBSCRIPTIONS[offer_id] = terminal_sub
+    _COMPLETED_SUBSCRIPTIONS[proof_hash] = terminal_sub
+    _COMPLETED_SUBSCRIPTIONS[mandate_res["checkout_hash"]] = terminal_sub
 
     res = await seller_agent.purchase_subscription(
         tier_id="ap2-gateway",
         agreed_monthly_rate=79.99,
-        mandate_proof_hash=proof_hash,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chk_jwt,
         contractor_email=email,
+        buyer_email=email,
         offer_id=offer_id,
+        nonce=mandate_res["nonce"],
     )
 
     assert res["status"] == "REJECTED"

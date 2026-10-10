@@ -237,7 +237,7 @@ export async function executeZapierA2aWorkflow(
         value: 'USD',
         name: 'United States Dollar',
       },
-      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${buyer.paypalSubscriptionId} | Monthly: $${buyer.monthlyFee.toFixed(2)} USD\nDedicated Node: ${endpoint} | Capability: ${capability}\nMandate Proof Hash: HMAC-MANDATE-VERIFIED-01\nCryptographic Attestation: RFC 8032 Ed25519 Mandate Bound\nPurchaser: ${agentName} (${entity})`,
+      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${buyer.paypalSubscriptionId} | Monthly: $${buyer.monthlyFee.toFixed(2)} USD\nDedicated Node: ${endpoint} | Capability: ${capability}\nMandate Chain: AP2-MANDATE-CHAIN-VERIFIED-v02\nCryptographic Attestation: AP2 v0.2 Dual Mandate Chain\nPurchaser: ${agentName} (${entity})`,
       GlobalTaxCalculation: 'NotApplicable',
       Line: [
         {
@@ -413,7 +413,7 @@ export async function executeZapierMcpWorkflow(
       toolName: 'zapier_mcp_eventbus_route_enclave',
       targetApp: 'Zapier MCP EventBus',
       status: 'VERIFIED',
-      payloadSummary: `Routed execution credentials to ${lead.territoryZone} with SLA target sub-350ms`,
+      payloadSummary: `Routed execution credentials to ${lead.territoryZone} with execution target sub-350ms`,
       timestamp: now(),
     },
   ];

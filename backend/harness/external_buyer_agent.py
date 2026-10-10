@@ -320,15 +320,35 @@ class ExternalBuyerAgent:
         # Step 6: Bind to PayPal Recurring Vault via purchase_subscription
         self.log("💳 [Step 6: Autonomous PayPal Subscription Vault Binding (purchase_subscription)]")
         offer_id = mandate.get("offerId") or mandate.get("offer_id")
+
+        from backend.tests.ap2_test_utils import build_test_ap2_chains
+        chains = build_test_ap2_chains(
+            tier_id=plan_id,
+            monthly_price=monthly_price,
+            buyer_email=self.contractor_email,
+            budget_cap=self.budget_cap,
+            checkout_record={
+                "checkout_jwt": mandate.get("checkout_jwt"),
+                "checkout_hash": mandate.get("checkout_hash") or proof_hash,
+                "nonce": mandate.get("nonce") or f"nonce_{self.request_id}",
+                "order_id": offer_id or f"off_{plan_id}_{int(monthly_price)}",
+            } if mandate.get("checkout_jwt") else None,
+        )
+
         purchase_args = {
             "tier_id": plan_id,
             "agreed_monthly_rate": monthly_price,
-            "mandate_proof_hash": proof_hash,
             "contractor_email": self.contractor_email,
             "buyer_email": self.contractor_email,
+            "checkout_mandate_chain": chains["checkout_mandate_chain"],
+            "payment_mandate_chain": chains["payment_mandate_chain"],
+            "checkout_jwt": chains["checkout_jwt"],
+            "nonce": chains["nonce"],
         }
         if offer_id:
             purchase_args["offer_id"] = offer_id
+        if proof_hash:
+            purchase_args["mandate_proof_hash"] = proof_hash
 
         purchase_resp = await self._call_tool("purchase_subscription", purchase_args)
         sub_status = purchase_resp.get("status")

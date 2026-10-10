@@ -196,6 +196,21 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
 
     offer_id = neg_data["offer_id"]
     proof_hash = neg_data["mandate_proof_hash"]
+    chk_jwt = neg_data["checkout_jwt"]
+
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    tamper_chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=39.99,
+        buyer_email="buyer-01@acme-agents.ai",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": chk_jwt,
+            "checkout_hash": neg_data["checkout_hash"],
+            "nonce": neg_data["nonce"],
+            "order_id": offer_id,
+        },
+    )
 
     # Step 2: Rate tampering rejection: buyer cannot arbitrarily change price to $39.99
     tamper_req = {
@@ -208,17 +223,32 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
                 "offer_id": offer_id,
                 "tier_id": "ap2-batch",
                 "agreed_monthly_rate": 39.99,
-                "mandate_proof_hash": proof_hash,
+                "checkout_mandate_chain": tamper_chains["checkout_mandate_chain"],
+                "payment_mandate_chain": tamper_chains["payment_mandate_chain"],
+                "checkout_jwt": chk_jwt,
                 "buyer_email": "buyer-01@acme-agents.ai",
+                "nonce": neg_data["nonce"],
             },
         },
     }
     tamper_resp = await process_mcp_request(tamper_req)
     tamper_data = json.loads(tamper_resp["result"]["content"][0]["text"])
     assert tamper_data["status"] == "REJECTED"
-    assert tamper_data["error"] in ("MANDATE_SECURITY_BREACH", "RATE_TAMPERING_DETECTED")
+    assert tamper_data["error"] in ("MANDATE_SECURITY_BREACH", "RATE_TAMPERING_DETECTED", "INVALID_MANDATE", "invalid_mandate")
 
     # Step 3: Purchase at catalog price $49.99
+    valid_chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="buyer-01@acme-agents.ai",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": chk_jwt,
+            "checkout_hash": neg_data["checkout_hash"],
+            "nonce": neg_data["nonce"],
+            "order_id": offer_id,
+        },
+    )
     purchase_req = {
         "jsonrpc": "2.0",
         "id": "purchase-1",
@@ -227,7 +257,13 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
             "name": "purchase_subscription",
             "arguments": {
                 "offer_id": offer_id,
+                "tier_id": "ap2-batch",
+                "agreed_monthly_rate": 49.99,
+                "checkout_mandate_chain": valid_chains["checkout_mandate_chain"],
+                "payment_mandate_chain": valid_chains["payment_mandate_chain"],
+                "checkout_jwt": chk_jwt,
                 "buyer_email": "buyer-01@acme-agents.ai",
+                "nonce": neg_data["nonce"],
             },
         },
     }

@@ -29,7 +29,7 @@ import {
 import {
   evaluateAgentNegotiation,
   resetMandateLedger,
-  executeProvisioningAfterSubscription,
+  executeDeckAp2Purchase,
   fetchFleetLedger,
   PAYPAL_CONFIG,
   type AgentNegotiationRequest,
@@ -324,12 +324,16 @@ export function App() {
 
         const agreedPlanName = negotiationResult?.agreedPlanName || canonicalPlanName;
 
-        const result = await executeProvisioningAfterSubscription(
-          subId,
-          businessEntity,
-          actualTier,
-          preferredAreaCode
-        );
+        const result = await executeDeckAp2Purchase({
+          subscriptionId: subId,
+          principalEntity: businessEntity,
+          contractorName: contractorName,
+          capability: actualTier,
+          agreedMonthlyRate: agreedMonthlyAmount,
+          monthlyBudgetCap: maxMonthlyBudget,
+          areaCode: preferredAreaCode,
+          negotiation: negotiationResult || undefined,
+        });
         setProvisioningResult(result);
 
         // Mutate existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
@@ -966,8 +970,8 @@ export function App() {
                   <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 Nodes</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: '#64748b', fontWeight: 600 }}>SLA:</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>99.98% Latency</span>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Target:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>Sub-350ms Latency</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Active:</span>

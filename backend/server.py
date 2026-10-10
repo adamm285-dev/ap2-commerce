@@ -161,6 +161,7 @@ TRADE_CATALOG = [
         monthlySubscription=49.99,
         depositRange="$0.00",
         description=f"Autonomous asynchronous workload worker, {quota_label('ap2-batch')}, and Ed25519 mandate settlement.",
+        workloadTasksPerMonth=125,
     ),
     TradeService(
         id="ap2-gateway",
@@ -168,6 +169,7 @@ TRADE_CATALOG = [
         monthlySubscription=79.99,
         depositRange="$0.00",
         description=f"Synchronous low-latency AI service gateway, {quota_label('ap2-gateway')}, and dual-transport FastMCP stream.",
+        workloadTasksPerMonth=450,
     ),
     TradeService(
         id="ap2-cluster",
@@ -175,6 +177,7 @@ TRADE_CATALOG = [
         monthlySubscription=179.99,
         depositRange="$0.00",
         description=f"High-density multi-tenant compute cluster node, {quota_label('ap2-cluster')}, and enterprise SLA verification.",
+        workloadTasksPerMonth=1200,
     ),
 ]
 
@@ -807,6 +810,164 @@ async def provision_line_endpoint(request: ProvisionRequest):
             logger.warning(f"Automatic downline Zapier MCP dispatch failed: {e}")
 
     return ProvisionResponse(**res)
+
+
+class DeckPurchaseRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    tier_id: str = Field(alias="tierId")
+    agreed_monthly_rate: float = Field(alias="agreedMonthlyRate")
+    buyer_email: str = Field(default="agent-alpha@example.com", alias="buyerEmail")
+    contractor_name: str = Field(default="AutonomousBuyerAgent-Alpha-Batch", alias="contractorName")
+    business_entity: str = Field(default="Acme Autonomous Systems LLC", alias="businessEntity")
+    monthly_budget_cap: float = Field(default=100.0, alias="monthlyBudgetCap")
+    checkout_jwt: Optional[str] = Field(default=None, alias="checkoutJwt")
+    checkout_hash: Optional[str] = Field(default=None, alias="checkoutHash")
+    nonce: Optional[str] = None
+    offer_id: Optional[str] = Field(default=None, alias="offerId")
+    open_checkout_mandate_token: Optional[str] = Field(default=None, alias="openCheckoutMandateToken")
+    open_payment_mandate_token: Optional[str] = Field(default=None, alias="openPaymentMandateToken")
+    paypal_subscription_id: Optional[str] = Field(default=None, alias="paypalSubscriptionId")
+    area_code: Optional[str] = Field(default="863", alias="areaCode")
+
+
+@app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
+async def deck_purchase_endpoint(req: DeckPurchaseRequest):
+    """
+    Executes an AP2 v0.2 purchase and provisioning flow for the UI deck simulator.
+    Uses owner-signed limits (mock Trusted Surface) and closes mandates via the
+    buyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.
+    """
+    from ap2.sdk.mandate import MandateClient
+    from ap2.sdk.generated.checkout_mandate import CheckoutMandate
+    from ap2.sdk.generated.payment_mandate import PaymentMandate
+    from ap2.sdk.generated.types.amount import Amount
+    from ap2.sdk.generated.types.merchant import Merchant
+    from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
+    from .services.ap2_keys import get_demo_agent_key, get_demo_user_key
+    from .services.ap2_service import AP2_MERCHANT_ID, AP2_MERCHANT_NAME
+
+    tier = req.tier_id.strip().lower()
+    buyer_email = req.buyer_email.strip().lower()
+    if "@" not in buyer_email:
+        buyer_email = f"{buyer_email}@example.com" if buyer_email else "agent-alpha@example.com"
+
+    # 1. Obtain or verify open mandate tokens from Trusted Surface
+    open_chk = req.open_checkout_mandate_token
+    open_pay = req.open_payment_mandate_token
+    agent_key = get_demo_agent_key()
+    owner_key = get_demo_user_key()
+
+    if not open_chk or not open_pay:
+        limits = create_trusted_surface_open_mandates(
+            buyer_email=buyer_email,
+            monthly_budget_cap=req.monthly_budget_cap,
+            yearly_budget_ceiling=req.monthly_budget_cap * 12,
+            allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
+            agent_key=agent_key,
+            user_key=owner_key,
+        )
+        open_chk = limits["open_checkout_mandate_token"]
+        open_pay = limits["open_payment_mandate_token"]
+
+    # 2. Obtain or negotiate checkout terms from merchant
+    checkout_jwt = req.checkout_jwt
+    checkout_hash = req.checkout_hash
+    nonce = req.nonce
+    offer_id = req.offer_id
+
+    if not checkout_jwt or not checkout_hash or not nonce:
+        nego = await seller_agent.negotiate_tier_terms(
+            tier_id=tier,
+            monthly_budget_cap=req.monthly_budget_cap,
+            buyer_agent_id=req.contractor_name,
+            contractor_email=buyer_email,
+        )
+        if nego.get("status") == "REJECTED":
+            raise HTTPException(status_code=400, detail=nego)
+        checkout_jwt = nego.get("checkout_jwt")
+        checkout_hash = nego.get("checkout_hash")
+        nonce = nego.get("nonce")
+        offer_id = nego.get("offer_id")
+
+    # 3. Buyer Agent closes both mandates
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=open_chk,
+        payloads=[
+            CheckoutMandate(
+                vct="mandate.checkout.1",
+                checkout_jwt=checkout_jwt,
+                checkout_hash=checkout_hash,
+            )
+        ],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+
+    cents = int(round(req.agreed_monthly_rate * 100))
+    paypal_sub = req.paypal_subscription_id or f"I-AUTONOMOUS-{uuid.uuid4().hex[:6].upper()}"
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=open_pay,
+        payloads=[
+            PaymentMandate(
+                vct="mandate.payment.1",
+                transaction_id=checkout_hash,
+                payment_amount=Amount(amount=cents, currency="USD"),
+                payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id=paypal_sub),
+            )
+        ],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+
+    # 4. Settle purchase with dual chains
+    purchase_res = await seller_agent.purchase_subscription(
+        tier_id=tier,
+        agreed_monthly_rate=req.agreed_monthly_rate,
+        buyer_email=buyer_email,
+        contractor_name=req.contractor_name,
+        business_entity=req.business_entity,
+        paypal_subscription_id=paypal_sub,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        offer_id=offer_id,
+        mandate_proof_hash=checkout_hash,
+    )
+
+    if purchase_res.get("status") != "ACTIVE":
+        raise HTTPException(status_code=400, detail=purchase_res)
+
+    # 5. Provision compute node
+    sub_id = purchase_res["subscription_id"]
+    prov_res = await seller_agent.provision_compute_node(
+        subscription_id=sub_id,
+        buyer_email=buyer_email,
+        node_type="gateway" if "gateway" in tier else "batch" if "batch" in tier else "cluster",
+        contractor_email=buyer_email,
+        area_code=req.area_code or "863",
+    )
+
+    return {
+        "status": "ACTIVE",
+        "subscriptionId": sub_id,
+        "assignedDid": prov_res.get("assigned_did") or prov_res.get("endpoint"),
+        "carrier": prov_res.get("carrier") or "AP2 Autonomous Node Registry",
+        "routingState": "ACTIVE_STREAMING",
+        "receipt": purchase_res.get("payment_receipt") or purchase_res.get("checkout_receipt"),
+        "checkoutReceipt": purchase_res.get("checkout_receipt"),
+        "paymentReceipt": purchase_res.get("payment_receipt"),
+        "nodeId": prov_res.get("node_id"),
+        "nodeType": prov_res.get("node_type"),
+        "workloadTasksPerMonth": prov_res.get("workload_tasks_per_month"),
+        "tierId": tier,
+        "monthlyAmount": req.agreed_monthly_rate,
+        "paypalSubscriptionId": paypal_sub,
+        "contractorName": req.contractor_name,
+        "businessEntity": req.business_entity,
+    }
 
 
 _RECENT_SLOT_LOCKS: "collections.deque[float]" = collections.deque()

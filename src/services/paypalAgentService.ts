@@ -34,6 +34,24 @@ export interface AgentNegotiationResponse {
   counterOfferMessage?: string;
   requestedMonthlyRate?: number;
   requestedPlanName?: string;
+  tierId?: string;
+  checkoutJwt?: string;
+  checkoutHash?: string;
+  nonce?: string;
+  offerId?: string;
+  openCheckoutMandateToken?: string;
+  openPaymentMandateToken?: string;
+}
+
+export interface DeckPurchaseOptions {
+  subscriptionId: string;
+  principalEntity: string;
+  contractorName?: string;
+  capability?: string;
+  agreedMonthlyRate?: number;
+  monthlyBudgetCap?: number;
+  areaCode?: string;
+  negotiation?: AgentNegotiationResponse;
 }
 
 export interface ProvisioningResult {
@@ -110,6 +128,29 @@ export async function evaluateAgentNegotiation(
   const requestedPlanName = selectedTier.planName;
   const buyerAgentId = `BuyerAgent-${agentName.replace(/\s+/g, '')}-${capabilityName.replace(/\s+/g, '')}`;
 
+  let openCheckoutToken: string | undefined;
+  let openPaymentToken: string | undefined;
+
+  try {
+    const limitsRes = await fetch('/api/trusted-surface/sign-limits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        buyerEmail: 'agent-alpha@example.com',
+        monthlyBudgetCap: request.maxMonthlyBudget,
+        humanConfirmed: true,
+        allowedTiers: ['ap2-batch', 'ap2-gateway', 'ap2-cluster'],
+      }),
+    });
+    if (limitsRes.ok) {
+      const limitsData = await limitsRes.json();
+      openCheckoutToken = limitsData.open_checkout_mandate_token;
+      openPaymentToken = limitsData.open_payment_mandate_token;
+    }
+  } catch (err) {
+    console.warn('[AP2 Trusted Surface] Could not pre-sign limits on backend:', err);
+  }
+
   try {
     const res = await fetch('/api/agent/spending-mandate/evaluate', {
       method: 'POST',
@@ -154,6 +195,10 @@ export async function evaluateAgentNegotiation(
         ? `[BuyerAgent]: Counter-offer accepted for $${finalMonthlyRate.toFixed(2)}/mo (${counterTier}) within budget cap $${request.maxMonthlyBudget.toFixed(2)}/mo.`
         : (data.reason || `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate.toFixed(2)}) exceeds buyer budget cap ($${request.maxMonthlyBudget.toFixed(2)}).`);
 
+      const targetTierId = approved
+        ? (data.tier_id || data.tierId || 'ap2-gateway')
+        : (data.counter_offer_tier_id || data.counterOfferTierId || 'ap2-batch');
+
       return {
         agreedPlanId: agreedPlanId,
         agreedPlanName: agreedPlanName,
@@ -168,6 +213,13 @@ export async function evaluateAgentNegotiation(
         counterOfferMessage: counterOfferMessage,
         requestedMonthlyRate: sellerMonthlyRate,
         requestedPlanName: requestedPlanName,
+        tierId: targetTierId,
+        checkoutJwt: data.checkout_jwt || data.checkoutJwt,
+        checkoutHash: data.checkout_hash || data.checkoutHash || data.mandateProofHash || data.mandate_proof_hash,
+        nonce: data.nonce,
+        offerId: data.offer_id || data.offerId,
+        openCheckoutMandateToken: openCheckoutToken,
+        openPaymentMandateToken: openPaymentToken,
       };
     }
   } catch (err) {
@@ -304,6 +356,75 @@ export async function executeProvisioningAfterSubscription(
     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
     isLiveBackend: false,
   };
+}
+
+/**
+ * Executes full AP2 v0.2 purchase flow for the deck simulator:
+ * Trusted Surface limits -> Buyer Agent closes mandates -> seller_agent.purchase_subscription
+ * -> node provisioning.
+ */
+export async function executeDeckAp2Purchase(
+  options: DeckPurchaseOptions
+): Promise<ProvisioningResult> {
+  const capLower = (options.capability || '').toLowerCase();
+  let tierId = 'ap2-gateway';
+  if (options.agreedMonthlyRate) {
+    if (Math.abs(options.agreedMonthlyRate - 49.99) < 0.05) tierId = 'ap2-batch';
+    else if (Math.abs(options.agreedMonthlyRate - 179.99) < 0.05) tierId = 'ap2-cluster';
+    else tierId = 'ap2-gateway';
+  } else if (capLower.includes('batch') || capLower.includes('solo') || capLower.includes('starter')) {
+    tierId = 'ap2-batch';
+  } else if (capLower.includes('cluster') || capLower.includes('enterprise')) {
+    tierId = 'ap2-cluster';
+  }
+
+  const agreedPrice = options.agreedMonthlyRate ?? (tierId === 'ap2-batch' ? 49.99 : tierId === 'ap2-cluster' ? 179.99 : 79.99);
+
+  try {
+    const res = await fetch('/api/agent/deck-purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tierId: options.negotiation?.tierId || tierId,
+        agreedMonthlyRate: agreedPrice,
+        buyerEmail: 'agent-alpha@example.com',
+        contractorName: options.contractorName || 'AutonomousBuyerAgent',
+        businessEntity: options.principalEntity || 'Acme Autonomous Systems LLC',
+        monthlyBudgetCap: options.monthlyBudgetCap || 100.0,
+        checkoutJwt: options.negotiation?.checkoutJwt,
+        checkoutHash: options.negotiation?.checkoutHash,
+        nonce: options.negotiation?.nonce,
+        offerId: options.negotiation?.offerId,
+        openCheckoutMandateToken: options.negotiation?.openCheckoutMandateToken,
+        openPaymentMandateToken: options.negotiation?.openPaymentMandateToken,
+        paypalSubscriptionId: options.subscriptionId,
+        areaCode: options.areaCode || '863',
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        subscriptionId: data.subscriptionId || options.subscriptionId,
+        allocatedDid: data.assignedDid,
+        carrierRespOrg: data.carrier || 'AP2 Autonomous Node Registry',
+        kycBoundEntity: options.principalEntity,
+        tcpaGuardActive: true,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        isLiveBackend: true,
+      };
+    }
+  } catch (err) {
+    console.warn('[AP2 Agent] Live deck-purchase not reachable, falling back to legacy provisioning:', err);
+  }
+
+  return executeProvisioningAfterSubscription(
+    options.subscriptionId,
+    options.principalEntity,
+    options.capability,
+    options.areaCode
+  );
 }
 
 export interface DispatchLockResult {

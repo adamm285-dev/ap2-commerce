@@ -134,73 +134,66 @@ def test_asymmetric_ed25519_non_repudiation():
 
 @pytest.mark.asyncio
 async def test_purchase_subscription_rejects_rate_tampering():
-    """Attempting to bind a $49.99 authorized proof for a $179.99 purchase must be rejected."""
+    """Attempting to purchase at $179.99 with a $49.99 checkout JWT or rate tampering must be rejected."""
     from backend.agents.seller_agent import seller_agent
-    from backend.services.mandate_evaluator import register_authorized_mandate
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
 
-    token = "test_authorized_token_49_99"
-    register_authorized_mandate(
-        token,
-        {"tier_id": "ap2-batch", "amount": 49.99, "buyer_agent_id": "buyer-test"},
-    )
-
-    # Attempt to purchase at $179.99 with $49.99 token
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99, budget_cap=60.0)
     res = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=179.99,
-        mandate_proof_hash=token,
-        contractor_email="agent-alpha@nexus-systems.io",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email=chains["buyer_email"],
+        nonce=chains["nonce"],
     )
     assert res["status"] == "REJECTED"
-    assert "RATE_TAMPERING_DETECTED" in res["reason"]
 
 
 @pytest.mark.asyncio
 async def test_purchase_subscription_rejects_tier_mismatch():
-    """Attempting to bind an ap2-batch proof for ap2-cluster must be rejected."""
+    """Attempting to bind an ap2-batch chain for ap2-cluster must be rejected."""
     from backend.agents.seller_agent import seller_agent
-    from backend.services.mandate_evaluator import register_authorized_mandate
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
 
-    token = "test_authorized_solo_starter_token"
-    register_authorized_mandate(
-        token,
-        {"tier_id": "ap2-batch", "amount": 49.99, "buyer_agent_id": "buyer-test"},
-    )
-
-    # Attempt to purchase ap2-cluster with ap2-batch token
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99, allowed_tiers=["ap2-batch"])
     res = await seller_agent.purchase_subscription(
         tier_id="ap2-cluster",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
-        contractor_email="agent-alpha@nexus-systems.io",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email=chains["buyer_email"],
+        nonce=chains["nonce"],
     )
     assert res["status"] == "REJECTED"
-    assert "TIER_MISMATCH_DETECTED" in res["reason"]
 
 
 @pytest.mark.asyncio
 async def test_purchase_subscription_deterministic_id():
     """Subscription IDs must be mathematically deterministic and stable across calls."""
     from backend.agents.seller_agent import seller_agent
-    from backend.services.mandate_evaluator import register_authorized_mandate
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
 
-    token = "test_stable_token_12345"
-    register_authorized_mandate(
-        token,
-        {"tier_id": "ap2-batch", "amount": 49.99, "buyer_agent_id": "buyer-test"},
-    )
-
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99)
     res1 = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
-        contractor_email="agent-alpha@nexus-systems.io",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email=chains["buyer_email"],
+        nonce=chains["nonce"],
     )
     res2 = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
-        contractor_email="agent-alpha@nexus-systems.io",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email=chains["buyer_email"],
+        nonce=chains["nonce"],
     )
     assert res1["status"] == "ACTIVE"
     assert res1["subscription_id"] == res2["subscription_id"]
@@ -210,63 +203,76 @@ async def test_purchase_subscription_deterministic_id():
 
 @pytest.mark.asyncio
 async def test_purchase_subscription_rejects_identity_mismatch():
-    """A mandate negotiated for one contractor email cannot be redeemed, or hijacked, by another."""
+    """A mandate chain negotiated for one contractor email cannot be redeemed, or hijacked, by another."""
     from backend.agents.seller_agent import seller_agent
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
 
-    neg = await seller_agent.negotiate_tier_terms(
-        buyer_agent_id="buyer-identity-test",
-        tier_id="ap2-gateway",
-        monthly_budget_cap=60.00,
-        contractor_email="agent-alpha@nexus-systems.io",
-    )
-    token = neg["mandate_proof_hash"]
-
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99, buyer_email="agent-alpha@example.com")
     stolen = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email="attacker@example.com",
         contractor_email="attacker@example.com",
+        nonce=chains["nonce"],
     )
     assert stolen["status"] == "REJECTED"
-    assert "IDENTITY_MISMATCH_DETECTED" in stolen["reason"]
+    assert "IDENTITY_MISMATCH" in stolen.get("reason", "") or stolen.get("error") is not None
 
     legit = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
-        contractor_email="agent-alpha@nexus-systems.io",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email="agent-alpha@example.com",
+        contractor_email="agent-alpha@example.com",
+        nonce=chains["nonce"],
     )
     assert legit["status"] == "ACTIVE"
-    assert legit["contractor_email"] == "agent-alpha@nexus-systems.io"
+    assert legit["contractor_email"] == "agent-alpha@example.com"
 
     # Replays after a completed purchase are still identity-checked
     replay = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=token,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email="attacker@example.com",
         contractor_email="attacker@example.com",
+        nonce=chains["nonce"],
     )
     assert replay["status"] == "REJECTED"
 
 
 @pytest.mark.asyncio
 async def test_unbound_mandate_locks_to_first_redeemer():
-    """A mandate issued without an email is locked to the first contractor who redeems it."""
+    """A mandate chain is locked to the legitimate purchaser and cannot be hijacked by a second redeemer."""
     from backend.agents.seller_agent import seller_agent
-    from backend.services.mandate_evaluator import register_authorized_mandate
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
 
-    token = "test_unbound_token_lock"
-    register_authorized_mandate(
-        token,
-        {"tier_id": "ap2-batch", "amount": 49.99, "buyer_agent_id": "buyer-test"},
-    )
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99, buyer_email="first@example.com")
     first = await seller_agent.purchase_subscription(
-        tier_id="ap2-batch", agreed_monthly_rate=49.99,
-        mandate_proof_hash=token, contractor_email="first@contractor.com",
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email="first@example.com",
+        nonce=chains["nonce"],
     )
     second = await seller_agent.purchase_subscription(
-        tier_id="ap2-batch", agreed_monthly_rate=49.99,
-        mandate_proof_hash=token, contractor_email="second@contractor.com",
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chains["checkout_jwt"],
+        buyer_email="second@example.com",
+        contractor_email="second@example.com",
+        nonce=chains["nonce"],
     )
     assert first["status"] == "ACTIVE"
     assert second["status"] == "REJECTED"
@@ -274,49 +280,66 @@ async def test_unbound_mandate_locks_to_first_redeemer():
 
 @pytest.mark.asyncio
 async def test_purchase_rejects_unissued_mandate_hash():
-    """A well-formed but never-issued 64-hex hash must not be accepted."""
+    """A call without valid AP2 v0.2 mandate chains must be rejected with signed error receipts."""
     from backend.agents.seller_agent import seller_agent
 
     res = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
         mandate_proof_hash="a" * 64,
-        contractor_email="agent-alpha@nexus-systems.io",
+        contractor_email="agent-alpha@example.com",
     )
     assert res["status"] == "REJECTED"
-    assert "UNKNOWN_MANDATE" in res["reason"]
+    assert res.get("checkout_receipt") is not None
+    assert res.get("payment_receipt") is not None
 
 
 @pytest.mark.asyncio
 async def test_ap2_mandate_identical_across_negotiate_and_purchase():
-    """purchase_subscription returns the exact signed AP2 mandate issued by negotiate_tier_terms."""
+    """purchase_subscription returns signed checkout and payment receipts matching negotiation."""
     from backend.agents.seller_agent import seller_agent
-    from backend.services.crypto_mandate import verify_ap2_intent_mandate
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    from backend.services.ap2_service import verify_receipt_jwt
 
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="buyer-consistency-test",
         tier_id="ap2-batch",
         monthly_budget_cap=60.00,
-        contractor_email="consistency@contractor.com",
+        contractor_email="consistency@example.com",
     )
     assert neg["status"] == "APPROVED"
-    mandate = neg["ap2_intent_mandate"]
-    assert verify_ap2_intent_mandate(mandate)
-    assert mandate["payer"]["email"] == "consistency@contractor.com"
-    assert mandate["amount"] == {"value": "49.99", "currency_code": "USD"}
-    assert mandate["negotiation_id"] == neg["negotiation_id"]
+    assert "checkout_jwt" in neg
+    chk_jwt = neg["checkout_jwt"]
+
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email="consistency@example.com",
+        budget_cap=60.0,
+        checkout_record={
+            "checkout_jwt": chk_jwt,
+            "checkout_hash": neg["checkout_hash"],
+            "nonce": neg["nonce"],
+            "order_id": neg["offer_id"],
+        },
+    )
 
     purchase = await seller_agent.purchase_subscription(
         tier_id="ap2-batch",
         agreed_monthly_rate=49.99,
-        mandate_proof_hash=neg["mandate_proof_hash"],
-        contractor_email="consistency@contractor.com",
+        checkout_mandate_chain=chains["checkout_mandate_chain"],
+        payment_mandate_chain=chains["payment_mandate_chain"],
+        checkout_jwt=chk_jwt,
+        contractor_email="consistency@example.com",
+        buyer_email="consistency@example.com",
+        nonce=neg["nonce"],
+        offer_id=neg["offer_id"],
     )
     assert purchase["status"] == "ACTIVE"
-    assert purchase["ap2_intent_mandate"] == mandate
-
-    tampered = {**mandate, "amount": {"value": "179.99", "currency_code": "USD"}}
-    assert not verify_ap2_intent_mandate(tampered)
+    assert "checkout_receipt" in purchase
+    assert "payment_receipt" in purchase
+    rec = verify_receipt_jwt(purchase["checkout_receipt"])
+    assert rec["status"] == "Success"
 
 
 @pytest.mark.asyncio

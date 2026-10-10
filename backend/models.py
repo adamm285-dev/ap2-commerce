@@ -23,6 +23,7 @@ class TradeService(BaseModel):
     monthly_subscription: float = Field(alias="monthlySubscription")
     deposit_range: str = Field(alias="depositRange")
     description: str
+    workload_tasks_per_month: Optional[int] = Field(default=None, alias="workloadTasksPerMonth")
 
 
 class CatalogResponse(BaseModel):

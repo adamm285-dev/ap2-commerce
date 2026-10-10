@@ -250,15 +250,15 @@ function getEd25519Fingerprint(name: string): string {
 
 function getExecutionSpecifications(name: string, trade: string): string {
   if (trade.includes('Gateway') || trade.includes('Inference') || name.includes('Synthesis')) {
-    return 'Catalog Quota: 450 tasks/mo • Dedicated AI Service Gateway ($79.99/mo) • Real-time low-latency routing • SLA: 99.99%';
+    return 'Catalog Quota: 450 tasks/mo • Dedicated AI Service Gateway ($79.99/mo) • Real-time routing';
   }
   if (trade.includes('Batch') || trade.includes('Worker') || trade.includes('Vector') || name.includes('RAG')) {
-    return 'Catalog Quota: 125 tasks/mo • High-Throughput Batch Worker ($49.99/mo) • High-throughput execution • 0 Errors';
+    return 'Catalog Quota: 125 tasks/mo • High-Throughput Batch Worker ($49.99/mo) • Asynchronous execution';
   }
   if (trade.includes('Cluster') || trade.includes('Security') || name.includes('Audit')) {
-    return 'Catalog Quota: 1,800 tasks/mo • Enterprise Cluster Node ($179.99/mo) • High-priority execution • Cryptographic Attestation Sealed';
+    return 'Catalog Quota: 1,200 tasks/mo • Enterprise Cluster Node ($179.99/mo) • High-priority execution';
   }
-  return 'Enterprise Cluster Node • Catalog Quota: 1,800 tasks/mo • Dual-Agent Review Consensus • 100% Policy Grounded';
+  return 'Enterprise Cluster Node • Catalog Quota: 1,200 tasks/mo • Multi-node scaling';
 }
 
 function getShortWorkloadTitle(name: string): string {
@@ -345,6 +345,30 @@ export function BryntumDispatchScheduler({
   };
   void setSchedulerViewMode;
   const [horizonMode, setHorizonMode] = useState<'hourly' | 'weekly'>('hourly');
+  const [catalogTiers, setCatalogTiers] = useState<Array<{ id: string; title: string; monthlySubscription: number; workloadTasksPerMonth?: number }>>([]);
+
+  useEffect(() => {
+    fetch('/api/agent/catalog')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.trades)) {
+          setCatalogTiers(data.trades);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const tierQuotasLabel = useMemo(() => {
+    if (catalogTiers.length > 0) {
+      const quotas = catalogTiers.map((t) => {
+        const q = t.workloadTasksPerMonth ?? (t.id.includes('batch') ? 125 : t.id.includes('gateway') ? 450 : 1200);
+        return q.toLocaleString('en-US');
+      });
+      return quotas.join(' / ');
+    }
+    return '125 / 450 / 1,200';
+  }, [catalogTiers]);
+
   const [internalIsScheduleMetricsCollapsed, setInternalIsScheduleMetricsCollapsed] = useState(false);
   const isScheduleMetricsCollapsed = propIsMetricsCollapsed ?? internalIsScheduleMetricsCollapsed;
   const toggleScheduleMetricsCollapsed = () => {
@@ -530,10 +554,10 @@ export function BryntumDispatchScheduler({
       name: 'Node-05: Enterprise Cluster Node (Supervised)',
       trade: 'Enterprise Cluster Node',
       category: 'CLUSTER',
-      entity: 'Operator Enclave • Dual-Agent Verification',
+      entity: 'Operator Enclave • Attestation Verified',
       did: 'node-cluster-05.ap2.net',
       status: 'ACTIVE_STREAMING',
-      throughput: '2.4m Triage SLA',
+      throughput: 'Triage Queue',
       latency: '34ms',
       health: '100%',
       color: '#8b5cf6',
@@ -780,7 +804,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Dedicated AI Service Gateway',
         did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
         status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
-        throughput: '450 tasks/mo • Low-Latency P95',
+        throughput: '450 tasks/mo',
         health: '98.4%',
         enclave: 'Sealed Enclave (AMD SEV-SNP)',
       },
@@ -791,7 +815,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'High-Throughput Batch Worker',
         did: 'node-cluster-02.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '125 tasks/mo • Batch Pipeline',
+        throughput: '125 tasks/mo',
         health: '100%',
         enclave: 'Sealed Enclave (AWS Nitro)',
       },
@@ -802,7 +826,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Enterprise Cluster Node',
         did: 'node-cluster-03.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '1,800 tasks/mo • Cluster Enclave',
+        throughput: '1,200 tasks/mo',
         health: '100%',
         enclave: 'Sealed Enclave (TPM 2.0 Attested)',
       },
@@ -813,8 +837,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Dedicated AI Service Gateway',
         did: 'node-cluster-04.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '450 tasks/mo • FastMCP Gateway',
-        health: '99.9%',
+        throughput: '450 tasks/mo',
+        health: '100%',
         enclave: 'Sealed Enclave (Edge Isolated)',
       },
       {
@@ -824,7 +848,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         trade: 'Enterprise Cluster Node',
         did: 'node-cluster-05.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
-        throughput: '1,800 tasks/mo • Supervised Cluster',
+        throughput: '1,200 tasks/mo',
         health: '100%',
         enclave: 'Supervised Enclave (Operator Guard)',
       },
@@ -880,7 +904,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-06-501',
         resourceId: 'node-5',
-        name: '#471 SLA Audit & Outlier Triage ($175)',
+        name: '#471 Workload Audit & Outlier Triage ($175)',
         startDate: '2026-10-06 14:00',
         endDate: '2026-10-06 15:30',
         eventColor: 'blue',
@@ -1871,9 +1895,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Vaulted: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Tier Quotas: <strong style={{ color: '#38bdf8' }}>125 / 450 / 1,800</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span></span>
+            <span>Tier Quotas: <strong style={{ color: '#38bdf8' }}>{tierQuotasLabel}</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>SLA: <strong style={{ color: '#a78bfa' }}>&lt;120s (99.98%)</strong></span>
+            <span>Execution: <strong style={{ color: '#a78bfa' }}>High-Throughput</strong></span>
           </div>
         ) : (
           <div style={{ fontSize: '11px', color: '#94a3b8', paddingLeft: '34px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
@@ -1901,7 +1925,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Active Worker Nodes</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>5 Enclave Clusters</div>
                 <div style={{ fontSize: '9px', color: '#34d399', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  100% Hardware Attested <span style={{ fontSize: '8px', backgroundColor: 'rgba(52, 211, 153, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
+                  Hardware Enclaves <span style={{ fontSize: '8px', backgroundColor: 'rgba(52, 211, 153, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
                 </div>
               </div>
             </div>
@@ -1935,7 +1959,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Catalog Quotas</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  125 / 450 / 1,800 <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span>
+                  {tierQuotasLabel} <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span>
                 </div>
                 <div style={{ fontSize: '9px', color: '#38bdf8' }}>Catalog Tier Quotas</div>
               </div>
@@ -1946,10 +1970,10 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 <Clock size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Autonomous Workload SLA</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>&lt;120s Turnaround</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Autonomous Workload Delivery</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>Active Execution</div>
                 <div style={{ fontSize: '9px', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  99.98% On-Time Delivery <span style={{ fontSize: '8px', backgroundColor: 'rgba(167, 139, 250, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
+                  Multi-Agent Workloads <span style={{ fontSize: '8px', backgroundColor: 'rgba(167, 139, 250, 0.15)', padding: '1px 3px', borderRadius: '2px' }}>Demo</span>
                 </div>
               </div>
             </div>
@@ -3112,7 +3136,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             {/* Scope & Execution Specifications Card */}
             <div style={{ backgroundColor: '#131d31', borderRadius: '8px', padding: '14px', border: '1px solid #1e293b' }}>
               <div style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Sparkles size={13} /> Workload Specifications &bull; SLA Intelligence
+                <Sparkles size={13} /> Workload Specifications &bull; Execution Profile
               </div>
               <div style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: 1.4, backgroundColor: '#0f172a', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
                 {selectedAppointment.takeoffNotes}

@@ -336,7 +336,7 @@ export function buildTradeImpactFromTransactions(transactions: A2aTransaction[])
     {
       trade: 'Enterprise Cluster Node',
       planRate: 179.99,
-      taskQuota: 1800,
+      taskQuota: 1200,
     },
   ];
 
@@ -374,7 +374,6 @@ export function buildTradeImpactFromTransactions(transactions: A2aTransaction[])
       missed_calls_prevented: 0,
       subscription_cost: tier.planRate,
       roi_multiple: 12.0,
-      sla_compliance: '99.99%',
     };
   });
 }

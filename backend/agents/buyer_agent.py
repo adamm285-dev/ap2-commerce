@@ -60,7 +60,7 @@ class BuyerAgent:
         self,
         agent_id: str = "buyer-agent-01",
         monthly_budget_cap: float = 100.00,
-        contractor_email: str = "agent-alpha@nexus-systems.io",
+        contractor_email: str = "agent-alpha@example.com",
     ):
         self.agent_id = agent_id
         self.monthly_budget_cap = monthly_budget_cap
@@ -79,8 +79,7 @@ class BuyerAgent:
 
         # Phase 1: Local Telemetry & Business Need Assessment
         print("📊 [Phase 1: Opportunity Assessment (Pipeline Telemetry)]")
-        print(f"   Autonomous Buyer: Nexus Autonomous Systems Corp ({self.contractor_email})")
-        print(f"   Cluster Ingestion: 240 workload tasks queued | Headroom: 80 tasks")
+        print(f"   Autonomous Buyer: Acme Autonomous Systems LLC ({self.contractor_email})")
         print(f"   Conclusion: Dedicated AI Service Gateway required (Budget Cap: ${self.monthly_budget_cap:.2f}/mo)\n")
 
         # Phase 2: Query Seller Agent MCP Catalog
@@ -272,8 +271,8 @@ class BuyerAgent:
         print("⚡ [Phase 6: Autonomous Zapier MCP Back-Office Sync]")
         zapier_result = await seller_agent.dispatch_zapier_mcp(
             workflow_type="a2a_onboarding",
-            contractor_name="Nexus Autonomous Systems Corp",
-            business_entity="Nexus Autonomous Systems Corp",
+            contractor_name="Acme Autonomous Systems LLC",
+            business_entity="Acme Autonomous Systems LLC",
             allocated_did=assigned_endpoint,
             trade_vertical=matching_tier.get("title", "Dedicated AI Service Gateway"),
             monthly_subscription_fee=monthly_price,
@@ -335,7 +334,7 @@ async def main():
     parser.add_argument(
         "--email",
         type=str,
-        default="agent-alpha@nexus-systems.io",
+        default="agent-alpha@example.com",
         help="Buyer email for identity binding",
     )
     args = parser.parse_args()

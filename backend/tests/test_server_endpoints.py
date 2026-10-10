@@ -378,6 +378,14 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
         "expires_at": time.time() + 1800,
     })
 
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        buyer_email=email,
+        budget_cap=200.0,
+    )
+
     # Mock create_subscription to return APPROVAL_PENDING
     async def mock_create_sub(*args, **kwargs):
         return {
@@ -394,8 +402,12 @@ def test_unapproved_upgrade_keeps_old_plan_active_with_pending_replacement():
         res = asyncio.run(seller_agent.purchase_subscription(
             tier_id="ap2-gateway",
             agreed_monthly_rate=79.99,
-            mandate_proof_hash=proof,
+            checkout_mandate_chain=chains["checkout_mandate_chain"],
+            payment_mandate_chain=chains["payment_mandate_chain"],
+            checkout_jwt=chains["checkout_jwt"],
+            nonce=chains["nonce"],
             contractor_email=email,
+            buyer_email=email,
         ))
         assert res["status"] == "APPROVAL_PENDING"
         assert res["replaces_subscription_id"] == sub1_id
@@ -821,6 +833,14 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
         "expires_at": time.time() + 1800,
     })
 
+    from backend.tests.ap2_test_utils import build_test_ap2_chains
+    chains = build_test_ap2_chains(
+        tier_id="ap2-cluster",
+        monthly_price=179.99,
+        buyer_email=email,
+        budget_cap=200.0,
+    )
+
     async def mock_create_sub(*args, **kwargs):
         return {
             "subscription_id": "I-EDGE1-UPGRADE",
@@ -836,8 +856,12 @@ def test_edge_case_upgrade_waiting_for_approval_ledger_matches_old_plan():
         res = asyncio.run(seller_agent.purchase_subscription(
             tier_id="ap2-cluster",
             agreed_monthly_rate=179.99,
-            mandate_proof_hash=proof,
+            checkout_mandate_chain=chains["checkout_mandate_chain"],
+            payment_mandate_chain=chains["payment_mandate_chain"],
+            checkout_jwt=chains["checkout_jwt"],
+            nonce=chains["nonce"],
             contractor_email=email,
+            buyer_email=email,
         ))
         assert res["status"] == "APPROVAL_PENDING"
         # Commitment MUST match the active subscription rate ($49.99), NOT $179.99!
@@ -1225,6 +1249,31 @@ def test_run_buyer_agent_endpoint_admin_auth():
     )
     assert res_valid.status_code == 200
     assert res_valid.json()["status"] == "COMPLETED"
+
+
+def test_deck_purchase_endpoint_v02_flow():
+    """
+    Verifies that the deck purchase endpoint executes the AP2 v0.2 purchase flow:
+    mints limits, negotiates checkout terms, closes mandates, purchases subscription,
+    and provisions the compute node.
+    """
+    req_payload = {
+        "tierId": "ap2-gateway",
+        "agreedMonthlyRate": 79.99,
+        "buyerEmail": "deck-buyer@example.com",
+        "contractorName": "AutonomousBuyerAgent-Deck",
+        "businessEntity": "Acme Deck Procurement LLC",
+        "monthlyBudgetCap": 100.0,
+    }
+    res = client.post("/api/agent/deck-purchase", json=req_payload)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "ACTIVE"
+    assert data["subscriptionId"].startswith("I-")
+    assert data["tierId"] == "ap2-gateway"
+    assert data["workloadTasksPerMonth"] == 450
+    assert data["routingState"] == "ACTIVE_STREAMING"
+    assert data["receipt"] is not None
 
 
 

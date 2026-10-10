@@ -14,6 +14,9 @@ credentials.json
 service_account.json
 client_secret*.json
 owner_limits.json
+# Claude Desktop demo: local keys, wallet state and generated config (scripts/setup_claude_desktop_demo.py)
+.ap2_local/
+claude_desktop_config.local.json
 
 # ==========================================
 # Node & Frontend Build Artifacts

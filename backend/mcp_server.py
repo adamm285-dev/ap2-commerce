@@ -172,9 +172,10 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             "Every autonomous workload (batch processing, gateway routing, cluster execution) is supported across all tiers.\n"
             "Recommended buyer procurement workflow:\n"
             "1. inspect_subscription_tiers: Inspect AP2 compute subscription tiers, workload task quotas ($49.99 / $79.99 / $179.99), and compute features.\n"
-            "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap. If budget < asking price, returns pre-approved counter-offer down-tiering to a plan within budget with a signed AP2 Intent Mandate.\n"
-            "3. purchase_subscription: Bind agreed tier_id, agreed_monthly_rate, mandate_proof_hash, and buyer_email to PayPal Recurring Vault for automated billing.\n"
-            "4. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription."
+            "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap. If budget < asking price, returns a counter-offer for a plan within budget. Either way it returns offer_id and a merchant-signed checkout_jwt.\n"
+            "3. Have the buyer's wallet (the owner-authorized signer, e.g. the ap2-buyer-wallet MCP server's sign_checkout) sign the checkout_jwt into AP2 v0.2 checkout_mandate_chain and payment_mandate_chain.\n"
+            "4. purchase_subscription: Submit offer_id, buyer_email, checkout_mandate_chain and payment_mandate_chain. Purchases without both AP2 v0.2 chains are rejected.\n"
+            "5. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription."
         )
         return {
             "jsonrpc": jsonrpc,

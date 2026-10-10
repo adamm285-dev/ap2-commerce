@@ -59,6 +59,21 @@ Simulate an end-to-end LLM-driven buyer agent negotiating and provisioning a com
 python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway
 ```
 
+### 4. Buy with Claude Desktop (seller MCP + buyer wallet MCP)
+Claude Desktop runs two MCP servers side by side: the seller (`backend.mcp_server`) and the buyer's wallet (`backend.wallet.mcp_server`). Claude negotiates with the seller, asks the wallet to sign, and hands the signed AP2 v0.2 mandate chains back to the seller. Claude never sees a private key. The wallet signs only checkouts that fit the owner's signed limits, even if Claude tells the seller a bigger budget.
+
+```bash
+python scripts/setup_claude_desktop_demo.py --monthly-cap 60
+```
+
+The script:
+1. Creates three separate keys under the gitignored `.ap2_local/`: merchant, buyer agent (created by the wallet process itself) and owner.
+2. Enrolls the owner key through the challenge flow.
+3. Has the owner sign $60/mo limits bound to the wallet's agent key.
+4. Writes `claude_desktop_config.local.json` with absolute paths.
+
+Copy its two entries into Claude Desktop's `claude_desktop_config.json` and restart Claude Desktop. The demo uses its own database (`backend/data/claude_desktop_demo.db`), never the dev database. The script prints the command to start the portal against that database. Then ask Claude: *"Check my wallet's spending limits, then buy the best AP2 compute plan you can within them."*
+
 ---
 
 ## 1. Executive Summary & The Problem

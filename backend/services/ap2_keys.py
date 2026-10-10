@@ -3,7 +3,8 @@ AP2 v0.2 Key Management Service.
 Handles ES256 (ECDSA P-256) JWK key generation, resolution, and public key presentation
 for Google AP2 v0.2 Protocol conformance.
 
-Merchant keys are loaded strictly from the environment and never written to disk or git.
+Merchant keys are loaded from the environment (AP2_MERCHANT_PRIVATE_KEY_JWK, or a gitignored
+JWK file named by AP2_MERCHANT_PRIVATE_KEY_FILE) and are never written to disk or git by this module.
 Demo user and agent keys are generated ephemerally or cached in-memory per process.
 """
 
@@ -13,6 +14,7 @@ import json
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from jwcrypto.jwk import JWK
@@ -45,11 +47,38 @@ def get_merchant_key() -> JWK:
         except Exception as e:
             logger.warning(f"Failed to parse AP2_MERCHANT_PRIVATE_KEY_JWK from environment: {e}")
 
+    key_file = settings.ap2_merchant_private_key_file or os.environ.get("AP2_MERCHANT_PRIVATE_KEY_FILE", "")
+    if key_file.strip():
+        _MERCHANT_KEY = _load_merchant_key_file(key_file.strip())
+        logger.info("Loaded merchant ES256 key from AP2_MERCHANT_PRIVATE_KEY_FILE.")
+        return _MERCHANT_KEY
+
     # Generate ephemeral merchant key for test / sandbox / mock mode
     kid = settings.ap2_merchant_key_id or "ap2-merchant-key-1"
     _MERCHANT_KEY = JWK.generate(kty="EC", crv="P-256", kid=kid)
     logger.info(f"Initialized ephemeral in-memory ES256 merchant key with kid '{kid}'.")
     return _MERCHANT_KEY
+
+
+def _load_merchant_key_file(path_str: str) -> JWK:
+    """
+    Loads the merchant private key from a JWK file.
+    Fails closed: a configured file that is missing, unreadable or not a private
+    P-256 key raises instead of silently falling back to an ephemeral key.
+    """
+    path = Path(path_str).expanduser()
+    try:
+        key = JWK.from_json(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise RuntimeError(
+            f"AP2_MERCHANT_PRIVATE_KEY_FILE is set but '{path}' could not be loaded as a JWK: {e}"
+        ) from e
+    pub = key.export_public(as_dict=True)
+    if not key.has_private or pub.get("kty") != "EC" or pub.get("crv") != "P-256":
+        raise RuntimeError(
+            f"AP2_MERCHANT_PRIVATE_KEY_FILE '{path}' must contain a private P-256 (ES256) JWK."
+        )
+    return key
 
 
 def get_merchant_public_key() -> JWK:

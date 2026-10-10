@@ -2,13 +2,22 @@
   "mcpServers": {
     "ap2-seller-node": {
       "command": "python",
-      "args": [
-        "-m",
-        "backend.mcp_server"
-      ],
-      "cwd": ".",
+      "args": ["-m", "backend.mcp_server"],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONPATH": "C:\\path\\to\\ap2-commerce",
+        "PYTHONUNBUFFERED": "1",
+        "MOCK_EXTERNAL_APIS": "true",
+        "A2A_DB_PATH": "C:\\path\\to\\ap2-commerce\\backend\\data\\claude_desktop_demo.db",
+        "AP2_MERCHANT_PRIVATE_KEY_FILE": "C:\\path\\to\\ap2-commerce\\.ap2_local\\merchant\\merchant_key.jwk"
+      }
+    },
+    "ap2-buyer-wallet": {
+      "command": "python",
+      "args": ["-m", "backend.wallet.mcp_server"],
+      "env": {
+        "PYTHONPATH": "C:\\path\\to\\ap2-commerce",
+        "PYTHONUNBUFFERED": "1",
+        "AP2_WALLET_DIR": "C:\\path\\to\\ap2-commerce\\.ap2_local\\wallet"
       }
     }
   }

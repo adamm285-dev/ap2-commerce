@@ -68,6 +68,8 @@ class Settings(BaseSettings):
 
     # AP2 v0.2 ES256 ECDSA P-256 Signing Keys (Google Reference Architecture)
     ap2_merchant_private_key_jwk: str = Field(default="", alias="AP2_MERCHANT_PRIVATE_KEY_JWK")
+    # Path to a gitignored JWK file; lets separate processes (HTTP server, stdio MCP) share one merchant key
+    ap2_merchant_private_key_file: str = Field(default="", alias="AP2_MERCHANT_PRIVATE_KEY_FILE")
     ap2_merchant_key_id: str = Field(default="ap2-merchant-key-1", alias="AP2_MERCHANT_KEY_ID")
 
     # Admin API Key for administrative endpoints (mandate reset, ledger management)

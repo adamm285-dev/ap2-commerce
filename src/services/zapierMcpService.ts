@@ -52,6 +52,7 @@ export interface ZapierExecutionResult {
   jobId: string;
   logs: ZapierMcpActionLog[];
   isLiveBackend?: boolean;
+  error?: string;
   cloudeventsPayload?: any;
   erpPayload?: any;
   qboPayload?: any;
@@ -100,6 +101,7 @@ export async function executeZapierA2aWorkflow(
 
     if (res.ok) {
       const data = await res.json();
+      // MOCK(M-021): every action is labeled VERIFIED even when the backend only did a dry run
       const logs: ZapierMcpActionLog[] = [
         {
           actionId: data.qboDraftInvoiceId || `QBO-EXP-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -191,145 +193,16 @@ export async function executeZapierA2aWorkflow(
       };
     }
   } catch (err) {
-    console.warn('[Zapier MCP AP2] Live backend not reachable, using local simulation:', err);
+    console.warn('[Zapier MCP AP2] Back-office backend not reachable:', err);
   }
 
-  // MOCK(M-017): backend unreachable: back-office payloads faked in the browser
-  // Graceful client-side simulation fallback
-  await new Promise((resolve) => setTimeout(resolve, 600));
-
-  const fallbackCloudEventsPayload = {
-    specversion: '1.0',
-    id: `ce-${Math.floor(100000 + Math.random() * 900000)}`,
-    source: 'https://api.ap2protocol.org/mcp/seller',
-    type: 'com.ap2.settlement.subscription.activated',
-    datacontenttype: 'application/json',
-    time: new Date().toISOString(),
-    subject: `agent_${agentName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    data: {
-      buyer_agent: agentName,
-      principal_entity: entity,
-      service_tier: capability,
-      monthly_rate: buyer.monthlyFee,
-      allocated_node_endpoint: endpoint,
-      paypal_subscription_id: buyer.paypalSubscriptionId,
-      ed25519_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
-      enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-      protocol_version: 'AP2-v1.4.1',
-    },
-  };
-
-  const fallbackQboPayload = {
-    Purchase: {
-      PaymentType: 'CreditCard',
-      AccountRef: {
-        value: '99',
-        name: 'PayPal Clearing Account',
-      },
-      EntityRef: {
-        value: '101',
-        name: 'Demo Merchant Co',
-        type: 'Vendor',
-      },
-      TxnDate: new Date().toISOString().substring(0, 10),
-      DocNumber: `AP2-SUB-${buyer.paypalSubscriptionId.slice(-6)}`,
-      TotalAmt: buyer.monthlyFee,
-      CurrencyRef: {
-        value: 'USD',
-        name: 'United States Dollar',
-      },
-      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${buyer.paypalSubscriptionId} | Monthly: $${buyer.monthlyFee.toFixed(2)} USD\nDedicated Node: ${endpoint} | Capability: ${capability}\nMandate Chain: AP2-MANDATE-CHAIN-VERIFIED-v02\nCryptographic Attestation: AP2 v0.2 Dual Mandate Chain\nPurchaser: ${agentName} (${entity})`,
-      GlobalTaxCalculation: 'NotApplicable',
-      Line: [
-        {
-          Id: '1',
-          LineNum: 1,
-          Amount: buyer.monthlyFee,
-          DetailType: 'AccountBasedExpenseLineDetail',
-          Description: `AP2 Dedicated Node Gateway (${capability}) — Autonomous Recurring Subscription`,
-          AccountBasedExpenseLineDetail: {
-            AccountRef: {
-              value: '6300',
-              name: 'Dues & Subscriptions: Software & SaaS',
-            },
-            BillableStatus: 'NotBillable',
-            TaxCodeRef: {
-              value: 'NON',
-            },
-          },
-        },
-      ],
-    },
-    purchase_id: `QBO-EXP-${Math.floor(1000 + Math.random() * 9000)}`,
-  };
-
-  const fallbackWebhookEnvelope = {
-    headers: {
-      'Content-Type': 'application/json',
-      'X-AP2-Signature': 'sha256=c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2',
-      'X-AP2-Timestamp': new Date().toISOString(),
-      'X-AP2-Delivery-Id': `del_${Math.random().toString(36).substring(2, 10)}`,
-      'X-AP2-Event': 'ap2.subscription.provisioned',
-    },
-    body: {
-      event: 'ap2.subscription.provisioned',
-      agent: {
-        name: agentName,
-        entity: entity,
-        email: email,
-      },
-      subscription: {
-        paypal_subscription_id: buyer.paypalSubscriptionId,
-        monthly_fee: buyer.monthlyFee,
-        currency: 'USD',
-        allocated_node_endpoint: endpoint,
-        trade_vertical: capability,
-        mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
-      },
-      cloudevents_export: fallbackCloudEventsPayload,
-      qbo_export: fallbackQboPayload,
-    },
-    status: 200,
-    targetUrl: 'https://hooks.zapier.com/hooks/catch/912837/b821af/',
-    deliveryId: `del_${Math.random().toString(36).substring(2, 10)}`,
-  };
-
-  const logs: ZapierMcpActionLog[] = [
-    {
-      actionId: fallbackQboPayload.purchase_id,
-      toolName: 'zapier_mcp_qbo_record_expense',
-      targetApp: 'QuickBooks Online',
-      status: 'VERIFIED',
-      payloadSummary: `Recorded recurring $${buyer.monthlyFee.toFixed(2)}/mo SaaS subscription expense under GL 6300: Software & SaaS. Attached PayPal Vault Token: ${buyer.paypalSubscriptionId} (${entity})`,
-      timestamp: now(),
-    },
-    {
-      actionId: `CE-${Math.floor(10000 + Math.random() * 90000)}`,
-      toolName: 'zapier_mcp_cloudevents_publish',
-      targetApp: 'CloudEvents v1.0',
-      status: 'VERIFIED',
-      payloadSummary: `Published CloudEvents v1.0 event 'com.ap2.settlement.subscription.activated' for ${entity} bound to node endpoint ${endpoint} with Ed25519 mandate proof`,
-      timestamp: now(),
-    },
-    {
-      actionId: `HOOK-${Math.floor(10000 + Math.random() * 90000)}`,
-      toolName: 'zapier_mcp_eventbus_export',
-      targetApp: 'Zapier MCP EventBus',
-      status: 'VERIFIED',
-      payloadSummary: `Dispatched HMAC-SHA256 signed webhook envelope to Zapier EventBus routing endpoint for ${email} (Replay Window: 300s)`,
-      timestamp: now(),
-    },
-  ];
-
+  // Fail closed: report that nothing ran instead of inventing completed actions
   return {
-    success: true,
+    success: false,
     jobId: syncId,
-    logs,
+    logs: [],
     isLiveBackend: false,
-    cloudeventsPayload: fallbackCloudEventsPayload,
-    erpPayload: fallbackCloudEventsPayload,
-    qboPayload: fallbackQboPayload,
-    webhookEnvelope: fallbackWebhookEnvelope,
+    error: 'Back-office backend unavailable; nothing was exported.',
   };
 }
 
@@ -342,6 +215,7 @@ export async function executeZapierA2aWorkflow(
 export async function executeZapierMcpWorkflow(
   lead: QualifiedLead
 ): Promise<ZapierExecutionResult> {
+  // MOCK(M-020): workload dispatch is simulated entirely in the browser; no backend call
   const dispatchId = `DISPATCH-${Math.floor(10000 + Math.random() * 90000)}`;
   const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
   const capability = lead.tradeVertical || 'Dedicated AI Service Gateway';

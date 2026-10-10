@@ -376,6 +376,8 @@ export function App() {
 
         // Also lock AP2 pending workload slot in Bryntum Dispatch
         setIsPendingDepositLocked(true);
+      } catch (err) {
+        setPaypalError(err instanceof Error ? err.message : String(err));
       } finally {
         setIsProvisioning(false);
       }

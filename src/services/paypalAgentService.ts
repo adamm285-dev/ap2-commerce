@@ -64,6 +64,14 @@ export interface ProvisioningResult {
   isLiveBackend?: boolean;
 }
 
+/** Thrown when the backend can't complete a call; nothing was purchased, provisioned or locked. */
+export class BackendUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BackendUnavailableError';
+  }
+}
+
 export const PAYPAL_CONFIG = {
   clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID || 'test',
   planId: import.meta.env.VITE_PAYPAL_PLAN_ID || 'P-4KA989014W524233ANLCRSFQ',
@@ -137,6 +145,7 @@ export async function evaluateAgentNegotiation(
       body: JSON.stringify({
         buyerEmail: 'agent-alpha@example.com',
         monthlyBudgetCap: request.maxMonthlyBudget,
+        // MOCK(M-006): portal asks the server to sign owner limits with humanConfirmed hardcoded to true
         humanConfirmed: true,
         allowedTiers: ['ap2-batch', 'ap2-gateway', 'ap2-cluster'],
       }),
@@ -150,6 +159,7 @@ export async function evaluateAgentNegotiation(
     console.warn('[AP2 Trusted Surface] Could not pre-sign limits on backend:', err);
   }
 
+  let failureReason = 'network error';
   try {
     const res = await fetch('/api/agent/spending-mandate/evaluate', {
       method: 'POST',
@@ -163,6 +173,9 @@ export async function evaluateAgentNegotiation(
       }),
     });
 
+    if (!res.ok) {
+      failureReason = `HTTP ${res.status}`;
+    }
     if (res.ok) {
       const data = await res.json();
       const approved = data.approved ?? false;
@@ -222,51 +235,20 @@ export async function evaluateAgentNegotiation(
       };
     }
   } catch (err) {
-    console.warn('[AP2 Agent] Live backend not reachable, using local mandate simulation:', err);
+    console.warn('[AP2 Agent] Seller backend not reachable; nothing was negotiated:', err);
   }
 
-  // MOCK(M-017): backend unreachable: negotiation faked in the browser, including a satisfied mandate
-  // Graceful client-side fallback
-  const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
-  const isFallbackCounterOffer = !isBudgetAcceptable && request.maxMonthlyBudget >= 49.99;
-  const fallbackMonthlyFee = isBudgetAcceptable
-    ? sellerMonthlyRate
-    : isFallbackCounterOffer
-    ? 49.99
-    : sellerMonthlyRate;
-
-  const fallbackPlanName = isFallbackCounterOffer
-    ? 'High-Throughput Batch Worker ($49.99/mo)'
-    : requestedPlanName;
-
-  const fallbackPlanId = fallbackMonthlyFee === 49.99
-    ? PAYPAL_CONFIG.planIdBatch
-    : fallbackMonthlyFee === 179.99
-    ? PAYPAL_CONFIG.planIdCluster
-    : PAYPAL_CONFIG.planIdGateway;
-
-  const fallbackCounterOfferMessage = isFallbackCounterOffer
-    ? `[SellerMCP]: Budget $${request.maxMonthlyBudget.toFixed(2)} < $${sellerMonthlyRate.toFixed(2)} — counter-offer: ${fallbackPlanName}`
-    : undefined;
-
-  const fallbackMessage = isBudgetAcceptable
-    ? `[BuyerAgent]: Mandate satisfied ($${sellerMonthlyRate.toFixed(2)}/mo <= $${request.maxMonthlyBudget.toFixed(2)}/mo cap).`
-    : isFallbackCounterOffer
-    ? `[BuyerAgent]: Counter-offer accepted for $${fallbackMonthlyFee.toFixed(2)}/mo (High-Throughput Batch Worker) within budget cap $${request.maxMonthlyBudget.toFixed(2)}/mo.`
-    : `[BuyerAgent]: REJECTED. Offered rate ($${sellerMonthlyRate.toFixed(2)}) exceeds local buyer cap ($${request.maxMonthlyBudget.toFixed(2)}).`;
-
+  // Fail closed: without the seller backend there is no negotiation and no mandate
   return {
-    agreedPlanId: fallbackPlanId,
-    agreedPlanName: fallbackPlanName,
-    monthlyFee: fallbackMonthlyFee,
-    mandateSatisfied: isBudgetAcceptable || isFallbackCounterOffer,
+    agreedPlanId: selectedTier.planId,
+    agreedPlanName: requestedPlanName,
+    monthlyFee: sellerMonthlyRate,
+    mandateSatisfied: false,
     kycRequired: true,
-    message: fallbackMessage,
+    message: `[BuyerAgent]: Seller backend unavailable (${failureReason}). Nothing was negotiated and no mandate was created.`,
     sellerMcpEndpoint: PAYPAL_CONFIG.mcpServerUrl,
-    mandateToken: (isBudgetAcceptable || isFallbackCounterOffer) ? 'MANDATE-SIMULATED-LOCAL-TOKEN' : undefined,
     isLiveBackend: false,
-    isCounterOffer: isFallbackCounterOffer,
-    counterOfferMessage: fallbackCounterOfferMessage,
+    isCounterOffer: false,
     requestedMonthlyRate: sellerMonthlyRate,
     requestedPlanName: requestedPlanName,
   };
@@ -303,9 +285,10 @@ export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean
 export async function executeProvisioningAfterSubscription(
   subscriptionId: string,
   principalEntity: string,
-  capability: string = 'Dedicated AI Service Gateway',
+  _capability: string = 'Dedicated AI Service Gateway',
   _regionCluster: string = 'us-east-1'
 ): Promise<ProvisioningResult> {
+  let failureReason = 'network error';
   try {
     const res = await fetch('/api/agent/provision', {
       method: 'POST',
@@ -316,6 +299,9 @@ export async function executeProvisioningAfterSubscription(
       }),
     });
 
+    if (!res.ok) {
+      failureReason = `HTTP ${res.status}`;
+    }
     if (res.ok) {
       const data = await res.json();
       return {
@@ -330,32 +316,10 @@ export async function executeProvisioningAfterSubscription(
       };
     }
   } catch (err) {
-    console.warn('[AP2 Agent] Live backend not reachable, using local provisioning simulation:', err);
+    console.warn('[AP2 Agent] Provisioning backend not reachable:', err);
   }
 
-  // MOCK(M-017): backend unreachable: node provisioning faked in the browser
-  // Graceful client-side fallback matching AP2 MCP node endpoints
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  const capLower = (capability || '').toLowerCase();
-  let allocatedDid = 'mcp+https://gateway-01.example.com/mcp';
-  if (capLower.includes('batch') || capLower.includes('starter') || capLower.includes('solo') || capLower.includes('49.99')) {
-    allocatedDid = 'mcp+https://batch-01.example.com/mcp';
-  } else if (capLower.includes('cluster') || capLower.includes('enterprise') || capLower.includes('179.99')) {
-    allocatedDid = 'mcp+https://cluster-01.example.com/mcp';
-  } else {
-    allocatedDid = 'mcp+https://gateway-01.example.com/mcp';
-  }
-
-  return {
-    success: true,
-    subscriptionId,
-    allocatedDid,
-    carrierRespOrg: 'AP2 Autonomous Node Registry',
-    kycBoundEntity: principalEntity,
-    tcpaGuardActive: true,
-    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-    isLiveBackend: false,
-  };
+  throw new BackendUnavailableError(`Provisioning backend unavailable (${failureReason}); no node was provisioned.`);
 }
 
 /**
@@ -380,6 +344,7 @@ export async function executeDeckAp2Purchase(
 
   const agreedPrice = options.agreedMonthlyRate ?? (tierId === 'ap2-batch' ? 49.99 : tierId === 'ap2-cluster' ? 179.99 : 79.99);
 
+  let failureReason = 'network error';
   try {
     const res = await fetch('/api/agent/deck-purchase', {
       method: 'POST',
@@ -401,6 +366,9 @@ export async function executeDeckAp2Purchase(
       }),
     });
 
+    if (!res.ok) {
+      failureReason = `HTTP ${res.status}`;
+    }
     if (res.ok) {
       const data = await res.json();
       return {
@@ -415,17 +383,10 @@ export async function executeDeckAp2Purchase(
       };
     }
   } catch (err) {
-    console.warn('[AP2 Agent] Live deck-purchase not reachable, falling back to legacy provisioning:', err);
+    console.warn('[AP2 Agent] AP2 purchase backend not reachable:', err);
   }
-
-  // MOCK(M-017): backend unreachable: deck purchase falls back to faked provisioning
-  return executeProvisioningAfterSubscription(
-    options.subscriptionId,
-    options.principalEntity,
-    options.capability
-  );
+  throw new BackendUnavailableError(`AP2 purchase backend unavailable (${failureReason}); nothing was purchased or provisioned.`);
 }
-
 export interface DispatchLockResult {
   success: boolean;
   slotLockedUntil: string;
@@ -445,6 +406,7 @@ export async function lockDispatchSlot(
   slotStartIso: string,
   paypalTransactionId: string
 ): Promise<DispatchLockResult> {
+  let failureReason = 'network error';
   try {
     const res = await fetch('/api/agent/dispatch/lock-slot', {
       method: 'POST',
@@ -457,6 +419,9 @@ export async function lockDispatchSlot(
       }),
     });
 
+    if (!res.ok) {
+      failureReason = `HTTP ${res.status}`;
+    }
     if (res.ok) {
       const data = await res.json();
       return {
@@ -469,22 +434,10 @@ export async function lockDispatchSlot(
       };
     }
   } catch (err) {
-    console.warn('[Dispatch Lock] Live API not reachable, using fallback:', err);
+    console.warn('[Dispatch Lock] Backend not reachable:', err);
   }
 
-  // MOCK(M-017): backend unreachable: slot lock faked in the browser
-  const defaultCluster = territoryZone && (territoryZone.includes('Cluster') || territoryZone.includes('Node'))
-    ? territoryZone
-    : 'Cluster Alpha - Dedicated AI Service Gateway';
-
-  return {
-    success: true,
-    slotLockedUntil: slotStartIso,
-    nodeAssigned: defaultCluster,
-    territoryZone,
-    paypalTransactionId,
-    isLiveBackend: false,
-  };
+  throw new BackendUnavailableError(`Slot lock backend unavailable (${failureReason}); no slot was locked.`);
 }
 
 export interface FleetStats {

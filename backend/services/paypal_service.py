@@ -94,7 +94,7 @@ class PayPalService:
 
     def get_sync_access_token(self, force_refresh: bool = False) -> Optional[str]:
         """
-        Synchronous counterpart to get_access_token for synchronous service paths (e.g. paypal_vault.py).
+        Synchronous counterpart to get_access_token for synchronous callers.
         Reuses cached token and proactively refreshes before expiration or upon forced invalidation.
         """
         # MOCK(M-002): synthetic OAuth token, no PayPal call

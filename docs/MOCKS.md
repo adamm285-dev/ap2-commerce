@@ -6,6 +6,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 
 **Format.** One `### M-NNN: title` heading per entry, then four fields: `Where` (one or more backticked `path::symbol`), `What it fakes`, `Why`, and `To make it real`.
 
+**Retired IDs (never reuse):** M-013 (failing-open Vault capture, code deleted 2026-10-10), M-017 (frontend faked success when the backend was unreachable, fixed 2026-10-10; it now reports the failure).
+
 ---
 
 ### M-001: Mock mode turns itself on when PayPal keys are missing
@@ -39,8 +41,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Owner keys come only from the registry (enrolled via the challenge flow) and are held on the owner's device, ideally a passkey. Agents sign with their own key in their own process, as `backend/wallet/` does.
 
 ### M-006: The server signs owner limits for any caller (mock mode only)
-- **Where:** `backend/server.py::trusted_surface_sign_limits_endpoint`
-- **What it fakes:** The owner's signing surface. Any caller that sends `human_confirmed: true` gets owner-signed limits with any cap. The flag is not proof that a human confirmed.
+- **Where:** `backend/server.py::trusted_surface_sign_limits_endpoint`, `src/services/paypalAgentService.ts::evaluateAgentNegotiation`
+- **What it fakes:** The owner's signing surface. Any caller that sends `human_confirmed: true` gets owner-signed limits with any cap. The flag is not proof that a human confirmed, and the portal's negotiation step sends it hardcoded to true without asking anyone.
 - **Why:** Lets the portal UI demo "owner sets limits" without a passkey.
 - **To make it real:** The owner signs in the browser or on a phone (WebCrypto or passkey); the server only verifies. Live mode already returns 404 here.
 
@@ -80,12 +82,6 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Lets an MCP client call the tools with almost no arguments during demos.
 - **To make it real:** Make these arguments required and reject calls that omit them.
 
-### M-013: PayPal Vault capture is simulated, and a failed live capture is reported as completed
-- **Where:** `backend/services/paypal_vault.py::execute_headless_mit_capture`
-- **What it fakes:** Merchant-initiated captures. Mock mode returns a synthetic capture. In live mode, if the capture fails, it still returns `status: COMPLETED` with a `CAP-FALLBACK-` ID, which fails open. Nothing calls this function today.
-- **Why:** Leftover from an earlier billing design.
-- **To make it real:** Delete it, or make a failed capture return an error. It must never report a failed payment as completed.
-
 ### M-014: The anti-tamper playground uses demo keys and a demo secret
 - **Where:** `backend/services/crypto_mandate.py::DEMO_TAMPER_SECRET`, `backend/services/crypto_mandate.py::_DEMO_TAMPER_KEY`, `backend/server.py::verify_tamper_endpoint`, `backend/server.py::generate_proof_endpoint`, `backend/server.py::get_sample_proof`
 - **What it fakes:** A tamper-detection demo on the older Ed25519/HMAC "mandate proof" format, with a hardcoded secret and a throwaway key. It's not the AP2 v0.2 purchase path, which uses ES256 SD-JWT.
@@ -104,15 +100,9 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Copilot demo without a model.
 - **To make it real:** Back it with a model, and compute any numbers from the ledger at request time.
 
-### M-017: The frontend fakes success when the backend is unreachable
-- **Where:** `src/services/paypalAgentService.ts::evaluateAgentNegotiation`, `src/services/paypalAgentService.ts::executeProvisioningAfterSubscription`, `src/services/paypalAgentService.ts::executeDeckAp2Purchase`, `src/services/paypalAgentService.ts::lockDispatchSlot`, `src/services/zapierMcpService.ts::executeZapierA2aWorkflow`
-- **What it fakes:** Negotiation (including `mandateSatisfied: true` and a `MANDATE-SIMULATED-LOCAL-TOKEN`), node provisioning, deck purchase, slot locking and back-office payloads, computed in the browser.
-- **Why:** The portal stays clickable without a running backend.
-- **To make it real:** Show an error when the backend is down; never show a mandate or purchase as satisfied unless the backend verified it.
-
 ### M-018: Dashboard data is hardcoded in the frontend
-- **Where:** `src/data/telemetryData.ts::initialA2aTransactions`, `src/data/telemetryData.ts::kycAuditData`, `src/data/telemetryData.ts::nodeClusterData`
-- **What it fakes:** Transactions, KYC audit records and node-cluster data shown before (or instead of) backend data.
+- **Where:** `src/data/telemetryData.ts::initialA2aTransactions`, `src/data/telemetryData.ts::kycAuditData`, `src/data/telemetryData.ts::nodeClusterData`, `src/components/ZapierMcpView.tsx::ZapierMcpView`
+- **What it fakes:** Transactions, KYC audit records and node-cluster data shown before (or instead of) backend data, and example QuickBooks, CloudEvents and webhook payloads shown in the back-office view when no run has produced real ones.
 - **Why:** Dashboards render immediately.
 - **To make it real:** Load from the backend and show empty states when there's no data.
 
@@ -121,3 +111,15 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **What it fakes:** Line activation, inbound work and a buyer walkthrough, triggered by buttons rather than real events.
 - **Why:** Lets a presenter show state changes on demand.
 - **To make it real:** Drive these views from real webhook and subscription events; keep the buttons only behind a demo flag.
+
+### M-020: Workload dispatch automation is simulated entirely in the browser
+- **Where:** `src/services/zapierMcpService.ts::executeZapierMcpWorkflow`
+- **What it fakes:** The whole "workload dispatch" back-office run: CloudEvents, QuickBooks invoice and EventBus routing are generated client-side after a 600 ms delay. No backend call is made.
+- **Why:** Gives the workload scenario in the back-office view something to show.
+- **To make it real:** Call a backend endpoint that performs (or dry-runs and says so) each step, as the onboarding scenario does.
+
+### M-021: The back-office run log reports deliveries that didn't happen
+- **Where:** `src/services/zapierMcpService.ts::executeZapierA2aWorkflow`
+- **What it fakes:** Delivery results. Even when the backend only did a dry run, the browser labels the QuickBooks, CloudEvents and webhook steps VERIFIED, and shows a hardcoded `X-AP2-Signature`, a placeholder `HMAC-MANDATE-VERIFIED-01` proof, `protocol_version: AP2-v1.4.1` and a fixed Zapier hook URL.
+- **Why:** Leftover presentation code from before the backend reported dry runs.
+- **To make it real:** Build the log from what the backend returns (for example `webhookDispatched` and the delivery ID) and label dry runs as dry runs.

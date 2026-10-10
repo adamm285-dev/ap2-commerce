@@ -1581,6 +1581,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           sub_id: simulatedSubId,
         },
       });
+    } catch (err) {
+      setApiStatus(`● Provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsCallingApi(false);
     }
@@ -1726,6 +1728,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           },
         });
       }
+    } catch (err) {
+      setApiStatus(`● Slot lock failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsLockingSlot(false);
     }

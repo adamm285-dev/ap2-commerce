@@ -117,6 +117,7 @@ export function ZapierMcpView({
   const currentResult = activeScenario === 'a2a' ? a2aResult : workloadResult;
 
   // Authentic Payload Previews for Enterprise Accounting & EventBus
+  // MOCK(M-018): example back-office payloads shown before or instead of a real run
   const qboPreview = currentResult?.qboPayload || (activeScenario === 'a2a' ? {
     Purchase: {
       PaymentType: 'CreditCard',
@@ -692,6 +693,12 @@ export function ZapierMcpView({
             >
               <Network size={28} className="spin-icon" style={{ opacity: 0.8 }} />
               <div>Handshaking with Zapier MCP protocol &amp; dispatching actions...</div>
+            </div>
+          )}
+
+          {currentResult && !currentResult.success && (
+            <div role="alert" style={{ color: '#f87171', fontSize: '13px', padding: '8px 0' }}>
+              {currentResult.error || 'Back-office run failed; nothing was exported.'}
             </div>
           )}
 

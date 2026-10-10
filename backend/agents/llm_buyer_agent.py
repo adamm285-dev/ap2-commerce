@@ -29,6 +29,9 @@ import atexit
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Ensure isolated temp DB in LLM buyer agent to protect development DB
 if not os.environ.get("A2A_DB_PATH"):
@@ -337,6 +340,9 @@ class OpenAICompatibleRunner(BaseModelRunner):
         elif provider == "openai":
             base_url = base_url or "https://api.openai.com/v1"
             api_key_env = api_key_env or "OPENAI_API_KEY"
+        elif provider == "gemini":
+            base_url = base_url or "https://generativelanguage.googleapis.com/v1beta/openai"
+            api_key_env = api_key_env or "GEMINI_API_KEY"
 
         if not model:
             raise ValueError("OpenAICompatibleRunner requires explicit 'model'.")
@@ -409,7 +415,9 @@ class OpenAICompatibleRunner(BaseModelRunner):
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                print(f"\n[HTTP {resp.status_code} ERROR] {resp.text}\n")
+                resp.raise_for_status()
             data = resp.json()
 
         choice = data["choices"][0]["message"]
@@ -699,19 +707,20 @@ class LLMBuyerAgent:
                     continue
 
                 # Add assistant message with tool_calls conforming to OpenAI spec
+                tool_calls_to_append = decision.get("raw_tool_calls") or [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tname,
+                            "arguments": json.dumps(tparams),
+                        },
+                    }
+                ]
                 messages.append({
                     "role": "assistant",
                     "content": thought or None,
-                    "tool_calls": [
-                        {
-                            "id": tool_call_id,
-                            "type": "function",
-                            "function": {
-                                "name": tname,
-                                "arguments": json.dumps(tparams),
-                            },
-                        }
-                    ],
+                    "tool_calls": tool_calls_to_append,
                 })
 
                 if tname == "sign_and_purchase":
@@ -1087,7 +1096,7 @@ async def _main():
     parser.add_argument("--email", type=str, default="agent-alpha@example.com", help="Buyer PayPal email")
     parser.add_argument("--mandates-file", type=str, default="owner_limits.json", help="Path to file containing human-authorized open mandates")
     parser.add_argument("--mint-owner-limits", action="store_true", help="Demo owner command: write open mandates to file (mock mode only)")
-    parser.add_argument("--provider", type=str, choices=["openai", "xai"], default=None, help="LLM provider preset ('openai' or 'xai')")
+    parser.add_argument("--provider", type=str, choices=["openai", "xai", "gemini"], default=None, help="LLM provider preset ('openai', 'xai', or 'gemini')")
     parser.add_argument("--model", type=str, default=None, help="Explicit model identifier for OpenAICompatibleRunner (required when --provider is set)")
     parser.add_argument("--base-url", type=str, default=None, help="Explicit base URL for OpenAICompatibleRunner")
     parser.add_argument("--api-key-env", type=str, default=None, help="Name of environment variable containing API key for OpenAICompatibleRunner")
@@ -1126,6 +1135,9 @@ async def _main():
     elif args.provider == "openai":
         base_url = base_url or "https://api.openai.com/v1"
         api_key_env = api_key_env or "OPENAI_API_KEY"
+    elif args.provider == "gemini":
+        base_url = base_url or "https://generativelanguage.googleapis.com/v1beta/openai"
+        api_key_env = api_key_env or "GEMINI_API_KEY"
 
     runner = None
     if args.model:

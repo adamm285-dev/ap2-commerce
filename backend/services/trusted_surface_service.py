@@ -10,11 +10,13 @@ Non-agentic invariants:
 3. Open mandates carry strict constraints:
    - AmountRange: monthly spending cap in integer minor units (cents)
    - AgentRecurrence: MONTHLY frequency with max_occurrences = 12
-   - Budget: annual spending ceiling in integer minor units (cents)
+   - Budget: total spending ceiling over the billing term (cents-derived)
    - AllowedMerchants / AllowedPayees: AP2_MERCHANT_ID
    - LineItems: allowed compute tiers (acceptable_items)
    - cnf: confirmation claim binding the agent's public key JWK
-   - Short expiration (exp)
+   - Expiration: the open checkout mandate (authority to start a purchase) is short-lived;
+     the open payment mandate (authority for recurring charges) lasts the billing term,
+     long enough to cover every authorized monthly charge.
 """
 
 from __future__ import annotations
@@ -61,6 +63,11 @@ from .plan_catalog import resolve_plan
 
 logger = logging.getLogger("trusted_surface_service")
 
+# Recurring billing term: the open payment mandate must outlive every authorized monthly charge
+MAX_MONTHLY_OCCURRENCES = 12
+BILLING_CYCLE_SECONDS = 31 * 86400  # longest calendar month
+DEFAULT_BILLING_TERM_SECONDS = MAX_MONTHLY_OCCURRENCES * BILLING_CYCLE_SECONDS
+
 
 def create_trusted_surface_open_mandates(
     buyer_email: str,
@@ -69,11 +76,14 @@ def create_trusted_surface_open_mandates(
     allowed_tiers: Optional[List[str]] = None,
     agent_key: Optional[JWK] = None,
     user_key: Optional[JWK] = None,
-    validity_seconds: int = 86400,  # 24 hours
+    validity_seconds: int = 86400,  # 24 hours: window to start a purchase
+    billing_term_seconds: Optional[int] = None,  # default: 12 monthly charges
 ) -> Dict[str, Any]:
     """
     Creates ES256 SD-JWT Open Checkout and Open Payment mandates signed by the human owner.
     Enforces all 7 constraints mandated by AP2 v0.2.
+    The checkout mandate expires after `validity_seconds`; the payment mandate expires after
+    `billing_term_seconds` so renewals stay authorized for the whole subscription term.
     """
     norm_email = buyer_email.strip().lower()
     if not norm_email or "@" not in norm_email:
@@ -86,8 +96,13 @@ def create_trusted_surface_open_mandates(
     agent_cnf = jwk_to_cnf(actual_agent_key)
     mandate_client = MandateClient()
 
+    term_seconds = DEFAULT_BILLING_TERM_SECONDS if billing_term_seconds is None else billing_term_seconds
+    if isinstance(term_seconds, bool) or not isinstance(term_seconds, int) or term_seconds <= 0:
+        raise ValueError("billing_term_seconds must be a positive integer number of seconds.")
+
     now_ts = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
     exp_ts = now_ts + validity_seconds
+    billing_exp_ts = now_ts + term_seconds
 
     # 1. Open Checkout Mandate Constraints
     tiers = allowed_tiers or ["ap2-batch", "ap2-gateway", "ap2-cluster"]
@@ -143,7 +158,7 @@ def create_trusted_surface_open_mandates(
 
     pay_constraints = [
         AmountRange(currency="USD", min=1, max=monthly_cap_cents),
-        AgentRecurrence(frequency=Frequency.MONTHLY, max_occurrences=12),
+        AgentRecurrence(frequency=Frequency.MONTHLY, max_occurrences=MAX_MONTHLY_OCCURRENCES),
         Budget(currency="USD", max=yearly_ceiling_dollars),
         AllowedPayees(
             allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]
@@ -155,7 +170,7 @@ def create_trusted_surface_open_mandates(
         constraints=pay_constraints,
         cnf=agent_cnf,
         iat=now_ts,
-        exp=exp_ts,
+        exp=billing_exp_ts,
     )
 
     open_payment_mandate_token = mandate_client.create(
@@ -173,7 +188,7 @@ def create_trusted_surface_open_mandates(
         "yearly_budget_ceiling_usd": round(yearly_ceiling_dollars, 2),
         "yearly_budget_ceiling_cents": yearly_ceiling_cents,
         "recurrence": "MONTHLY",
-        "max_occurrences": 12,
+        "max_occurrences": MAX_MONTHLY_OCCURRENCES,
         "allowed_payee": AP2_MERCHANT_ID,
         "allowed_merchant": AP2_MERCHANT_ID,
         "allowed_tiers": tiers,
@@ -182,6 +197,8 @@ def create_trusted_surface_open_mandates(
         "iat": now_ts,
         "exp": exp_ts,
         "validity_seconds": validity_seconds,
+        "billing_term_exp": billing_exp_ts,
+        "billing_term_seconds": term_seconds,
     }
 
     return {
@@ -193,6 +210,7 @@ def create_trusted_surface_open_mandates(
         "constraints": summary,
         "signed_at": datetime.datetime.fromtimestamp(now_ts, tz=datetime.timezone.utc).isoformat(),
         "expires_at": datetime.datetime.fromtimestamp(exp_ts, tz=datetime.timezone.utc).isoformat(),
+        "billing_term_expires_at": datetime.datetime.fromtimestamp(billing_exp_ts, tz=datetime.timezone.utc).isoformat(),
     }
 
 

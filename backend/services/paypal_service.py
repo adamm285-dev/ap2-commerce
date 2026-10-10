@@ -197,6 +197,38 @@ class PayPalService:
             logger.warning(f"[PayPal Toolkit] Failed to cancel subscription {subscription_id}: {e}")
             return None
 
+    async def stop_subscription(self, subscription_id: str, action: str, reason: str) -> Dict[str, Any]:
+        """
+        Cancels (final) or suspends (reversible) a subscription so PayPal makes no further charges.
+        In Mock Mode: returns a simulated result without any network call.
+        In Live Mode: POST /v1/billing/subscriptions/{id}/cancel or /suspend (PayPal answers 204).
+        Raises on failure so callers can record that the stop did not happen.
+        """
+        if action not in ("cancel", "suspend"):
+            raise ValueError(f"Unsupported subscription action: {action}")
+        if not subscription_id or not subscription_id.strip():
+            raise ValueError("subscription_id is required.")
+        new_status = "CANCELLED" if action == "cancel" else "SUSPENDED"
+        clean_reason = (reason or "Stopped by AP2 mandate enforcement").strip()[:128]
+        if self.mock_mode:
+            logger.info(f"[PayPal MOCK] {action} subscription {subscription_id}: {clean_reason}")
+            return {"subscription_id": subscription_id, "action": action, "status": new_status, "mock_mode": True}
+
+        from urllib.parse import quote
+
+        token = await self.get_access_token()
+        if not token:
+            raise RuntimeError("Failed to authenticate with PayPal Sandbox API. Verify PAYPAL_CLIENT_ID/SECRET in .env.")
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{self.base_url}/v1/billing/subscriptions/{quote(subscription_id.strip(), safe='')}/{action}",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"reason": clean_reason},
+                timeout=10.0,
+            )
+            res.raise_for_status()
+        return {"subscription_id": subscription_id, "action": action, "status": new_status, "mock_mode": False}
+
     async def create_order(
         self,
         amount: float,

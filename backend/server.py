@@ -82,6 +82,7 @@ from .services.trusted_surface_service import (
     create_trusted_surface_open_mandates,
     enroll_trusted_surface_key,
 )
+from .services.recurring_mandate_service import ACTION_CANCEL, ACTION_NONE, evaluate_sale
 
 # Configure logging
 logging.basicConfig(
@@ -100,6 +101,7 @@ from .database import (
     register_buyer_key,
     get_buyer_key,
     list_buyer_key_records,
+    set_recurring_mandate_status,
 )
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
@@ -1492,6 +1494,78 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
     }
 
 
+def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optional[str] = None) -> None:
+    """Marks a subscription stopped (cancelled, suspended or payment failed) and reconciles the buyer's ledger."""
+    from .agents.seller_agent import (
+        _COMPLETED_SUBSCRIPTIONS,
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+        reconcile_contractor_ledger,
+    )
+
+    email = None
+    if sub_id in _COMPLETED_SUBSCRIPTIONS:
+        sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
+        sub_record["status"] = new_status
+        sub_record["vault_billing_authorized"] = False
+        sub_record["paypal_vault_status"] = f"VAULT_{new_status}"
+        email = sub_record.get("contractor_email")
+
+        if email:
+            norm_email = email.strip().lower()
+            if _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
+                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
+
+        # Clear pending_replacement on any other subscription waiting for this sub
+        for s in _COMPLETED_SUBSCRIPTIONS.values():
+            if isinstance(s, dict) and s.get("pending_replacement") == sub_id:
+                s.pop("pending_replacement", None)
+                s.pop("pending_replacement_tier", None)
+                s.pop("pending_replacement_at", None)
+
+        # Update aliases that point to the same record
+        for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+            if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+                v["status"] = new_status
+                v["vault_billing_authorized"] = False
+                v["paypal_vault_status"] = f"VAULT_{new_status}"
+    else:
+        email = fallback_email
+
+    # Reconcile contractor ledger strictly from subscription state:
+    # commitment = rate of the contractor's one ACTIVE subscription.
+    # Replaced, cancelled, or suspended subscriptions contribute 0.0 to commitment.
+    if email:
+        reconcile_contractor_ledger(email)
+
+
+async def _enforce_recurring_mandate(resource: Any) -> Dict[str, Any]:
+    """
+    Checks a PayPal sale against the owner's AP2 mandate. If the charge is not authorized, or the
+    next one could not be, cancels or suspends the subscription on PayPal and locally.
+    """
+    from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
+    sub_id = resource.get("billing_agreement_id") if isinstance(resource, dict) else None
+    sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id] if isinstance(sub_id, str) and sub_id in _COMPLETED_SUBSCRIPTIONS else None
+    decision = evaluate_sale(resource, sub_record)
+    if decision["action"] == ACTION_NONE:
+        return decision
+
+    paypal_action, new_status = ("cancel", "CANCELLED") if decision["action"] == ACTION_CANCEL else ("suspend", "SUSPENDED")
+    try:
+        await paypal_service.stop_subscription(sub_id, paypal_action, decision["reason"])
+    except Exception as e:
+        logger.error(f"[RECURRING] Failed to {paypal_action} subscription {sub_id}: {e}")
+        set_recurring_mandate_status(sub_id, "STOP_FAILED", f"{paypal_action} failed: {e}")
+        decision["action_result"] = "FAILED"
+        return decision
+    set_recurring_mandate_status(sub_id, new_status, decision["reason"])
+    _apply_subscription_stop(sub_id, new_status)
+    decision["action_result"] = "DONE"
+    logger.warning(f"[RECURRING] {new_status} subscription {sub_id}: {decision['reason']}")
+    return decision
+
+
 @app.post("/api/paypal/webhook", tags=["PayPal Webhooks"])
 async def paypal_webhook_receiver(request: Request):
     """Receives and processes PayPal subscription and order webhooks with signature verification."""
@@ -1530,6 +1604,8 @@ async def paypal_webhook_receiver(request: Request):
         }
     if event_id:
         _PROCESSED_WEBHOOK_IDS.add(event_id)
+
+    recurring_check: Optional[Dict[str, Any]] = None
 
     # Process activation event
     if event_type in [
@@ -1603,52 +1679,20 @@ async def paypal_webhook_receiver(request: Request):
         logger.info(
             f"[PayPal Webhook] Received {event_type} for {sub_id}. Updating status to {new_status}."
         )
-        from .agents.seller_agent import (
-            _COMPLETED_SUBSCRIPTIONS,
-            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
-            reconcile_contractor_ledger,
-        )
+        _apply_subscription_stop(sub_id, new_status, resource.get("subscriber", {}).get("email_address"))
 
-        email = None
-        if sub_id in _COMPLETED_SUBSCRIPTIONS:
-            sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
-            sub_record["status"] = new_status
-            sub_record["vault_billing_authorized"] = False
-            sub_record["paypal_vault_status"] = f"VAULT_{new_status}"
-            email = sub_record.get("contractor_email")
+    elif event_type == "PAYMENT.SALE.COMPLETED":
+        # Recurring charge: check it against the owner's AP2 mandate (signature already verified above)
+        recurring_check = await _enforce_recurring_mandate(body.get("resource", {}))
 
-            if email:
-                norm_email = email.strip().lower()
-                if _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
-                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
-
-            # Clear pending_replacement on any other subscription waiting for this sub
-            for s in _COMPLETED_SUBSCRIPTIONS.values():
-                if isinstance(s, dict) and s.get("pending_replacement") == sub_id:
-                    s.pop("pending_replacement", None)
-                    s.pop("pending_replacement_tier", None)
-                    s.pop("pending_replacement_at", None)
-
-            # Update aliases that point to the same record
-            for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
-                if isinstance(v, dict) and v.get("subscription_id") == sub_id:
-                    v["status"] = new_status
-                    v["vault_billing_authorized"] = False
-                    v["paypal_vault_status"] = f"VAULT_{new_status}"
-        else:
-            email = resource.get("subscriber", {}).get("email_address")
-
-        # Reconcile contractor ledger strictly from subscription state:
-        # commitment = rate of the contractor's one ACTIVE subscription.
-        # Replaced, cancelled, or suspended subscriptions contribute 0.0 to commitment.
-        if email:
-            reconcile_contractor_ledger(email)
-
-    return {
+    response = {
         "status": "received",
         "event_type": event_type,
         "verification_status": verification.get("verification_status", "SUCCESS"),
     }
+    if recurring_check is not None:
+        response["recurring_check"] = recurring_check
+    return response
 
 
 class RunBuyerAgentRequest(BaseModel):

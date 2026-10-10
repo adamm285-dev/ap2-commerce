@@ -1255,6 +1255,21 @@ class SellerAgent:
                 amount_cents=amount_cents,
             )
 
+            # Keep the owner-signed mandate so every PayPal renewal can be checked against it
+            from ..services.recurring_mandate_service import register_recurring_mandate
+            closed_pay = ap2_verify_res["closed_payment_mandate"]
+            if norm_email:
+                register_recurring_mandate(
+                    subscription_id=sub_id,
+                    payment_mandate_chain=payment_mandate_chain,
+                    mandate_hash=open_pay_hash,
+                    buyer_email=norm_email,
+                    amount_cents=closed_pay.payment_amount.amount,
+                    currency=closed_pay.payment_amount.currency,
+                )
+            else:
+                logger.warning(f"[RECURRING] Subscription {sub_id} has no buyer email; its renewals will be suspended.")
+
         remaining_budget = ledger.get_remaining_budget(
             agent_id=buyer_id, cap=cap, contractor_email=contractor_email
         )

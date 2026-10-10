@@ -174,10 +174,12 @@ def main() -> int:
         "open_payment_mandate_token": limits["open_payment_mandate_token"],
         "constraints": limits["constraints"],
         "expires_at": limits["expires_at"],
+        "billing_term_expires_at": limits["billing_term_expires_at"],
     }
     (wallet_dir / "owner_limits.json").write_text(json.dumps(owner_limits, indent=2), encoding="utf-8")
     (wallet_dir / "owner_public.jwk").write_text(owner_key.export_public(), encoding="utf-8")
-    print(f"[4/5] Owner limits signed     cap=${args.monthly_cap:.2f}/mo tiers={','.join(tiers)} expires={limits['expires_at']}")
+    print(f"[4/5] Owner limits signed     cap=${args.monthly_cap:.2f}/mo tiers={','.join(tiers)}")
+    print(f"      Purchase window until {limits['expires_at']}; renewals authorized until {limits['billing_term_expires_at']}")
 
     # 5. Claude Desktop config with absolute paths (works no matter which directory Claude launches from)
     common_env = {"PYTHONPATH": str(ROOT_DIR), "PYTHONUNBUFFERED": "1"}

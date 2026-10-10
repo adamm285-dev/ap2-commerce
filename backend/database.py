@@ -172,6 +172,34 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 PRIMARY KEY (mandate_hash, subscription_id)
             );
 
+            -- Owner-signed open payment mandate behind each agent-purchased subscription
+            CREATE TABLE IF NOT EXISTS recurring_mandates (
+                subscription_id TEXT PRIMARY KEY,
+                mandate_hash TEXT NOT NULL,
+                open_payment_mandate_token TEXT NOT NULL,
+                buyer_email TEXT NOT NULL,
+                agreed_amount_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                initial_sale_id TEXT,
+                status TEXT NOT NULL,
+                status_reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            -- Every PayPal sale reported for a mandated subscription, with the verification outcome
+            CREATE TABLE IF NOT EXISTS recurring_charges (
+                sale_id TEXT PRIMARY KEY,
+                subscription_id TEXT NOT NULL,
+                mandate_hash TEXT NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                charged_at TEXT NOT NULL,
+                received_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS dispatch_slots (
                 slot_id TEXT PRIMARY KEY,
                 job_id TEXT,
@@ -755,6 +783,141 @@ def reset_open_mandate_settlements(db_path: Optional[Path] = None) -> None:
         conn.close()
 
 
+# --- Recurring (merchant-initiated) charges under open payment mandates ---
+
+def save_recurring_mandate(
+    subscription_id: str,
+    mandate_hash: str,
+    open_payment_mandate_token: str,
+    buyer_email: str,
+    agreed_amount_cents: int,
+    currency: str,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Stores the owner-signed open payment mandate for a subscription. Never overwrites; returns True if inserted."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO recurring_mandates
+                    (subscription_id, mandate_hash, open_payment_mandate_token, buyer_email,
+                     agreed_amount_cents, currency, initial_sale_id, status, status_reason, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', NULL, ?, ?)
+                """,
+                (subscription_id.strip(), mandate_hash.strip(), open_payment_mandate_token,
+                 buyer_email.strip().lower(), int(agreed_amount_cents), currency, now_iso, now_iso),
+            )
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_recurring_mandate(subscription_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    if not subscription_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM recurring_mandates WHERE subscription_id = ?", (subscription_id.strip(),))
+        return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def set_recurring_mandate_status(subscription_id: str, status: str, reason: Optional[str] = None,
+                                 db_path: Optional[Path] = None) -> None:
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE recurring_mandates SET status = ?, status_reason = ?, updated_at = ? WHERE subscription_id = ?",
+                (status, reason, now_iso, subscription_id.strip()),
+            )
+    finally:
+        conn.close()
+
+
+def bind_initial_sale(subscription_id: str, sale_id: str, db_path: Optional[Path] = None) -> bool:
+    """Links the first PayPal sale to the purchase-time settlement. Only succeeds once per subscription."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute(
+                "UPDATE recurring_mandates SET initial_sale_id = ?, updated_at = ? "
+                "WHERE subscription_id = ? AND initial_sale_id IS NULL",
+                (sale_id.strip(), now_iso, subscription_id.strip()),
+            )
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def record_recurring_charge(
+    sale_id: str,
+    subscription_id: str,
+    mandate_hash: str,
+    amount_cents: int,
+    currency: str,
+    status: str,
+    reason: Optional[str],
+    charged_at: str,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Records a PayPal sale and its verification outcome. Idempotent per sale_id; returns True if inserted."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO recurring_charges
+                    (sale_id, subscription_id, mandate_hash, amount_cents, currency, status, reason, charged_at, received_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (sale_id.strip(), subscription_id.strip(), mandate_hash, int(amount_cents), currency,
+                 status, reason, charged_at, now_iso),
+            )
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_recurring_charge(sale_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    if not sale_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM recurring_charges WHERE sale_id = ?", (sale_id.strip(),))
+        return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def get_open_mandate_total_usage(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[int, int]:
+    """
+    Returns (total_amount_cents, total_uses) charged under an open payment mandate:
+    purchase-time settlements plus every later PayPal charge recorded for it. INITIAL charges
+    are excluded because the purchase-time settlement already counts them.
+    """
+    if not mandate_hash:
+        raise ValueError("mandate_hash is required to compute mandate usage.")
+    settled_cents, settled_uses = get_open_mandate_settlement_totals(mandate_hash, db_path=db_path)
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(*) AS total_uses "
+            "FROM recurring_charges WHERE mandate_hash = ? AND status != 'INITIAL'",
+            (mandate_hash.strip(),),
+        )
+        row = cur.fetchone() or {}
+        return settled_cents + int(row.get("total_amount") or 0), settled_uses + int(row.get("total_uses") or 0)
+    finally:
+        conn.close()
+
+
 def get_buyer_key(kid: str, db_path: Optional[Path] = None) -> Optional[str]:
     """Retrieves a registered public key hex by key ID."""
     if not kid:
@@ -1036,6 +1199,8 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM processed_webhooks")
             conn.execute("DELETE FROM dispatch_slots")
             conn.execute("DELETE FROM open_mandate_settlements")
+            conn.execute("DELETE FROM recurring_mandates")
+            conn.execute("DELETE FROM recurring_charges")
             placeholders = ",".join("?" for _ in _DEFAULT_BUYER_KIDS)
             conn.execute(f"DELETE FROM buyer_keys WHERE kid NOT IN ({placeholders})", list(_DEFAULT_BUYER_KIDS))
     finally:

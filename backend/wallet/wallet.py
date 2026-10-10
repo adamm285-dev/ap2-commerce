@@ -308,7 +308,9 @@ class BuyerWallet:
             "recurrence": getattr(recurrence[0].frequency, "value", recurrence[0].frequency) if recurrence else None,
             "allowed_merchants": [p.id for p in payees.allowed],
             "allowed_tiers": tiers,
-            "expires_at": datetime.datetime.fromtimestamp(lim.payment.exp, tz=datetime.timezone.utc).isoformat(),
+            # New purchases need the short-lived checkout mandate; renewals run on the payment mandate's term
+            "purchase_window_expires_at": datetime.datetime.fromtimestamp(lim.checkout.exp, tz=datetime.timezone.utc).isoformat(),
+            "billing_term_expires_at": datetime.datetime.fromtimestamp(lim.payment.exp, tz=datetime.timezone.utc).isoformat(),
             "how_to_buy": (
                 "1) Call the seller's negotiate_tier_terms with buyer_email and monthly_budget_cap from these limits. "
                 "2) Pass the returned checkout_jwt to this wallet's sign_checkout. "

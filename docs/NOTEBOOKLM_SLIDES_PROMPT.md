@@ -1,59 +1,55 @@
-# NotebookLM & Gemini Slides Prompt: Fact-Checked Engineering Walkthrough
+# NotebookLM & Gemini Slides Prompt: Clean Architecture Walkthrough
 
-> **Prompt Design:**  
-> This prompt instructs Google NotebookLM (or Gemini) to generate an authentic architecture walkthrough based on **Section 11 of `NOTEBOOKLM_SOURCE_DOCUMENT.md`**.  
-> It incorporates all code-verified facts, removes AI-generated visual artifacts, and reflects our 554-test suite and real 9-check judge audit harness.
+> **Prompt Design:**
+> This prompt tells Google NotebookLM (or Gemini) to regenerate the 8-slide architecture walkthrough from **Section 11 of `NOTEBOOKLM_SOURCE_DOCUMENT.md`**, using **Section 12 (Accuracy Guardrails)** as a list of things never to draw.
+> It fixes the errors found in the October 10, 2026 deck: invented technology labels, a wrong architecture diagram, fabricated terminal output, demo data presented as revenue, and garbled generated text.
 
 ---
 
-## The All-in-One Short Prompt (Recommended)
-*Paste this prompt directly into NotebookLM with `NOTEBOOKLM_SOURCE_DOCUMENT.md` attached as the source:*
+## The Master Revision & Steering Prompt (Copy & Paste)
+*Paste this prompt directly into NotebookLM's prompt box:*
 
 ```markdown
-Using Section 11 of the source document ("Complete 8-Slide Executive Architecture Walkthrough (Fact-Checked Ground Truth)"), generate the complete 8-slide presentation deck.
+Regenerate the 8-slide architecture deck from Section 11 of the source document. Use only facts from the source document. Treat Section 12 (Accuracy Guardrails) as a list of things you must never show.
 
-Requirements:
-- Label the slides as an "Architecture Walkthrough" with "Narration" scripts (not "Audits").
-- Do NOT include any synthetic timestamps (e.g. 2024-05-27) or garbled text.
-- Accurately state: 554 tests passing (188 Google SDK + 366 project), 13 active nodes of 14 provisioned ($14,638.44 annualized ARR), and cite the real 9 Judge Audit checks.
+LAYOUT RULES:
+1. No file paths or code anchors on any slide.
+2. No watermarks, logos or sparkle badges.
+3. No narration boxes on the canvas.
+4. Every word on a slide must be spelled correctly and legible at presentation size. Prefer a few large labels over dense grids of small bracketed tags.
+5. Do not generate fake tables, timestamps, hashes or JSON. If a slide needs output, use the exact text given below.
 
-To ensure all 8 slides generate completely without hitting token cutoff limits, format each slide concisely using this structure:
+SLIDE CORRECTIONS:
+- Slide 1: Title "AP2 Autonomous Commerce: Built on AP2 v0.2, Extending Its Roadmap". Subtitle "Google's Agent Payments Protocol, now under the FIDO Alliance".
+  * Left box: AP2 v0.2 baseline only: open and closed Checkout and Payment Mandates, SD-JWT, ES256, Human Present and Human Not Present flows, "188 SDK tests passing". No version numbers other than v0.2, and no "stable" badge.
+  * Right: four items with their real status: Recurring payments & subscriptions [V1.x roadmap]; Human Not Present purchases [shipped in v0.2, implemented here]; MCP-based implementation [V1.x roadmap]; Buyer–seller negotiation [long-term vision].
+  * Remove every invented label: TLS 1.3/Noise, FIDO2/WebAuthn, TEE/Secure Enclave, zero-knowledge, mDNS/DHT, JSON-LD, auction, multi-sig, ECC/RSA, daily/weekly billing, usage pricing, "0.2.1a".
+  * Bottom bullets: "Implements AP2 v0.2 with Google's SDK" and the three signers (owner signs limits, merchant signs checkout, buyer's wallet signs the closed mandates). Do not say "full conformance".
+- Slide 2: Show the attack text once each (a web page and the seller's reply). Replace "Treasury Vault" with "Buyer Wallet (separate process)". Bullets as in the source document.
+- Slide 3: Title "Two-Server MCP Architecture: The Isolated Buyer Wallet". Do NOT say FastMCP. Draw Claude Desktop at the top connected separately to the Buyer Wallet and the Seller; the wallet and the seller are NOT connected to each other. Number the steps 1–4 exactly as in the source document. Write "WalletRefusal" as one word in code style.
+- Slide 4: Remove "Vault" and "MIT" everywhere. Subtitle "Webhook checks, advance cancellation, and separate purchase and billing windows". Show a "next charge allowed?" check after EVERY PAYMENT.SALE.COMPLETED, not one check mid-year, and a "cancel in advance" marker before a 13th charge. Third bullet: "A price change is caught after the charge: it cancels; unverifiable charges suspend; refunds are manual."
+- Slide 5: Replace the fake terminal entirely. No "0x" values, no decimal dollar amounts, no "BUDGET_CAP_EXCEEDED". Show only these two outputs:
+  `Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED (invalid_mandate)`
+  `{"status": "REFUSED", "error": "PAYMENT_CONSTRAINT_VIOLATION"}`
+  Say "two merchant-signed error receipts", not "dual-signed". Replace "self-heal workflows" with "counter-offers the best tier within budget".
+- Slide 6: Title "Demo Fleet Operations: Dashboard, Dispatch and Accounting Payloads". Put a visible "Seeded demo data" label on the fleet panel. Do not write "ARR" as revenue; write "Demo fleet: 14 subscriptions, 13 active, $1,219.87 MRR". Mark the QuickBooks payload "generated (dry run)". Leave the panels as simple outlined boxes with titles if you cannot show clean content; no generated tables or times.
+- Slide 7: Keep the 2x2 matrix but label it: Keys (disk → hardware-backed), Replay protection (in-memory → shared store), Rails (seller verifies AP2 → networks verify AP2), Revocation (expiry only → status list). Do not pair nonces with KMS; do not say CRL. Add a short list: renew limits after payment 12, check charge spacing, verify renewals on the PayPal sandbox, 19 declared mocks.
+- Slide 8: Title "Verification: Tests, Judge Audit and Declared Mocks". Panels: "557 passed, 9 skipped (188 Google AP2 SDK tests + 369 project tests)"; "9/9 judge checks, about 1 second, no API keys"; "19 declared mocks, checked by a test". Remove "Standards Contribution", "battle-tested" and "AP2 V1.x working group".
 
-- **Slide [N]: [Title]** — *[Subtitle]*
-- **Visual:** [1-sentence schematic description without synthetic timestamps]
-- **Core Invariants:** [3 punchy, technical bullet points grounded in code]
-- **Code Anchor:** [Exact file path & test reference]
-- **Narration (15-20s):** "[Spoken voiceover sentence]"
-
-Generate all 8 slides now from Slide 1 through Slide 8.
+Generate the full 8-slide deck now, following these rules exactly.
 ```
 
 ---
 
-## Two-Turn Staged Prompt (For Maximum Depth)
-*If you want full paragraph speaker scripts without hitting the output token limit:*
+## Executive Slide Deck Summary Table (Reference Ground Truth)
 
-**Turn 1:**
-```markdown
-Using Section 11 of the source document, generate an in-depth slide specification for Slides 1 through 4 only (AP2 v0.2 Baseline, Untrusted Courier Threat, Two-Process MCP Architecture, and Recurring Billing & Renewal Enforcement). Include the full slide title, detailed visual layout, 3 technical takeaways with exact code anchors, and the complete 20-second narration script.
-```
-
-**Turn 2:**
-```markdown
-Now generate Slides 5 through 8 (Dynamic Bargaining, Simulated Fleet Operations, The Production Gap Report, and Empirical Verification), and conclude with the Executive Slide Deck Summary Table.
-```
-
----
-
-## Pre-Rendered Executive Summary Table (For README & Devpost)
-
-| Slide | Title | Core Technical Innovation | Verified Code Anchor |
+| Slide | Title | Core Technical Point | Architectural Component |
 | :---: | :--- | :--- | :--- |
-| **01** | **AP2 v0.2 Baseline & V1 Roadmap** | Working Google AP2 v0.2 implementation prototyping 4 public roadmap items | `backend/vendor/ap2/`, `backend/tests/conformance/` |
-| **02** | **The Untrusted Courier Threat** | Threat model proving why LLMs must never possess private cryptographic signing keys | `backend/wallet/wallet.py`, `backend/tests/test_buyer_wallet.py` |
-| **03** | **Two-Process MCP Architecture** | Buyer Wallet holds agent key and owner limits (never owner's private key); courier blocked on overspend | `backend/wallet/mcp_server.py`, `scripts/setup_claude_desktop_demo.py` |
-| **04** | **Recurring Billing & Renewal Enforcement** | PayPal webhook re-verification + advance cancellation before unauthorized charges occur | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
-| **05** | **Dynamic Bargaining & Anti-Tamper** | Autonomous counter-offers ($49.99 Batch Worker) + 1¢ inflation rejection under real AP2 ES256 verifier | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
-| **06** | **Simulated Fleet Operations** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`) + Bryntum Scheduler + Zapier QBO GL 6300 export | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
-| **07** | **The Production Gap Report** | Candid 4-pillar gap analysis: Hardware passkeys, shared state, revocation checks, and rail convergence | `backend/services/ap2_keys.py`, `backend/server.py` |
-| **08** | **Empirical Verification** | 554 passing tests (188 SDK + 366 project), 9/9 zero-dependency judge checks in <0.2s | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **01** | **AP2 v0.2 Baseline & Roadmap** | AP2 v0.2 (now under the FIDO Alliance) implemented with Google's SDK; Human Not Present implemented; recurring payments, MCP and negotiation extended | `AP2 v0.2 SDK`, `FIDO Alliance` |
+| **02** | **The Untrusted Courier Threat** | Why LLMs must never hold private signing keys | `Buyer Wallet`, `Key Isolation` |
+| **03** | **Two-Server MCP Architecture** | The wallet holds the agent key and owner-signed limits; overspending is refused with `WalletRefusal` before signing | `Seller MCP Server`, `Buyer Wallet MCP Server` |
+| **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `Recurring Mandate Service` |
+| **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `Seller Agent`, `AP2 ES256 SD-JWT Verifier` |
+| **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 fleet ledger, Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `Enterprise Fleet Ledger`, `Back-Office Export` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `Hardware Keys`, `Shared State`, `Native AP2 Rails` |
+| **08** | **Empirical Verification** | 557 passing tests (188 SDK + 369 project); 9/9 judge checks in about a second; 19 declared mocks | `Automated Test Suite`, `Judge Audit Harness`, `Mock Ledger` |

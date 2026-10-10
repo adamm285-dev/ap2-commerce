@@ -128,7 +128,7 @@ export function App() {
 
   // Form state for AP2 Buyer Agent simulation
   const [contractorName, setContractorName] = useState('agent:acme-procure');
-  const [businessEntity, setBusinessEntity] = useState('Acme Autonomous Systems LLC');
+  const [businessEntity, setBusinessEntity] = useState('Acme Compute Co');
   const [tradeVertical, setTradeVertical] = useState('Dedicated AI Service Gateway');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
   const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA)');
@@ -218,7 +218,7 @@ export function App() {
       if (mounted && liveTxns.length > 0) {
         setTransactions(liveTxns);
         setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
-        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
+        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
         if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
           setIsPendingDepositLocked(true);
         }
@@ -275,7 +275,7 @@ export function App() {
         return merged;
       });
       setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
-      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
+      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
       if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
         setIsPendingDepositLocked(true);
       }
@@ -336,7 +336,7 @@ export function App() {
 
         // Mutate existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
         setTransactions((prev) => {
-          const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
+          const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
           if (idx !== -1) {
             const updated = [...prev];
             updated[idx] = {
@@ -1088,7 +1088,7 @@ export function App() {
             onToggleDepositLock={(locked) => {
               setIsPendingDepositLocked(locked);
               setTransactions((prev) => {
-                const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Nexus Autonomous Systems Corp' || t.contractor_name === 'Acme Autonomous Systems LLC');
+                const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
                 if (idx !== -1) {
                   const updated = [...prev];
                   updated[idx] = {

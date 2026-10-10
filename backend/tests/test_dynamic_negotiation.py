@@ -51,8 +51,8 @@ async def test_external_buyer_agent_negotiates_under_budget():
     """Headless buyer harness autonomously negotiates from $79.99 down to $49.99 when cap is $60.00."""
     agent = ExternalBuyerAgent(
         transport="stdio",
-        contractor_name="Nexus Autonomous Buyer",
-        business_entity="Nexus Autonomous Systems Corp",
+        contractor_name="Demo Autonomous Buyer",
+        business_entity="Demo Buyer Corp",
         contractor_email="agent-alpha@example.com",
         trade_id="ap2-gateway",
         budget_cap=60.00,

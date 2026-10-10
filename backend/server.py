@@ -447,7 +447,7 @@ class VerifyTamperRequest(BaseModel):
 
 class GenerateProofRequest(BaseModel):
     contractor_id: Optional[str] = "agent:acme-procure"
-    business_name: Optional[str] = "Acme Autonomous Systems LLC"
+    business_name: Optional[str] = "Acme Compute Co"
     monthly_cap_usd: Optional[float] = 100.00
     agreed_price_usd: Optional[float] = 79.99
     nonce: Optional[str] = None
@@ -491,7 +491,7 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
     nonce = req.nonce or uuid.uuid4().hex[:12]
     proof = generate_dynamic_mandate_proof(
         contractor_id=req.contractor_id or "agent:acme-procure",
-        business_name=req.business_name or "Acme Autonomous Systems LLC",
+        business_name=req.business_name or "Acme Compute Co",
         monthly_cap_usd=req.monthly_cap_usd if req.monthly_cap_usd is not None else 100.00,
         agreed_price_usd=req.agreed_price_usd if req.agreed_price_usd is not None else 79.99,
         nonce=nonce,
@@ -511,7 +511,7 @@ async def get_sample_proof(profile: str = Query("default")):
     if (profile or "").strip().lower() == "ap2":
         proof = generate_dynamic_mandate_proof(
             contractor_id="agent:acme-procure",
-            business_name="Acme Autonomous Systems LLC",
+            business_name="Acme Compute Co",
             monthly_cap_usd=100.00,
             agreed_price_usd=79.99,
             nonce=nonce,
@@ -522,7 +522,7 @@ async def get_sample_proof(profile: str = Query("default")):
     else:
         proof = generate_dynamic_mandate_proof(
             contractor_id="buyer_agent_alpha_01",
-            business_name="Nexus Autonomous Systems Corp",
+            business_name="Demo Buyer Corp",
             monthly_cap_usd=100.00,
             agreed_price_usd=79.99,
             nonce=nonce,
@@ -637,8 +637,8 @@ async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequ
 class CopilotChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     message: str
-    contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
-    businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
+    contractorName: Optional[str] = Field(default="Demo Autonomous Buyer", alias="contractor_name")
+    businessEntity: Optional[str] = Field(default="Demo Buyer Corp", alias="business_entity")
     tradeVertical: Optional[str] = Field(default="Autonomous Compute & Worker Nodes", alias="trade_vertical")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
@@ -653,8 +653,8 @@ async def copilot_chat_endpoint(req: CopilotChatRequest):
     and returns conversational responses and proposed A2A actions.
     """
     copilot = SellerCopilot(
-        contractor_name=req.contractorName or "Nexus Autonomous Buyer",
-        business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
+        contractor_name=req.contractorName or "Demo Autonomous Buyer",
+        business_entity=req.businessEntity or "Demo Buyer Corp",
         trade_vertical=req.tradeVertical or "Autonomous Compute & Worker Nodes",
         budget_cap=req.budgetCap or 100.00,
         simulate_exhaustion=req.simulateExhaustion or False,
@@ -794,8 +794,8 @@ async def provision_line_endpoint(request: ProvisionRequest):
         params = next_action.get("parameters", {})
         zapier_req = ZapierSyncRequest(
             workflowType=params.get("workflow_type", "a2a_onboarding"),
-            contractorName=params.get("contractor_name", "Nexus Autonomous Buyer"),
-            businessEntity=params.get("business_entity", "Nexus Autonomous Systems Corp"),
+            contractorName=params.get("contractor_name", "Demo Autonomous Buyer"),
+            businessEntity=params.get("business_entity", "Demo Buyer Corp"),
             allocatedDid=params.get("allocated_did", res.get("assigned_did")),
             tradeVertical=params.get("trade_vertical", "Autonomous Compute & Worker Nodes"),
             monthlySubscriptionFee=params.get("monthly_subscription_fee", 49.99),
@@ -817,7 +817,7 @@ class DeckPurchaseRequest(BaseModel):
     agreed_monthly_rate: float = Field(alias="agreedMonthlyRate")
     buyer_email: str = Field(default="agent-alpha@example.com", alias="buyerEmail")
     contractor_name: str = Field(default="AutonomousBuyerAgent-Alpha-Batch", alias="contractorName")
-    business_entity: str = Field(default="Acme Autonomous Systems LLC", alias="businessEntity")
+    business_entity: str = Field(default="Acme Compute Co", alias="businessEntity")
     monthly_budget_cap: float = Field(default=100.0, alias="monthlyBudgetCap")
     checkout_jwt: Optional[str] = Field(default=None, alias="checkoutJwt")
     checkout_hash: Optional[str] = Field(default=None, alias="checkoutHash")
@@ -1654,8 +1654,8 @@ async def paypal_webhook_receiver(request: Request):
 class RunBuyerAgentRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     transport: Optional[str] = "http"
-    contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
-    businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
+    contractorName: Optional[str] = Field(default="Demo Autonomous Buyer", alias="contractor_name")
+    businessEntity: Optional[str] = Field(default="Demo Buyer Corp", alias="business_entity")
     contractorEmail: Optional[str] = Field(default="agent-alpha@example.com", alias="contractor_email")
     tradeId: Optional[str] = Field(default="ap2-gateway", alias="trade_id")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
@@ -1702,8 +1702,8 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
     agent = ExternalBuyerAgent(
         transport=req.transport or "http",
         server_url=f"http://127.0.0.1:{settings.server_port}/mcp",
-        contractor_name=req.contractorName or "Nexus Autonomous Buyer",
-        business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
+        contractor_name=req.contractorName or "Demo Autonomous Buyer",
+        business_entity=req.businessEntity or "Demo Buyer Corp",
         contractor_email=req.contractorEmail or "agent-alpha@example.com",
         trade_id=req.tradeId or "ap2-gateway",
         budget_cap=req.budgetCap or 100.00,

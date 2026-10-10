@@ -64,8 +64,8 @@ class ExternalBuyerAgent:
         self.transport = transport
         self.server_url = server_url
         self.profile = "ap2"
-        self.contractor_name = contractor_name or "Nexus Autonomous Buyer"
-        self.business_entity = business_entity or "Nexus Autonomous Systems Corp"
+        self.contractor_name = contractor_name or "Demo Autonomous Buyer"
+        self.business_entity = business_entity or "Demo Buyer Corp"
         self.contractor_email = contractor_email or "agent-alpha@example.com"
         self.trade_id = trade_id or "ap2-gateway"
         self.category = "AUTONOMOUS_NODE_SERVICE"
@@ -536,12 +536,12 @@ async def main():
     )
     parser.add_argument(
         "--contractor-name",
-        default="Nexus Autonomous Buyer",
-        help="Buyer agent identity name (default: Nexus Autonomous Buyer)",
+        default="Demo Autonomous Buyer",
+        help="Buyer agent identity name (default: Demo Autonomous Buyer)",
     )
     parser.add_argument(
         "--business-entity",
-        default="Nexus Autonomous Systems Corp",
+        default="Demo Buyer Corp",
         help="Buyer legal business entity",
     )
     parser.add_argument(

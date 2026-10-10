@@ -1335,13 +1335,13 @@ components:
           - type: string
           - type: 'null'
           title: Contractor Name
-          default: Nexus Autonomous Buyer
+          default: Demo Autonomous Buyer
         business_entity:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Entity
-          default: Nexus Autonomous Systems Corp
+          default: Demo Buyer Corp
         trade_vertical:
           anyOf:
           - type: string
@@ -1383,7 +1383,7 @@ components:
         businessEntity:
           type: string
           title: Businessentity
-          default: Acme Autonomous Systems LLC
+          default: Acme Compute Co
         monthlyBudgetCap:
           type: number
           title: Monthlybudgetcap
@@ -1502,7 +1502,7 @@ components:
           - type: string
           - type: 'null'
           title: Business Name
-          default: Acme Autonomous Systems LLC
+          default: Acme Compute Co
         monthly_cap_usd:
           anyOf:
           - type: number
@@ -1738,13 +1738,13 @@ components:
           - type: string
           - type: 'null'
           title: Contractor Name
-          default: Nexus Autonomous Buyer
+          default: Demo Autonomous Buyer
         business_entity:
           anyOf:
           - type: string
           - type: 'null'
           title: Business Entity
-          default: Nexus Autonomous Systems Corp
+          default: Demo Buyer Corp
         contractor_email:
           anyOf:
           - type: string
@@ -2038,7 +2038,7 @@ components:
           - type: string
           - type: 'null'
           title: Customername
-          default: Acme Autonomous Systems LLC
+          default: Acme Compute Co
         clientFingerprint:
           anyOf:
           - type: string
@@ -2068,13 +2068,13 @@ components:
           - type: string
           - type: 'null'
           title: Contractorname
-          default: Acme Autonomous Systems LLC
+          default: Acme Compute Co
         businessEntity:
           anyOf:
           - type: string
           - type: 'null'
           title: Businessentity
-          default: Acme Autonomous Systems LLC
+          default: Acme Compute Co
         allocatedDid:
           anyOf:
           - type: string

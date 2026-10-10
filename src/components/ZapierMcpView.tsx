@@ -37,7 +37,7 @@ export interface ZapierMcpViewProps {
 
 export function ZapierMcpView({
   contractorName = 'agent:acme-procure',
-  businessEntity = 'Acme Autonomous Systems LLC',
+  businessEntity = 'Acme Compute Co',
   allocatedDid = 'node-cluster-01.ap2.net:8443',
   tradeVertical = 'Dedicated AI Service Gateway',
   monthlyFee = 79.99,
@@ -121,7 +121,7 @@ export function ZapierMcpView({
     Purchase: {
       PaymentType: 'CreditCard',
       AccountRef: { value: '99', name: 'PayPal Clearing Account' },
-      EntityRef: { value: '101', name: 'AP2 Autonomous Merchant LLC', type: 'Vendor' },
+      EntityRef: { value: '101', name: 'Demo Merchant Co', type: 'Vendor' },
       TxnDate: new Date().toISOString().substring(0, 10),
       DocNumber: `AP2-SUB-${agentSubscription.paypalSubscriptionId.slice(-6)}`,
       TotalAmt: agentSubscription.monthlyFee,

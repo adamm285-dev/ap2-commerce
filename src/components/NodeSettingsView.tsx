@@ -73,8 +73,8 @@ export interface NodeSettingsData {
 }
 
 export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
-  companyName: 'Acme Autonomous Systems LLC',
-  businessEntity: 'Acme Autonomous Systems LLC',
+  companyName: 'Acme Compute Co',
+  businessEntity: 'Acme Compute Co',
   tradeVertical: 'Dedicated AI Compute & Vector RAG',
   supportEmail: 'ops@example.com',
   primaryRegion: 'US-East (N. Virginia)',
@@ -657,7 +657,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                   value={settings.companyName}
                   onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
                   style={{ width: '100%', padding: '8px 12px', backgroundColor: '#090e17', border: '1px solid #334155', borderRadius: '6px', color: '#f8fafc', fontSize: '12px' }}
-                  placeholder="e.g. Acme Autonomous Systems LLC"
+                  placeholder="e.g. Acme Compute Co"
                 />
               </div>
 
@@ -670,7 +670,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                   value={settings.businessEntity}
                   onChange={(e) => setSettings({ ...settings, businessEntity: e.target.value })}
                   style={{ width: '100%', padding: '8px 12px', backgroundColor: '#090e17', border: '1px solid #334155', borderRadius: '6px', color: '#f8fafc', fontSize: '12px' }}
-                  placeholder="e.g. Acme Autonomous Systems LLC"
+                  placeholder="e.g. Acme Compute Co"
                 />
               </div>
 

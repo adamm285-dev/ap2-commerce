@@ -76,7 +76,7 @@ export async function executeZapierA2aWorkflow(
   const syncId = `AP2-SYNC-${Math.floor(10000 + Math.random() * 90000)}`;
   const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
   const agentName = buyer.buyerAgentName || buyer.contractorName || 'AutonomousBuyerAgent';
-  const entity = buyer.principalEntity || buyer.businessEntity || 'Nexus Autonomous Systems Corp';
+  const entity = buyer.principalEntity || buyer.businessEntity || 'Demo Buyer Corp';
   const endpoint = buyer.allocatedEndpoint || buyer.allocatedDid || 'mcp+https://gateway-01.example.com/mcp';
   const capability = buyer.serviceCapability || buyer.tradeVertical || 'Dedicated AI Service Gateway';
   const email = buyer.principalEmail || buyer.contractorEmail || 'merchant@example.com';
@@ -227,7 +227,7 @@ export async function executeZapierA2aWorkflow(
       },
       EntityRef: {
         value: '101',
-        name: 'AP2 Autonomous Merchant LLC',
+        name: 'Demo Merchant Co',
         type: 'Vendor',
       },
       TxnDate: new Date().toISOString().substring(0, 10),
@@ -335,7 +335,7 @@ export async function executeZapierA2aWorkflow(
 /**
  * Executes the 3-step Zapier MCP automation chain for AP2 Workload Execution Dispatch:
  * 1. CloudEvents v1.0: Publishes com.ap2.settlement.workload.dispatched with 50,000 token quota
- * 2. QuickBooks Online: Records $15.00 micro-settlement receipt against PayPal Vault MIT
+ * 2. QuickBooks Online: Records micro-settlement receipt against PayPal Vault MIT
  * 3. Zapier MCP EventBus: Routes workload execution payload to dedicated hardware cluster
  */
 export async function executeZapierMcpWorkflow(

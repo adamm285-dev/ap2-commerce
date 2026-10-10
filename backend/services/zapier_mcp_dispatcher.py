@@ -36,8 +36,8 @@ class ZapierMcpDispatcher:
         target_webhook = request.webhook_url or self.webhook_export_url or ""
 
         if is_a2a:
-            contractor = request.contractor_name or "Nexus Autonomous Systems Corp"
-            entity = request.business_entity or "Nexus Autonomous Systems Corp"
+            contractor = request.contractor_name or "Demo Autonomous Buyer"
+            entity = request.business_entity or "Demo Buyer Corp"
             fee = request.monthly_subscription_fee or 79.99
             did = request.allocated_did or "mcp+https://gateway-01.example.com/mcp"
             sub_id = request.paypal_subscription_id or "I-AUTONOMOUS-8902"

@@ -180,7 +180,7 @@ class ZapierSyncRequest(BaseModel):
         default="job-a2a-onboarding",
         alias="jobId",
     )
-    customer_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="customerName")
+    customer_name: Optional[str] = Field(default="Acme Compute Co", alias="customerName")
     client_fingerprint: Optional[str] = Field(
         default="0x5c88aa1199e1284f00bb",
         alias="clientFingerprint",
@@ -193,8 +193,8 @@ class ZapierSyncRequest(BaseModel):
     paypal_txn_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalTxnId")
 
     # A2A Contractor Onboarding specific attributes
-    contractor_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="contractorName")
-    business_entity: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="businessEntity")
+    contractor_name: Optional[str] = Field(default="Acme Compute Co", alias="contractorName")
+    business_entity: Optional[str] = Field(default="Acme Compute Co", alias="businessEntity")
     allocated_did: Optional[str] = Field(default="mcp+https://gateway-01.example.com/agents/gateway", alias="allocatedDid")
     trade_vertical: Optional[str] = Field(default="Dedicated AI Service Gateway", alias="tradeVertical")
     monthly_subscription_fee: Optional[float] = Field(default=79.99, alias="monthlySubscriptionFee")

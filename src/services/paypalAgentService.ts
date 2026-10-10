@@ -111,7 +111,7 @@ export function getCatalogTierDetails(capabilityOrTier: string): {
 
 /**
  * Autonomous Buyer Agent evaluates whether the seller's terms fall within
- * the buyer's explicit programmatic spending mandate (< $200/mo).
+ * the buyer's explicit programmatic spending mandate.
  *
  * Calls FastAPI backend at POST /api/agent/spending-mandate/evaluate
  */
@@ -387,7 +387,7 @@ export async function executeDeckAp2Purchase(
         agreedMonthlyRate: agreedPrice,
         buyerEmail: 'agent-alpha@example.com',
         contractorName: options.contractorName || 'AutonomousBuyerAgent',
-        businessEntity: options.principalEntity || 'Acme Autonomous Systems LLC',
+        businessEntity: options.principalEntity || 'Acme Compute Co',
         monthlyBudgetCap: options.monthlyBudgetCap || 100.0,
         checkoutJwt: options.negotiation?.checkoutJwt,
         checkoutHash: options.negotiation?.checkoutHash,

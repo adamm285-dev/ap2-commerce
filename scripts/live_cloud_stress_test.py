@@ -51,8 +51,8 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
     agent = ExternalBuyerAgent(
         transport="http",
         server_url=mcp_endpoint,
-        contractor_name="Nexus Autonomous Buyer",
-        business_entity="Nexus Cloud Systems LLC",
+        contractor_name="Demo Autonomous Buyer",
+        business_entity="Demo Cloud Corp",
         contractor_email="buyer@example.com",
         trade_id="ap2-gateway",
         budget_cap=120.00,

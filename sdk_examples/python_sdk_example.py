@@ -84,7 +84,7 @@ class AP2CommerceClient:
         self,
         workflow_type: str = "a2a_onboarding",
         contractor_name: str = "Autonomous Compute Buyer",
-        business_entity: str = "Nexus Autonomous Systems Corp",
+        business_entity: str = "Demo Buyer Corp",
         allocated_did: str = "mcp+https://gateway-01.ap2.market",
         trade_vertical: str = "Autonomous Cloud Compute",
         monthly_fee: float = 79.99,

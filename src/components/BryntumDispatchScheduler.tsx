@@ -4,6 +4,7 @@ import '@bryntum/scheduler/stockholm-dark.css';
 import '@bryntum/scheduler/fontawesome/css/fontawesome.css';
 import '@bryntum/scheduler/fontawesome/css/solid.css';
 import { Scheduler } from '@bryntum/scheduler';
+import { CATALOG_PLANS } from '../data/telemetryData';
 import {
   Zap,
   Cpu,
@@ -152,7 +153,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
       enclave: 'Node-02: Batch Data & RAG Pipeline',
       start_time: '2026-10-08 16:00',
       end_time: '2026-10-08 17:15',
-      deposit_amount_usd: 150.0,
+      deposit_amount_usd: 49.99,
       txn_ref: 'AP2-TXN-DISPATCH-9022',
     },
     response: {
@@ -160,7 +161,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
       status: 'LOCKED',
       allocated_did: 'node-cluster-02.ap2.net:8443',
       hardware_enclave: 'Sealed Enclave (AMD SEV-SNP)',
-      deposit_vaulted_usd: 150.0,
+      deposit_vaulted_usd: 49.99,
     },
   },
   {
@@ -176,7 +177,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     request: {
       event_type: 'ap2.workload.scheduled',
       event_id: 'evt_9021_cloud_sync',
-      subscriber: 'Acme Autonomous Systems LLC',
+      subscriber: 'Acme Compute Co',
       gl_account: '6300 - Dues & Subscriptions: Software & SaaS',
       amount_usd: 79.99,
     },
@@ -200,29 +201,29 @@ import {
 function getBuyerAgent(name: string): string {
   if (name.includes('101') || name.includes('Synthesis')) return 'agent:acme-ops';
   if (name.includes('102') || name.includes('Negotiation')) return 'agent:gpt-4o:apex-procure';
-  if (name.includes('201') || name.includes('Vector Ingestion')) return 'agent:gemini-pro:kuroshio-rag';
+  if (name.includes('201') || name.includes('Vector Ingestion')) return 'agent:pipeline-buyer';
   if (name.includes('202') || name.includes('Embeddings')) return 'agent:deepseek-v3:quant-research';
-  if (name.includes('301') || name.includes('Smart Contract')) return 'agent:mistral-large:hyperion-audit';
-  if (name.includes('302') || name.includes('Perimeter')) return 'agent:gemini-pro:security-audit';
-  if (name.includes('401') || name.includes('Stream Processing')) return 'agent:llama-3-3:vocalis-stream';
-  if (name.includes('402') || name.includes('Batch Worker')) return 'agent:sonicwave-ai';
-  if (name.includes('501') || name.includes('Model Evaluation')) return 'agent:gpt-4o:cognitive-eval';
-  if (name.includes('502') || name.includes('Incident')) return 'agent:turing-oversight';
+  if (name.includes('301') || name.includes('Smart Contract')) return 'agent:audit-buyer';
+  if (name.includes('302') || name.includes('Perimeter')) return 'agent:security-audit-buyer';
+  if (name.includes('401') || name.includes('Stream Processing')) return 'agent:stream-buyer';
+  if (name.includes('402') || name.includes('Batch Worker')) return 'agent:benchmark-buyer';
+  if (name.includes('501') || name.includes('Model Evaluation')) return 'agent:scale-eval-buyer';
+  if (name.includes('502') || name.includes('Incident')) return 'agent:oversight-buyer';
   return 'agent:autonomous:ap2-buyer';
 }
 
 function getPrincipalEntity(name: string): string {
-  if (name.includes('101') || name.includes('Synthesis')) return 'Acme Autonomous Systems LLC';
-  if (name.includes('102') || name.includes('Negotiation')) return 'Apex Enterprise AI Inc';
-  if (name.includes('201') || name.includes('Vector Ingestion')) return 'Kuroshio Data Pipelines Inc';
-  if (name.includes('202') || name.includes('Embeddings')) return 'Axiom Quantitative Capital LLC';
-  if (name.includes('301') || name.includes('Smart Contract')) return 'Hyperion Smart Contracts LLC';
-  if (name.includes('302') || name.includes('Perimeter')) return 'Sentinel Code Security Corp';
-  if (name.includes('401') || name.includes('Stream Processing')) return 'Vocalis AI Systems LLC';
-  if (name.includes('402') || name.includes('Batch Worker')) return 'SonicWave Compute Systems';
-  if (name.includes('501') || name.includes('Model Evaluation')) return 'Cognitive Benchmark Labs';
-  if (name.includes('502') || name.includes('Incident')) return 'Turing Oversight Systems Co';
-  return 'AP2 Certified Commercial Merchant LLC';
+  if (name.includes('101') || name.includes('Synthesis')) return 'Acme Compute Co';
+  if (name.includes('102') || name.includes('Negotiation')) return 'Demo Enterprise Inc';
+  if (name.includes('201') || name.includes('Vector Ingestion')) return 'Demo Pipeline Corp';
+  if (name.includes('202') || name.includes('Embeddings')) return 'Demo Analytics Co';
+  if (name.includes('301') || name.includes('Smart Contract')) return 'Demo Worker Systems Co';
+  if (name.includes('302') || name.includes('Perimeter')) return 'Example Security Co';
+  if (name.includes('401') || name.includes('Stream Processing')) return 'Example Stream Co';
+  if (name.includes('402') || name.includes('Batch Worker')) return 'Demo Benchmark Co';
+  if (name.includes('501') || name.includes('Model Evaluation')) return 'Demo Scale Labs';
+  if (name.includes('502') || name.includes('Incident')) return 'Example Oversight Co';
+  return 'Demo Merchant Co';
 }
 
 function getWorkloadScope(name: string): string {
@@ -250,15 +251,15 @@ function getEd25519Fingerprint(name: string): string {
 
 function getExecutionSpecifications(name: string, trade: string): string {
   if (trade.includes('Gateway') || trade.includes('Inference') || name.includes('Synthesis')) {
-    return 'Catalog Quota: 450 tasks/mo • Dedicated AI Service Gateway ($79.99/mo) • Real-time routing';
+    return `Catalog Quota: ${CATALOG_PLANS[1].tasks} tasks/mo • Dedicated AI Service Gateway ($${CATALOG_PLANS[1].price}/mo) • Real-time routing`;
   }
   if (trade.includes('Batch') || trade.includes('Worker') || trade.includes('Vector') || name.includes('RAG')) {
-    return 'Catalog Quota: 125 tasks/mo • High-Throughput Batch Worker ($49.99/mo) • Asynchronous execution';
+    return `Catalog Quota: ${CATALOG_PLANS[0].tasks} tasks/mo • High-Throughput Batch Worker ($${CATALOG_PLANS[0].price}/mo) • Asynchronous execution`;
   }
   if (trade.includes('Cluster') || trade.includes('Security') || name.includes('Audit')) {
-    return 'Catalog Quota: 1,200 tasks/mo • Enterprise Cluster Node ($179.99/mo) • High-priority execution';
+    return `Catalog Quota: ${CATALOG_PLANS[2].tasks} tasks/mo • Enterprise Cluster Node ($${CATALOG_PLANS[2].price}/mo) • High-priority execution`;
   }
-  return 'Enterprise Cluster Node • Catalog Quota: 1,200 tasks/mo • Multi-node scaling';
+  return `Enterprise Cluster Node • Catalog Quota: ${CATALOG_PLANS[2].tasks} tasks/mo • Multi-node scaling`;
 }
 
 function getShortWorkloadTitle(name: string): string {
@@ -292,6 +293,7 @@ function getShortWorkloadTitle(name: string): string {
 function getShortBadge(status: string): string {
   if (status.includes('ACTIVE')) return '● Active';
   if (status.includes('AWAITING')) return '○ Awaiting Sub';
+  if (status.includes('INCLUDED')) return '✓ Included';
   if (status.includes('PAID') || status.includes('SETTLED')) {
     const match = status.match(/\$\d+(\.\d+)?/);
     return match ? `✓ Paid ${match[0]}` : '✓ Settled';
@@ -488,7 +490,7 @@ export function BryntumDispatchScheduler({
   const [activeTradeFilter, setActiveTradeFilter] = useState<string>('ALL');
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [totalDispatches, setTotalDispatches] = useState<number>(18);
-  const [totalVaultedDeposits, setTotalVaultedDeposits] = useState<number>(2504.99);
+  const [totalVaultedDeposits, setTotalVaultedDeposits] = useState<number>(1219.87);
   const [leadSimulationBanner, setLeadSimulationBanner] = useState<string | null>(null);
 
   // Master lists & dynamic filters for Enclave Matrix view
@@ -505,7 +507,7 @@ export function BryntumDispatchScheduler({
       latency: '14ms',
       health: '98.2%',
       color: '#38bdf8',
-      activeJob: isDepositLocked ? 'Dedicated Gateway Streaming ($79.99/mo)' : 'Awaiting $79.99/mo PayPal Subscription',
+      activeJob: isDepositLocked ? `Dedicated Gateway Streaming ($${CATALOG_PLANS[1].price}/mo)` : `Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription`,
     },
     {
       id: 'node-2',
@@ -519,7 +521,7 @@ export function BryntumDispatchScheduler({
       latency: '28ms',
       health: '100%',
       color: '#34d399',
-      activeJob: isSlotLocked ? '#204 Multi-Agent Consensus ($49.99)' : '#201 Batch Worker Ingest ($49.99)',
+      activeJob: isSlotLocked ? `#204 Multi-Agent Consensus ($${CATALOG_PLANS[0].price})` : `#201 Batch Worker Ingest ($${CATALOG_PLANS[0].price})`,
     },
     {
       id: 'node-3',
@@ -533,7 +535,7 @@ export function BryntumDispatchScheduler({
       latency: '9ms',
       health: '100%',
       color: '#8b5cf6',
-      activeJob: '#301 Secure Cluster Enclave ($179.99/mo)',
+      activeJob: `#301 Secure Cluster Enclave ($${CATALOG_PLANS[2].price}/mo)`,
     },
     {
       id: 'node-4',
@@ -547,7 +549,7 @@ export function BryntumDispatchScheduler({
       latency: '22ms',
       health: '100%',
       color: '#38bdf8',
-      activeJob: '#401 Service Gateway ($79.99/mo)',
+      activeJob: `#401 Service Gateway ($${CATALOG_PLANS[1].price}/mo)`,
     },
     {
       id: 'node-5',
@@ -561,7 +563,7 @@ export function BryntumDispatchScheduler({
       latency: '34ms',
       health: '100%',
       color: '#8b5cf6',
-      activeJob: '#501 Supervised Cluster Mandate ($179.99/mo)',
+      activeJob: `#501 Supervised Cluster Mandate ($${CATALOG_PLANS[2].price}/mo)`,
     },
   ], [isDepositLocked, isSlotLocked]);
 
@@ -570,11 +572,11 @@ export function BryntumDispatchScheduler({
       ? [
           {
             id: 'locked-workload-slot-2',
-            name: '#204 Batch Worker Renewal ($49.99)',
+            name: `#204 Batch Worker Renewal ($${CATALOG_PLANS[0].price})`,
             node: 'Node-02: High-Throughput Batch Worker',
             category: 'BATCH',
             buyer: 'agent:gpt-4o:apex-procure',
-            status: 'SETTLED ($49.99 PAYPAL)',
+            status: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
             txn: 'TXN-DISPATCH-9022',
             window: '16:00 - 17:15 (Today, Oct 8)',
             color: '#34d399',
@@ -588,51 +590,51 @@ export function BryntumDispatchScheduler({
       node: 'Node-01: Dedicated AI Service Gateway',
       category: 'GATEWAY',
       buyer: 'agent:gpt-4o:apex-procure',
-      status: isDepositLocked ? 'ACTIVE ($79.99/MO PAYPAL)' : 'AWAITING PAYPAL ($79.99/MO)',
+      status: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO PAYPAL)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
       txn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
       window: 'Continuous Streaming Session',
       color: isDepositLocked ? '#10b981' : '#f59e0b',
     },
     {
       id: 'workload-201',
-      name: '#201 Batch Worker Execution ($49.99)',
+      name: `#201 Batch Worker Execution ($${CATALOG_PLANS[0].price})`,
       node: 'Node-02: High-Throughput Batch Worker',
       category: 'BATCH',
       buyer: 'agent:acme-legal',
-      status: 'PAID $49.99 (PAYPAL VAULT)',
+      status: `PAID $${CATALOG_PLANS[0].price} (PAYPAL VAULT)`,
       txn: 'TXN-SETTLE-7712',
       window: '08:00 - 09:30 • 68% Complete (24m left)',
       color: '#10b981',
     },
     {
       id: 'workload-301',
-      name: '#301 Enterprise Cluster Renewal ($179.99)',
+      name: `#301 Enterprise Cluster Renewal ($${CATALOG_PLANS[2].price})`,
       node: 'Node-03: Enterprise Cluster Node',
       category: 'CLUSTER',
       buyer: 'agent:deepseek-r1:audit',
-      status: 'PAID $179.99 (PAYPAL VAULT)',
+      status: `PAID $${CATALOG_PLANS[2].price} (PAYPAL VAULT)`,
       txn: 'TXN-SETTLE-5519',
       window: '07:30 - 09:00 • 100% Anti-Tamper Passed',
       color: '#8b5cf6',
     },
     {
       id: 'workload-401',
-      name: '#401 Dedicated Gateway Renewal ($79.99)',
+      name: `#401 Dedicated Gateway Renewal ($${CATALOG_PLANS[1].price})`,
       node: 'Node-04: Dedicated AI Service Gateway',
       category: 'GATEWAY',
       buyer: 'agent:gpt-4o:apex-procure',
-      status: 'PAID $79.99 (PAYPAL VAULT)',
+      status: `PAID $${CATALOG_PLANS[1].price} (PAYPAL VAULT)`,
       txn: 'TXN-SETTLE-6601',
       window: '08:00 - 09:30 • US-East Gateway Enclave',
       color: '#0284c7',
     },
     {
       id: 'workload-501',
-      name: '#501 Enterprise Cluster Verification ($179.99)',
+      name: `#501 Enterprise Cluster Verification ($${CATALOG_PLANS[2].price})`,
       node: 'Node-05: Enterprise Cluster Node',
       category: 'CLUSTER',
       buyer: 'agent:human:qa-desk',
-      status: 'PAID $179.99 (PAYPAL VAULT)',
+      status: `PAID $${CATALOG_PLANS[2].price} (PAYPAL VAULT)`,
       txn: 'TXN-SETTLE-3310',
       window: '09:15 - 10:45 • Dual-Agent Verified',
       color: '#8b5cf6',
@@ -652,7 +654,7 @@ export function BryntumDispatchScheduler({
   const [apiStatus, setApiStatus] = useState<string>(
     isDepositLocked
       ? '● Node-01 Active: Dedicated Gateway via FastMCP (HTTP 201)'
-      : '○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization'
+      : `○ Pending: Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription Authorization`
   );
 
   const [dispatchWebhookStatus, setDispatchWebhookStatus] = useState<string | null>(null);
@@ -860,56 +862,56 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-06-101',
         resourceId: 'node-1',
-        name: '#071 FastMCP Baseline Handshake ($150)',
+        name: '#071 FastMCP Baseline Handshake (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-06 09:30',
         endDate: '2026-10-06 11:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-check-circle',
-        depositStatus: 'SETTLED ($150.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6610',
       },
       {
         id: 'workload-06-201',
         resourceId: 'node-2',
-        name: '#171 Knowledge Vault Vector Indexing ($250)',
+        name: '#171 Knowledge Vault Vector Indexing (included in High-Throughput Batch Worker)',
         startDate: '2026-10-06 11:00',
         endDate: '2026-10-06 12:30',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'SETTLED ($250.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6620',
       },
       {
         id: 'workload-06-301',
         resourceId: 'node-3',
-        name: '#271 Zero-Trust Enclave Attestation ($300)',
+        name: '#271 Zero-Trust Enclave Attestation (included in Enterprise Cluster Node)',
         startDate: '2026-10-06 13:00',
         endDate: '2026-10-06 14:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'SETTLED ($300.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6630',
       },
       {
         id: 'workload-06-401',
         resourceId: 'node-4',
-        name: '#371 Real-Time Ingress Stream ($120)',
+        name: '#371 Real-Time Ingress Stream (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-06 08:30',
         endDate: '2026-10-06 10:00',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SETTLED ($120.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6640',
       },
       {
         id: 'workload-06-501',
         resourceId: 'node-5',
-        name: '#471 Workload Audit & Outlier Triage ($175)',
+        name: '#471 Workload Audit & Outlier Triage (included in Enterprise Cluster Node)',
         startDate: '2026-10-06 14:00',
         endDate: '2026-10-06 15:30',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'SETTLED ($175.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6650',
       },
 
@@ -917,100 +919,100 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-07-101',
         resourceId: 'node-1',
-        name: '#081 High-Throughput Reasoning ($175)',
+        name: '#081 High-Throughput Reasoning (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-07 09:00',
         endDate: '2026-10-07 10:30',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SETTLED ($175.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7710',
       },
       {
         id: 'workload-07-102',
         resourceId: 'node-1',
-        name: '#082 Mandate Verification ($125)',
+        name: '#082 Mandate Verification (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-07 13:00',
         endDate: '2026-10-07 14:15',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-microchip',
-        depositStatus: 'SETTLED ($125.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7715',
       },
       {
         id: 'workload-07-201',
         resourceId: 'node-2',
-        name: '#181 Vector Pipeline Ingest ($250)',
+        name: '#181 Vector Pipeline Ingest (included in High-Throughput Batch Worker)',
         startDate: '2026-10-07 08:30',
         endDate: '2026-10-07 10:00',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'SETTLED ($250.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7720',
       },
       {
         id: 'workload-07-202',
         resourceId: 'node-2',
-        name: '#182 Semantic Graph Indexing ($180)',
+        name: '#182 Semantic Graph Indexing (included in High-Throughput Batch Worker)',
         startDate: '2026-10-07 11:15',
         endDate: '2026-10-07 12:45',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'SETTLED ($180.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7728',
       },
       {
         id: 'workload-07-301',
         resourceId: 'node-3',
-        name: '#281 Smart Contract Formal Audit ($300)',
+        name: '#281 Smart Contract Formal Audit (included in Enterprise Cluster Node)',
         startDate: '2026-10-07 10:00',
         endDate: '2026-10-07 11:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'SETTLED ($300.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7730',
       },
       {
         id: 'workload-07-302',
         resourceId: 'node-3',
-        name: '#282 Cryptographic Proof Verify ($150)',
+        name: '#282 Cryptographic Proof Verify (included in Enterprise Cluster Node)',
         startDate: '2026-10-07 14:00',
         endDate: '2026-10-07 15:30',
         eventColor: 'red',
         iconCls: 'b-fa b-fa-key',
-        depositStatus: 'SETTLED ($150.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7735',
       },
       {
         id: 'workload-07-401',
         resourceId: 'node-4',
-        name: '#381 Dedicated AI Service Gateway Renewal ($79.99)',
+        name: `#381 Dedicated AI Service Gateway Renewal ($${CATALOG_PLANS[1].price}/mo)`,
         startDate: '2026-10-07 08:45',
         endDate: '2026-10-07 10:15',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SETTLED ($79.99 PAYPAL)',
+        depositStatus: `SETTLED ($${CATALOG_PLANS[1].price} PAYPAL)`,
         paypalTxn: 'TXN-SETTLE-7740',
       },
       {
         id: 'workload-07-402',
         resourceId: 'node-4',
-        name: '#382 300-Call Batch Intake ($200)',
+        name: '#382 Batch Inbound Stream (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-07 13:30',
         endDate: '2026-10-07 15:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-broadcast-tower',
-        depositStatus: 'SETTLED ($200.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7745',
       },
       {
         id: 'workload-07-501',
         resourceId: 'node-5',
-        name: '#481 Dual-Agent Verification Review ($150)',
+        name: '#481 Dual-Agent Verification Review (included in Enterprise Cluster Node)',
         startDate: '2026-10-07 09:30',
         endDate: '2026-10-07 11:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'SETTLED ($150.00 PAYPAL)',
+        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7750',
       },
 
@@ -1020,46 +1022,46 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         id: 'workload-101',
         resourceId: 'node-1',
         name: isDepositLocked
-          ? 'Dedicated Gateway Active • FastMCP Endpoint Bound ($79.99/mo)'
-          : 'Dedicated Gateway Pending • Awaiting PayPal Subscription ($79.99/mo)',
+          ? `Dedicated Gateway Active • FastMCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
+          : `Dedicated Gateway Pending • Awaiting PayPal Subscription ($${CATALOG_PLANS[1].price}/mo)`,
         startDate: '2026-10-08 13:00',
         endDate: '2026-10-08 14:15',
         eventColor: isDepositLocked ? 'green' : 'orange',
         iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
-        depositStatus: isDepositLocked ? 'ACTIVE ($79.99/MO)' : 'AWAITING PAYPAL ($79.99/MO)',
+        depositStatus: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
         paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
       },
       {
         id: 'workload-102',
         resourceId: 'node-1',
-        name: '#101 Deep Research ($175)',
+        name: '#101 Deep Research (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-08 08:30',
         endDate: '2026-10-08 09:45',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'PAID $175.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-8831',
       },
       {
         id: 'workload-103',
         resourceId: 'node-1',
-        name: '#102 Consensus Eval ($125)',
+        name: '#102 Consensus Eval (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-08 10:30',
         endDate: '2026-10-08 11:45',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-microchip',
-        depositStatus: 'PAID $125.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-8842',
       },
       {
         id: 'workload-104',
         resourceId: 'node-1',
-        name: '#103 MCP Sandbox ($150)',
+        name: '#103 MCP Sandbox (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-08 15:30',
         endDate: '2026-10-08 16:45',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-code',
-        depositStatus: 'PAID $150.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-8859',
       },
 
@@ -1067,34 +1069,34 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-201',
         resourceId: 'node-2',
-        name: '#201 Batch Worker Ingest ($49.99)',
+        name: `#201 High-Throughput Batch Worker ($${CATALOG_PLANS[0].price}/mo)`,
         startDate: '2026-10-08 08:00',
         endDate: '2026-10-08 09:30',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'PAID $49.99 (PAYPAL VAULT)',
+        depositStatus: `PAID $${CATALOG_PLANS[0].price} (PAYPAL VAULT)`,
         paypalTxn: 'TXN-SETTLE-7712',
       },
       {
         id: 'workload-202',
         resourceId: 'node-2',
-        name: '#202 125 Task Quota Allocation ($49.99)',
+        name: '#202 125 Task Quota Allocation (included in High-Throughput Batch Worker)',
         startDate: '2026-10-08 10:45',
         endDate: '2026-10-08 12:15',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'PAID $49.99 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7725',
       },
       {
         id: 'workload-203',
         resourceId: 'node-2',
-        name: '#203 Semantic Index ($180)',
+        name: '#203 Semantic Index (included in High-Throughput Batch Worker)',
         startDate: '2026-10-08 14:00',
         endDate: '2026-10-08 15:30',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-project-diagram',
-        depositStatus: 'PAID $180.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7738',
       },
 
@@ -1102,34 +1104,34 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-301',
         resourceId: 'node-3',
-        name: '#301 Smart Contract ($250)',
+        name: '#301 Smart Contract Verification (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 09:00',
         endDate: '2026-10-08 10:30',
         eventColor: 'red',
         iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'PAID $250.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-9910',
       },
       {
         id: 'workload-302',
         resourceId: 'node-3',
-        name: '#302 AST Perimeter Scan ($300)',
+        name: '#302 AST Perimeter Scan (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 12:00',
         endDate: '2026-10-08 13:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-lock',
-        depositStatus: 'PAID $300.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-9924',
       },
       {
         id: 'workload-303',
         resourceId: 'node-3',
-        name: '#303 Crypto Proof Verif ($150)',
+        name: '#303 Crypto Proof Verif (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 15:15',
         endDate: '2026-10-08 16:45',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-key',
-        depositStatus: 'PAID $150.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-9937',
       },
 
@@ -1137,34 +1139,34 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-401',
         resourceId: 'node-4',
-        name: '#401 Dedicated AI Service Gateway ($79.99/mo)',
+        name: `#401 Dedicated AI Service Gateway ($${CATALOG_PLANS[1].price}/mo)`,
         startDate: '2026-10-08 08:15',
         endDate: '2026-10-08 09:45',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'ACTIVE ($79.99/MO)',
+        depositStatus: `ACTIVE ($${CATALOG_PLANS[1].price}/MO)`,
         paypalTxn: 'I-VC551PP882B4',
       },
       {
         id: 'workload-402',
         resourceId: 'node-4',
-        name: '#402 High-Throughput Batch Worker ($49.99/mo)',
+        name: `#402 High-Throughput Batch Worker ($${CATALOG_PLANS[0].price}/mo)`,
         startDate: '2026-10-08 11:30',
         endDate: '2026-10-08 13:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'PAID $49.99 (PAYPAL VAULT)',
+        depositStatus: `PAID $${CATALOG_PLANS[0].price} (PAYPAL VAULT)`,
         paypalTxn: 'TXN-SETTLE-5518',
       },
       {
         id: 'workload-403',
         resourceId: 'node-4',
-        name: '#403 Enterprise Cluster Node ($179.99/mo)',
+        name: `#403 Enterprise Cluster Node ($${CATALOG_PLANS[2].price}/mo)`,
         startDate: '2026-10-08 14:30',
         endDate: '2026-10-08 16:00',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-server',
-        depositStatus: 'PAID $179.99 (PAYPAL VAULT)',
+        depositStatus: `PAID $${CATALOG_PLANS[2].price} (PAYPAL VAULT)`,
         paypalTxn: 'TXN-SETTLE-5532',
       },
 
@@ -1172,34 +1174,34 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-501',
         resourceId: 'node-5',
-        name: '#501 Model Eval Review ($150)',
+        name: '#501 Model Eval Review (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 09:15',
         endDate: '2026-10-08 10:45',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'PAID $150.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-3310',
       },
       {
         id: 'workload-502',
         resourceId: 'node-5',
-        name: '#502 Incident Remediation ($225)',
+        name: '#502 Incident Remediation (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 11:00',
         endDate: '2026-10-08 12:30',
         eventColor: 'red',
         iconCls: 'b-fa b-fa-user-shield',
-        depositStatus: 'PAID $225.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-3320',
       },
       {
         id: 'workload-503',
         resourceId: 'node-5',
-        name: '#503 Edge-Case Triage ($175)',
+        name: '#503 Edge-Case Triage (included in Enterprise Cluster Node)',
         startDate: '2026-10-08 13:00',
         endDate: '2026-10-08 14:30',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-check-double',
-        depositStatus: 'PAID $175.00 (PAYPAL VAULT)',
+        depositStatus: 'ACTIVE (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-3330',
       },
 
@@ -1207,40 +1209,40 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-09-101',
         resourceId: 'node-1',
-        name: '#111 Enterprise Multi-Agent Dispatch ($225)',
+        name: '#111 Enterprise Multi-Agent Dispatch (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-09 09:00',
         endDate: '2026-10-09 10:15',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-robot',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-9911',
       },
       {
         id: 'workload-09-201',
         resourceId: 'node-2',
-        name: '#211 Batch Embed Chunking ($250)',
+        name: '#211 Batch Embed Chunking (included in High-Throughput Batch Worker)',
         startDate: '2026-10-09 10:30',
         endDate: '2026-10-09 12:00',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-9921',
       },
       {
         id: 'workload-09-301',
         resourceId: 'node-3',
-        name: '#311 Continuous AST Audit ($300)',
+        name: '#311 Continuous AST Audit (included in Enterprise Cluster Node)',
         startDate: '2026-10-09 13:00',
         endDate: '2026-10-09 14:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-lock',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-9931',
       },
       {
         id: 'workload-09-401',
         resourceId: 'node-4',
-        name: '#411 Service Gateway Route ($79.99/mo)',
+        name: `#411 Service Gateway Route ($${CATALOG_PLANS[1].price}/mo)`,
         startDate: '2026-10-09 08:30',
         endDate: '2026-10-09 10:00',
         eventColor: 'green',
@@ -1251,12 +1253,12 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-09-501',
         resourceId: 'node-5',
-        name: '#511 Weekly Replay Verification ($150)',
+        name: '#511 Weekly Replay Verification (included in Enterprise Cluster Node)',
         startDate: '2026-10-09 11:00',
         endDate: '2026-10-09 12:30',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-9951',
       },
 
@@ -1264,23 +1266,23 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-10-101',
         resourceId: 'node-1',
-        name: '#121 Weekend Standby Enclave ($150)',
+        name: '#121 Weekend Standby Enclave (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-10 10:00',
         endDate: '2026-10-10 11:30',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-1001',
       },
       {
         id: 'workload-10-201',
         resourceId: 'node-2',
-        name: '#221 Deep Archive Vector Maintenance ($200)',
+        name: '#221 Deep Archive Vector Maintenance (included in High-Throughput Batch Worker)',
         startDate: '2026-10-10 12:00',
         endDate: '2026-10-10 13:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'SCHEDULED (PAYPAL VAULT)',
+        depositStatus: 'SCHEDULED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SCHED-1002',
       },
     ];
@@ -1462,11 +1464,11 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (targetEvent) {
       targetEvent.set({
         name: isDepositLocked
-          ? 'Dedicated Gateway Active • FastMCP Endpoint Bound ($79.99/mo)'
-          : 'Dedicated Gateway Pending • Awaiting PayPal Subscription ($79.99/mo)',
+          ? `Dedicated Gateway Active • FastMCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
+          : `Dedicated Gateway Pending • Awaiting PayPal Subscription ($${CATALOG_PLANS[1].price}/mo)`,
         eventColor: isDepositLocked ? 'green' : 'orange',
         iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
-        depositStatus: isDepositLocked ? 'ACTIVE ($79.99/MO)' : 'AWAITING PAYPAL ($79.99/MO)',
+        depositStatus: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
         paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
       });
 
@@ -1483,7 +1485,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       setApiStatus(
         isDepositLocked
           ? '● Node-01 Active: Dedicated Gateway via FastMCP (HTTP 201)'
-          : '○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization'
+          : `○ Pending: Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription Authorization`
       );
       setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
     }
@@ -1518,8 +1520,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
 
       const result = await executeProvisioningAfterSubscription(
         simulatedSubId,
-        'Acme Autonomous Systems LLC',
-        'Dedicated AI Service Gateway'
+        'Acme Compute Co',
+        CATALOG_PLANS[1].name
       );
       const durationMs = Math.round(performance.now() - t0);
 
@@ -1531,7 +1533,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           name: `Dedicated Gateway Active • FastMCP Endpoint: ${result.allocatedDid || 'node-cluster-01.ap2.net'} [BOUND]`,
           eventColor: 'green',
           iconCls: 'b-fa b-fa-check-circle',
-          depositStatus: 'ACTIVE ($79.99/MO)',
+          depositStatus: `ACTIVE ($${CATALOG_PLANS[1].price}/MO)`,
           paypalTxn: simulatedSubId,
         });
       }
@@ -1562,19 +1564,19 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         statusText: 'CREATED',
         durationMs: durationMs > 0 ? durationMs : 118,
         category: 'FastMCP',
-        summary: `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($79.99/mo)`,
+        summary: `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($${CATALOG_PLANS[1].price}/mo)`,
         request: {
           subscription_id: simulatedSubId,
-          business_entity: 'Acme Autonomous Systems LLC',
-          trade_vertical: 'Dedicated AI Service Gateway',
+          business_entity: 'Acme Compute Co',
+          trade_vertical: CATALOG_PLANS[1].name,
           preferred_area_code: '703',
-          monthly_fee: 79.99,
+          monthly_fee: CATALOG_PLANS[1].price,
         },
         response: {
           status: 'ACTIVE_STREAMING',
           allocated_did: result.allocatedDid || 'node-cluster-01.ap2.net',
           carrier_cluster: 'US-East (Ashburn Zone 1)',
-          service_plan: 'AP2 Dedicated AI Gateway ($79.99/mo)',
+          service_plan: `AP2 Dedicated AI Gateway ($${CATALOG_PLANS[1].price}/mo)`,
           sub_id: simulatedSubId,
         },
       });
@@ -1593,10 +1595,10 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       schedulerRef.current.eventStore.find((e: any) => e.name?.includes('Dedicated Gateway'));
     if (targetEvent) {
       targetEvent.set({
-        name: 'Dedicated Gateway Pending • Awaiting PayPal Subscription ($79.99/mo)',
+        name: `Dedicated Gateway Pending • Awaiting PayPal Subscription ($${CATALOG_PLANS[1].price}/mo)`,
         eventColor: 'orange',
         iconCls: 'b-fa b-fa-clock',
-        depositStatus: 'AWAITING PAYPAL ($79.99/MO)',
+        depositStatus: `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
         paypalTxn: 'UNPAID',
       });
     }
@@ -1614,7 +1616,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     // 3. Reset slot locked state and metrics
     setIsSlotLocked(false);
     setTotalDispatches(18);
-    setTotalVaultedDeposits(2504.99);
+    setTotalVaultedDeposits(1219.87);
 
     const node1Resource =
       schedulerRef.current.resourceStore.getById('node-1') ||
@@ -1626,7 +1628,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       });
     }
 
-    setApiStatus('○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization');
+    setApiStatus(`○ Pending: Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription Authorization`);
     setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
 
     if (onToggleDepositLock) {
@@ -1645,14 +1647,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         target_nodes: ['node-1', 'node-2'],
         action: 'RESET_WORKLOAD_STATE',
         revert_dispatches_to: 18,
-        revert_deposits_to: 2504.99,
+        revert_deposits_to: 1219.87,
       },
       response: {
         status: 'SUCCESS',
-        node_1_status: 'AWAITING_PAYPAL ($79.99/MO)',
+        node_1_status: `AWAITING_PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
         node_2_slot: 'REMOVED',
         dispatches_total: 18,
-        vaulted_deposits_usd: 2504.99,
+        vaulted_deposits_usd: 1219.87,
       },
     });
   };
@@ -1679,20 +1681,20 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           (schedulerRef.current.eventStore as any).add({
             id: lockedEventId,
             resourceId: 'node-2',
-            name: '#204 Multi-Agent Consensus ($150)',
+            name: `#204 Batch Worker Renewal (included in ${CATALOG_PLANS[0].name})`,
             startDate: '2026-10-08 16:00',
             endDate: '2026-10-08 17:15',
             eventColor: 'blue',
             iconCls: 'b-fa b-fa-check-circle',
-            depositStatus: 'SETTLED ($150.00 PAYPAL)',
+            depositStatus: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
             paypalTxn: 'TXN-DISPATCH-9022',
           });
         }
         setTotalDispatches(19);
-        setTotalVaultedDeposits(3600);
+        setTotalVaultedDeposits(1269.86);
         setApiStatus('● Enclave Execution Slot Locked: FastMCP Task Bound (HTTP 200)');
         setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
-        setLeadSimulationBanner('✓ Autonomous Buyer Mandate Verified: agent:gpt-4o:apex-procure dispatched to Node-02. $150.00 PayPal Deposit Vaulted!');
+        setLeadSimulationBanner(`✓ Autonomous Buyer Mandate Verified: agent:gpt-4o:apex-procure dispatched to Node-02. $${CATALOG_PLANS[0].price} PayPal Payment Vaulted!`);
         setTimeout(() => setLeadSimulationBanner(null), 6000);
 
         addWireLog({
@@ -1702,14 +1704,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           statusText: 'OK',
           durationMs: durationMs > 0 ? durationMs : 28,
           category: 'Enclave Dispatch',
-          summary: 'Node-02 Enclave hardware execution slot locked (16:00-17:15) • $150.00 PayPal Deposit Vaulted',
+          summary: `Node-02 Enclave hardware execution slot locked (16:00-17:15) • $${CATALOG_PLANS[0].price} PayPal Payment Vaulted`,
           request: {
             slot_id: 'WORKLOAD-SLOT-02',
             resource: 'Node-02: Batch Data & RAG Pipeline',
             scheduled_start: '2026-10-08 16:00',
             scheduled_end: '2026-10-08 17:15',
             buyer_agent: 'agent:gpt-4o:apex-procure',
-            deposit_amount_usd: 150.0,
+            deposit_amount_usd: CATALOG_PLANS[0].price,
             txn_ref: 'AP2-TXN-DISPATCH-9022',
           },
           response: {
@@ -1718,7 +1720,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             event_id: lockedEventId,
             enclave_endpoint: 'node-cluster-02.ap2.net:8443',
             allocated_resource: 'node-2',
-            deposit_status: 'SETTLED ($150.00 PAYPAL)',
+            deposit_status: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
           },
         });
       }
@@ -1847,7 +1849,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               }}
             >
               {isDepositLocked
-                ? '● Node-01 Active ($79.99)'
+                ? `● Node-01 Active ($${CATALOG_PLANS[1].price})`
                 : isSlotLocked
                 ? '● Node-02 Locked'
                 : '○ Awaiting Auth'}
@@ -2054,7 +2056,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 transition: 'all 0.15s ease',
               }}
             >
-              Batch Workers ($49.99)
+              Batch Workers (${`$${CATALOG_PLANS[0].price}`})
             </button>
 
             {/* Button 3: GATEWAY */}
@@ -2079,7 +2081,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 transition: 'all 0.15s ease',
               }}
             >
-              AI Gateways ($79.99)
+              AI Gateways (${`$${CATALOG_PLANS[1].price}`})
             </button>
 
             {/* Button 4: CLUSTER */}
@@ -2104,7 +2106,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 transition: 'all 0.15s ease',
               }}
             >
-              Enterprise Clusters ($179.99)
+              Enterprise Clusters (${`$${CATALOG_PLANS[2].price}`})
             </button>
           </div>
 
@@ -2262,7 +2264,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <div />
           )}
 
-          {/* Row 1, Col 3: Sim Workload ($150) */}
+          {/* Row 1, Col 3: Sim Workload Task */}
           <button
             onClick={handleSimulateInboundLeadAndLock}
             disabled={isLockingSlot || isSlotLocked}
@@ -2291,7 +2293,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               ? 'Locking Slot...'
               : isSlotLocked
               ? '✓ Slot Locked (Node-02)'
-              : '⚡ Sim Workload ($150)'}
+              : '⚡ Sim Workload Task'}
           </button>
 
           {/* Row 1, Col 4: Empty placeholder to align with Reset in Row 2 */}
@@ -2351,7 +2353,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <div />
           )}
 
-          {/* Row 2, Col 3: Sim Sub ($80) (Identical dimensions as Sim Workload) */}
+          {/* Row 2, Col 3: Sim Sub ($79.99) (Identical dimensions as Sim Workload) */}
           <button
             onClick={handleSimulateActivation}
             disabled={isCallingApi || isDepositLocked}
@@ -2380,7 +2382,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               ? 'Provisioning...'
               : isDepositLocked
               ? '✓ Node-01 Active'
-              : '⚡ Sim Sub ($50)'}
+              : `⚡ Sim Sub ($${CATALOG_PLANS[1].price})`}
           </button>
 
           {/* Row 2, Col 4: Reset Button */}
@@ -2529,7 +2531,6 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>FastMCP Concurrency</div>
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>14 Active Streams</div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>Zero Policy Violations • AP2 Compliant</div>
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Vaulted Mandates</div>

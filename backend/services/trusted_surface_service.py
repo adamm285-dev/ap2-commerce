@@ -200,7 +200,7 @@ def enroll_trusted_surface_key(
     kid: str,
     public_key_jwk: Dict[str, Any],
     buyer_email: str,
-    business_name: str = "Nexus Autonomous Systems Corp",
+    business_name: str = "Demo Buyer Corp",
     monthly_budget_cap: Optional[float] = None,
 ) -> Dict[str, Any]:
     """

@@ -35,7 +35,7 @@ def test_complete_autonomous_a2a_lifecycle():
 
     # Step 3: Evaluate Spending Mandate ($79.99 <= $100)
     mandate_payload = {
-        "buyerAgentId": "buyer-nexus-alpha",
+        "buyerAgentId": "buyer-demo-alpha",
         "amount": tier["monthlySubscription"],
         "recurrence": "monthly",
         "category": "COMPUTE_NODE_SERVICE",
@@ -88,8 +88,8 @@ def test_complete_autonomous_a2a_lifecycle():
     # Step 6: Trigger Autonomous Zapier MCP Onboarding Chain
     zapier_a2a_payload = {
         "workflowType": "a2a_onboarding",
-        "contractorName": "Nexus Autonomous Buyer",
-        "businessEntity": "Nexus Autonomous Systems Corp",
+        "contractorName": "Demo Autonomous Buyer",
+        "businessEntity": "Demo Buyer Corp",
         "allocatedDid": allocated_endpoint,
         "tradeVertical": "Dedicated AI Service Gateway",
         "monthlySubscriptionFee": 79.99,
@@ -119,7 +119,7 @@ def test_complete_autonomous_a2a_lifecycle():
 
     # Step 8: Lock Territory Dispatch Slot
     lock_payload = {
-        "jobId": "job-nexus-gateway-01",
+        "jobId": "job-demo-gateway-01",
         "territoryZone": "Zone 1 - US East",
         "slotStartIso": "2026-10-06T10:00:00-04:00",
         "paypalTransactionId": "TXN-DEP-8849102",
@@ -134,8 +134,8 @@ def test_complete_autonomous_a2a_lifecycle():
     # Step 9: Downstream Lead Sync via Zapier MCP
     zapier_lead_payload = {
         "workflowType": "compute_task",
-        "jobId": "job-nexus-gateway-01",
-        "customerName": "Nexus AI Coordinator",
+        "jobId": "job-demo-gateway-01",
+        "customerName": "Demo AI Coordinator",
         "clientFingerprint": "agent-fingerprint-0199",
         "propertyAddress": "Cloud Execution Region us-east-1",
         "paymentAmount": 250.00,
@@ -152,7 +152,7 @@ def test_complete_autonomous_a2a_lifecycle():
     # Step 10: Reset Spending Mandate Ledger (requires Admin Authorization)
     res_reset = client.post(
         "/api/agent/spending-mandate/reset",
-        json={"buyerAgentId": "buyer-nexus-alpha"},
+        json={"buyerAgentId": "buyer-demo-alpha"},
         headers={"X-Admin-Key": settings.admin_api_key},
     )
     assert res_reset.status_code == 200

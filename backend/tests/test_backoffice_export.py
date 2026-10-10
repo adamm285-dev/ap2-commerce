@@ -22,8 +22,8 @@ client = TestClient(app)
 def test_qbo_purchase_expense_format():
     """Verifies QuickBooks Online API v3 Purchase/Expense object structure."""
     qbo_pkg = qbo_exporter.format_purchase_expense_payload(
-        contractor_name="Nexus Autonomous Buyer",
-        business_entity="Nexus Autonomous Systems Corp",
+        contractor_name="Demo Autonomous Buyer",
+        business_entity="Demo Buyer Corp",
         contractor_email="agent-alpha@example.com",
         monthly_fee=79.99,
         paypal_subscription_id="I-AUTONOMOUS-8902",
@@ -128,8 +128,8 @@ async def test_zapier_mcp_dispatcher_exports_authentic_payloads():
     """Verifies that ZapierMcpDispatcher attaches QBO export packages."""
     req = ZapierSyncRequest(
         workflowType="a2a_onboarding",
-        contractorName="Nexus Autonomous Buyer",
-        businessEntity="Nexus Autonomous Systems Corp",
+        contractorName="Demo Autonomous Buyer",
+        businessEntity="Demo Buyer Corp",
         allocatedDid="mcp+https://gateway-01.example.com/mcp",
         tradeVertical="Dedicated AI Service Gateway",
         monthlySubscriptionFee=79.99,
@@ -155,8 +155,8 @@ def test_api_export_backoffice_endpoint():
     """Verifies HTTP POST /api/export/backoffice returns complete authentic packages."""
     payload = {
         "workflowType": "a2a_onboarding",
-        "contractorName": "Nexus Autonomous Buyer",
-        "businessEntity": "Nexus Autonomous Systems Corp",
+        "contractorName": "Demo Autonomous Buyer",
+        "businessEntity": "Demo Buyer Corp",
         "allocatedDid": "mcp+https://gateway-01.example.com/mcp",
         "tradeVertical": "Dedicated AI Service Gateway",
         "monthlySubscriptionFee": 79.99,

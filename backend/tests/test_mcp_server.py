@@ -71,7 +71,7 @@ async def test_mcp_tools_call_mandate():
         "params": {
             "name": "evaluate_spending_mandate",
             "arguments": {
-                "buyer_agent_id": "nexus-buyer-01",
+                "buyer_agent_id": "demo-buyer-01",
                 "amount": 79.99,
                 "recurrence": "monthly",
                 "category": "autonomous-node-service",

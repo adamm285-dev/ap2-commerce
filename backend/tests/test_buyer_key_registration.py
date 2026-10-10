@@ -36,7 +36,7 @@ def test_successful_buyer_key_registration():
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "buyer-agent-tampa-compute-v1"
     email = "tampa@example.com"
-    entity = "Tampa Bay Compute Solutions LLC"
+    entity = "Demo Bay Compute LLC"
 
     # 1. Fetch challenge nonce
     chal_res = client.get("/api/agent/keys/challenge")
@@ -132,7 +132,7 @@ def test_rejected_registration_expired_challenge():
             "kid": "expired-chal-agent",
             "publicKeyHex": pub_hex,
             "contractorEmail": "contractor@example.com",
-            "businessEntity": "Florida Roof Pro LLC",
+            "businessEntity": "Demo Cloud Ops LLC",
             "challenge": challenge,
             "challengeSignature": sig_hex,
         },
@@ -147,7 +147,7 @@ def test_newly_registered_buyer_key_can_evaluate_mandate():
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "buyer-agent-orlando-cluster-v1"
     email = "orlando@example.com"
-    entity = "Central Florida Cluster Solutions LLC"
+    entity = "Demo Cluster Systems LLC"
 
     # 1. Onboard buyer agent
     chal_res = client.get("/api/agent/keys/challenge")
@@ -214,7 +214,7 @@ def test_rejected_registration_key_collision():
     priv_hex, pub_hex = generate_ed25519_keypair()
     kid = "unique-test-buyer-001"
     email = "unique@example.com"
-    entity = "Florida Unique Builder LLC"
+    entity = "Demo Unique Node LLC"
 
     # Register first time
     chal_res = client.get("/api/agent/keys/challenge")

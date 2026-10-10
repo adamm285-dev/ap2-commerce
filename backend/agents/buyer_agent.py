@@ -79,7 +79,7 @@ class BuyerAgent:
 
         # Phase 1: Local Telemetry & Business Need Assessment
         print("📊 [Phase 1: Opportunity Assessment (Pipeline Telemetry)]")
-        print(f"   Autonomous Buyer: Acme Autonomous Systems LLC ({self.contractor_email})")
+        print(f"   Autonomous Buyer: Acme Compute Co ({self.contractor_email})")
         print(f"   Conclusion: Dedicated AI Service Gateway required (Budget Cap: ${self.monthly_budget_cap:.2f}/mo)\n")
 
         # Phase 2: Query Seller Agent MCP Catalog
@@ -271,8 +271,8 @@ class BuyerAgent:
         print("⚡ [Phase 6: Autonomous Zapier MCP Back-Office Sync]")
         zapier_result = await seller_agent.dispatch_zapier_mcp(
             workflow_type="a2a_onboarding",
-            contractor_name="Acme Autonomous Systems LLC",
-            business_entity="Acme Autonomous Systems LLC",
+            contractor_name="Acme Compute Co",
+            business_entity="Acme Compute Co",
             allocated_did=assigned_endpoint,
             trade_vertical=matching_tier.get("title", "Dedicated AI Service Gateway"),
             monthly_subscription_fee=monthly_price,

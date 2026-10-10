@@ -73,7 +73,7 @@ export type ContractorCopilotViewProps = SellerCopilotViewProps;
 
 export function SellerCopilotView({
   contractorName = 'agent:acme-procure',
-  businessEntity = 'Acme Autonomous Systems LLC',
+  businessEntity = 'Acme Compute Co',
   tradeVertical = 'Dedicated AI Service Gateway',
   budgetCap = 100.0,
   onA2aCompleted,
@@ -416,7 +416,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
   // --- Layer 1: Anti-Tamper & Cryptographic State ---
   const [tamperPayload, setTamperPayload] = useState<any>({
     contractor_id: 'buyer_agent_alpha_01',
-    business_name: 'Nexus Autonomous Systems Corp',
+    business_name: 'Demo Buyer Corp',
     monthly_cap_usd: 100.0,
     agreed_price_usd: 49.99,
     nonce: 'd6fb21ff578f',
@@ -610,7 +610,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
             Purchase: {
               PaymentType: 'CreditCard',
               AccountRef: { value: '99', name: 'PayPal Clearing Account' },
-              EntityRef: { value: '101', name: 'AP2 Autonomous Merchant LLC', type: 'Vendor' },
+              EntityRef: { value: '101', name: 'Demo Merchant Co', type: 'Vendor' },
               TxnDate: new Date().toISOString().substring(0, 10),
               DocNumber: `AP2-SUB-8902`,
               TotalAmt: localBudgetCap < 79.99 ? 49.99 : 79.99,
@@ -991,7 +991,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const introMsg: ChatMessage = {
       id: `msg-${Date.now() + 1}`,
       sender: 'copilot',
-      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Apex Enterprise AI Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, cryptographically signing Ed25519 spending mandates, and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately and signs with an Ed25519 authorization hash.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: authorizes recurring billing via PayPal Vault MIT, provisions your FastMCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
+      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Demo Enterprise Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, cryptographically signing Ed25519 spending mandates, and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately and signs with an Ed25519 authorization hash.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: authorizes recurring billing via PayPal Vault MIT, provisions your FastMCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
@@ -1381,7 +1381,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
       // Voice & Natural Language Quick Commands
       if (lower.startsWith('set company') || lower.startsWith('change company') || lower.includes('company to ')) {
         const parts = textToSend.split(/company\s+(?:name\s+)?(?:to\s+)?/i);
-        const newName = parts[1]?.trim() || 'Acme Autonomous Systems LLC';
+        const newName = parts[1]?.trim() || 'Acme Compute Co';
         handleApplyStep1(newName, localTradeVertical);
         setIsLoading(false);
         return;
@@ -2455,7 +2455,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 type="text"
                                 value={formStep1Company}
                                 onChange={(e) => setFormStep1Company(e.target.value)}
-                                placeholder="e.g. Acme Autonomous Systems LLC"
+                                placeholder="e.g. Acme Compute Co"
                                 style={{
                                   width: '100%',
                                   backgroundColor: '#0f172a',
@@ -3201,7 +3201,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
               placeholder={
                 voiceStatus === 'listening'
                   ? 'Listening to your voice... (Speak now)'
-                  : "Simulate or speak buyer command (e.g. 'Set company to Acme Systems', 'Generate keys', 'Connect PayPal')..."
+                  : "Simulate or speak buyer command (e.g. 'Set company to Acme Compute Co', 'Generate keys', 'Connect PayPal')..."
               }
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}

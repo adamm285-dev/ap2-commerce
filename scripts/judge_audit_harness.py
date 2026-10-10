@@ -376,7 +376,7 @@ def run_judge_audit():
     print_step(6, "Authentic Back-Office ERP Payloads (QuickBooks Online API v3 Expense)")
     qbo_pkg = qbo_exporter.format_purchase_expense_payload(
         contractor_name="Autonomous Compute Buyer",
-        business_entity="Nexus Autonomous Systems Corp",
+        business_entity="Demo Buyer Corp",
         contractor_email="agent-alpha@example.com",
         monthly_fee=79.99,
         paypal_subscription_id="I-AUTONOMOUS-8902",
@@ -483,7 +483,7 @@ def run_judge_audit():
             "kid": kid,
             "publicKeyHex": new_pub,
             "contractorEmail": "judge@example.com",
-            "businessEntity": "Nexus Autonomous Systems Corp",
+            "businessEntity": "Demo Buyer Corp",
             "challenge": challenge_nonce,
             "challengeSignature": sig,
             "monthlyBudgetCap": 150.0,

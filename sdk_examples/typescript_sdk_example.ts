@@ -99,7 +99,7 @@ export class AP2CommerceClient {
       body: JSON.stringify({
         workflowType: params.workflowType || 'a2a_onboarding',
         contractorName: params.contractorName || 'Autonomous Compute Buyer',
-        businessEntity: params.businessEntity || 'Nexus Autonomous Systems Corp',
+        businessEntity: params.businessEntity || 'Demo Buyer Corp',
         allocatedDid: params.allocatedDid || 'mcp+https://gateway-01.ap2.market',
         tradeVertical: params.tradeVertical || 'Autonomous Cloud Compute',
         monthlySubscriptionFee: params.monthlyFee || 79.99,

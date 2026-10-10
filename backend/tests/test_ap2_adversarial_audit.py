@@ -355,7 +355,7 @@ def test_fleet_ledger_unmask_requires_admin_key(variant, monkeypatch):
 def _register_key(kid, email, cap=None):
     priv, pub = generate_ed25519_keypair()
     ch = client.get("/api/agent/keys/challenge").json()["challenge"]
-    body = {"kid": kid, "publicKeyHex": pub, "contractorEmail": email, "businessEntity": "Audit Builders LLC",
+    body = {"kid": kid, "publicKeyHex": pub, "contractorEmail": email, "businessEntity": "Demo Audit Systems LLC",
             "challenge": ch, "challengeSignature": sign_ed25519_message(ch, priv)}
     if cap is not None:
         body["monthlyBudgetCap"] = cap

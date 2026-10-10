@@ -28,11 +28,11 @@ def test_get_fleet_ledger_endpoint():
     assert alpha["status"] in ("PENDING_DEPOSIT", "ACTIVE_STREAMING")
 
     # Verify other agent is ACTIVE_STREAMING
-    nexus = next((t for t in txns if t["contractor_name"] == "AutonomousBuyerAgent-Nexus-Gateway"), None)
-    assert nexus is not None
-    assert nexus["status"] == "ACTIVE_STREAMING"
-    assert nexus["allocated_did"] == "mcp+https://gateway-01.example.com/mcp"
-    assert "Ed25519" in nexus["kyc_status"]
+    demo_agent = next((t for t in txns if t["contractor_name"] == "AutonomousBuyerAgent-Demo-Gateway"), None)
+    assert demo_agent is not None
+    assert demo_agent["status"] == "ACTIVE_STREAMING"
+    assert demo_agent["allocated_did"] == "mcp+https://gateway-01.example.com/mcp"
+    assert "Ed25519" in demo_agent["kyc_status"]
 
 
 def test_get_fleet_stats_endpoint():
@@ -96,7 +96,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
         "status": "ACTIVE",
         "contractor_email": "agent-alpha@example.com",
         "contractor_name": "AutonomousBuyerAgent-Alpha-Batch",
-        "business_entity": "Nexus Autonomous Systems Corp",
+        "business_entity": "Demo Buyer Corp",
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "plan_id": "P-AP2-BATCH-WORKER",

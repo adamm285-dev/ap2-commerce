@@ -21,8 +21,8 @@ class SellerCopilot:
 
     def __init__(
         self,
-        contractor_name: str = "Nexus Autonomous Buyer",
-        business_entity: str = "Nexus Autonomous Systems Corp",
+        contractor_name: str = "Demo Autonomous Buyer",
+        business_entity: str = "Demo Buyer Corp",
         trade_vertical: str = "Dedicated AI Service Gateway",
         budget_cap: float = 100.00,
         contractor_email: str = "agent-alpha@example.com",
@@ -49,7 +49,7 @@ class SellerCopilot:
             "estimated_lost_revenue": 6200.00,
             "recent_queued_tasks": [
                 {
-                    "requester_name": "Nexus High-Throughput Worker",
+                    "requester_name": "Demo High-Throughput Worker",
                     "client_endpoint": "mcp+https://batch-01.example.com/mcp",
                     "estimated_job_value": 3250.00,
                     "task_description": "Queued 125 batch synthesis jobs awaiting gateway execution.",

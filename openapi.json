@@ -1878,7 +1878,7 @@
               }
             ],
             "title": "Contractor Name",
-            "default": "Nexus Autonomous Buyer"
+            "default": "Demo Autonomous Buyer"
           },
           "business_entity": {
             "anyOf": [
@@ -1890,7 +1890,7 @@
               }
             ],
             "title": "Business Entity",
-            "default": "Nexus Autonomous Systems Corp"
+            "default": "Demo Buyer Corp"
           },
           "trade_vertical": {
             "anyOf": [
@@ -1958,7 +1958,7 @@
           "businessEntity": {
             "type": "string",
             "title": "Businessentity",
-            "default": "Acme Autonomous Systems LLC"
+            "default": "Acme Compute Co"
           },
           "monthlyBudgetCap": {
             "type": "number",
@@ -2150,7 +2150,7 @@
               }
             ],
             "title": "Business Name",
-            "default": "Acme Autonomous Systems LLC"
+            "default": "Acme Compute Co"
           },
           "monthly_cap_usd": {
             "anyOf": [
@@ -2545,7 +2545,7 @@
               }
             ],
             "title": "Contractor Name",
-            "default": "Nexus Autonomous Buyer"
+            "default": "Demo Autonomous Buyer"
           },
           "business_entity": {
             "anyOf": [
@@ -2557,7 +2557,7 @@
               }
             ],
             "title": "Business Entity",
-            "default": "Nexus Autonomous Systems Corp"
+            "default": "Demo Buyer Corp"
           },
           "contractor_email": {
             "anyOf": [
@@ -3070,7 +3070,7 @@
               }
             ],
             "title": "Customername",
-            "default": "Acme Autonomous Systems LLC"
+            "default": "Acme Compute Co"
           },
           "clientFingerprint": {
             "anyOf": [
@@ -3130,7 +3130,7 @@
               }
             ],
             "title": "Contractorname",
-            "default": "Acme Autonomous Systems LLC"
+            "default": "Acme Compute Co"
           },
           "businessEntity": {
             "anyOf": [
@@ -3142,7 +3142,7 @@
               }
             ],
             "title": "Businessentity",
-            "default": "Acme Autonomous Systems LLC"
+            "default": "Acme Compute Co"
           },
           "allocatedDid": {
             "anyOf": [

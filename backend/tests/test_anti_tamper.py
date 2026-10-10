@@ -16,7 +16,7 @@ def test_tamper_detection_price_inflation():
     """Modifying agreed price by even $0.01 must immediately invalidate HMAC signature."""
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
@@ -33,7 +33,7 @@ def test_tamper_detection_budget_cap_violation():
     """Even if an HMAC was generated, if agreed price exceeds spending cap, reject with BUDGET_CAP_BREACH."""
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=75.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
@@ -48,7 +48,7 @@ def test_tamper_detection_timestamp_expiration():
     """Stale mandate proofs (>300 seconds drift) must be rejected with TIMESTAMP_EXPIRED."""
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
@@ -65,13 +65,13 @@ def test_tamper_detection_business_name_alteration():
     """Altering the contractor business entity name must fail HMAC verification."""
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
     )
     tampered_payload = dict(proof["canonical_payload"])
-    tampered_payload["business_name"] = "Illegitimate Contractor Corp"
+    tampered_payload["business_name"] = "Demo Attacker Corp"
 
     valid, reason = verify_mandate_proof(tampered_payload, proof["signature"])
     assert valid is False
@@ -82,7 +82,7 @@ def test_valid_proof_verification():
     """An unaltered canonical payload within valid time window must pass with VERIFIED."""
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
@@ -105,17 +105,17 @@ def test_asymmetric_ed25519_non_repudiation():
     # Buyer signs mandate
     proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",
         buyer_private_key_hex=buyer_priv,
     )
     
-    # Attacker tries to forge signature on an altered $150 transaction using attacker's private key
+    # Attacker tries to forge signature on an altered transaction using attacker's private key
     forged_proof = generate_dynamic_mandate_proof(
         contractor_id="usr_883",
-        business_name="Nexus Autonomous Systems",
+        business_name="Demo Buyer Corp",
         monthly_cap_usd=100.00,
         agreed_price_usd=79.99,
         nonce="nonce_a1b2c3",

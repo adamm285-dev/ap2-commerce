@@ -575,7 +575,7 @@ def test_lock_dispatch_slot():
 
 def test_trigger_zapier_mcp_sync():
     payload = {
-        "jobId": "workload-nexus-01",
+        "jobId": "workload-demo-01",
         "customerName": "Autonomous Compute Client",
         "clientFingerprint": "client-fp-5550199",
         "propertyAddress": "Data Center Rack B4, US-East",
@@ -595,7 +595,7 @@ def test_trigger_zapier_mcp_a2a_onboarding_sync():
     payload = {
         "workflowType": "a2a_onboarding",
         "contractorName": "Autonomous Compute Buyer",
-        "businessEntity": "Nexus Autonomous Systems",
+        "businessEntity": "Demo Buyer Corp",
         "allocatedDid": "mcp+https://gateway-01.ap2.market",
         "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
@@ -646,7 +646,7 @@ def test_copilot_chat_endpoint_http():
     payload = {
         "message": "Do I have any pending workload tasks?",
         "contractorName": "Dev Agent",
-        "businessEntity": "Nexus Cloud Systems",
+        "businessEntity": "Demo Buyer Corp",
         "tradeVertical": "Autonomous Cloud Compute",
         "budgetCap": 100.00,
     }
@@ -664,7 +664,7 @@ def test_m2m_audit_payloads_endpoint():
     payload = {
         "workflowType": "a2a_onboarding",
         "contractorName": "Autonomous Compute Buyer",
-        "businessEntity": "Nexus Autonomous Systems Corp",
+        "businessEntity": "Demo Buyer Corp",
         "allocatedDid": "mcp+https://gateway-01.ap2.market",
         "tradeVertical": "Autonomous Cloud Compute",
         "monthlySubscriptionFee": 79.99,
@@ -748,7 +748,7 @@ def test_ap2_sample_proof_budget_cap_breach_and_clean_identity():
     assert ("mar" + "cus") not in raw_sample_str
     assert ("floor" + "ing") not in raw_sample_str
     assert payload["contractor_id"] == "agent:acme-procure"
-    assert payload["business_name"] == "Acme Autonomous Systems LLC"
+    assert payload["business_name"] == "Acme Compute Co"
     assert payload["agreed_price_usd"] == 79.99
     assert payload["monthly_cap_usd"] == 100.00
 
@@ -1261,7 +1261,7 @@ def test_deck_purchase_endpoint_v02_flow():
         "agreedMonthlyRate": 79.99,
         "buyerEmail": "deck-buyer@example.com",
         "contractorName": "AutonomousBuyerAgent-Deck",
-        "businessEntity": "Acme Deck Procurement LLC",
+        "businessEntity": "Acme Workload Procurement LLC",
         "monthlyBudgetCap": 100.0,
     }
     res = client.post("/api/agent/deck-purchase", json=req_payload)

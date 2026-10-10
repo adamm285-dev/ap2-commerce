@@ -109,6 +109,7 @@ class BuyerAgent:
         print("⚖️  [Phase 3: AP2 v0.2 Mandate Verification & Term Negotiation]")
         agent_key = get_demo_agent_key()
         mandate_client = MandateClient()
+        # MOCK(M-005): in-process buyer agent signs owner limits with the demo owner key
         open_mandates = create_trusted_surface_open_mandates(
             monthly_budget_cap=self.monthly_budget_cap,
             buyer_email=self.contractor_email,

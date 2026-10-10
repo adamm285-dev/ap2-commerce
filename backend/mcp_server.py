@@ -278,6 +278,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             elif tool_name == "provision_compute_node":
                 buyer_email = arguments.get("buyer_email") or arguments.get("contractor_email") or os.getenv("A2A_DEFAULT_EMAIL", "buyer@example.com")
                 result = await seller_agent.provision_compute_node(
+                    # MOCK(M-012): missing subscription_id defaults to a demo ID
                     subscription_id=arguments.get("subscription_id", "I-MOCK-SUB-01"),
                     buyer_email=buyer_email,
                     node_type=arguments.get("node_type", "gateway"),
@@ -296,6 +297,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     node_endpoint=endpoint,
                     service_vertical=vertical,
                     monthly_subscription_fee=_num(arguments, "monthly_subscription_fee", 79.99),
+                    # MOCK(M-012): missing dispatch arguments default to demo values
                     paypal_subscription_id=arguments.get("paypal_subscription_id", "I-AUTONOMOUS-8902"),
                     buyer_email=email,
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),

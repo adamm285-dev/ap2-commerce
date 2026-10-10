@@ -14,6 +14,7 @@ from .paypal_service import paypal_service
 logger = logging.getLogger("paypal_vault")
 
 
+# MOCK(M-013): simulated capture in mock mode; unused
 def execute_headless_mit_capture(
     vault_id: str,
     amount_usd: str,
@@ -107,6 +108,7 @@ def execute_headless_mit_capture(
             f"[PayPal Vault] Live MIT capture failed ({e}); falling back to synthetic capture."
         )
         return {
+            # MOCK(M-013): a FAILED live capture is reported as COMPLETED (fails open)
             "capture_id": f"CAP-FALLBACK-{uuid.uuid4().hex[:12].upper()}",
             "status": "COMPLETED",
             "amount": {"currency_code": currency, "value": amount_usd},

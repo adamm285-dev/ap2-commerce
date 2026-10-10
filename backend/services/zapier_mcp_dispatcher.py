@@ -132,6 +132,7 @@ class ZapierMcpDispatcher:
                 webhook_status_code=dispatch_res.get("status_code"),
             )
 
+        # MOCK(M-011): made-up ERP, QuickBooks and calendar IDs
         # General compute task workflow fallback
         erp_id = f"AP2-{uuid.uuid4().hex[:6].upper()}"
         qbo_id = f"QBO-INV-{uuid.uuid4().hex[:6].upper()}"

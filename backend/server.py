@@ -455,6 +455,7 @@ class GenerateProofRequest(BaseModel):
     nonce: Optional[str] = None
 
 
+# MOCK(M-014): anti-tamper playground on the legacy proof format
 @app.post("/api/agent/anti-tamper/verify-tamper", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.post("/api/crypto/verify-tamper", tags=["Anti-Tamper & Cryptography"])
 async def verify_tamper_endpoint(req: VerifyTamperRequest):
@@ -486,6 +487,7 @@ async def verify_tamper_endpoint(req: VerifyTamperRequest):
     }
 
 
+# MOCK(M-014): anti-tamper playground on the legacy proof format
 @app.post("/api/agent/anti-tamper/generate-proof", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.post("/api/crypto/generate-proof", tags=["Anti-Tamper & Cryptography"])
 async def generate_proof_endpoint(req: GenerateProofRequest):
@@ -505,6 +507,7 @@ async def generate_proof_endpoint(req: GenerateProofRequest):
     return proof
 
 
+# MOCK(M-014): anti-tamper playground on the legacy proof format
 @app.get("/api/agent/anti-tamper/sample-proof", tags=["Anti-Tamper & Cryptography"], include_in_schema=False)
 @app.get("/api/crypto/sample-proof", tags=["Anti-Tamper & Cryptography"])
 async def get_sample_proof(profile: str = Query("default")):
@@ -587,6 +590,7 @@ class TrustedSurfaceSignLimitsRequest(BaseModel):
     humanConfirmed: bool = Field(..., alias="human_confirmed", description="Explicit human confirmation flag")
 
 
+# MOCK(M-006): server signs owner limits for any caller that sends human_confirmed=true
 @app.post("/api/trusted-surface/sign-limits", tags=["Trusted Surface"])
 async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequest):
     """
@@ -830,6 +834,7 @@ class DeckPurchaseRequest(BaseModel):
     paypal_subscription_id: Optional[str] = Field(default=None, alias="paypalSubscriptionId")
 
 
+# MOCK(M-007): server plays owner, agent and seller in one request
 @app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
 async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     """
@@ -1358,6 +1363,7 @@ async def create_paypal_order(request: PayPalOrderCreateRequest):
         raise HTTPException(status_code=500, detail="PayPal order creation failed.")
 
 
+# MOCK(M-004): flips APPROVAL_PENDING to ACTIVE without a real PayPal approval
 @app.post(
     "/api/paypal/simulate-approval/{subscription_id}",
     tags=["PayPal Orders"],

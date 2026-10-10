@@ -194,6 +194,7 @@ export async function executeZapierA2aWorkflow(
     console.warn('[Zapier MCP AP2] Live backend not reachable, using local simulation:', err);
   }
 
+  // MOCK(M-017): backend unreachable: back-office payloads faked in the browser
   // Graceful client-side simulation fallback
   await new Promise((resolve) => setTimeout(resolve, 600));
 

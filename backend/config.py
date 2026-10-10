@@ -144,5 +144,6 @@ def get_db_path() -> Path:
     return data_dir / "a2a_commerce.db"
 
 # Automatically force mock mode if required keys are missing
+# MOCK(M-001): mock mode switches on silently when PayPal keys are missing
 if not settings.paypal_client_id or not settings.paypal_client_secret:
     settings.mock_external_apis = True

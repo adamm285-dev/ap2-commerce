@@ -49,6 +49,7 @@ export interface A2aTransaction {
   data_source?: string;
 }
 
+// MOCK(M-018): hardcoded dashboard transactions
 export const initialA2aTransactions: A2aTransaction[] = [
   {
     id: 'TXN-AP2-9021',
@@ -410,6 +411,7 @@ export interface KycAuditRecord {
   nonce_state?: string;
 }
 
+// MOCK(M-018): hardcoded KYC audit records
 export const kycAuditData: KycAuditRecord[] = [
   {
     allocated_did: 'node-cluster-01.ap2.net',
@@ -474,6 +476,7 @@ export interface NodeClusterRecord {
   concurrency_capacity?: string;
 }
 
+// MOCK(M-018): hardcoded node-cluster data
 export const nodeClusterData: NodeClusterRecord[] = [
   {
     allocated_did: 'node-cluster-01.ap2.net',

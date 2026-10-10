@@ -53,6 +53,7 @@ def get_merchant_key() -> JWK:
         logger.info("Loaded merchant ES256 key from AP2_MERCHANT_PRIVATE_KEY_FILE.")
         return _MERCHANT_KEY
 
+    # MOCK(M-008): per-process throwaway merchant key when none is configured
     # Generate ephemeral merchant key for test / sandbox / mock mode
     kid = settings.ap2_merchant_key_id or "ap2-merchant-key-1"
     _MERCHANT_KEY = JWK.generate(kty="EC", crv="P-256", kid=kid)
@@ -98,6 +99,7 @@ def generate_ephemeral_key(kid: Optional[str] = None) -> JWK:
     return JWK.generate(kty="EC", crv="P-256", kid=key_id)
 
 
+# MOCK(M-005): owner key generated and held by the server
 def get_demo_user_key() -> JWK:
     """
     Returns the in-memory ES256 key representing the Human Trusted Surface.
@@ -109,6 +111,7 @@ def get_demo_user_key() -> JWK:
     return _DEMO_USER_KEY
 
 
+# MOCK(M-005): agent key generated and held by the server
 def get_demo_agent_key() -> JWK:
     """
     Returns the in-memory ES256 key representing the Autonomous Buyer Agent.

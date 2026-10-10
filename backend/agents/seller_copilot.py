@@ -65,6 +65,7 @@ class SellerCopilot:
 
     get_workload_telemetry = get_call_leakage_telemetry
 
+    # MOCK(M-016): keyword-matched canned replies with hardcoded fleet stats, not an AI model
     async def handle_message(self, user_message: str) -> Dict[str, Any]:
         """
         Processes a message from the operator, evaluates intent,

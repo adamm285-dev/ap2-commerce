@@ -371,6 +371,7 @@ class ExternalBuyerAgent:
             self.log(f"   Signed Payment Receipt:  {pay_rec[:24]}...")
         self.log("")
 
+        # MOCK(M-004): harness simulates the buyer's PayPal approval
         # Step 6b: If sub_status == "APPROVAL_PENDING" (live PayPal Sandbox flow), simulate buyer approval
         if sub_status == "APPROVAL_PENDING":
             self.log(f"⏳ [Step 6b: Simulating Sandbox Buyer Approval in PayPal Sandbox for {subscription_id}]")

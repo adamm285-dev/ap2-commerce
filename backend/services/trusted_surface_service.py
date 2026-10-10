@@ -89,6 +89,7 @@ def create_trusted_surface_open_mandates(
     if not norm_email or "@" not in norm_email:
         raise ValueError("A valid buyer email is required for the Trusted Surface mandate.")
 
+    # MOCK(M-005): falls back to server-held demo owner and agent keys
     # Default to demo keys if not explicitly supplied (mock/test environments)
     actual_user_key = user_key or get_demo_user_key()
     actual_agent_key = agent_key or get_demo_agent_key()

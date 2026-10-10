@@ -29,6 +29,7 @@ if not _raw_secret or not _raw_secret.strip():
     raise RuntimeError("CRITICAL SECURITY ERROR: A2A_MANDATE_SECRET environment variable is missing.")
 SECRET_KEY = _raw_secret.encode("utf-8")
 # Isolated demo secret for anti-tamper educational UI simulation (never used to authorize live spending)
+# MOCK(M-014): hardcoded secret for the anti-tamper playground
 DEMO_TAMPER_SECRET = b"demo-anti-tamper-key-ap2-hackathon-only"
 
 def _load_or_generate_key(env_var_names: list) -> Tuple[ed25519.Ed25519PrivateKey, str, str]:
@@ -67,6 +68,7 @@ DEFAULT_SELLER_KID = "ap2-seller-ed25519-v1"
 DEFAULT_BUYER_KID = "ap2-buyer-ed25519-v1"
 
 # Ephemeral key for the public anti-tamper playground; never registered or trusted for purchases
+# MOCK(M-014): throwaway key for the anti-tamper playground
 _DEMO_TAMPER_KEY = ed25519.Ed25519PrivateKey.generate()
 DEMO_TAMPER_PRIVATE_KEY_HEX = _DEMO_TAMPER_KEY.private_bytes_raw().hex()
 DEMO_TAMPER_PUBLIC_KEY_HEX = _DEMO_TAMPER_KEY.public_key().public_bytes_raw().hex()

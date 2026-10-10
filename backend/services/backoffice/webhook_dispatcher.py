@@ -64,6 +64,7 @@ def is_url_permitted(url: str) -> bool:
         ip = ipaddress.ip_address(hostname)
         # If it's an IP: check if private / reserved / loopback / link-local / multicast
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            # MOCK(M-011): mock mode allows loopback, localhost and mock-only domains
             # In test/mock mode, allow 127.0.0.1 or ::1 for local test harnesses
             if getattr(settings, "mock_external_apis", False) and ip.is_loopback:
                 return True
@@ -143,6 +144,7 @@ class BackofficeWebhookDispatcher:
             "X-AP2-Delivery-Id": delivery_id,
         }
 
+        # MOCK(M-011): no target URL means a dry run with no delivery
         # Dry run / local inspection mode when no live target URL specified
         if not target_url:
             logger.info(

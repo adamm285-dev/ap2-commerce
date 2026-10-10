@@ -1527,6 +1527,7 @@ class SellerAgent:
         clean_node_type = "batch" if "batch" in tier_id else ("cluster" if "cluster" in tier_id else "gateway")
         node_id = f"node-{clean_node_type}-{sub_hash}"
         host_prefix = "batch-01" if clean_node_type == "batch" else ("cluster-01" if clean_node_type == "cluster" else "gateway-01")
+        # MOCK(M-010): placeholder node endpoint, nothing is provisioned
         endpoint = f"mcp+https://{host_prefix}.example.com/agents/{node_id}"
 
         sub["allocated_node_id"] = node_id

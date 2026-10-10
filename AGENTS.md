@@ -14,6 +14,16 @@ These rules apply to every task in this repo. The owner has an independent revie
 8. **Don't reorder or move security checks silently.** If you change the order checks run in, say so in your report and add a test showing the old protection still holds.
 9. **No live network calls.** Run with `MOCK_EXTERNAL_APIS=true`. No PayPal sandbox or AI-provider calls unless the owner approves that specific run. Never send an API key to any host except the one that issued it.
 
+## Mocks
+
+A mock is anything that stands in for real behavior: a simulated API response, seeded or hardcoded data, a demo-only key or endpoint, an offline stub, or a fallback that fakes success.
+
+- Mark every mock in the code with `# MOCK(M-NNN): <what it fakes>` (`// MOCK(M-NNN): ...` in TypeScript), inside or directly above the code that fakes.
+- Record it in `docs/MOCKS.md` under the same ID, with `Where` (`path::symbol`), `What it fakes`, `Why` and `To make it real`. Do this in the same commit as the code.
+- When you remove a mock, remove its markers and its ledger entry together. Never delete a marker while the mock is still there.
+- `backend/tests/test_mocks_ledger.py` (also `python scripts/check_mocks.py`) fails if a marker has no entry, an entry has no marker, or a listed path or symbol doesn't exist. Don't edit that test to make it pass; fix the ledger or the code.
+- Never add a fallback that reports a failed call as a success, not even as a mock. Fail closed (rule 2).
+
 ## Before you change shared code
 
 `seller_agent.purchase_subscription` and `verify_ap2_chains` sit on every purchase path. Before you change either one:

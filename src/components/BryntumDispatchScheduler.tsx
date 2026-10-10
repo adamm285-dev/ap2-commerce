@@ -1510,6 +1510,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
   };
 
   // Simulate A2A PayPal Subscription: Calls FastAPI POST /api/agent/provision
+  // MOCK(M-019): button simulates a line activation
   const handleSimulateActivation = async () => {
     if (!schedulerRef.current) return;
     setIsCallingApi(true);
@@ -1660,6 +1661,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
   };
 
   // Atomically locks an open workload execution slot on Node-02 upon simulated buyer agent intent mandate & verified PayPal capture
+  // MOCK(M-019): button simulates inbound work and a slot lock
   const handleSimulateInboundLeadAndLock = async () => {
     if (!schedulerRef.current || isLockingSlot || isSlotLocked) return;
     setIsLockingSlot(true);

@@ -225,6 +225,7 @@ export async function evaluateAgentNegotiation(
     console.warn('[AP2 Agent] Live backend not reachable, using local mandate simulation:', err);
   }
 
+  // MOCK(M-017): backend unreachable: negotiation faked in the browser, including a satisfied mandate
   // Graceful client-side fallback
   const isBudgetAcceptable = sellerMonthlyRate <= request.maxMonthlyBudget;
   const isFallbackCounterOffer = !isBudgetAcceptable && request.maxMonthlyBudget >= 49.99;
@@ -332,6 +333,7 @@ export async function executeProvisioningAfterSubscription(
     console.warn('[AP2 Agent] Live backend not reachable, using local provisioning simulation:', err);
   }
 
+  // MOCK(M-017): backend unreachable: node provisioning faked in the browser
   // Graceful client-side fallback matching AP2 MCP node endpoints
   await new Promise((resolve) => setTimeout(resolve, 600));
   const capLower = (capability || '').toLowerCase();
@@ -416,6 +418,7 @@ export async function executeDeckAp2Purchase(
     console.warn('[AP2 Agent] Live deck-purchase not reachable, falling back to legacy provisioning:', err);
   }
 
+  // MOCK(M-017): backend unreachable: deck purchase falls back to faked provisioning
   return executeProvisioningAfterSubscription(
     options.subscriptionId,
     options.principalEntity,
@@ -469,6 +472,7 @@ export async function lockDispatchSlot(
     console.warn('[Dispatch Lock] Live API not reachable, using fallback:', err);
   }
 
+  // MOCK(M-017): backend unreachable: slot lock faked in the browser
   const defaultCluster = territoryZone && (territoryZone.includes('Cluster') || territoryZone.includes('Node'))
     ? territoryZone
     : 'Cluster Alpha - Dedicated AI Service Gateway';

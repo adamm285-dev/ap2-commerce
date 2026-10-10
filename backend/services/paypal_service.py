@@ -51,6 +51,7 @@ class PayPalService:
         Obtains an OAuth2 bearer token from PayPal Sandbox with proactive in-memory caching and refresh.
         Cached token is automatically refreshed 5 minutes before the 9-hour sandbox expiration window.
         """
+        # MOCK(M-002): synthetic OAuth token, no PayPal call
         if self.mock_mode:
             logger.info(
                 "[PayPal] Running in Mock Mode; returning synthetic bearer token."
@@ -96,6 +97,7 @@ class PayPalService:
         Synchronous counterpart to get_access_token for synchronous service paths (e.g. paypal_vault.py).
         Reuses cached token and proactively refreshes before expiration or upon forced invalidation.
         """
+        # MOCK(M-002): synthetic OAuth token, no PayPal call
         if self.mock_mode:
             return f"MOCK_BEARER_TOKEN_{uuid.uuid4().hex[:16]}"
 
@@ -210,6 +212,7 @@ class PayPalService:
             raise ValueError("subscription_id is required.")
         new_status = "CANCELLED" if action == "cancel" else "SUSPENDED"
         clean_reason = (reason or "Stopped by AP2 mandate enforcement").strip()[:128]
+        # MOCK(M-002): cancel/suspend simulated, no PayPal call
         if self.mock_mode:
             logger.info(f"[PayPal MOCK] {action} subscription {subscription_id}: {clean_reason}")
             return {"subscription_id": subscription_id, "action": action, "status": new_status, "mock_mode": True}
@@ -237,6 +240,7 @@ class PayPalService:
         custom_id: Optional[str] = None,
     ) -> PayPalOrderResponse:
         """Creates a PayPal Checkout Order (v2/checkout/orders)."""
+        # MOCK(M-002): order simulated, no PayPal call
         if self.mock_mode:
             mock_id = f"ORDER-MOCK-{uuid.uuid4().hex[:12].upper()}"
             mock_approval_url = f"https://www.sandbox.paypal.com/checkoutnow?token={mock_id}"
@@ -335,6 +339,7 @@ class PayPalService:
     async def verify_subscription(self, subscription_id: str) -> Dict[str, Any]:
         """Checks the active status of a PayPal Recurring Subscription."""
         sub_key = (subscription_id or "").strip()
+        # MOCK(M-002): subscription lookup simulated, no PayPal call
         if self.mock_mode:
             logger.info(
                 f"[PayPal MOCK] Verifying synthetic subscription {subscription_id}"
@@ -406,6 +411,7 @@ class PayPalService:
         target_plan_id = resolve_paypal_plan_id(tier_id, profile=prof)
         brand_name = "AP2 Autonomous Node Network"
 
+        # MOCK(M-002): subscription created as ACTIVE with no buyer approval, no PayPal call
         if self.mock_mode:
             seed = f"{offer_id or mandate_proof_hash}:{tier_id}:{agreed_monthly_rate:.2f}"
             stable_int = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 10000000
@@ -577,6 +583,7 @@ class PayPalService:
                 "mock_mode": False,
             }
 
+    # MOCK(M-003): computes the local HMAC that mock-mode webhooks are checked against
     @staticmethod
     def generate_mock_webhook_signature(raw_body: str) -> str:
         """Generates an authentic HMAC-SHA256 signature for test webhook transmissions."""
@@ -609,6 +616,7 @@ class PayPalService:
         trans_id = h_lower.get("paypal-transmission-id")
         trans_time = h_lower.get("paypal-transmission-time")
 
+        # MOCK(M-003): webhook accepted on a locally computed HMAC instead of PayPal verification
         if self.mock_mode:
             if not sig or not sig.strip():
                 logger.warning("[PayPal Webhook MOCK] Missing or empty transmission signature.")

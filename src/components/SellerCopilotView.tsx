@@ -985,6 +985,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     setMessages((prev) => [...prev, replyMsg]);
   };
 
+  // MOCK(M-019): button runs a simulated buyer walkthrough
   const triggerBuyerSimulatorIntro = () => {
     markStepCompleted(5);
     setCopilotMode('simulation');

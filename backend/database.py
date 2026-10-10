@@ -1255,6 +1255,7 @@ def list_dispatch_slots(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
 
 # --- Enterprise Fleet Ledger & Dynamic Telemetry ---
 
+# MOCK(M-009): seeded demo fleet (14 node subscriptions)
 AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
     {
         "id": "TXN-AP2-9021",
@@ -1513,6 +1514,7 @@ AP2_FLEET_SEEDED_SUBSCRIPTIONS = [
 FLEET_SEEDED_SUBSCRIPTIONS = AP2_FLEET_SEEDED_SUBSCRIPTIONS
 
 
+# MOCK(M-009): writes the seeded demo fleet into the database
 def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
     """
     Seeds the 14 fleet node subscriptions into SQLite if they are not already present.
@@ -1650,6 +1652,7 @@ def get_fleet_ledger(
             pass
 
     result = []
+    # MOCK(M-009): ledger rows built from the seeded demo fleet
     for item in AP2_FLEET_SEEDED_SUBSCRIPTIONS:
         is_pending_batch = item["id"] == "TXN-AP2-9021"
         if is_pending_batch and active_sub:
@@ -1744,6 +1747,7 @@ def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") ->
     }
 
 
+# MOCK(M-009): hardcoded scheduler events
 def get_fleet_schedule(db_path: Optional[Path] = None, profile: str = "ap2") -> Dict[str, Any]:
     """Returns resources and realistic timeline events for Bryntum Dispatch Scheduler in AP2 mode."""
     ledger_items = get_fleet_ledger(db_path=db_path, profile="ap2")

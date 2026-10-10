@@ -394,6 +394,7 @@ def resolve_root_public_key(
             except Exception as e:
                 raise ValueError(f"INVALID_BUYER_KEY: Failed to parse registered key '{kid}': {e}")
 
+    # MOCK(M-005): server's own demo owner key accepted as a trust root in mock mode
     # Invariant 4: Demo user key ONLY when mock_external_apis is True
     if settings.mock_external_apis:
         demo_user = get_demo_user_key()
@@ -922,6 +923,7 @@ def create_trusted_surface_open_mandates(
     Simulates a non-agentic Trusted Surface signing the Human's Open Mandates.
     Embeds the agent's public key (cnf.jwk) and the budget constraints.
     """
+    # MOCK(M-005): signs owner limits with the server-held demo owner key
     user_k = user_key or get_demo_user_key()
     agent_k = agent_key or get_demo_agent_key()
     client = MandateClient()
@@ -977,6 +979,7 @@ def create_closed_mandate_chains(
     checks it against human constraints, and signs the closed mandates
     using its private holder key (cnf).
     """
+    # MOCK(M-005): signs as the agent with the server-held demo agent key
     agent_k = agent_key or get_demo_agent_key()
     client = MandateClient()
 

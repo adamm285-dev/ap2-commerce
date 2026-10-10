@@ -172,6 +172,7 @@ class BaseModelRunner(ABC):
         pass
 
 
+# MOCK(M-015): scripted stand-in for an LLM
 class StubbedModelRunner(BaseModelRunner):
     """
     Deterministic offline ReAct runner for AP2 procurement.
@@ -476,6 +477,7 @@ class LLMBuyerAgent:
         self.step_log: List[str] = []
         self.trace_events: List[Dict[str, Any]] = []
         self.signatures_produced: int = 0
+        # MOCK(M-015): scripted runner used when no model provider is given
         self.model_runner = model_runner or StubbedModelRunner()
         self.held_offers: Dict[str, Dict[str, Any]] = {}
 
@@ -1071,6 +1073,7 @@ class LLMBuyerAgent:
 # ── Demo Owner Helper (Mock Mode Only) ───────────────────────────────────
 
 
+# MOCK(M-005): CLI plays the owner using the demo owner key
 def mint_demo_owner_limits_to_file(
     filepath: str,
     budget: float,

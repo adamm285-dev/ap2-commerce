@@ -1,8 +1,30 @@
 """
 Helper utilities for creating valid AP2 v0.2 mandate chains in unit and regression tests.
 """
+import os
+import tempfile
+import atexit
 import uuid
 from typing import Dict, Any, Optional, List
+
+# Ensure isolated temp DB in test utils when run outside pytest to protect development DB
+if not os.environ.get("A2A_DB_PATH"):
+    _temp_test_utils_db = os.path.join(tempfile.gettempdir(), f"a2a_test_utils_{os.getpid()}_{uuid.uuid4().hex[:8]}.db")
+    os.environ["A2A_DB_PATH"] = _temp_test_utils_db
+
+    def _cleanup_test_utils_temp_db():
+        for ext in ["", "-wal", "-shm", "-journal"]:
+            f = _temp_test_utils_db + ext
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except OSError:
+                pass
+
+    atexit.register(_cleanup_test_utils_temp_db)
+    from backend.database import init_db
+    init_db()
+
 from jwcrypto.jwk import JWK
 from ap2.sdk.mandate import MandateClient
 from ap2.sdk.generated.checkout_mandate import CheckoutMandate

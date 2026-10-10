@@ -159,7 +159,7 @@ async def test_provision_compute_node_mcp_endpoint():
 async def test_provision_foreign_subscriber_rejected():
     """Verify that provision_compute_node rejects non-US subscriber accounts."""
     sub_id = "I-TEST-FOREIGN-SUB-01"
-    contractor_email = "foreign.agent@example.co.uk"
+    contractor_email = "foreign.agent@example.com"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
         "status": "ACTIVE",

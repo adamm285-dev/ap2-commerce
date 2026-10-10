@@ -120,18 +120,24 @@ ALLOWED_BUYER_TOOLS = {
 
 SIGN_AND_PURCHASE_TOOL = {
     "name": "sign_and_purchase",
-    "description": "Cryptographically signs closed Checkout and Payment mandates using the Agent P-256 key within human limits, and executes subscription purchase.",
+    "description": "Cryptographically signs closed Checkout and Payment mandates using the Agent P-256 key within human limits, and executes subscription purchase using the offer_id issued by the seller.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "tier_id": {"type": "string", "description": "The approved or counter-offered compute tier ID (e.g. ap2-gateway, ap2-batch)"},
-            "monthly_price": {"type": "number", "description": "Agreed monthly subscription price in USD"},
-            "checkout_jwt": {"type": "string", "description": "Merchant-signed checkout JWT"},
-            "checkout_hash": {"type": "string", "description": "SHA-256 checkout hash"},
-            "nonce": {"type": "string", "description": "Cryptographic order nonce from merchant"},
-            "offer_id": {"type": "string", "description": "Negotiated offer identifier"},
+            "offer_id": {
+                "type": "string",
+                "description": "Negotiated offer identifier previously issued by the seller during negotiation",
+            },
+            "tier_id": {
+                "type": "string",
+                "description": "Optional compute tier ID for pre-signing verification (e.g. ap2-gateway, ap2-batch)",
+            },
+            "monthly_price": {
+                "type": "number",
+                "description": "Optional agreed monthly subscription price in USD for pre-signing verification",
+            },
         },
-        "required": ["tier_id", "monthly_price", "checkout_jwt", "checkout_hash", "nonce"],
+        "required": ["offer_id"],
     },
 }
 
@@ -237,12 +243,9 @@ class StubbedModelRunner(BaseModelRunner):
                             "tool_name": "sign_and_purchase",
                             "tool_call_id": f"call_sign_{uuid.uuid4().hex[:8]}",
                             "parameters": {
+                                "offer_id": tool_result.get("offer_id"),
                                 "tier_id": c_tier,
                                 "monthly_price": c_amount,
-                                "checkout_jwt": tool_result.get("checkout_jwt") or tool_result.get("counter_offer_checkout_jwt"),
-                                "checkout_hash": tool_result.get("checkout_hash") or tool_result.get("counter_offer_checkout_hash"),
-                                "nonce": tool_result.get("nonce"),
-                                "offer_id": tool_result.get("offer_id"),
                             },
                         }
                     else:
@@ -261,12 +264,9 @@ class StubbedModelRunner(BaseModelRunner):
                         "tool_name": "sign_and_purchase",
                         "tool_call_id": f"call_sign_{uuid.uuid4().hex[:8]}",
                         "parameters": {
+                            "offer_id": tool_result.get("offer_id"),
                             "tier_id": tier_id,
                             "monthly_price": price,
-                            "checkout_jwt": tool_result.get("checkout_jwt"),
-                            "checkout_hash": tool_result.get("checkout_hash"),
-                            "nonce": tool_result.get("nonce"),
-                            "offer_id": tool_result.get("offer_id"),
                         },
                     }
                 else:
@@ -319,30 +319,40 @@ class StubbedModelRunner(BaseModelRunner):
 
 class OpenAICompatibleRunner(BaseModelRunner):
     """
-    Runner for OpenAI-compatible endpoints.
-    Requires explicit --model and --base-url. No default provider or model is assumed.
+    Runner for OpenAI-compatible endpoints (including xAI Grok).
+    Requires explicit --model. Sets provider presets when --provider is used.
     """
 
     def __init__(
         self,
         model: str,
-        base_url: str,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         api_key_env: Optional[str] = None,
+        provider: Optional[str] = None,
     ):
-        if not model or not base_url:
-            raise ValueError("OpenAICompatibleRunner requires explicit 'model' and 'base_url'.")
+        if provider == "xai":
+            base_url = base_url or "https://api.x.ai/v1"
+            api_key_env = api_key_env or "XAI_API_KEY"
+        elif provider == "openai":
+            base_url = base_url or "https://api.openai.com/v1"
+            api_key_env = api_key_env or "OPENAI_API_KEY"
+
+        if not model:
+            raise ValueError("OpenAICompatibleRunner requires explicit 'model'.")
+        if not base_url:
+            raise ValueError("OpenAICompatibleRunner requires explicit 'base_url' or recognized 'provider'.")
         self.model = model
+        self.provider = provider
         self.base_url = base_url.rstrip("/")
         if api_key:
             self.api_key = api_key
-        elif api_key_env:
-            env_val = os.environ.get(api_key_env)
-            if not env_val:
-                raise ValueError(f"Environment variable '{api_key_env}' is not set or empty.")
-            self.api_key = env_val
+        elif api_key_env and os.environ.get(api_key_env):
+            self.api_key = os.environ.get(api_key_env)
         elif settings.mock_external_apis:
             self.api_key = "mock-key"
+        elif api_key_env:
+            raise ValueError(f"Environment variable '{api_key_env}' is not set or empty.")
         else:
             raise ValueError("Explicit 'api_key' or 'api_key_env' is required when mock_external_apis is False.")
 
@@ -459,6 +469,7 @@ class LLMBuyerAgent:
         self.trace_events: List[Dict[str, Any]] = []
         self.signatures_produced: int = 0
         self.model_runner = model_runner or StubbedModelRunner()
+        self.held_offers: Dict[str, Dict[str, Any]] = {}
 
     def _log_step(self, step_name: str, message: str, payload: Optional[Dict[str, Any]] = None):
         """Records a human-readable progress step and trace event."""
@@ -591,8 +602,12 @@ class LLMBuyerAgent:
         Executes the autonomous AI procurement loop.
         Requires open mandates as input. The agent cannot mint its own open mandates.
         """
+        model_name = getattr(self.model_runner, "model", None)
+        model_label = model_name if model_name else "Scripted demo runner (no AI model)"
+
         print(f"\n=======================================================")
         print(f"🤖 [AP2 AI BUYER AGENT: {self.agent_id}]")
+        print(f"   Model:               {model_label}")
         print(f"   Model Runner:        {self.model_runner.__class__.__name__}")
         print(f"   Owner Prompt:        \"{owner_request}\"")
         print(f"   Monthly Budget Cap:  ${self.monthly_budget_cap:.2f}/mo")
@@ -606,8 +621,8 @@ class LLMBuyerAgent:
         # Step 1: Requested
         self._log_step(
             "STEP 1: REQUESTED",
-            f"Ingested owner prompt: \"{owner_request}\" (Target: {target_tier}, Budget Cap: ${self.monthly_budget_cap:.2f}/mo)",
-            {"target_tier": target_tier, "budget_cap": self.monthly_budget_cap},
+            f"Ingested owner prompt: \"{owner_request}\" [Model: {model_label}] (Target: {target_tier}, Budget Cap: ${self.monthly_budget_cap:.2f}/mo)",
+            {"target_tier": target_tier, "budget_cap": self.monthly_budget_cap, "model": model_label},
         )
 
         # Invariant 4a: Open mandates MUST be provided as input
@@ -700,12 +715,76 @@ class LLMBuyerAgent:
                 })
 
                 if tname == "sign_and_purchase":
-                    purch_tier = tparams.get("tier_id")
-                    monthly_price = float(tparams.get("monthly_price", 49.99))
+                    offer_id = tparams.get("offer_id")
+                    held_offer = self.held_offers.get(offer_id) if offer_id else None
+
+                    if not held_offer:
+                        reason = f"UNAUTHORIZED_OFFER_ID: offer_id '{offer_id}' was not issued by the seller."
+                        self._log_step("POLICY_VIOLATION", f"Pre-signature constraint verification failed: {reason}")
+                        active = False
+                        result_payload = {
+                            "status": "REJECTED",
+                            "error": "PRE_SIGNATURE_CONSTRAINT_VIOLATION",
+                            "reason": reason,
+                            "signatures_produced": self.signatures_produced,
+                            "step_log": list(self.step_log),
+                        }
+                        messages.append({
+                            "role": "tool",
+                            "tool_name": "sign_and_purchase",
+                            "tool_call_id": tool_call_id,
+                            "result": {"status": "REJECTED", "error": reason},
+                        })
+                        continue
+
+                    # Pre-signing validation: if model explicitly passed tier or price, verify match with seller offer
+                    req_tier = tparams.get("tier_id")
+                    if req_tier and req_tier.strip().lower() != (held_offer["tier_id"] or "").strip().lower():
+                        reason = f"TIER_MISMATCH: Model requested tier '{req_tier}' does not match seller offer tier '{held_offer['tier_id']}'."
+                        self._log_step("POLICY_VIOLATION", f"Pre-signature constraint verification failed: {reason}")
+                        active = False
+                        result_payload = {
+                            "status": "REJECTED",
+                            "error": "PRE_SIGNATURE_CONSTRAINT_VIOLATION",
+                            "reason": reason,
+                            "signatures_produced": self.signatures_produced,
+                            "step_log": list(self.step_log),
+                        }
+                        messages.append({
+                            "role": "tool",
+                            "tool_name": "sign_and_purchase",
+                            "tool_call_id": tool_call_id,
+                            "result": {"status": "REJECTED", "error": reason},
+                        })
+                        continue
+
+                    req_price = tparams.get("monthly_price")
+                    if req_price is not None and abs(float(req_price) - held_offer["monthly_price"]) > 0.001:
+                        reason = f"PRICE_MISMATCH: Model requested price ${float(req_price):.2f} does not match seller offer price ${held_offer['monthly_price']:.2f}."
+                        self._log_step("POLICY_VIOLATION", f"Pre-signature constraint verification failed: {reason}")
+                        active = False
+                        result_payload = {
+                            "status": "REJECTED",
+                            "error": "PRE_SIGNATURE_CONSTRAINT_VIOLATION",
+                            "reason": reason,
+                            "signatures_produced": self.signatures_produced,
+                            "step_log": list(self.step_log),
+                        }
+                        messages.append({
+                            "role": "tool",
+                            "tool_name": "sign_and_purchase",
+                            "tool_call_id": tool_call_id,
+                            "result": {"status": "REJECTED", "error": reason},
+                        })
+                        continue
+
+                    # The agent fills in tokens and terms from the held seller response
+                    purch_tier = held_offer["tier_id"]
+                    monthly_price = float(held_offer["monthly_price"])
                     price_cents = dollars_to_minor_units(monthly_price)
-                    chk_jwt = tparams.get("checkout_jwt")
-                    chk_hash = tparams.get("checkout_hash")
-                    nonce = tparams.get("nonce")
+                    chk_jwt = held_offer["checkout_jwt"]
+                    chk_hash = held_offer["checkout_hash"]
+                    nonce = held_offer["nonce"]
 
                     # Deterministic Pre-Signature Guard
                     valid, reason = self._verify_pre_signature_constraints(
@@ -844,6 +923,29 @@ class LLMBuyerAgent:
 
                 elif tname == "negotiate_tier_terms":
                     status = tool_res.get("status")
+                    offer_id = tool_res.get("offer_id")
+                    if offer_id:
+                        if status == "COUNTER_OFFER":
+                            c_tier_offer = tool_res.get("counter_offer_tier_id", "ap2-batch")
+                            c_amount_offer = float(tool_res.get("counter_offer_amount", 49.99))
+                            c_jwt_offer = tool_res.get("counter_offer_checkout_jwt") or tool_res.get("checkout_jwt")
+                            c_hash_offer = tool_res.get("counter_offer_checkout_hash") or tool_res.get("checkout_hash")
+                        else:
+                            c_tier_offer = tool_res.get("tier_id")
+                            c_amount_offer = float(tool_res.get("agreed_monthly_rate", 0.0))
+                            c_jwt_offer = tool_res.get("checkout_jwt")
+                            c_hash_offer = tool_res.get("checkout_hash")
+
+                        self.held_offers[offer_id] = {
+                            "offer_id": offer_id,
+                            "tier_id": c_tier_offer,
+                            "monthly_price": c_amount_offer,
+                            "checkout_jwt": c_jwt_offer,
+                            "checkout_hash": c_hash_offer,
+                            "nonce": tool_res.get("nonce"),
+                            "status": status,
+                        }
+
                     if status == "COUNTER_OFFER":
                         c_amount = float(tool_res.get("counter_offer_amount", 49.99))
                         c_tier = tool_res.get("counter_offer_tier_id", "ap2-batch")
@@ -941,6 +1043,7 @@ class LLMBuyerAgent:
         print(" -> ".join(e.split("]")[0].strip("[") for e in self.step_log if "STEP" in e))
         print("-------------------------------------------------------\n")
 
+        result_payload["model"] = model_label
         return result_payload
 
 
@@ -984,7 +1087,8 @@ async def _main():
     parser.add_argument("--email", type=str, default="agent-alpha@example.com", help="Buyer PayPal email")
     parser.add_argument("--mandates-file", type=str, default="owner_limits.json", help="Path to file containing human-authorized open mandates")
     parser.add_argument("--mint-owner-limits", action="store_true", help="Demo owner command: write open mandates to file (mock mode only)")
-    parser.add_argument("--model", type=str, default=None, help="Explicit model identifier for OpenAICompatibleRunner")
+    parser.add_argument("--provider", type=str, choices=["openai", "xai"], default=None, help="LLM provider preset ('openai' or 'xai')")
+    parser.add_argument("--model", type=str, default=None, help="Explicit model identifier for OpenAICompatibleRunner (required when --provider is set)")
     parser.add_argument("--base-url", type=str, default=None, help="Explicit base URL for OpenAICompatibleRunner")
     parser.add_argument("--api-key-env", type=str, default=None, help="Name of environment variable containing API key for OpenAICompatibleRunner")
     args = parser.parse_args()
@@ -1010,12 +1114,28 @@ async def _main():
     chk_open = mandates_data.get("open_checkout_mandate_token")
     pay_open = mandates_data.get("open_payment_mandate_token")
 
+    if args.provider and not args.model:
+        parser.error("--model must be explicitly specified when --provider is used.")
+
+    base_url = args.base_url
+    api_key_env = args.api_key_env
+
+    if args.provider == "xai":
+        base_url = base_url or "https://api.x.ai/v1"
+        api_key_env = api_key_env or "XAI_API_KEY"
+    elif args.provider == "openai":
+        base_url = base_url or "https://api.openai.com/v1"
+        api_key_env = api_key_env or "OPENAI_API_KEY"
+
     runner = None
-    if args.model and args.base_url:
+    if args.model:
+        if not base_url:
+            parser.error("Explicit --base-url or --provider is required when --model is specified.")
         runner = OpenAICompatibleRunner(
             model=args.model,
-            base_url=args.base_url,
-            api_key_env=args.api_key_env,
+            base_url=base_url,
+            api_key_env=api_key_env,
+            provider=args.provider,
         )
 
     agent = LLMBuyerAgent(

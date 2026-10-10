@@ -183,11 +183,9 @@ class HostileModelRunner(BaseModelRunner):
             "tool_name": "sign_and_purchase",
             "tool_call_id": "call_hostile_bypass_01",
             "parameters": {
+                "offer_id": "off_fake_unissued_cluster",
                 "tier_id": "ap2-cluster",
                 "monthly_price": 179.99,
-                "checkout_jwt": "fake.jwt.token",
-                "checkout_hash": "fakehash",
-                "nonce": "fakenonce",
             },
         }
 
@@ -235,7 +233,7 @@ async def test_openai_compatible_runner_local_http_mock(monkeypatch):
     """
     Verifies OpenAICompatibleRunner against a local HTTP mock:
     Formats standard OpenAI messages, validates tool calling schemas including
-    sign_and_purchase, parses choices, and completes through STEP 6: PURCHASED.
+    sign_and_purchase passing only offer_id, parses choices, and completes through STEP 6: PURCHASED.
     """
     ts_mandates = create_trusted_surface_open_mandates(
         buyer_email="oai-mock@example.com",
@@ -283,11 +281,6 @@ async def test_openai_compatible_runner_local_http_mock(monkeypatch):
                 "function": {
                     "name": "sign_and_purchase",
                     "arguments": json.dumps({
-                        "tier_id": "ap2-gateway",
-                        "monthly_price": 79.99,
-                        "checkout_jwt": last_content.get("checkout_jwt"),
-                        "checkout_hash": last_content.get("checkout_hash"),
-                        "nonce": last_content.get("nonce"),
                         "offer_id": last_content.get("offer_id"),
                     }),
                 },
@@ -338,6 +331,94 @@ async def test_openai_compatible_runner_local_http_mock(monkeypatch):
     assert any("STEP 5: SIGNED" in s for s in res["step_log"])
     assert any("STEP 6: PURCHASED" in s for s in res["step_log"])
     assert agent.signatures_produced == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_runner_unknown_offer_id_produces_zero_signatures(monkeypatch):
+    """
+    Verifies that when OpenAICompatibleRunner presents an unknown or unissued
+    offer_id, sign_and_purchase is rejected and produces 0 signatures.
+    """
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email="oai-unknown@example.com",
+        monthly_budget_cap=100.00,
+        allowed_tiers=["ap2-gateway", "ap2-batch"],
+    )
+
+    turn = 0
+
+    async def mock_post(self_client, url, *args, **kwargs):
+        nonlocal turn
+        turn += 1
+        payload = kwargs.get("json", {})
+        msgs = payload.get("messages", [])
+
+        req = httpx.Request("POST", url)
+        if turn == 1:
+            tc = {
+                "id": "call_inspect_01",
+                "type": "function",
+                "function": {"name": "inspect_subscription_tiers", "arguments": "{}"},
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        elif turn == 2:
+            tc = {
+                "id": "call_negotiate_01",
+                "type": "function",
+                "function": {
+                    "name": "negotiate_tier_terms",
+                    "arguments": json.dumps({
+                        "tier_id": "ap2-gateway",
+                        "monthly_budget_cap": 100.0,
+                        "buyer_agent_id": "test-oai-agent-unknown",
+                        "buyer_email": "oai-unknown@example.com",
+                    }),
+                },
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        elif turn == 3:
+            tc = {
+                "id": "call_sign_fake_01",
+                "type": "function",
+                "function": {
+                    "name": "sign_and_purchase",
+                    "arguments": json.dumps({
+                        "offer_id": "off_unknown_fake_9999",
+                    }),
+                },
+            }
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
+        else:
+            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "Done"}}]}, request=req)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    runner = OpenAICompatibleRunner(
+        model="mock-gpt-4o",
+        base_url="https://mock-llm.local/v1",
+        api_key="mock-api-key",
+    )
+
+    agent = LLMBuyerAgent(
+        agent_id="test-oai-agent-unknown",
+        monthly_budget_cap=100.00,
+        buyer_email="oai-unknown@example.com",
+        model_runner=runner,
+    )
+
+    res = await agent.run_autonomous_procurement(
+        owner_request="Procure Dedicated AI Service Gateway within $100/mo",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
+    )
+
+    assert res["status"] == "REJECTED"
+    assert res["error"] == "PRE_SIGNATURE_CONSTRAINT_VIOLATION"
+    assert "UNAUTHORIZED_OFFER_ID" in res["reason"]
+    assert agent.signatures_produced == 0
+    assert not any("STEP 5: SIGNED" in s for s in res["step_log"])
+    assert not any("STEP 6: PURCHASED" in s for s in res["step_log"])
 
 
 @pytest.mark.asyncio
@@ -407,11 +488,9 @@ async def test_llm_buyer_agent_tampered_checkout_jwt_produces_zero_signatures():
                 "tool_name": "sign_and_purchase",
                 "tool_call_id": "call_forged_sign_01",
                 "parameters": {
+                    "offer_id": "off_tampered_seller_offer",
                     "tier_id": "ap2-batch",
                     "monthly_price": 49.99,
-                    "checkout_jwt": forged_jwt,
-                    "checkout_hash": rec["checkout_hash"],
-                    "nonce": rec["nonce"],
                 },
             }
 
@@ -421,6 +500,17 @@ async def test_llm_buyer_agent_tampered_checkout_jwt_produces_zero_signatures():
         buyer_email=email,
         model_runner=ForgedCheckoutRunner(),
     )
+
+    # Simulate seller issuing an offer with forged checkout JWT
+    agent.held_offers["off_tampered_seller_offer"] = {
+        "offer_id": "off_tampered_seller_offer",
+        "tier_id": "ap2-batch",
+        "monthly_price": 49.99,
+        "checkout_jwt": forged_jwt,
+        "checkout_hash": rec["checkout_hash"],
+        "nonce": rec["nonce"],
+        "status": "APPROVED",
+    }
 
     res = await agent.run_autonomous_procurement(
         owner_request="Procure batch compute node under $60",
@@ -475,3 +565,33 @@ def test_openai_compatible_runner_api_key_env(monkeypatch):
             base_url="https://api.custom-ai.org/v1",
             api_key_env="NONEXISTENT_KEY_VAR",
         )
+
+
+def test_openai_compatible_runner_provider_xai_presets():
+    """
+    Verifies that --provider xai configures base URL https://api.x.ai/v1 and
+    API-key env XAI_API_KEY while requiring explicit model.
+    """
+    runner = OpenAICompatibleRunner(
+        model="grok-4.20-non-reasoning",
+        provider="xai",
+    )
+    assert runner.base_url == "https://api.x.ai/v1"
+    assert runner.model == "grok-4.20-non-reasoning"
+    assert runner.provider == "xai"
+
+
+def test_llm_buyer_agent_model_banner_and_step_log_labels():
+    """
+    Verifies that model name is displayed in banner and step log,
+    and runs without a configured model are labeled 'Scripted demo runner (no AI model)'.
+    """
+    agent_no_model = LLMBuyerAgent()
+    assert getattr(agent_no_model.model_runner, "model", None) is None
+
+    runner = OpenAICompatibleRunner(
+        model="grok-4.20-non-reasoning",
+        provider="xai",
+    )
+    agent_with_model = LLMBuyerAgent(model_runner=runner)
+    assert getattr(agent_with_model.model_runner, "model", None) == "grok-4.20-non-reasoning"

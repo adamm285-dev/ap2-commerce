@@ -595,3 +595,53 @@ def test_llm_buyer_agent_model_banner_and_step_log_labels():
     )
     agent_with_model = LLMBuyerAgent(model_runner=runner)
     assert getattr(agent_with_model.model_runner, "model", None) == "grok-4.20-non-reasoning"
+
+
+def test_openai_compatible_runner_provider_gemini_presets():
+    """
+    Verifies that --provider gemini configures base URL https://generativelanguage.googleapis.com/v1beta/openai
+    and API-key env GEMINI_API_KEY while requiring explicit model.
+    """
+    runner = OpenAICompatibleRunner(
+        model="gemini-3.8-flash",
+        provider="gemini",
+    )
+    assert runner.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert runner.model == "gemini-3.8-flash"
+    assert runner.provider == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_llm_buyer_agent_finish_without_purchase_reports_no_purchase():
+    """
+    Verifies that if a model runner finishes without making a purchase,
+    the agent reports status 'NO_PURCHASE' with the model's reason.
+    """
+    from backend.agents.llm_buyer_agent import BaseModelRunner
+
+    class EarlyExitRunner(BaseModelRunner):
+        async def decide_next_action(self, system_prompt, messages, tools):
+            return {
+                "thought": "I inspected the market and decided not to purchase anything.",
+                "action": "finish",
+                "content": "Owner decided to cancel procurement due to budget constraints.",
+            }
+
+    email = "agent-alpha@example.com"
+    ts_mandates = create_trusted_surface_open_mandates(buyer_email=email, monthly_budget_cap=60.00)
+    agent = LLMBuyerAgent(
+        agent_id="test-no-purchase-agent",
+        monthly_budget_cap=60.00,
+        buyer_email=email,
+        model_runner=EarlyExitRunner(),
+    )
+    res = await agent.run_autonomous_procurement(
+        owner_request="Procure compute under $60/month",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
+    )
+    assert res["status"] == "NO_PURCHASE"
+    assert res["reason"] == "Owner decided to cancel procurement due to budget constraints."
+    assert agent.signatures_produced == 0
+

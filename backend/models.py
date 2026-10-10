@@ -163,7 +163,7 @@ class DispatchLockResponse(BaseModel):
 
     success: bool
     slot_locked_until: str = Field(alias="slotLockedUntil")
-    crew_assigned: str = Field(alias="crewAssigned")
+    node_assigned: str = Field(alias="nodeAssigned")
     territory_zone: str = Field(alias="territoryZone")
 
 

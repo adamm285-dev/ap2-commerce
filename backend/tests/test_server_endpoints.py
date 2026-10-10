@@ -571,7 +571,7 @@ def test_lock_dispatch_slot():
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert "Cluster Beta" in data["crewAssigned"]
+    assert "Cluster Beta" in data["nodeAssigned"]
 
 
 def test_trigger_zapier_mcp_sync():

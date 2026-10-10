@@ -1036,6 +1036,46 @@
         }
       }
     },
+    "/api/agent/deck-purchase": {
+      "post": {
+        "tags": [
+          "Agent Purchase"
+        ],
+        "summary": "Deck Purchase Endpoint",
+        "description": "Executes an AP2 v0.2 purchase and provisioning flow for the UI deck simulator.\nUses owner-signed limits (mock Trusted Surface) and closes mandates via the\nbuyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.\nOnly available when MOCK_EXTERNAL_APIS=true (AGENTS.md rule 5).",
+        "operationId": "deck_purchase_endpoint_api_agent_deck_purchase_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeckPurchaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent/dispatch/lock-slot": {
       "post": {
         "tags": [
@@ -1874,7 +1914,7 @@
               }
             ],
             "title": "Area Code",
-            "default": "863"
+            "default": "703"
           },
           "budget_cap": {
             "anyOf": [
@@ -1906,6 +1946,132 @@
           "message"
         ],
         "title": "CopilotChatRequest"
+      },
+      "DeckPurchaseRequest": {
+        "properties": {
+          "tierId": {
+            "type": "string",
+            "title": "Tierid"
+          },
+          "agreedMonthlyRate": {
+            "type": "number",
+            "title": "Agreedmonthlyrate"
+          },
+          "buyerEmail": {
+            "type": "string",
+            "title": "Buyeremail",
+            "default": "agent-alpha@example.com"
+          },
+          "contractorName": {
+            "type": "string",
+            "title": "Contractorname",
+            "default": "AutonomousBuyerAgent-Alpha-Batch"
+          },
+          "businessEntity": {
+            "type": "string",
+            "title": "Businessentity",
+            "default": "Acme Autonomous Systems LLC"
+          },
+          "monthlyBudgetCap": {
+            "type": "number",
+            "title": "Monthlybudgetcap",
+            "default": 100.0
+          },
+          "checkoutJwt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkoutjwt"
+          },
+          "checkoutHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkouthash"
+          },
+          "nonce": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonce"
+          },
+          "offerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offerid"
+          },
+          "openCheckoutMandateToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opencheckoutmandatetoken"
+          },
+          "openPaymentMandateToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openpaymentmandatetoken"
+          },
+          "paypalSubscriptionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paypalsubscriptionid"
+          },
+          "areaCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Areacode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tierId",
+          "agreedMonthlyRate"
+        ],
+        "title": "DeckPurchaseRequest"
       },
       "DispatchLockRequest": {
         "properties": {
@@ -1965,9 +2131,9 @@
             "type": "string",
             "title": "Slotlockeduntil"
           },
-          "crewAssigned": {
+          "nodeAssigned": {
             "type": "string",
-            "title": "Crewassigned"
+            "title": "Nodeassigned"
           },
           "territoryZone": {
             "type": "string",
@@ -1978,7 +2144,7 @@
         "required": [
           "success",
           "slotLockedUntil",
-          "crewAssigned",
+          "nodeAssigned",
           "territoryZone"
         ],
         "title": "DispatchLockResponse"
@@ -2148,7 +2314,7 @@
           "areaCode": {
             "type": "string",
             "title": "Areacode",
-            "default": "863"
+            "default": "703"
           },
           "simulateExhaustion": {
             "anyOf": [
@@ -2467,7 +2633,7 @@
               }
             ],
             "title": "Area Code",
-            "default": "863"
+            "default": "703"
           },
           "simulate_exhaustion": {
             "anyOf": [
@@ -2755,6 +2921,17 @@
           "description": {
             "type": "string",
             "title": "Description"
+          },
+          "workloadTasksPerMonth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workloadtaskspermonth"
           }
         },
         "type": "object",

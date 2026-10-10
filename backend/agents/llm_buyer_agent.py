@@ -1037,14 +1037,26 @@ class LLMBuyerAgent:
             elif action == "finish":
                 active = False
                 last_tool_res = messages[-1].get("result", {}) if messages and messages[-1].get("role") == "tool" else {}
-                result_payload = {
-                    "status": "COMPLETED",
-                    "summary": decision.get("content", "Procurement cycle finished successfully."),
-                    "signatures_produced": self.signatures_produced,
-                    "step_log": list(self.step_log),
-                    "trace_events": list(self.trace_events),
-                    "last_result": last_tool_res,
-                }
+                has_purchase = any("STEP 6: PURCHASED" in s for s in self.step_log)
+                if has_purchase:
+                    result_payload = {
+                        "status": "COMPLETED",
+                        "summary": decision.get("content", "Procurement cycle finished successfully."),
+                        "signatures_produced": self.signatures_produced,
+                        "step_log": list(self.step_log),
+                        "trace_events": list(self.trace_events),
+                        "last_result": last_tool_res,
+                    }
+                else:
+                    reason = decision.get("content") or decision.get("thought") or "Model concluded procurement cycle without making a purchase."
+                    result_payload = {
+                        "status": "NO_PURCHASE",
+                        "reason": reason,
+                        "signatures_produced": self.signatures_produced,
+                        "step_log": list(self.step_log),
+                        "trace_events": list(self.trace_events),
+                        "last_result": last_tool_res,
+                    }
 
         # Print final step-by-step pipeline summary
         print("\n-------------------------------------------------------")

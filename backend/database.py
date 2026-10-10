@@ -182,13 +182,19 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 caller_name TEXT,
                 project_scope TEXT,
                 deposit_payment_id TEXT,
-                crew_assigned TEXT NOT NULL,
+                node_assigned TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
             """)
 
-            # Seed default buyer keys if table is empty
             cur = conn.cursor()
+            # Safe schema migration: rename crew_assigned to node_assigned if legacy column exists
+            cur.execute("PRAGMA table_info(dispatch_slots)")
+            slot_cols = [row["name"] for row in cur.fetchall()]
+            if "crew_assigned" in slot_cols and "node_assigned" not in slot_cols:
+                cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN crew_assigned TO node_assigned")
+
+            # Seed default buyer keys if table is empty
             cur.execute("SELECT COUNT(*) as count FROM buyer_keys")
             count = cur.fetchone()["count"]
             if count == 0:
@@ -1042,7 +1048,7 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
                 INSERT OR REPLACE INTO dispatch_slots (
                     slot_id, lead_id, contractor_id, territory_zone, slot_start_iso,
                     slot_end_iso, caller_name, project_scope, deposit_payment_id,
-                    crew_assigned, created_at
+                    node_assigned, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -1055,7 +1061,7 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
                     slot_data.get("caller_name", "Nexus Autonomous Buyer"),
                     slot_data.get("project_scope", "Dedicated AI Service Gateway Compute Node Provisioning"),
                     slot_data.get("deposit_payment_id", slot_data.get("paypal_transaction_id", "PAY-DEP-9921")),
-                    slot_data.get("crew_assigned", "Cluster Node 01"),
+                    slot_data.get("node_assigned") or slot_data.get("crew_assigned", "Cluster Node 01"),
                     now_iso,
                 ),
             )

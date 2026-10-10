@@ -430,7 +430,7 @@ export async function executeDeckAp2Purchase(
 export interface DispatchLockResult {
   success: boolean;
   slotLockedUntil: string;
-  crewAssigned: string;
+  nodeAssigned: string;
   territoryZone: string;
   paypalTransactionId: string;
   isLiveBackend?: boolean;
@@ -463,7 +463,7 @@ export async function lockDispatchSlot(
       return {
         success: data.success,
         slotLockedUntil: data.slotLockedUntil,
-        crewAssigned: data.crewAssigned,
+        nodeAssigned: data.nodeAssigned,
         territoryZone: data.territoryZone,
         paypalTransactionId,
         isLiveBackend: true,
@@ -480,7 +480,7 @@ export async function lockDispatchSlot(
   return {
     success: true,
     slotLockedUntil: slotStartIso,
-    crewAssigned: defaultCluster,
+    nodeAssigned: defaultCluster,
     territoryZone,
     paypalTransactionId,
     isLiveBackend: false,

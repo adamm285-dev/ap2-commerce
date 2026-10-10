@@ -130,7 +130,7 @@ def test_complete_autonomous_a2a_lifecycle():
     assert res_lock.status_code == 200
     lock_data = res_lock.json()
     assert lock_data["success"] is True
-    assert "Cluster" in lock_data["crewAssigned"]
+    assert "Cluster" in lock_data["nodeAssigned"]
 
     # Step 9: Downstream Lead Sync via Zapier MCP
     zapier_lead_payload = {

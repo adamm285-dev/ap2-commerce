@@ -1022,10 +1022,10 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         or (request.lead_id or "").lower().startswith("lead_ap2_")
     )
     if is_ap2_workload:
-        assigned_crew = request.territory_zone if ("cluster" in tz_lower or "node" in tz_lower or "gateway" in tz_lower or "batch" in tz_lower) else "Cluster Alpha - Dedicated AI Service Gateway"
+        assigned_node = request.territory_zone if ("cluster" in tz_lower or "node" in tz_lower or "gateway" in tz_lower or "batch" in tz_lower) else "Cluster Alpha - Dedicated AI Service Gateway"
         contractor_id = "buyer_agent_alpha_01"
     else:
-        assigned_crew = zone_cluster_map.get(
+        assigned_node = zone_cluster_map.get(
             request.territory_zone, "Cluster Beta - Dedicated AI Service Gateway"
         )
         contractor_id = "buyer_agent_alpha_01"
@@ -1036,13 +1036,13 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         "territory_zone": request.territory_zone,
         "slot_start_iso": request.slot_start_iso,
         "paypal_transaction_id": request.paypal_transaction_id,
-        "crew_assigned": assigned_crew,
+        "node_assigned": assigned_node,
     })
 
     return DispatchLockResponse(
         success=True,
         slotLockedUntil=request.slot_start_iso,
-        crewAssigned=assigned_crew,
+        nodeAssigned=assigned_node,
         territoryZone=request.territory_zone,
     )
 

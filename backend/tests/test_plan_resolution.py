@@ -50,18 +50,18 @@ FORBIDDEN_LEGACY_WORDS_RE = re.compile(
 def test_every_tier_and_alias_resolves_to_settings_plan_id(monkeypatch):
     """
     Every AP2 tier_id and alias resolves to a configured
-    settings plan ID (paypal_plan_id_solo, pro, or dispatch), never a synthesized
+    settings plan ID (paypal_plan_id_batch, gateway, or cluster), never a synthesized
     P-AP2-* string.
     """
-    configured_solo = "P-CUSTOM-SANDBOX-SOLO-001"
-    configured_pro = "P-CUSTOM-SANDBOX-PRO-002"
-    configured_dispatch = "P-CUSTOM-SANDBOX-DISPATCH-003"
+    configured_batch = "P-CUSTOM-SANDBOX-BATCH-001"
+    configured_gateway = "P-CUSTOM-SANDBOX-GATEWAY-002"
+    configured_cluster = "P-CUSTOM-SANDBOX-CLUSTER-003"
 
-    monkeypatch.setattr(settings, "paypal_plan_id_solo", configured_solo)
-    monkeypatch.setattr(settings, "paypal_plan_id_pro", configured_pro)
-    monkeypatch.setattr(settings, "paypal_plan_id_dispatch", configured_dispatch)
+    monkeypatch.setattr(settings, "paypal_plan_id_batch", configured_batch)
+    monkeypatch.setattr(settings, "paypal_plan_id_gateway", configured_gateway)
+    monkeypatch.setattr(settings, "paypal_plan_id_cluster", configured_cluster)
 
-    allowed_plan_ids = {configured_solo, configured_pro, configured_dispatch}
+    allowed_plan_ids = {configured_batch, configured_gateway, configured_cluster}
 
     ap2_targets = [p["tier_id"] for p in AP2_PLANS] + list(AP2_TIER_ALIASES.keys())
     for target in ap2_targets:

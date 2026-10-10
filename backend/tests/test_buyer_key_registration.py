@@ -34,8 +34,8 @@ def test_get_buyer_key_challenge():
 def test_successful_buyer_key_registration():
     """POST /api/agent/keys/register accepts valid challenge signature and enrolls buyer key."""
     priv_hex, pub_hex = generate_ed25519_keypair()
-    kid = "buyer-agent-tampa-compute-v1"
-    email = "tampa@example.com"
+    kid = "buyer-agent-demo-compute-v1"
+    email = "demo-buyer@example.com"
     entity = "Demo Bay Compute LLC"
 
     # 1. Fetch challenge nonce

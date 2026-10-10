@@ -67,9 +67,9 @@ export interface ProvisioningResult {
 export const PAYPAL_CONFIG = {
   clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID || 'test',
   planId: import.meta.env.VITE_PAYPAL_PLAN_ID || 'P-4KA989014W524233ANLCRSFQ',
-  planIdSolo: import.meta.env.VITE_PAYPAL_PLAN_ID_SOLO || 'P-68L14988XW5641721NLCRSFQ',
-  planIdPro: import.meta.env.VITE_PAYPAL_PLAN_ID_PRO || 'P-4KA989014W524233ANLCRSFQ',
-  planIdDispatch: import.meta.env.VITE_PAYPAL_PLAN_ID_DISPATCH || 'P-77627096S5279500YNLCRSFY',
+  planIdBatch: import.meta.env.VITE_PAYPAL_PLAN_ID_BATCH || 'P-68L14988XW5641721NLCRSFQ',
+  planIdGateway: import.meta.env.VITE_PAYPAL_PLAN_ID_GATEWAY || 'P-4KA989014W524233ANLCRSFQ',
+  planIdCluster: import.meta.env.VITE_PAYPAL_PLAN_ID_CLUSTER || 'P-77627096S5279500YNLCRSFY',
   environment: (import.meta.env.VITE_PAYPAL_ENV || 'sandbox') as 'sandbox' | 'production',
   get mcpServerUrl(): string {
     return typeof window !== 'undefined' && window.location?.origin
@@ -85,27 +85,27 @@ export function getCatalogTierDetails(capabilityOrTier: string): {
   planId: string;
 } {
   const lower = (capabilityOrTier || '').toLowerCase();
-  if (lower.includes('batch') || lower.includes('solo') || lower.includes('starter') || lower.includes('49.99')) {
+  if (lower.includes('batch') || lower.includes('worker') || lower.includes('49.99')) {
     return {
       tierName: 'High-Throughput Batch Worker',
       planName: 'High-Throughput Batch Worker ($49.99/mo)',
       catalogPrice: 49.99,
-      planId: PAYPAL_CONFIG.planIdSolo,
+      planId: PAYPAL_CONFIG.planIdBatch,
     };
   }
-  if (lower.includes('cluster') || lower.includes('security') || lower.includes('dispatch') || lower.includes('enterprise') || lower.includes('179.99')) {
+  if (lower.includes('cluster') || lower.includes('security') || lower.includes('enterprise') || lower.includes('179.99')) {
     return {
       tierName: 'Enterprise Cluster Node',
       planName: 'Enterprise Cluster Node ($179.99/mo)',
       catalogPrice: 179.99,
-      planId: PAYPAL_CONFIG.planIdDispatch,
+      planId: PAYPAL_CONFIG.planIdCluster,
     };
   }
   return {
     tierName: 'Dedicated AI Service Gateway',
     planName: 'Dedicated AI Service Gateway ($79.99/mo)',
     catalogPrice: 79.99,
-    planId: PAYPAL_CONFIG.planIdPro,
+    planId: PAYPAL_CONFIG.planIdGateway,
   };
 }
 
@@ -177,8 +177,8 @@ export async function evaluateAgentNegotiation(
       const resolvedPlanId = data.plan_id || data.planId;
       const resolvedCounterPlanId = data.counter_offer_plan_id || data.counterOfferPlanId;
       const agreedPlanId = approved
-        ? (resolvedPlanId || (finalMonthlyRate === 49.99 ? PAYPAL_CONFIG.planIdSolo : finalMonthlyRate === 179.99 ? PAYPAL_CONFIG.planIdDispatch : PAYPAL_CONFIG.planIdPro))
-        : (resolvedCounterPlanId || PAYPAL_CONFIG.planIdSolo);
+        ? (resolvedPlanId || (finalMonthlyRate === 49.99 ? PAYPAL_CONFIG.planIdBatch : finalMonthlyRate === 179.99 ? PAYPAL_CONFIG.planIdCluster : PAYPAL_CONFIG.planIdGateway))
+        : (resolvedCounterPlanId || PAYPAL_CONFIG.planIdBatch);
 
       const agreedPlanName = isCounterOffer
         ? `${counterTier} ($${finalMonthlyRate.toFixed(2)}/mo)`
@@ -239,10 +239,10 @@ export async function evaluateAgentNegotiation(
     : requestedPlanName;
 
   const fallbackPlanId = fallbackMonthlyFee === 49.99
-    ? PAYPAL_CONFIG.planIdSolo
+    ? PAYPAL_CONFIG.planIdBatch
     : fallbackMonthlyFee === 179.99
-    ? PAYPAL_CONFIG.planIdDispatch
-    : PAYPAL_CONFIG.planIdPro;
+    ? PAYPAL_CONFIG.planIdCluster
+    : PAYPAL_CONFIG.planIdGateway;
 
   const fallbackCounterOfferMessage = isFallbackCounterOffer
     ? `[SellerMCP]: Budget $${request.maxMonthlyBudget.toFixed(2)} < $${sellerMonthlyRate.toFixed(2)} — counter-offer: ${fallbackPlanName}`

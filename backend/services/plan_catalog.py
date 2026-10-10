@@ -79,17 +79,17 @@ PUBLIC_AP2_TIER_ALIASES: Dict[str, str] = dict(AP2_TIER_ALIASES)
 # to the corresponding PayPal plan attribute on backend.config.settings.
 TIER_TO_SETTINGS_ATTR: Dict[str, str] = {
     # Tier 1 ($49.99): Batch Worker
-    "ap2-batch": "paypal_plan_id_solo",
-    "batch": "paypal_plan_id_solo",
-    "batch-worker": "paypal_plan_id_solo",
+    "ap2-batch": "paypal_plan_id_batch",
+    "batch": "paypal_plan_id_batch",
+    "batch-worker": "paypal_plan_id_batch",
     # Tier 2 ($79.99): Dedicated AI Gateway
-    "ap2-gateway": "paypal_plan_id_pro",
-    "gateway": "paypal_plan_id_pro",
-    "gateway-node": "paypal_plan_id_pro",
+    "ap2-gateway": "paypal_plan_id_gateway",
+    "gateway": "paypal_plan_id_gateway",
+    "gateway-node": "paypal_plan_id_gateway",
     # Tier 3 ($179.99): Enterprise Cluster Node
-    "ap2-cluster": "paypal_plan_id_dispatch",
-    "cluster": "paypal_plan_id_dispatch",
-    "cluster-node": "paypal_plan_id_dispatch",
+    "ap2-cluster": "paypal_plan_id_cluster",
+    "cluster": "paypal_plan_id_cluster",
+    "cluster-node": "paypal_plan_id_cluster",
 }
 
 AP2_INCLUDED_ON_ALL_PLANS: List[str] = [
@@ -185,7 +185,7 @@ def resolve_plan(tier_id: Optional[str], profile: Optional[str] = None) -> Optio
 def resolve_paypal_plan_id(tier_id: Optional[str], profile: Optional[str] = None) -> str:
     """
     Single source of truth: resolves any canonical tier_id or alias
-    to the configured settings PayPal plan ID (paypal_plan_id_solo, pro, or dispatch).
+    to the configured settings PayPal plan ID (paypal_plan_id_batch, gateway, or cluster).
     Never returns a synthesized string.
     """
     from ..config import settings
@@ -203,24 +203,24 @@ def resolve_paypal_plan_id(tier_id: Optional[str], profile: Optional[str] = None
             if not attr:
                 price = plan.get("monthly_price", 0.0)
                 if price <= 49.99:
-                    attr = "paypal_plan_id_solo"
+                    attr = "paypal_plan_id_batch"
                 elif price <= 79.99:
-                    attr = "paypal_plan_id_pro"
+                    attr = "paypal_plan_id_gateway"
                 else:
-                    attr = "paypal_plan_id_dispatch"
+                    attr = "paypal_plan_id_cluster"
         else:
-            attr = "paypal_plan_id_pro"
+            attr = "paypal_plan_id_gateway"
 
     val = getattr(settings, attr, None)
     if val and str(val).strip():
         return str(val).strip()
 
     defaults = {
-        "paypal_plan_id_solo": getattr(settings, "paypal_plan_id_solo", "P-AP2-BATCH-WORKER"),
-        "paypal_plan_id_pro": getattr(settings, "paypal_plan_id_pro", "P-AP2-SERVICE-GATEWAY"),
-        "paypal_plan_id_dispatch": getattr(settings, "paypal_plan_id_dispatch", "P-AP2-CLUSTER-NODE"),
+        "paypal_plan_id_batch": getattr(settings, "paypal_plan_id_batch", "P-AP2-BATCH-WORKER"),
+        "paypal_plan_id_gateway": getattr(settings, "paypal_plan_id_gateway", "P-AP2-SERVICE-GATEWAY"),
+        "paypal_plan_id_cluster": getattr(settings, "paypal_plan_id_cluster", "P-AP2-CLUSTER-NODE"),
     }
-    return defaults.get(attr, getattr(settings, "paypal_plan_id_pro", "P-AP2-SERVICE-GATEWAY"))
+    return defaults.get(attr, getattr(settings, "paypal_plan_id_gateway", "P-AP2-SERVICE-GATEWAY"))
 
 
 def get_plan(tier_id: str, profile: Optional[str] = None) -> Dict[str, Any]:

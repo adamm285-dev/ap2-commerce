@@ -4,10 +4,13 @@ Loads environment variables safely from .env with fallback to mock mode when key
 """
 
 import os
+import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 # Project root directory (.env file lives one level up from /backend)
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -71,9 +74,52 @@ class Settings(BaseSettings):
     admin_api_key: str = Field(default="", alias="ADMIN_API_KEY")
 
     # PayPal Recurring Billing Plan IDs (optional overrides for live sandbox plans)
-    paypal_plan_id_solo: str = Field(default="P-AP2-BATCH-WORKER", alias="PAYPAL_PLAN_ID_SOLO")
-    paypal_plan_id_pro: str = Field(default="P-AP2-SERVICE-GATEWAY", alias="PAYPAL_PLAN_ID_PRO")
-    paypal_plan_id_dispatch: str = Field(default="P-AP2-CLUSTER-NODE", alias="PAYPAL_PLAN_ID_DISPATCH")
+    paypal_plan_id_batch: str = Field(default="P-AP2-BATCH-WORKER", alias="PAYPAL_PLAN_ID_BATCH")
+    paypal_plan_id_gateway: str = Field(default="P-AP2-SERVICE-GATEWAY", alias="PAYPAL_PLAN_ID_GATEWAY")
+    paypal_plan_id_cluster: str = Field(default="P-AP2-CLUSTER-NODE", alias="PAYPAL_PLAN_ID_CLUSTER")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fallback_legacy_plan_ids(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        legacy_plan_env_fallbacks = [
+            ("PAYPAL_PLAN_ID_SOLO", "PAYPAL_PLAN_ID_BATCH"),
+            ("PAYPAL_PLAN_ID_PRO", "PAYPAL_PLAN_ID_GATEWAY"),
+            ("PAYPAL_PLAN_ID_DISPATCH", "PAYPAL_PLAN_ID_CLUSTER"),
+        ]
+        for old_key, new_key in legacy_plan_env_fallbacks:
+            old_val = data.get(old_key) or data.get(old_key.lower()) or os.environ.get(old_key)
+            new_val = data.get(new_key) or data.get(new_key.lower()) or os.environ.get(new_key)
+            if old_val and not new_val:
+                logger.warning("Deprecated env var %s in use; please migrate to %s.", old_key, new_key)
+                data[new_key] = old_val
+                data[new_key.lower()] = old_val
+        return data
+
+    @property
+    def paypal_plan_id_solo(self) -> str:
+        return self.paypal_plan_id_batch
+
+    @paypal_plan_id_solo.setter
+    def paypal_plan_id_solo(self, val: str) -> None:
+        self.paypal_plan_id_batch = val
+
+    @property
+    def paypal_plan_id_pro(self) -> str:
+        return self.paypal_plan_id_gateway
+
+    @paypal_plan_id_pro.setter
+    def paypal_plan_id_pro(self, val: str) -> None:
+        self.paypal_plan_id_gateway = val
+
+    @property
+    def paypal_plan_id_dispatch(self) -> str:
+        return self.paypal_plan_id_cluster
+
+    @paypal_plan_id_dispatch.setter
+    def paypal_plan_id_dispatch(self, val: str) -> None:
+        self.paypal_plan_id_cluster = val
 
     # Persistent SQLite database path (defaults to backend/data/a2a_commerce.db)
     a2a_db_path: str = Field(default="", alias="A2A_DB_PATH")

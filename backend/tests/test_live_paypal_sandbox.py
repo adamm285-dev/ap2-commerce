@@ -75,9 +75,9 @@ async def test_live_paypal_sandbox_billing_plans():
     assert token is not None
 
     plan_ids = [
-        settings.paypal_plan_id_solo,
-        settings.paypal_plan_id_pro,
-        settings.paypal_plan_id_dispatch,
+        settings.paypal_plan_id_batch,
+        settings.paypal_plan_id_gateway,
+        settings.paypal_plan_id_cluster,
     ]
 
     async with httpx.AsyncClient() as http_client:

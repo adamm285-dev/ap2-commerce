@@ -119,7 +119,7 @@ export async function executeZapierA2aWorkflow(
         },
         {
           actionId: `HOOK-${Math.floor(10000 + Math.random() * 90000)}`,
-          toolName: 'zapier_mcp_eventbus_dispatch',
+          toolName: 'zapier_mcp_eventbus_export',
           targetApp: 'Zapier MCP EventBus',
           status: 'VERIFIED',
           payloadSummary: `Dispatched HMAC-SHA256 signed webhook envelope to Zapier EventBus routing endpoint for ${email} (Replay Window: 300s)`,
@@ -312,7 +312,7 @@ export async function executeZapierA2aWorkflow(
     },
     {
       actionId: `HOOK-${Math.floor(10000 + Math.random() * 90000)}`,
-      toolName: 'zapier_mcp_eventbus_dispatch',
+      toolName: 'zapier_mcp_eventbus_export',
       targetApp: 'Zapier MCP EventBus',
       status: 'VERIFIED',
       payloadSummary: `Dispatched HMAC-SHA256 signed webhook envelope to Zapier EventBus routing endpoint for ${email} (Replay Window: 300s)`,

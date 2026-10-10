@@ -42,6 +42,7 @@ AP2_OFFER_TTL_SEC = AP2_CART_OFFER_TTL_SEC
 AP2_MANDATE_TTL_SEC = AP2_INTENT_MANDATE_TTL_SEC
 
 ALLOWED_CATEGORIES = {
+    "ai-compute-subscription",
     "autonomous-node-service",
     "compute-node-service",
     "autonomous-compute",
@@ -189,7 +190,7 @@ def build_buyer_intent_mandate(
 def validate_buyer_intent_mandate(
     mandate: Dict[str, Any],
     contractor_email: Optional[str] = None,
-    service_category: str = "TELEPHONY_AI_SCREENER",
+    service_category: str = "AI_COMPUTE_SUBSCRIPTION",
 ) -> Tuple[bool, str, Optional[float]]:
     """
     Cryptographically and policy-wise validates a buyer-signed AP2 Intent Mandate.
@@ -277,7 +278,7 @@ def build_ap2_cart_mandate(
     recurrence: str,
     contractor_email: Optional[str] = None,
     negotiation_id: Optional[str] = None,
-    category: str = "TELEPHONY_AI_SCREENER",
+    category: str = "AI_COMPUTE_SUBSCRIPTION",
 ) -> Dict[str, Any]:
     """
     Builds and Ed25519-signs the merchant AP2 Cart Mandate (vct: ap2.mandate.cart.1).
@@ -627,11 +628,11 @@ def evaluate_spending_mandate(
                 counter_offer_available=True,
                 counter_offer_tier=down_tier_title,
                 counter_offer_tier_id=down_tier,
-                counter_offer_plan_id=settings.paypal_plan_id_solo,
+                counter_offer_plan_id=settings.paypal_plan_id_batch,
                 counter_offer_amount=49.99,
                 counter_offer_mandate_hash=counter_hash,
                 tier_id=down_tier,
-                plan_id=settings.paypal_plan_id_solo,
+                plan_id=settings.paypal_plan_id_batch,
             )
         return SpendingMandateResponse(
             approved=False,
@@ -695,13 +696,13 @@ def evaluate_spending_mandate(
 
     if abs(request.amount - 49.99) < 0.05:
         agreed_tier_id = "ap2-batch"
-        agreed_plan_id = settings.paypal_plan_id_solo
+        agreed_plan_id = settings.paypal_plan_id_batch
     elif abs(request.amount - 179.99) < 0.05:
         agreed_tier_id = "ap2-cluster"
-        agreed_plan_id = settings.paypal_plan_id_dispatch
+        agreed_plan_id = settings.paypal_plan_id_cluster
     else:
         agreed_tier_id = "ap2-gateway"
-        agreed_plan_id = settings.paypal_plan_id_pro
+        agreed_plan_id = settings.paypal_plan_id_gateway
 
     return SpendingMandateResponse(
         approved=True,

@@ -7,9 +7,9 @@ billing plans (AP2 Batch Worker $49.99, AP2 Service Gateway $79.99, AP2 Cluster 
 on PayPal Developer Sandbox.
 
 Outputs ready-to-paste environment variables for .env:
-  PAYPAL_PLAN_ID_SOLO=P-...
-  PAYPAL_PLAN_ID_PRO=P-...
-  PAYPAL_PLAN_ID_DISPATCH=P-...
+  PAYPAL_PLAN_ID_BATCH=P-...
+  PAYPAL_PLAN_ID_GATEWAY=P-...
+  PAYPAL_PLAN_ID_CLUSTER=P-...
 
 Usage:
   python scripts/setup_paypal_sandbox_plans.py
@@ -140,20 +140,20 @@ async def main():
             print(f"{YELLOW}[DRY-RUN] Simulating plan creation as requested.{RESET}\n")
 
         # Deterministic simulated plan IDs
-        sim_solo = "P-AP2-BATCH-WORKER"
-        sim_pro = "P-AP2-SERVICE-GATEWAY"
-        sim_dispatch = "P-AP2-CLUSTER-NODE"
+        sim_batch = "P-AP2-BATCH-WORKER"
+        sim_gateway = "P-AP2-SERVICE-GATEWAY"
+        sim_cluster = "P-AP2-CLUSTER-NODE"
 
         print(f"{GREEN}✓ Simulated Catalog Product:{RESET} PROD-AP2-AUTONOMOUS-COMPUTE")
-        print(f"{GREEN}✓ Plan 1:{RESET} AP2 Batch Worker ($49.99/mo)       --> {BOLD}{sim_solo}{RESET}")
-        print(f"{GREEN}✓ Plan 2:{RESET} AP2 Service Gateway ($79.99/mo)     --> {BOLD}{sim_pro}{RESET}")
-        print(f"{GREEN}✓ Plan 3:{RESET} AP2 Cluster Node ($179.99/mo)       --> {BOLD}{sim_dispatch}{RESET}\n")
+        print(f"{GREEN}✓ Plan 1:{RESET} AP2 Batch Worker ($49.99/mo)       --> {BOLD}{sim_batch}{RESET}")
+        print(f"{GREEN}✓ Plan 2:{RESET} AP2 Service Gateway ($79.99/mo)     --> {BOLD}{sim_gateway}{RESET}")
+        print(f"{GREEN}✓ Plan 3:{RESET} AP2 Cluster Node ($179.99/mo)       --> {BOLD}{sim_cluster}{RESET}\n")
 
         print(f"{CYAN}Configuration to paste into your .env file:{RESET}")
         print(f"--------------------------------------------------")
-        print(f"PAYPAL_PLAN_ID_SOLO={sim_solo}")
-        print(f"PAYPAL_PLAN_ID_PRO={sim_pro}")
-        print(f"PAYPAL_PLAN_ID_DISPATCH={sim_dispatch}")
+        print(f"PAYPAL_PLAN_ID_BATCH={sim_batch}")
+        print(f"PAYPAL_PLAN_ID_GATEWAY={sim_gateway}")
+        print(f"PAYPAL_PLAN_ID_CLUSTER={sim_cluster}")
         print(f"--------------------------------------------------\n")
         return 0
 
@@ -176,29 +176,29 @@ async def main():
 
         print(f"{CYAN}[3/4] Creating 3 Recurring Billing Plans...{RESET}")
         try:
-            solo_id = await create_billing_plan(
+            batch_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="AP2 Batch Worker",
                 description="High-throughput batch worker compute node with 125 operations/mo.",
                 monthly_price=49.99,
             )
-            print(f"  {GREEN}✓ Batch Worker ($49.99/mo):{RESET} {BOLD}{solo_id}{RESET}")
+            print(f"  {GREEN}✓ Batch Worker ($49.99/mo):{RESET} {BOLD}{batch_id}{RESET}")
 
-            pro_id = await create_billing_plan(
+            gateway_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="AP2 Service Gateway",
                 description="Dedicated AI service gateway compute node with 450 operations/mo.",
                 monthly_price=79.99,
             )
-            print(f"  {GREEN}✓ Service Gateway ($79.99/mo):{RESET} {BOLD}{pro_id}{RESET}")
+            print(f"  {GREEN}✓ Service Gateway ($79.99/mo):{RESET} {BOLD}{gateway_id}{RESET}")
 
-            dispatch_id = await create_billing_plan(
+            cluster_id = await create_billing_plan(
                 client, token, base_url, product_id,
                 name="AP2 Cluster Node",
                 description="Enterprise cluster compute node with 1,200 operations/mo.",
                 monthly_price=179.99,
             )
-            print(f"  {GREEN}✓ Cluster Node ($179.99/mo):{RESET} {BOLD}{dispatch_id}{RESET}")
+            print(f"  {GREEN}✓ Cluster Node ($179.99/mo):{RESET} {BOLD}{cluster_id}{RESET}")
         except Exception as e:
             print(f"  {RED}✗ Plan creation failed: {e}{RESET}")
             return 1
@@ -206,9 +206,9 @@ async def main():
     print(f"\n{BOLD}{GREEN}[4/4] SUCCESS: PayPal Sandbox Plans Provisioned!{RESET}\n")
     print(f"{CYAN}Copy and paste these lines into your .env file:{RESET}")
     print(f"--------------------------------------------------")
-    print(f"PAYPAL_PLAN_ID_SOLO={solo_id}")
-    print(f"PAYPAL_PLAN_ID_PRO={pro_id}")
-    print(f"PAYPAL_PLAN_ID_DISPATCH={dispatch_id}")
+    print(f"PAYPAL_PLAN_ID_BATCH={batch_id}")
+    print(f"PAYPAL_PLAN_ID_GATEWAY={gateway_id}")
+    print(f"PAYPAL_PLAN_ID_CLUSTER={cluster_id}")
     print(f"--------------------------------------------------\n")
     return 0
 

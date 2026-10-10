@@ -249,7 +249,7 @@ def test_verify_tamper_plus_one_cent_and_drift():
     assert authentic["valid"] is True
 
 
-def test_budget_cap_clamps_to_solo_starter_and_rejects_below_floor():
+def test_budget_cap_clamps_to_batch_tier_and_rejects_below_floor():
     counter = negotiate("ap2-gateway", "aud-cap@example.com", 60)
     assert counter["status"] == "COUNTER_OFFER" and counter["counter_offer_amount"] == 49.99
     floor = negotiate("ap2-gateway", "aud-floor@example.com", 49.98)

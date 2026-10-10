@@ -317,11 +317,11 @@ def resolve_tier_from_paypal_plan(plan_id: Optional[str]) -> tuple[str, float]:
     if not plan_id:
         return ("ap2-gateway", 79.99)
     p = plan_id.lower()
-    if plan_id == getattr(settings, "paypal_plan_id_solo", "P-AP2-BATCH-WORKER") or "batch" in p or "solo" in p or "starter" in p:
+    if plan_id == getattr(settings, "paypal_plan_id_batch", "P-AP2-BATCH-WORKER") or "batch" in p:
         return ("ap2-batch", 49.99)
-    elif plan_id == getattr(settings, "paypal_plan_id_dispatch", "P-AP2-CLUSTER-NODE") or "cluster" in p or "dispatch" in p:
+    elif plan_id == getattr(settings, "paypal_plan_id_cluster", "P-AP2-CLUSTER-NODE") or "cluster" in p:
         return ("ap2-cluster", 179.99)
-    elif plan_id == getattr(settings, "paypal_plan_id_pro", "P-AP2-SERVICE-GATEWAY") or "gateway" in p or "pro" in p:
+    elif plan_id == getattr(settings, "paypal_plan_id_gateway", "P-AP2-SERVICE-GATEWAY") or "gateway" in p:
         return ("ap2-gateway", 79.99)
     return ("ap2-gateway", 79.99)
 

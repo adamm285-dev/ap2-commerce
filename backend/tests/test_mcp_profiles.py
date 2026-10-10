@@ -274,7 +274,7 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
     assert purchase_data["status"] in ("ACTIVE", "APPROVAL_PENDING")
     assert purchase_data["agreed_monthly_rate"] == 49.99
     assert purchase_data["tier_id"] == "ap2-batch"
-    assert purchase_data["plan_id"] == settings.paypal_plan_id_solo
+    assert purchase_data["plan_id"] == settings.paypal_plan_id_batch
     assert purchase_data["product_id"] == "PROD-AP2-AUTONOMOUS-COMPUTE"
 
     sub_id = purchase_data["subscription_id"]

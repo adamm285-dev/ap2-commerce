@@ -246,7 +246,7 @@ async def agent_discovery_card():
             "ap2_cart_mandate_issuance": True,
             "paypal_vault_recurring": True,
             "compute_node_allocation": True,
-            "backoffice_erp_dispatch": True,
+            "backoffice_erp_export": True,
         },
     }
 
@@ -1060,7 +1060,7 @@ async def get_fleet_ledger_endpoint(request: Request, profile: str = Query("defa
     notice = (
         "Rows represent simulated live fleet telemetry demonstrating 24/7 AP2 Autonomous Commerce operations across enterprise agent nodes (Demo data)."
         if (profile or "").strip().lower() == "ap2" else
-        "Rows represent simulated live fleet telemetry demonstrating 24/7 AG Studio operations across Florida contractor trade verticals."
+        "Rows represent simulated live fleet telemetry demonstrating 24/7 AG Studio operations across autonomous compute and worker nodes."
     )
     return {
         "status": "active",

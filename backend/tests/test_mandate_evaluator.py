@@ -119,8 +119,8 @@ def test_mandate_counter_offer_exposes_real_plan_id():
     assert res.approved is False
     assert res.counter_offer_available is True
     assert res.counter_offer_amount == 49.99
-    assert res.counter_offer_plan_id == settings.paypal_plan_id_solo
-    assert res.plan_id == settings.paypal_plan_id_solo
+    assert res.counter_offer_plan_id == settings.paypal_plan_id_batch
+    assert res.plan_id == settings.paypal_plan_id_batch
     assert res.tier_id == "ap2-batch"
 
 
@@ -135,7 +135,7 @@ def test_mandate_approved_exposes_tier_and_plan_id():
     )
     res_gw = evaluate_spending_mandate(req_gateway)
     assert res_gw.approved is True
-    assert res_gw.plan_id == settings.paypal_plan_id_pro
+    assert res_gw.plan_id == settings.paypal_plan_id_gateway
     assert res_gw.tier_id == "ap2-gateway"
 
     req_cluster = SpendingMandateRequest(
@@ -147,7 +147,7 @@ def test_mandate_approved_exposes_tier_and_plan_id():
     )
     res_cl = evaluate_spending_mandate(req_cluster)
     assert res_cl.approved is True
-    assert res_cl.plan_id == settings.paypal_plan_id_dispatch
+    assert res_cl.plan_id == settings.paypal_plan_id_cluster
     assert res_cl.tier_id == "ap2-cluster"
 
 

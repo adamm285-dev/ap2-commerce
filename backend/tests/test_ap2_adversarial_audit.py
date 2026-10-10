@@ -462,7 +462,7 @@ def test_public_test_sinks_not_permitted_in_live_mode(monkeypatch):
 def _slot(**overrides):
     import datetime as _dt
     body = {
-        "leadId": "lead-audit-1",
+        "jobId": "workload-audit-1",
         "territoryZone": "Zone 1 - US-East",
         "slotStartIso": (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=2)).isoformat(),
         "paypalTransactionId": "TXN-AUDIT-1",
@@ -475,14 +475,14 @@ def test_dispatch_slot_rejects_bad_input():
     assert _slot().status_code == 200
     assert _slot(slotStartIso="not-a-date").status_code == 400
     assert _slot(slotStartIso="2099-01-01T10:00:00Z").status_code == 400
-    assert _slot(leadId="x" * 65).status_code == 422
+    assert _slot(jobId="x" * 65).status_code == 422
     assert _slot(paypalTransactionId="<script>").status_code == 422
 
 
 def test_dispatch_slot_lock_rate_is_capped(monkeypatch):
     monkeypatch.setattr(server_module, "_MAX_SLOT_LOCKS_PER_HOUR", 3)
     server_module._RECENT_SLOT_LOCKS.clear()
-    codes = [_slot(leadId=f"lead-rate-{i}").status_code for i in range(5)]
+    codes = [_slot(jobId=f"job-rate-{i}").status_code for i in range(5)]
     server_module._RECENT_SLOT_LOCKS.clear()
     assert codes == [200, 200, 200, 429, 429]
 

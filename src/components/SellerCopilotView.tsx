@@ -53,7 +53,6 @@ export interface SellerCopilotViewProps {
   contractorName?: string;
   businessEntity?: string;
   tradeVertical?: string;
-  areaCode?: string;
   budgetCap?: number;
   onA2aCompleted?: (result: {
     subscriptionId: string;
@@ -76,7 +75,6 @@ export function SellerCopilotView({
   contractorName = 'agent:acme-procure',
   businessEntity = 'Acme Autonomous Systems LLC',
   tradeVertical = 'Dedicated AI Service Gateway',
-  areaCode = '703',
   budgetCap = 100.0,
   onA2aCompleted,
   onNavigateTab,
@@ -90,7 +88,6 @@ export function SellerCopilotView({
   const [localContractorName, setLocalContractorName] = useState(contractorName);
   const [localBusinessEntity, setLocalBusinessEntity] = useState(businessEntity);
   const [localTradeVertical, setLocalTradeVertical] = useState(tradeVertical);
-  const [localAreaCode, setLocalAreaCode] = useState(areaCode);
   const [localBudgetCap, setLocalBudgetCap] = useState(budgetCap);
   const [simulateExhaustion, setSimulateExhaustion] = useState(false);
 
@@ -99,9 +96,8 @@ export function SellerCopilotView({
     setLocalContractorName(contractorName);
     setLocalBusinessEntity(businessEntity);
     setLocalTradeVertical(tradeVertical);
-    setLocalAreaCode(areaCode);
     setLocalBudgetCap(budgetCap);
-  }, [contractorName, businessEntity, tradeVertical, areaCode, budgetCap]);
+  }, [contractorName, businessEntity, tradeVertical, budgetCap]);
 
   // Integrated Node Settings State (Unified Tab 1 & Tab 5)
   const [nodeSettings, setNodeSettings] = useState<NodeSettingsData>(() => {
@@ -503,7 +499,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contractor_id: `contractor_${localContractorName.toLowerCase().replace(/\s+/g, '_')}_${localAreaCode}`,
+          contractor_id: `contractor_${localContractorName.toLowerCase().replace(/\s+/g, '_')}_node`,
           business_name: localBusinessEntity,
           monthly_cap_usd: localBudgetCap,
           agreed_price_usd: localBudgetCap < 79.99 ? 49.99 : 79.99,
@@ -687,7 +683,6 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
           contractor_name: localContractorName,
           business_entity: localBusinessEntity,
           trade_vertical: localTradeVertical,
-          area_code: localAreaCode,
           budget_cap: localBudgetCap,
           simulate_exhaustion: simulateExhaustion,
         }),
@@ -707,7 +702,6 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
               contractor_name: localContractorName,
               business_entity: localBusinessEntity,
               trade_vertical: localTradeVertical,
-              area_code: localAreaCode,
               budget_cap: localBudgetCap,
               simulate_exhaustion: simulateExhaustion,
             }),
@@ -1704,7 +1698,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
       }
 
       // Default fallback (Simulation Mode): query backend copilot chat
-      const res = await fetch('/api/copilot/chat', {
+      const res = await fetch('/api/seller-copilot/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1712,7 +1706,6 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
           contractorName: localContractorName,
           businessEntity: localBusinessEntity,
           tradeVertical: localTradeVertical,
-          areaCode: localAreaCode,
           budgetCap: localBudgetCap,
           simulateExhaustion: simulateExhaustion,
         }),
@@ -2393,7 +2386,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                             </span>
                           </div>
                           <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
-                            Authorized entity: <strong>{localBusinessEntity}</strong> &bull; Area {localAreaCode}
+                            Authorized entity: <strong>{localBusinessEntity}</strong> &bull; Region: US-East
                           </div>
                           <button
                             onClick={() => sendMessage(`Yes, approve and execute setup ($${m.proposal.monthly_price.toFixed(2)}/mo via PayPal)`)}

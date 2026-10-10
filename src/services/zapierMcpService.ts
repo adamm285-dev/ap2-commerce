@@ -27,14 +27,14 @@ export interface A2aBuyerOnboarding {
 export type A2aContractorOnboarding = A2aBuyerOnboarding;
 
 export interface QualifiedLead {
-  callerName: string;
-  callerPhone: string;
+  requesterName: string;
+  clientEndpoint: string;
   propertyAddress: string;
   tradeVertical: string;
   scopeSummary: string;
   territoryZone: string;
   appointmentTime: string;
-  depositAmount: number;
+  paymentAmount: number;
   paypalTransactionId: string;
 }
 
@@ -49,7 +49,7 @@ export interface ZapierMcpActionLog {
 
 export interface ZapierExecutionResult {
   success: boolean;
-  leadId: string;
+  jobId: string;
   logs: ZapierMcpActionLog[];
   isLiveBackend?: boolean;
   cloudeventsPayload?: any;
@@ -87,7 +87,7 @@ export async function executeZapierA2aWorkflow(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workflowType: 'a2a_onboarding',
-        leadId: syncId,
+        jobId: syncId,
         contractorName: agentName,
         businessEntity: entity,
         allocatedDid: endpoint,
@@ -181,7 +181,7 @@ export async function executeZapierA2aWorkflow(
 
       return {
         success: true,
-        leadId: syncId,
+        jobId: syncId,
         logs,
         isLiveBackend: true,
         cloudeventsPayload,
@@ -322,7 +322,7 @@ export async function executeZapierA2aWorkflow(
 
   return {
     success: true,
-    leadId: syncId,
+    jobId: syncId,
     logs,
     isLiveBackend: false,
     cloudeventsPayload: fallbackCloudEventsPayload,
@@ -344,7 +344,7 @@ export async function executeZapierMcpWorkflow(
   const dispatchId = `DISPATCH-${Math.floor(10000 + Math.random() * 90000)}`;
   const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
   const capability = lead.tradeVertical || 'Dedicated AI Service Gateway';
-  const targetNode = lead.callerPhone || 'mcp+https://gateway-01.example.com/mcp';
+  const targetNode = lead.clientEndpoint || 'mcp+https://gateway-01.example.com/mcp';
   const scope = lead.propertyAddress || 'Autonomous AP2 Workload Execution';
 
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -358,11 +358,11 @@ export async function executeZapierMcpWorkflow(
     time: new Date().toISOString(),
     subject: `workload_50k_tokens`,
     data: {
-      requesting_agent: lead.callerName,
+      requesting_agent: lead.requesterName,
       target_node: targetNode,
       service_capability: capability,
       workload_scope: scope,
-      settlement_amount: lead.depositAmount,
+      settlement_amount: lead.paymentAmount,
       paypal_transaction_id: lead.paypalTransactionId,
       token_quota: 50000,
       sla_target: 'sub-350ms',
@@ -372,15 +372,15 @@ export async function executeZapierMcpWorkflow(
 
   const workloadQboPayload = {
     Invoice: {
-      CustomerRef: { value: '202', name: lead.callerName },
+      CustomerRef: { value: '202', name: lead.requesterName },
       Line: [
         {
-          Amount: lead.depositAmount,
+          Amount: lead.paymentAmount,
           DetailType: 'SalesItemLineDetail',
           Description: `Autonomous Workload Settlement: ${capability} (${scope})`,
           SalesItemLineDetail: {
             ItemRef: { value: '1', name: 'AI Compute & Token Quota' },
-            UnitPrice: lead.depositAmount,
+            UnitPrice: lead.paymentAmount,
             Qty: 1,
           },
         },
@@ -405,7 +405,7 @@ export async function executeZapierMcpWorkflow(
       toolName: 'zapier_mcp_qbo_record_receipt',
       targetApp: 'QuickBooks Online',
       status: 'VERIFIED',
-      payloadSummary: `Generated QBO invoice & settlement receipt for $${lead.depositAmount.toFixed(2)} via PayPal (Txn: ${lead.paypalTransactionId})`,
+      payloadSummary: `Generated QBO invoice & settlement receipt for $${lead.paymentAmount.toFixed(2)} via PayPal (Txn: ${lead.paypalTransactionId})`,
       timestamp: now(),
     },
     {
@@ -420,7 +420,7 @@ export async function executeZapierMcpWorkflow(
 
   return {
     success: true,
-    leadId: dispatchId,
+    jobId: dispatchId,
     logs,
     isLiveBackend: false,
     cloudeventsPayload: workloadCloudEventsPayload,

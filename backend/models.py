@@ -110,13 +110,12 @@ class SpendingMandateResponse(BaseModel):
     )
 
 
-# --- Telephony Provisioning Models ---
+# --- Compute Node Provisioning Models ---
 class ProvisionRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     subscription_id: str = Field(alias="subscriptionId")
     contractor_email: str = Field(alias="contractorEmail")
-    area_code: str = Field(default="703", alias="areaCode")
     simulate_exhaustion: Optional[bool] = Field(
         default=False, alias="simulateExhaustion"
     )
@@ -151,7 +150,12 @@ class ProvisionResponse(BaseModel):
 class DispatchLockRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    lead_id: str = Field(alias="leadId", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
+    job_id: str = Field(
+        alias="jobId",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_.:\-]+$",
+    )
     territory_zone: str = Field(alias="territoryZone", min_length=1, max_length=64)
     slot_start_iso: str = Field(alias="slotStartIso", min_length=10, max_length=40)
     paypal_transaction_id: str = Field(alias="paypalTransactionId", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
@@ -172,11 +176,20 @@ class ZapierSyncRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     workflow_type: Optional[str] = Field(default=None, alias="workflowType")
-    lead_id: Optional[str] = Field(default="lead-a2a-onboarding", alias="leadId")
+    job_id: Optional[str] = Field(
+        default="job-a2a-onboarding",
+        alias="jobId",
+    )
     customer_name: Optional[str] = Field(default="Acme Autonomous Systems LLC", alias="customerName")
-    customer_phone: Optional[str] = Field(default="+1 (800) 555-0199", alias="customerPhone")
+    client_fingerprint: Optional[str] = Field(
+        default="0x5c88aa1199e1284f00bb",
+        alias="clientFingerprint",
+    )
     property_address: Optional[str] = Field(default="Cloud Execution Region us-east-1", alias="propertyAddress")
-    deposit_amount: Optional[float] = Field(default=79.99, alias="depositAmount")
+    payment_amount: Optional[float] = Field(
+        default=79.99,
+        alias="paymentAmount",
+    )
     paypal_txn_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalTxnId")
 
     # A2A Contractor Onboarding specific attributes

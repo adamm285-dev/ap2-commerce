@@ -13,10 +13,10 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from ..mcp_server import process_mcp_request
 
-logger = logging.getLogger("contractor_copilot")
+logger = logging.getLogger("seller_copilot")
 
 
-class ContractorCopilot:
+class SellerCopilot:
     """Autonomous Operations Copilot managing compute node procurement and fleet telemetry."""
 
     def __init__(
@@ -24,7 +24,6 @@ class ContractorCopilot:
         contractor_name: str = "Nexus Autonomous Buyer",
         business_entity: str = "Nexus Autonomous Systems Corp",
         trade_vertical: str = "Dedicated AI Service Gateway",
-        area_code: str = "US",
         budget_cap: float = 100.00,
         contractor_email: str = "agent-alpha@example.com",
         simulate_exhaustion: bool = False,
@@ -32,7 +31,6 @@ class ContractorCopilot:
         self.contractor_name = contractor_name
         self.business_entity = business_entity
         self.trade_vertical = trade_vertical
-        self.area_code = area_code
         self.budget_cap = budget_cap
         self.contractor_email = contractor_email
         self.simulate_exhaustion = simulate_exhaustion
@@ -47,24 +45,25 @@ class ContractorCopilot:
             "total_tasks": 240,
             "queued_tasks": 80,
             "pending_tasks": 8,
-            "missed_calls": 8,
             "queue_rate": "33.3%",
             "estimated_lost_revenue": 6200.00,
-            "recent_missed_leads": [
+            "recent_queued_tasks": [
                 {
-                    "caller_name": "Nexus High-Throughput Worker",
-                    "caller_phone": "mcp+https://batch-01.example.com/mcp",
+                    "requester_name": "Nexus High-Throughput Worker",
+                    "client_endpoint": "mcp+https://batch-01.example.com/mcp",
                     "estimated_job_value": 3250.00,
-                    "voicemail_transcript": "Queued 125 batch synthesis jobs awaiting gateway execution.",
+                    "task_description": "Queued 125 batch synthesis jobs awaiting gateway execution.",
                 },
                 {
-                    "caller_name": "Enterprise Cluster Node",
-                    "caller_phone": "mcp+https://cluster-01.example.com/mcp",
+                    "requester_name": "Enterprise Cluster Node",
+                    "client_endpoint": "mcp+https://cluster-01.example.com/mcp",
                     "estimated_job_value": 1800.00,
-                    "voicemail_transcript": "Dedicated AI service gateway needed to route reasoning queries.",
+                    "task_description": "Dedicated AI service gateway needed to route reasoning queries.",
                 },
             ],
         }
+
+    get_workload_telemetry = get_call_leakage_telemetry
 
     async def handle_message(self, user_message: str) -> Dict[str, Any]:
         """
@@ -73,9 +72,9 @@ class ContractorCopilot:
         """
         msg = user_message.lower().strip()
         telemetry = self.get_call_leakage_telemetry()
-        missed = telemetry.get("missed_calls", 8)
+        missed = telemetry.get("pending_tasks", 8)
         loss = telemetry.get("estimated_lost_revenue", 6200.00)
-        leads = telemetry.get("recent_missed_leads", [])
+        leads = telemetry.get("recent_queued_tasks", [])
 
         # Priority 1: Approval / Execution
         if any(w in msg for w in ["approve", "setup", "activate", "execute", "go ahead", "do it"]) or msg in ["yes", "yep", "yeah", "ok", "okay"]:
@@ -194,7 +193,7 @@ class ContractorCopilot:
                 "suggested_actions": [
                     "Inspect A2A Protocol Audit Trail",
                     "Check Bryntum Dispatch Timeline",
-                    "Did I miss any calls today?",
+                    "Check pending workload queue",
                 ],
                 "proposal": None,
                 "action_type": "NAVIGATE_FLEET_LEDGER",
@@ -206,7 +205,7 @@ class ContractorCopilot:
                 f"📅 **Bryntum Node Dispatch Timeline:**\n\n"
                 f"The Bryntum timeline maps live workload scheduling, resource allocations, and incoming task requests in real time. "
                 f"The dedicated gateway node is scheduled for active streaming.\n\n"
-                f"Select the **Bryntum Telephony Fleet Timeline** tab in the top navigation to view the dispatch calendar."
+                f"Select the **Bryntum Fleet Timeline** tab in the top navigation to view the dispatch calendar."
             )
             return {
                 "reply": reply,
@@ -215,7 +214,7 @@ class ContractorCopilot:
                 "suggested_actions": [
                     "Inspect A2A Protocol Audit Trail",
                     "View in AP2 Fleet Ledger",
-                    "Did I miss any calls today?",
+                    "Check pending workload queue",
                 ],
                 "proposal": None,
                 "action_type": "NAVIGATE_BRYNTUM",
@@ -236,8 +235,8 @@ class ContractorCopilot:
                 "phase": "PROPOSAL",
                 "telemetry": telemetry,
                 "suggested_actions": [
-                    "Find an AI answering solution",
-                    "Did I miss any calls today?",
+                    "Find an autonomous compute node",
+                    "Check pending workload queue",
                     "Inspect A2A Protocol Audit Trail",
                 ],
                 "proposal": None,
@@ -266,7 +265,7 @@ class ContractorCopilot:
             }
 
         # Priority 8: Workload queue / diagnosis
-        if any(w in msg for w in ["miss", "call", "buzz", "ring", "check", "today", "leak", "lost", "task", "queue"]):
+        if any(w in msg for w in ["queue", "pending", "backlog", "check", "today", "capacity", "task", "workload"]):
             reply = (
                 f"Hey {self.contractor_name.split()[0]}, I analyzed your workload pipeline telemetry. "
                 f"You have **{missed} pending tasks** ({telemetry.get('queue_rate', '33.3%')}) "
@@ -278,7 +277,7 @@ class ContractorCopilot:
                 "phase": "DIAGNOSIS",
                 "telemetry": telemetry,
                 "suggested_actions": [
-                    "Find an AI answering solution",
+                    "Find an autonomous compute node",
                     "What's my monthly budget cap?",
                     "How much did I lose this week?",
                 ],
@@ -290,14 +289,14 @@ class ContractorCopilot:
             "reply": (
                 f"Hi {self.contractor_name.split()[0]}, I'm your AI Business Copilot. "
                 f"I monitor your compute workloads and enforce your company spending limits. "
-                f"You can ask me: *\"Did I miss any calls today?\"* or *\"What's my monthly budget cap?\"*"
+                f"You can ask me: *\"What is my workload queue?\"* or *\"What's my monthly budget cap?\"*"
             ),
             "phase": "IDLE",
             "telemetry": telemetry,
             "suggested_actions": [
-                "Did I miss any calls today?",
-                "How much money am I losing?",
-                "Find an AI answering solution",
+                "Check pending workload queue",
+                "What's my monthly budget cap?",
+                "Find an autonomous compute node",
             ],
             "proposal": None,
         }
@@ -428,7 +427,7 @@ class ContractorCopilot:
             "assigned_did": assigned_did,
             "carrier": "Dual-Transport FastMCP (RFC 8032)",
             "routing_state": "ACTIVE_COMPUTE_NODE",
-            "tcpa_status": "100% ED25519 SIGNED MANDATE",
+            "attestation_status": "100% ED25519 SIGNED MANDATE",
         })
 
         # Step 4: Downline Zapier MCP Dispatch (QBO)
@@ -473,3 +472,8 @@ class ContractorCopilot:
             "protocol_trace": protocol_trace,
             "zapier_sync": zap_data,
         }
+
+
+# Backwards compatibility alias
+ContractorCopilot = SellerCopilot
+

@@ -8,7 +8,7 @@ text, and back-office exports.
 from typing import Any, Dict, List, Optional
 
 # --- AP2 PROFILE (Autonomous Compute & Worker Node Network) ---
-# Strictly zero forbidden trades/telephony terms
+# Strictly zero forbidden trades/legacy terms
 AP2_QUOTA_UNIT = "workload_tasks_per_month"
 AP2_QUOTA_UNIT_DEFINITION = "Autonomous compute tasks processed and verified by the worker node each month."
 

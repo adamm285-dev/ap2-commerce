@@ -65,7 +65,7 @@ def test_get_fleet_schedule_and_lock_slot():
 
     # 2. Lock a dispatch slot via POST /api/agent/dispatch/lock-slot
     lock_payload = {
-        "leadId": "lead_test_bryntum_01",
+        "jobId": "job_test_bryntum_01",
         "territoryZone": "Zone 2 - US-Central",
         "slotStartIso": "2026-10-02 14:00",
         "paypalTransactionId": "PAY-DEP-9921",

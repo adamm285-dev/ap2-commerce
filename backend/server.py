@@ -68,7 +68,7 @@ from .mcp_server import (
     unsubscribe_wire_stream,
     get_recent_wire_frames,
 )
-from .agents.contractor_copilot import ContractorCopilot
+from .agents.seller_copilot import SellerCopilot, ContractorCopilot
 from .agents.seller_agent import seller_agent
 from .harness.external_buyer_agent import ExternalBuyerAgent
 from .api.m2m_audit import router as m2m_router
@@ -633,30 +633,29 @@ async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequ
 
 
 
-# --- Contractor AI Copilot Conversational Engine ---
+# --- Seller AI Copilot Conversational Engine ---
 class CopilotChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     message: str
     contractorName: Optional[str] = Field(default="Nexus Autonomous Buyer", alias="contractor_name")
     businessEntity: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_entity")
     tradeVertical: Optional[str] = Field(default="Autonomous Compute & Worker Nodes", alias="trade_vertical")
-    areaCode: Optional[str] = Field(default="703", alias="area_code")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
 
 
-@app.post("/api/copilot/chat", tags=["Contractor Copilot"])
+@app.post("/api/seller-copilot/chat", tags=["Seller Copilot"])
+@app.post("/api/copilot/chat", tags=["Seller Copilot"], include_in_schema=False)
 async def copilot_chat_endpoint(req: CopilotChatRequest):
     """
-    Contractor AI Copilot conversational engine.
-    Ingests messages from the contractor, diagnoses call leaks, queries AP2 Seller MCP,
+    Seller AI Copilot conversational engine.
+    Ingests messages from the operator, diagnoses pipeline queue, queries AP2 Seller MCP,
     and returns conversational responses and proposed A2A actions.
     """
-    copilot = ContractorCopilot(
+    copilot = SellerCopilot(
         contractor_name=req.contractorName or "Nexus Autonomous Buyer",
         business_entity=req.businessEntity or "Nexus Autonomous Systems Corp",
         trade_vertical=req.tradeVertical or "Autonomous Compute & Worker Nodes",
-        area_code=req.areaCode or "703",
         budget_cap=req.budgetCap or 100.00,
         simulate_exhaustion=req.simulateExhaustion or False,
     )
@@ -827,7 +826,6 @@ class DeckPurchaseRequest(BaseModel):
     open_checkout_mandate_token: Optional[str] = Field(default=None, alias="openCheckoutMandateToken")
     open_payment_mandate_token: Optional[str] = Field(default=None, alias="openPaymentMandateToken")
     paypal_subscription_id: Optional[str] = Field(default=None, alias="paypalSubscriptionId")
-    area_code: Optional[str] = Field(default=None, alias="areaCode")
 
 
 @app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
@@ -954,7 +952,6 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         buyer_email=buyer_email,
         node_type="gateway" if "gateway" in tier else "batch" if "batch" in tier else "cluster",
         contractor_email=buyer_email,
-        area_code=req.area_code or "703",
     )
 
     return {
@@ -1018,8 +1015,9 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         or "node" in tz_lower
         or "gateway" in tz_lower
         or "batch" in tz_lower
-        or (request.lead_id or "").lower().startswith("txn_ap2_")
-        or (request.lead_id or "").lower().startswith("lead_ap2_")
+        or (request.job_id or "").lower().startswith("txn_ap2_")
+        or (request.job_id or "").lower().startswith("job_ap2_")
+        or (request.job_id or "").lower().startswith("lead_ap2_")
     )
     if is_ap2_workload:
         assigned_node = request.territory_zone if ("cluster" in tz_lower or "node" in tz_lower or "gateway" in tz_lower or "batch" in tz_lower) else "Cluster Alpha - Dedicated AI Service Gateway"
@@ -1031,7 +1029,7 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
         contractor_id = "buyer_agent_alpha_01"
 
     record_dispatch_slot({
-        "lead_id": request.lead_id,
+        "job_id": request.job_id,
         "contractor_id": contractor_id,
         "territory_zone": request.territory_zone,
         "slot_start_iso": request.slot_start_iso,
@@ -1086,7 +1084,7 @@ async def get_fleet_schedule_endpoint(profile: str = Query("default")):
 
 
 def _guard_backoffice_request(sync_request: ZapierSyncRequest, http_request: Request) -> None:
-    """Without the admin key: no live Zapier actions, and no caller-chosen webhook outside mock mode."""
+    """Without the admin key: no live Zapier actions, and no client-chosen webhook outside mock mode."""
     is_admin = _has_admin_key(http_request)
     if not zapier_mcp_dispatcher.mock_mode and not is_admin:
         raise HTTPException(
@@ -1454,7 +1452,6 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
         "parameters": {
             "subscription_id": sub_id,
             "contractor_email": sub_record.get("contractor_email"),
-            "area_code": "703",
         },
     }
     _COMPLETED_SUBSCRIPTIONS[sub_id] = sub_record
@@ -1561,7 +1558,6 @@ async def paypal_webhook_receiver(request: Request):
                 "parameters": {
                     "subscription_id": sub_id,
                     "contractor_email": sub_record.get("contractor_email"),
-                    "area_code": "703",
                 },
             }
             email = sub_record.get("contractor_email")
@@ -1663,7 +1659,6 @@ class RunBuyerAgentRequest(BaseModel):
     contractorEmail: Optional[str] = Field(default="agent-alpha@example.com", alias="contractor_email")
     tradeId: Optional[str] = Field(default="ap2-gateway", alias="trade_id")
     budgetCap: Optional[float] = Field(default=100.00, alias="budget_cap")
-    areaCode: Optional[str] = Field(default="703", alias="area_code")
     simulateExhaustion: Optional[bool] = Field(default=False, alias="simulate_exhaustion")
     webhookUrl: Optional[str] = Field(default=None, alias="webhook_url")
     resetLedger: Optional[bool] = Field(default=False, alias="reset_ledger")
@@ -1712,7 +1707,6 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
         contractor_email=req.contractorEmail or "agent-alpha@example.com",
         trade_id=req.tradeId or "ap2-gateway",
         budget_cap=req.budgetCap or 100.00,
-        area_code=req.areaCode or "703",
         webhook_url=req.webhookUrl,
         verbose=False,
         simulate_exhaustion=req.simulateExhaustion or False,

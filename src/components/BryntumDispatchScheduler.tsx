@@ -204,8 +204,8 @@ function getBuyerAgent(name: string): string {
   if (name.includes('202') || name.includes('Embeddings')) return 'agent:deepseek-v3:quant-research';
   if (name.includes('301') || name.includes('Smart Contract')) return 'agent:mistral-large:hyperion-audit';
   if (name.includes('302') || name.includes('Perimeter')) return 'agent:gemini-pro:security-audit';
-  if (name.includes('401') || name.includes('Voice Screener')) return 'agent:llama-3-3:vocalis-stream';
-  if (name.includes('402') || name.includes('Batch Voice')) return 'agent:sonicwave-ai';
+  if (name.includes('401') || name.includes('Stream Processing')) return 'agent:llama-3-3:vocalis-stream';
+  if (name.includes('402') || name.includes('Batch Worker')) return 'agent:sonicwave-ai';
   if (name.includes('501') || name.includes('Model Evaluation')) return 'agent:gpt-4o:cognitive-eval';
   if (name.includes('502') || name.includes('Incident')) return 'agent:turing-oversight';
   return 'agent:autonomous:ap2-buyer';
@@ -218,8 +218,8 @@ function getPrincipalEntity(name: string): string {
   if (name.includes('202') || name.includes('Embeddings')) return 'Axiom Quantitative Capital LLC';
   if (name.includes('301') || name.includes('Smart Contract')) return 'Hyperion Smart Contracts LLC';
   if (name.includes('302') || name.includes('Perimeter')) return 'Sentinel Code Security Corp';
-  if (name.includes('401') || name.includes('Voice Screener')) return 'Vocalis Telephony Labs LLC';
-  if (name.includes('402') || name.includes('Batch Voice')) return 'SonicWave Conversational AI';
+  if (name.includes('401') || name.includes('Stream Processing')) return 'Vocalis AI Systems LLC';
+  if (name.includes('402') || name.includes('Batch Worker')) return 'SonicWave Compute Systems';
   if (name.includes('501') || name.includes('Model Evaluation')) return 'Cognitive Benchmark Labs';
   if (name.includes('502') || name.includes('Incident')) return 'Turing Oversight Systems Co';
   return 'AP2 Certified Commercial Merchant LLC';
@@ -274,9 +274,9 @@ function getShortWorkloadTitle(name: string): string {
   if (name.includes('Smart Contract')) return '#301 Smart Contract Audit';
   if (name.includes('Vulnerability Scan') || name.includes('AST')) return '#302 AST Perimeter Scan';
   if (name.includes('Cryptographic Proof')) return '#303 Crypto Proof Verif';
-  if (name.includes('Voice Screener Bridge')) return '#401 Duplex Voice Bridge';
-  if (name.includes('Batch Voice Audio')) return '#402 500-Call Voice Batch';
-  if (name.includes('Speech Synthesizer')) return '#403 TTS Synthesizer';
+  if (name.includes('Service Gateway') || name.includes('Stream Processing')) return '#401 Service Gateway';
+  if (name.includes('Batch Worker') || name.includes('High-Throughput Batch')) return '#402 Batch Worker';
+  if (name.includes('Cluster Node') || name.includes('Enterprise Cluster')) return '#403 Cluster Node';
   if (name.includes('Model Evaluation Review')) return '#501 Model Eval Review';
   if (name.includes('Security Incident')) return '#502 Incident Remediation';
   if (name.includes('Edge-Case Triage')) return '#503 Edge-Case Triage';
@@ -537,17 +537,17 @@ export function BryntumDispatchScheduler({
     },
     {
       id: 'node-4',
-      name: 'Node-04: Dedicated AI Service Gateway (Voice)',
+      name: 'Node-04: Dedicated AI Service Gateway (Stream Processing)',
       trade: 'Dedicated AI Service Gateway',
       category: 'GATEWAY',
-      entity: 'East Zone 4 • FastMCP Media Bridge',
+      entity: 'East Zone 4 • FastMCP Stream Bridge',
       did: 'node-cluster-04.ap2.net',
       status: 'ACTIVE_STREAMING',
       throughput: '120ms Duplex RT',
       latency: '22ms',
       health: '100%',
       color: '#38bdf8',
-      activeJob: '#401 Streaming Voice Gateway ($79.99/mo)',
+      activeJob: '#401 Service Gateway ($79.99/mo)',
     },
     {
       id: 'node-5',
@@ -655,9 +655,9 @@ export function BryntumDispatchScheduler({
       : '○ Pending: Awaiting $79.99/mo PayPal Subscription Authorization'
   );
 
-  const [dispatchSmsStatus, setDispatchSmsStatus] = useState<string | null>(null);
+  const [dispatchWebhookStatus, setDispatchWebhookStatus] = useState<string | null>(null);
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
-  const [isSendingSms, setIsSendingSms] = useState(false);
+  const [isSendingWebhook, setIsSendingWebhook] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   // Wire Protocol Telemetry State
@@ -691,17 +691,17 @@ export function BryntumDispatchScheduler({
     return () => clearTimeout(timeoutId);
   }, [dockHeight]);
 
-  const handleDispatchSms = async () => {
+  const handleDispatchWebhook = async () => {
     if (!selectedAppointment) return;
-    setIsSendingSms(true);
-    setDispatchSmsStatus(null);
+    setIsSendingWebhook(true);
+    setDispatchWebhookStatus(null);
     const t0 = performance.now();
     await new Promise((resolve) => setTimeout(resolve, 600));
-    setIsSendingSms(false);
+    setIsSendingWebhook(false);
     const durationMs = Math.round(performance.now() - t0);
     const webhookId = `whk_${Math.random().toString(36).substring(2, 9)}`;
-    setDispatchSmsStatus(`Dispatched fulfillment webhook to ${selectedAppointment.customerName} (${selectedAppointment.resourceDid}) • Delivery ID: ${webhookId}`);
-    setTimeout(() => setDispatchSmsStatus(null), 6000);
+    setDispatchWebhookStatus(`Dispatched fulfillment webhook to ${selectedAppointment.customerName} (${selectedAppointment.resourceDid}) • Delivery ID: ${webhookId}`);
+    setTimeout(() => setDispatchWebhookStatus(null), 6000);
 
     addWireLog({
       method: 'POST',
@@ -740,7 +740,7 @@ Execution Node:    ${selectedAppointment.resourceName} (${selectedAppointment.re
 Enclave Endpoint:  ${selectedAppointment.resourceDid}
 Buyer Agent:       ${selectedAppointment.customerName}
 Principal Entity:  ${selectedAppointment.resourceEntity}
-Cryptographic Sig: ${selectedAppointment.customerPhone}
+Cryptographic Sig: ${selectedAppointment.clientFingerprint || selectedAppointment.customerPhone}
 
 Fulfillment State: ${selectedAppointment.depositStatus}
 PayPal Txn ID:     ${selectedAppointment.paypalTxn}
@@ -832,8 +832,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       },
       {
         id: 'node-4',
-        name: 'Node-04: Dedicated AI Service Gateway (Voice)',
-        entity: 'Full-Duplex 8kHz/24kHz Bi-Directional Audio Bridge',
+        name: 'Node-04: Dedicated AI Service Gateway (Stream Processing)',
+        entity: 'Full-Duplex Real-Time Stream Bridge',
         trade: 'Dedicated AI Service Gateway',
         did: 'node-cluster-04.ap2.net',
         status: 'ACTIVE_ENCLAVE_BOUND',
@@ -893,11 +893,11 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-06-401',
         resourceId: 'node-4',
-        name: '#371 Voice Screener Ingress ($120)',
+        name: '#371 Real-Time Ingress Stream ($120)',
         startDate: '2026-10-06 08:30',
         endDate: '2026-10-06 10:00',
         eventColor: 'cyan',
-        iconCls: 'b-fa b-fa-phone-volume',
+        iconCls: 'b-fa b-fa-bolt',
         depositStatus: 'SETTLED ($120.00 PAYPAL)',
         paypalTxn: 'TXN-SETTLE-6640',
       },
@@ -1133,38 +1133,38 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         paypalTxn: 'TXN-SETTLE-9937',
       },
 
-      // Node 4: Real-Time Audio Telephony Streamer
+      // Node 4: Real-Time Stream Processing Node
       {
         id: 'workload-401',
         resourceId: 'node-4',
-        name: '#401 Voice Screener Bridge ($79.99/mo)',
+        name: '#401 Dedicated AI Service Gateway ($79.99/mo)',
         startDate: '2026-10-08 08:15',
         endDate: '2026-10-08 09:45',
         eventColor: 'green',
-        iconCls: 'b-fa b-fa-phone-volume',
+        iconCls: 'b-fa b-fa-bolt',
         depositStatus: 'ACTIVE ($79.99/MO)',
         paypalTxn: 'I-VC551PP882B4',
       },
       {
         id: 'workload-402',
         resourceId: 'node-4',
-        name: '#402 500-Call Batch Voice ($200)',
+        name: '#402 High-Throughput Batch Worker ($49.99/mo)',
         startDate: '2026-10-08 11:30',
         endDate: '2026-10-08 13:00',
         eventColor: 'blue',
-        iconCls: 'b-fa b-fa-broadcast-tower',
-        depositStatus: 'PAID $200.00 (PAYPAL VAULT)',
+        iconCls: 'b-fa b-fa-layer-group',
+        depositStatus: 'PAID $49.99 (PAYPAL VAULT)',
         paypalTxn: 'TXN-SETTLE-5518',
       },
       {
         id: 'workload-403',
         resourceId: 'node-4',
-        name: '#403 TTS Synthesizer ($125)',
+        name: '#403 Enterprise Cluster Node ($179.99/mo)',
         startDate: '2026-10-08 14:30',
         endDate: '2026-10-08 16:00',
         eventColor: 'purple',
-        iconCls: 'b-fa b-fa-headphones',
-        depositStatus: 'PAID $125.00 (PAYPAL VAULT)',
+        iconCls: 'b-fa b-fa-server',
+        depositStatus: 'PAID $179.99 (PAYPAL VAULT)',
         paypalTxn: 'TXN-SETTLE-5532',
       },
 
@@ -1240,11 +1240,11 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-09-401',
         resourceId: 'node-4',
-        name: '#411 Morning Voice Dispatch ($120)',
+        name: '#411 Service Gateway Route ($79.99/mo)',
         startDate: '2026-10-09 08:30',
         endDate: '2026-10-09 10:00',
         eventColor: 'green',
-        iconCls: 'b-fa b-fa-phone-volume',
+        iconCls: 'b-fa b-fa-bolt',
         depositStatus: 'SCHEDULED (PAYPAL VAULT)',
         paypalTxn: 'TXN-SCHED-9941',
       },
@@ -1388,7 +1388,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               customerName: getBuyerAgent(name),
               projectScope: getWorkloadScope(name),
               jobAddress: getClusterEndpoint(name),
-              customerPhone: getEd25519Fingerprint(name),
+              clientFingerprint: getEd25519Fingerprint(name),
               takeoffNotes: getExecutionSpecifications(name, resourceTrade),
               startDate: eventRecord.startDate ? new Date(eventRecord.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '13:00',
               endDate: eventRecord.endDate ? new Date(eventRecord.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '14:15',
@@ -1400,7 +1400,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               resourceTrade: resourceTrade,
               resourceDid: eventRecord.resource?.did || 'node-cluster-01.ap2.net',
             });
-            setDispatchSmsStatus(null);
+            setDispatchWebhookStatus(null);
             setInvoiceStatus(null);
           }
         },
@@ -2529,7 +2529,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>FastMCP Concurrency</div>
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>14 Active Streams</div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>Zero Robocalls • TCR Compliant</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>Zero Policy Violations • AP2 Compliant</div>
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Vaulted Mandates</div>
@@ -2561,7 +2561,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                         customerName: wl.buyer,
                         projectScope: getWorkloadScope(wl.name),
                         jobAddress: getClusterEndpoint(wl.name),
-                        customerPhone: getEd25519Fingerprint(wl.name),
+                        clientFingerprint: getEd25519Fingerprint(wl.name),
                         takeoffNotes: getExecutionSpecifications(wl.name, wl.node),
                         startDate: '08:00',
                         endDate: '09:30',
@@ -2629,7 +2629,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                             customerName: wl.buyer,
                             projectScope: getWorkloadScope(wl.name),
                             jobAddress: getClusterEndpoint(wl.name),
-                            customerPhone: getEd25519Fingerprint(wl.name),
+                            clientFingerprint: getEd25519Fingerprint(wl.name),
                             takeoffNotes: getExecutionSpecifications(wl.name, wl.node),
                             startDate: '08:00',
                             endDate: '09:30',
@@ -3047,12 +3047,12 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           {/* Drawer Body */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* Real-time Action Feedback Banners */}
-            {dispatchSmsStatus && (
+            {dispatchWebhookStatus && (
               <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontSize: '11px', lineHeight: 1.4 }}>
                 <CheckCircle2 size={18} style={{ flexShrink: 0, color: '#10b981' }} />
                 <div>
                   <div style={{ fontWeight: 700 }}>Autonomous Fulfillment Webhook Dispatched</div>
-                  <div style={{ color: '#cbd5e1', fontSize: '11px' }}>{dispatchSmsStatus}</div>
+                  <div style={{ color: '#cbd5e1', fontSize: '11px' }}>{dispatchWebhookStatus}</div>
                 </div>
               </div>
             )}
@@ -3100,7 +3100,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Ed25519 Key</span>
-                <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#cbd5e1' }}>{selectedAppointment.customerPhone}</span>
+                <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#cbd5e1' }}>{selectedAppointment.clientFingerprint || selectedAppointment.customerPhone}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Enclave Endpoint</span>
@@ -3143,7 +3143,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
             </div>
 
-            {/* Financial & Deposit Verification */}
+            {/* Financial & Payment Verification */}
             <div style={{ backgroundColor: '#131d31', borderRadius: '8px', padding: '14px', border: '1px solid #1e293b' }}>
               <div style={{ fontSize: '11px', color: '#34d399', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>
                 PayPal Payment Rail &bull; Vault MIT
@@ -3212,18 +3212,18 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           {/* Drawer Footer Field-Service Actions */}
           <div style={{ padding: '14px 20px', borderTop: '1px solid #1e293b', backgroundColor: '#0d1527', display: 'flex', gap: '10px' }}>
             <button
-              onClick={handleDispatchSms}
-              disabled={isSendingSms}
+              onClick={handleDispatchWebhook}
+              disabled={isSendingWebhook}
               style={{
                 flex: 2,
                 padding: '9px 12px',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: isSendingSms ? '#0369a1' : '#0284c7',
+                backgroundColor: isSendingWebhook ? '#0369a1' : '#0284c7',
                 color: '#ffffff',
                 fontSize: '12px',
                 fontWeight: 700,
-                cursor: isSendingSms ? 'not-allowed' : 'pointer',
+                cursor: isSendingWebhook ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -3234,7 +3234,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               title="Dispatch fulfillment webhook notification to buyer agent"
             >
               <Send size={13} />
-              {isSendingSms ? 'Dispatching Webhook...' : 'Dispatch Webhook'}
+              {isSendingWebhook ? 'Dispatching Webhook...' : 'Dispatch Webhook'}
             </button>
 
             <button

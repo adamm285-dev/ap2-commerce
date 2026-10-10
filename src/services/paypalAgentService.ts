@@ -50,7 +50,6 @@ export interface DeckPurchaseOptions {
   capability?: string;
   agreedMonthlyRate?: number;
   monthlyBudgetCap?: number;
-  areaCode?: string;
   negotiation?: AgentNegotiationResponse;
 }
 
@@ -313,7 +312,6 @@ export async function executeProvisioningAfterSubscription(
       body: JSON.stringify({
         subscriptionId: subscriptionId,
         contractorEmail: 'merchant@example.com',
-        areaCode: '703',
       }),
     });
 
@@ -398,7 +396,6 @@ export async function executeDeckAp2Purchase(
         openCheckoutMandateToken: options.negotiation?.openCheckoutMandateToken,
         openPaymentMandateToken: options.negotiation?.openPaymentMandateToken,
         paypalSubscriptionId: options.subscriptionId,
-        areaCode: options.areaCode || '703',
       }),
     });
 
@@ -422,8 +419,7 @@ export async function executeDeckAp2Purchase(
   return executeProvisioningAfterSubscription(
     options.subscriptionId,
     options.principalEntity,
-    options.capability,
-    options.areaCode
+    options.capability
   );
 }
 
@@ -441,7 +437,7 @@ export interface DispatchLockResult {
  * Calls FastAPI backend at POST /api/agent/dispatch/lock-slot with client-side fallback.
  */
 export async function lockDispatchSlot(
-  leadId: string,
+  jobId: string,
   territoryZone: string,
   slotStartIso: string,
   paypalTransactionId: string
@@ -451,7 +447,7 @@ export async function lockDispatchSlot(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        leadId,
+        jobId,
         territoryZone,
         slotStartIso,
         paypalTransactionId,
@@ -580,11 +576,11 @@ export async function fetchFleetSchedule(): Promise<FleetScheduleResponse | null
  * Locks a territory dispatch slot for an enterprise node via POST /api/agent/dispatch/lock-slot.
  */
 export async function lockTerritorySlot(
-  leadId: string,
+  jobId: string,
   territoryZone: string,
   slotStartIso: string,
   paypalTransactionId: string
 ): Promise<DispatchLockResult> {
-  return lockDispatchSlot(leadId, territoryZone, slotStartIso, paypalTransactionId);
+  return lockDispatchSlot(jobId, territoryZone, slotStartIso, paypalTransactionId);
 }
 

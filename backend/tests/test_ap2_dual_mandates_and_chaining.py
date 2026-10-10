@@ -419,7 +419,7 @@ async def test_unauthorized_category_buyer_mandate_rejected():
 async def test_signed_cap_overrides_unsigned_param():
     """
     Verifies that the signed budget cap inside the buyer mandate strictly overrides
-    any caller-supplied unsigned monthly_budget_cap parameter (Test B security fix).
+    any client-supplied unsigned monthly_budget_cap parameter (Test B security fix).
     """
     custom_mandate = build_buyer_intent_mandate(
         buyer_agent_id="claude-desktop-buyer",
@@ -430,7 +430,7 @@ async def test_signed_cap_overrides_unsigned_param():
         contractor_email="buyer@example.com",
     )
 
-    # Caller tries to pass an inflated unsigned monthly_budget_cap of $200.00
+    # Buyer agent tries to pass an inflated unsigned monthly_budget_cap of $200.00
     neg = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="claude-desktop-buyer",
         tier_id="ap2-gateway",

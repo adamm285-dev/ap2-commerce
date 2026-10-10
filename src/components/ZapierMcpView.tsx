@@ -91,14 +91,14 @@ export function ZapierMcpView({
 
   // Scenario 2: Workload Execution Dispatch Dossier
   const [workloadDispatch] = useState<QualifiedLead>({
-    callerName: 'agent:gpt-4o:document-parse',
-    callerPhone: 'node-cluster-02.ap2.net:8443',
+    requesterName: 'agent:gpt-4o:document-parse',
+    clientEndpoint: 'node-cluster-02.ap2.net:8443',
     propertyAddress: '50,000 Operations Inference & Batch RAG Synthesis',
     tradeVertical: 'High-Throughput Batch Worker',
     scopeSummary: 'Autonomous inference dispatch reserved for 50k operations batch with Ed25519 signature proof',
     territoryZone: 'Cluster Zone 2 - US East (High-Memory)',
     appointmentTime: 'Execution Latency: Sub-350ms',
-    depositAmount: 15.0,
+    paymentAmount: 15.0,
     paypalTransactionId: 'PAYPAL-TXN-998811',
   });
 
@@ -146,15 +146,15 @@ export function ZapierMcpView({
     purchase_id: 'QBO-EXP-9124',
   } : {
     Invoice: {
-      CustomerRef: { value: '202', name: workloadDispatch.callerName },
+      CustomerRef: { value: '202', name: workloadDispatch.requesterName },
       Line: [
         {
-          Amount: workloadDispatch.depositAmount,
+          Amount: workloadDispatch.paymentAmount,
           DetailType: 'SalesItemLineDetail',
           Description: `Autonomous Workload Settlement: ${workloadDispatch.tradeVertical} (${workloadDispatch.propertyAddress})`,
           SalesItemLineDetail: {
             ItemRef: { value: '1', name: 'AI Compute & Token Quota' },
-            UnitPrice: workloadDispatch.depositAmount,
+            UnitPrice: workloadDispatch.paymentAmount,
             Qty: 1,
           },
         },
@@ -193,11 +193,11 @@ export function ZapierMcpView({
     time: new Date().toISOString(),
     subject: 'workload_50k_tokens',
     data: {
-      requesting_agent: workloadDispatch.callerName,
-      target_node: workloadDispatch.callerPhone,
+      requesting_agent: workloadDispatch.requesterName,
+      target_node: workloadDispatch.clientEndpoint,
       service_capability: workloadDispatch.tradeVertical,
       workload_scope: workloadDispatch.propertyAddress,
-      settlement_amount: workloadDispatch.depositAmount,
+      settlement_amount: workloadDispatch.paymentAmount,
       paypal_transaction_id: workloadDispatch.paypalTransactionId,
       token_quota: 50000,
       sla_target: 'sub-350ms',
@@ -563,11 +563,11 @@ export function ZapierMcpView({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
               <div>
                 <span style={{ color: '#94a3b8' }}>Requesting Buyer Agent:</span>
-                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{workloadDispatch.callerName}</div>
+                <div style={{ color: '#f8fafc', fontWeight: 600 }}>{workloadDispatch.requesterName}</div>
               </div>
               <div>
                 <span style={{ color: '#94a3b8' }}>Assigned Node Endpoint:</span>
-                <div style={{ color: '#fbbf24', fontFamily: 'monospace' }}>{workloadDispatch.callerPhone}</div>
+                <div style={{ color: '#fbbf24', fontFamily: 'monospace' }}>{workloadDispatch.clientEndpoint}</div>
               </div>
               <div>
                 <span style={{ color: '#94a3b8' }}>Workload Specification:</span>
@@ -595,7 +595,7 @@ export function ZapierMcpView({
                 }}
               >
                 <div style={{ color: '#34d399', fontWeight: 600 }}>
-                  Autonomous Escrow Settlement: ${workloadDispatch.depositAmount.toFixed(2)}
+                  Autonomous Escrow Settlement: ${workloadDispatch.paymentAmount.toFixed(2)}
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
                   PayPal Vault MIT Txn: {workloadDispatch.paypalTransactionId}
@@ -966,7 +966,7 @@ export function ZapierMcpView({
                   Type: {cloudEventsPreview?.type || 'com.ap2.settlement'}
                 </span>
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#78350f', color: '#fde68a' }}>
-                  Node: {activeScenario === 'a2a' ? agentSubscription.allocatedDid : workloadDispatch.callerPhone}
+                  Node: {activeScenario === 'a2a' ? agentSubscription.allocatedDid : workloadDispatch.clientEndpoint}
                 </span>
               </div>
               <button

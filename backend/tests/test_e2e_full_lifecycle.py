@@ -77,7 +77,6 @@ def test_complete_autonomous_a2a_lifecycle():
     prov_payload = {
         "subscriptionId": sub_id,
         "contractorEmail": "agent-alpha@example.com",
-        "areaCode": "US",
     }
     res_prov = client.post("/api/agent/provision", json=prov_payload)
     assert res_prov.status_code == 201
@@ -120,7 +119,7 @@ def test_complete_autonomous_a2a_lifecycle():
 
     # Step 8: Lock Territory Dispatch Slot
     lock_payload = {
-        "leadId": "lead-nexus-gateway-01",
+        "jobId": "job-nexus-gateway-01",
         "territoryZone": "Zone 1 - US East",
         "slotStartIso": "2026-10-06T10:00:00-04:00",
         "paypalTransactionId": "TXN-DEP-8849102",
@@ -134,19 +133,19 @@ def test_complete_autonomous_a2a_lifecycle():
 
     # Step 9: Downstream Lead Sync via Zapier MCP
     zapier_lead_payload = {
-        "workflowType": "homeowner_lead",
-        "leadId": "lead-nexus-gateway-01",
+        "workflowType": "compute_task",
+        "jobId": "job-nexus-gateway-01",
         "customerName": "Nexus AI Coordinator",
-        "customerPhone": "+18005550199",
+        "clientFingerprint": "agent-fingerprint-0199",
         "propertyAddress": "Cloud Execution Region us-east-1",
-        "depositAmount": 250.00,
+        "paymentAmount": 250.00,
         "paypalTxnId": "TXN-DEP-8849102",
     }
     res_zap_lead = client.post("/api/mcp/zapier-sync", json=zapier_lead_payload)
     assert res_zap_lead.status_code == 200
     zap_lead = res_zap_lead.json()
     assert zap_lead["status"] == "COMPLETED"
-    assert zap_lead["workflowType"] == "homeowner_lead"
+    assert zap_lead["workflowType"] == "compute_task"
     assert zap_lead["erpRoutingId"].startswith("AP2-")
     assert zap_lead["qboDraftInvoiceId"].startswith("QBO-INV-")
 

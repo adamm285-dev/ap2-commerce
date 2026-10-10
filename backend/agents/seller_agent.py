@@ -305,7 +305,7 @@ def reconcile_contractor_ledger(contractor_email: str) -> float:
 
 
 def _mask_email(email: Optional[str]) -> Optional[str]:
-    """Masks an email for responses that any caller can request."""
+    """Masks an email for responses that any client agent can request."""
     if not email or "@" not in email:
         return email
     local, _, domain = email.partition("@")
@@ -1030,7 +1030,7 @@ class SellerAgent:
         verified_tier = ap2_verify_res.get("tier_id")
         verified_price = ap2_verify_res.get("monthly_price")
 
-        # Parameter integrity: if caller provided tier_id or rate, they must match verified chain
+        # Parameter integrity: if buyer provided tier_id or rate, they must match verified chain
         if tier_id and verified_tier and tier_id != verified_tier:
             desc = f"TIER_MISMATCH_DETECTED: Requested tier '{tier_id}' does not match mandate chain tier '{verified_tier}'."
             logger.warning(f"[SECURITY] {desc}")

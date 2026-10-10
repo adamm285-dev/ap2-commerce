@@ -56,7 +56,6 @@ async def run_scenario_standard_procurement(server_url: str) -> Dict[str, Any]:
         contractor_email="buyer@example.com",
         trade_id="ap2-gateway",
         budget_cap=120.00,
-        area_code="US",
         verbose=False,
         reset_ledger=False,
     )

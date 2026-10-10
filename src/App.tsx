@@ -131,8 +131,7 @@ export function App() {
   const [businessEntity, setBusinessEntity] = useState('Acme Autonomous Systems LLC');
   const [tradeVertical, setTradeVertical] = useState('Dedicated AI Service Gateway');
   const [maxMonthlyBudget, setMaxMonthlyBudget] = useState(100.0);
-  const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA - 703)');
-  const [preferredAreaCode, setPreferredAreaCode] = useState('703');
+  const [operatingMarket, setOperatingMarket] = useState('US-East Cluster (Ashburn, VA)');
 
   // Dynamic trade impact dataset computed from live active transactions (Batch -> Gateway -> Cluster)
   const dynamicTradeImpact = useMemo(() => {
@@ -331,7 +330,6 @@ export function App() {
           capability: actualTier,
           agreedMonthlyRate: agreedMonthlyAmount,
           monthlyBudgetCap: maxMonthlyBudget,
-          areaCode: preferredAreaCode,
           negotiation: negotiationResult || undefined,
         });
         setProvisioningResult(result);
@@ -382,7 +380,7 @@ export function App() {
         setIsProvisioning(false);
       }
     },
-    [contractorName, businessEntity, tradeVertical, preferredAreaCode, negotiationResult]
+    [contractorName, businessEntity, tradeVertical, negotiationResult]
   );
 
   return (
@@ -1022,7 +1020,6 @@ export function App() {
             contractorName={contractorName}
             businessEntity={businessEntity}
             tradeVertical={tradeVertical}
-            areaCode={preferredAreaCode}
             budgetCap={maxMonthlyBudget}
             activeStep={activeSetupStep}
             onSelectStep={setActiveSetupStep}
@@ -1221,7 +1218,7 @@ export function App() {
                     <option value="High-Throughput Batch Worker">High-Throughput Batch Worker ($49.99/mo)</option>
                     <option value="Autonomous Security Audit Cluster">Autonomous Security Audit Cluster ($179.99/mo)</option>
                     <option value="Vector RAG Ingestion Pipeline">Vector RAG Ingestion Pipeline ($79.99/mo)</option>
-                    <option value="Real-Time Audio Telephony Streamer">Real-Time Audio Telephony Streamer ($79.99/mo)</option>
+                    <option value="Real-Time Stream Processing Node">Real-Time Stream Processing Node ($79.99/mo)</option>
                   </select>
                 </div>
                 <div>
@@ -1249,14 +1246,7 @@ export function App() {
                   </label>
                   <select
                     value={operatingMarket}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setOperatingMarket(val);
-                      const match = val.match(/\((\d{3})\)/);
-                      if (match) {
-                        setPreferredAreaCode(match[1]);
-                      }
-                    }}
+                    onChange={(e) => setOperatingMarket(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px',
@@ -1267,34 +1257,12 @@ export function App() {
                       fontSize: '13px',
                     }}
                   >
-                    <option value="US-East Cluster (Ashburn, VA - 703)">US-East Cluster (Ashburn, VA - 703)</option>
-                    <option value="US-Central Cluster (Council Bluffs, IA - 515)">US-Central Cluster (Council Bluffs, IA - 515)</option>
-                    <option value="US-West Cluster (The Dalles, OR - 541)">US-West Cluster (The Dalles, OR - 541)</option>
-                    <option value="EU-West Cluster (Frankfurt, DE - 49)">EU-West Cluster (Frankfurt, DE - 49)</option>
-                    <option value="AP-East Cluster (Tokyo, JP - 81)">AP-East Cluster (Tokyo, JP - 81)</option>
+                    <option value="US-East Cluster (Ashburn, VA)">US-East Cluster (Ashburn, VA)</option>
+                    <option value="US-Central Cluster (Council Bluffs, IA)">US-Central Cluster (Council Bluffs, IA)</option>
+                    <option value="US-West Cluster (The Dalles, OR)">US-West Cluster (The Dalles, OR)</option>
+                    <option value="EU-West Cluster (Frankfurt, DE)">EU-West Cluster (Frankfurt, DE)</option>
+                    <option value="AP-East Cluster (Tokyo, JP)">AP-East Cluster (Tokyo, JP)</option>
                   </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
-                    Assigned Gateway Route / Port
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={3}
-                    placeholder="e.g. 703, 515, 541"
-                    value={preferredAreaCode}
-                    onChange={(e) => setPreferredAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      backgroundColor: '#1e293b',
-                      border: '1px solid #334155',
-                      color: '#38bdf8',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                    }}
-                  />
                 </div>
               </div>
 

@@ -132,19 +132,20 @@ class ZapierMcpDispatcher:
                 webhook_status_code=dispatch_res.get("status_code"),
             )
 
-        # General lead workflow fallback
+        # General compute task workflow fallback
         erp_id = f"AP2-{uuid.uuid4().hex[:6].upper()}"
         qbo_id = f"QBO-INV-{uuid.uuid4().hex[:6].upper()}"
         gcal_id = f"gcal_evt_{uuid.uuid4().hex[:10]}"
+        payment_val = getattr(request, "payment_amount", None) or getattr(request, "deposit_amount", 79.99) or 79.99
 
         logger.info(
             f"[Zapier MCP MOCK] 1. Created AP2 Record: {erp_id} for {request.customer_name}"
         )
         logger.info(
-            f"[Zapier MCP MOCK] 2. Created QuickBooks Draft Invoice: {qbo_id} (Credit ${request.deposit_amount:.2f})"
+            f"[Zapier MCP MOCK] 2. Created QuickBooks Draft Invoice: {qbo_id} (Credit ${payment_val:.2f})"
         )
         logger.info(
-            f"[Zapier MCP MOCK] 3. Scheduled Appointment: {gcal_id} at {request.property_address}"
+            f"[Zapier MCP MOCK] 3. Scheduled Workload Execution Window: {gcal_id} at {request.property_address}"
         )
 
         return ZapierSyncResponse(
@@ -152,7 +153,7 @@ class ZapierMcpDispatcher:
             qbo_draft_invoice_id=qbo_id,
             google_calendar_event_id=gcal_id,
             status="COMPLETED",
-            workflow_type="homeowner_lead",
+            workflow_type=request.workflow_type or "compute_task",
         )
 
 

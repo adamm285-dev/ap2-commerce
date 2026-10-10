@@ -1,26 +1,26 @@
 """
-Unit tests for ContractorCopilot agent reasoner.
+Unit tests for SellerCopilot agent reasoner.
 Tests diagnosis, proposal, and autonomous A2A execution via MCP tools.
 """
 
 import pytest
-from backend.agents.contractor_copilot import ContractorCopilot
+from backend.agents.seller_copilot import SellerCopilot
 
 
 @pytest.mark.asyncio
 async def test_copilot_diagnosis_intent():
-    copilot = ContractorCopilot()
+    copilot = SellerCopilot()
     resp = await copilot.handle_message("Check pending workload queue today")
     assert resp["phase"] == "DIAGNOSIS"
     assert "workload" in resp["reply"].lower() or "pending tasks" in resp["reply"].lower()
-    assert resp["telemetry"]["missed_calls"] == 8
+    assert resp["telemetry"]["pending_tasks"] == 8
     assert resp["telemetry"]["estimated_lost_revenue"] == 6200.00
     assert len(resp["suggested_actions"]) > 0
 
 
 @pytest.mark.asyncio
 async def test_copilot_proposal_intent():
-    copilot = ContractorCopilot()
+    copilot = SellerCopilot()
     resp = await copilot.handle_message("Find me an autonomous compute node solution")
     assert resp["phase"] == "PROPOSAL"
     assert "gateway" in resp["reply"].lower()
@@ -32,7 +32,7 @@ async def test_copilot_proposal_intent():
 
 @pytest.mark.asyncio
 async def test_copilot_approval_and_a2a_execution():
-    copilot = ContractorCopilot(area_code="202")
+    copilot = SellerCopilot()
     resp = await copilot.handle_message("Yes, approve and setup ($79.99/mo via PayPal)")
     assert resp["phase"] == "COMPLETED"
     assert "autonomous a2a setup complete" in resp["reply"].lower()
@@ -60,7 +60,7 @@ async def test_copilot_approval_and_a2a_execution():
 
 @pytest.mark.asyncio
 async def test_copilot_audit_intent():
-    copilot = ContractorCopilot()
+    copilot = SellerCopilot()
     resp = await copilot.handle_message("Inspect A2A Protocol Audit Trail")
     assert resp["phase"] == "AUDIT"
     assert "rfc 8032" in resp["reply"].lower()
@@ -71,7 +71,7 @@ async def test_copilot_audit_intent():
 
 @pytest.mark.asyncio
 async def test_copilot_navigation_and_budget_intents():
-    copilot = ContractorCopilot()
+    copilot = SellerCopilot()
     # Fleet ledger navigation
     resp_ledger = await copilot.handle_message("View in AP2 Fleet Ledger")
     assert resp_ledger["phase"] == "NAVIGATION"

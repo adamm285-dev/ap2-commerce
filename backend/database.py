@@ -174,25 +174,33 @@ def init_db(db_path: Optional[Path] = None) -> None:
 
             CREATE TABLE IF NOT EXISTS dispatch_slots (
                 slot_id TEXT PRIMARY KEY,
-                lead_id TEXT,
+                job_id TEXT,
                 contractor_id TEXT,
                 territory_zone TEXT NOT NULL,
                 slot_start_iso TEXT NOT NULL,
                 slot_end_iso TEXT,
-                caller_name TEXT,
-                project_scope TEXT,
-                deposit_payment_id TEXT,
+                requester_name TEXT,
+                workload_scope TEXT,
+                payment_id TEXT,
                 node_assigned TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
             """)
 
             cur = conn.cursor()
-            # Safe schema migration: rename crew_assigned to node_assigned if legacy column exists
+            # Safe schema migration: rename legacy columns in dispatch_slots if they exist
             cur.execute("PRAGMA table_info(dispatch_slots)")
             slot_cols = [row["name"] for row in cur.fetchall()]
             if "crew_assigned" in slot_cols and "node_assigned" not in slot_cols:
                 cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN crew_assigned TO node_assigned")
+            if "caller_name" in slot_cols and "requester_name" not in slot_cols:
+                cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN caller_name TO requester_name")
+            if "lead_id" in slot_cols and "job_id" not in slot_cols:
+                cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN lead_id TO job_id")
+            if "project_scope" in slot_cols and "workload_scope" not in slot_cols:
+                cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN project_scope TO workload_scope")
+            if "deposit_payment_id" in slot_cols and "payment_id" not in slot_cols:
+                cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN deposit_payment_id TO payment_id")
 
             # Seed default buyer keys if table is empty
             cur.execute("SELECT COUNT(*) as count FROM buyer_keys")
@@ -1046,22 +1054,22 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
             conn.execute(
                 """
                 INSERT OR REPLACE INTO dispatch_slots (
-                    slot_id, lead_id, contractor_id, territory_zone, slot_start_iso,
-                    slot_end_iso, caller_name, project_scope, deposit_payment_id,
+                    slot_id, job_id, contractor_id, territory_zone, slot_start_iso,
+                    slot_end_iso, requester_name, workload_scope, payment_id,
                     node_assigned, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     slot_id,
-                    slot_data.get("lead_id"),
+                    slot_data.get("job_id") or slot_data.get("jobId"),
                     slot_data.get("contractor_id", "buyer_agent_alpha_01"),
                     slot_data.get("territory_zone", "Zone 1 - US East"),
                     slot_data.get("slot_start_iso", "2026-10-02 14:00"),
                     slot_data.get("slot_end_iso", "2026-10-02 15:15"),
-                    slot_data.get("caller_name", "Nexus Autonomous Buyer"),
-                    slot_data.get("project_scope", "Dedicated AI Service Gateway Compute Node Provisioning"),
-                    slot_data.get("deposit_payment_id", slot_data.get("paypal_transaction_id", "PAY-DEP-9921")),
-                    slot_data.get("node_assigned") or slot_data.get("crew_assigned", "Cluster Node 01"),
+                    slot_data.get("requester_name") or slot_data.get("requesterName", "Nexus Autonomous Buyer"),
+                    slot_data.get("workload_scope") or slot_data.get("workloadScope", "Dedicated AI Service Gateway Compute Node Provisioning"),
+                    slot_data.get("payment_id") or slot_data.get("paymentId", slot_data.get("paypal_transaction_id", "PAY-DEP-9921")),
+                    slot_data.get("node_assigned") or slot_data.get("nodeAssigned", "Cluster Node 01"),
                     now_iso,
                 ),
             )
@@ -1416,15 +1424,6 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
         seeded += 1
 
     return seeded
-
-
-def _mask_phone(phone: Optional[str]) -> str:
-    if not phone or phone in ("AWAITING_DEPOSIT", "PENDING_ACTIVATION"):
-        return phone or "AWAITING_DEPOSIT"
-    cleaned = phone.strip()
-    if len(cleaned) >= 10:
-        return f"{cleaned[:8]} ***-{cleaned[-4:]}"
-    return "***-****"
 
 
 def _mask_name(name: Optional[str]) -> str:

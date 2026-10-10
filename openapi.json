@@ -828,14 +828,14 @@
         }
       }
     },
-    "/api/copilot/chat": {
+    "/api/seller-copilot/chat": {
       "post": {
         "tags": [
-          "Contractor Copilot"
+          "Seller Copilot"
         ],
         "summary": "Copilot Chat Endpoint",
-        "description": "Contractor AI Copilot conversational engine.\nIngests messages from the contractor, diagnoses call leaks, queries AP2 Seller MCP,\nand returns conversational responses and proposed A2A actions.",
-        "operationId": "copilot_chat_endpoint_api_copilot_chat_post",
+        "description": "Seller AI Copilot conversational engine.\nIngests messages from the operator, diagnoses pipeline queue, queries AP2 Seller MCP,\nand returns conversational responses and proposed A2A actions.",
+        "operationId": "copilot_chat_endpoint_api_seller_copilot_chat_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1904,18 +1904,6 @@
             "title": "Trade Vertical",
             "default": "Autonomous Compute & Worker Nodes"
           },
-          "area_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Area Code",
-            "default": "703"
-          },
           "budget_cap": {
             "anyOf": [
               {
@@ -2053,17 +2041,6 @@
               }
             ],
             "title": "Paypalsubscriptionid"
-          },
-          "areaCode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Areacode"
           }
         },
         "type": "object",
@@ -2075,12 +2052,12 @@
       },
       "DispatchLockRequest": {
         "properties": {
-          "leadId": {
+          "jobId": {
             "type": "string",
             "maxLength": 64,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_.:\\-]+$",
-            "title": "Leadid"
+            "title": "Jobid"
           },
           "territoryZone": {
             "type": "string",
@@ -2114,7 +2091,7 @@
         },
         "type": "object",
         "required": [
-          "leadId",
+          "jobId",
           "territoryZone",
           "slotStartIso",
           "paypalTransactionId"
@@ -2310,11 +2287,6 @@
           "contractorEmail": {
             "type": "string",
             "title": "Contractoremail"
-          },
-          "areaCode": {
-            "type": "string",
-            "title": "Areacode",
-            "default": "703"
           },
           "simulateExhaustion": {
             "anyOf": [
@@ -2622,18 +2594,6 @@
             ],
             "title": "Budget Cap",
             "default": 100.0
-          },
-          "area_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Area Code",
-            "default": "703"
           },
           "simulate_exhaustion": {
             "anyOf": [
@@ -3088,7 +3048,7 @@
             ],
             "title": "Workflowtype"
           },
-          "leadId": {
+          "jobId": {
             "anyOf": [
               {
                 "type": "string"
@@ -3097,8 +3057,8 @@
                 "type": "null"
               }
             ],
-            "title": "Leadid",
-            "default": "lead-a2a-onboarding"
+            "title": "Jobid",
+            "default": "job-a2a-onboarding"
           },
           "customerName": {
             "anyOf": [
@@ -3112,7 +3072,7 @@
             "title": "Customername",
             "default": "Acme Autonomous Systems LLC"
           },
-          "customerPhone": {
+          "clientFingerprint": {
             "anyOf": [
               {
                 "type": "string"
@@ -3121,8 +3081,8 @@
                 "type": "null"
               }
             ],
-            "title": "Customerphone",
-            "default": "+1 (800) 555-0199"
+            "title": "Clientfingerprint",
+            "default": "0x5c88aa1199e1284f00bb"
           },
           "propertyAddress": {
             "anyOf": [
@@ -3136,7 +3096,7 @@
             "title": "Propertyaddress",
             "default": "Cloud Execution Region us-east-1"
           },
-          "depositAmount": {
+          "paymentAmount": {
             "anyOf": [
               {
                 "type": "number"
@@ -3145,7 +3105,7 @@
                 "type": "null"
               }
             ],
-            "title": "Depositamount",
+            "title": "Paymentamount",
             "default": 79.99
           },
           "paypalTxnId": {

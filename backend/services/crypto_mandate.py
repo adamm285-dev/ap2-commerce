@@ -311,7 +311,7 @@ def verify_ed25519_challenge_signature(
     public_key_hex: str,
 ) -> bool:
     """
-    Verifies an Ed25519 challenge signature guaranteeing the caller possesses
+    Verifies an Ed25519 challenge signature guaranteeing the buyer possesses
     the private key corresponding to public_key_hex.
     """
     try:

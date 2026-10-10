@@ -94,7 +94,6 @@ def test_provision_line_unauthorized_subscription_fails():
     payload = {
         "subscriptionId": "I-FAKE-UNREGISTERED-9999",
         "contractorEmail": "test@example.com",
-        "areaCode": "202",
     }
     res = client.post("/api/agent/provision", json=payload)
     assert res.status_code == 404
@@ -562,7 +561,7 @@ def test_resolve_tier_from_paypal_plan():
 
 def test_lock_dispatch_slot():
     payload = {
-        "leadId": "lead-sarah-jenkins",
+        "jobId": "lead-sarah-jenkins",
         "territoryZone": "Zone 2 - US-Central",
         "slotStartIso": "2026-10-06T10:00:00-04:00",
         "paypalTransactionId": "TXN-998811",
@@ -576,11 +575,11 @@ def test_lock_dispatch_slot():
 
 def test_trigger_zapier_mcp_sync():
     payload = {
-        "leadId": "workload-nexus-01",
+        "jobId": "workload-nexus-01",
         "customerName": "Autonomous Compute Client",
-        "customerPhone": "+15555550199",
+        "clientFingerprint": "client-fp-5550199",
         "propertyAddress": "Data Center Rack B4, US-East",
-        "depositAmount": 250.00,
+        "paymentAmount": 250.00,
         "paypalTxnId": "TXN-998811",
     }
     res = client.post("/api/mcp/zapier-sync", json=payload)

@@ -451,7 +451,7 @@ def run_judge_audit():
     lock_res = client.post(
         "/api/agent/dispatch/lock-slot",
         json={
-            "leadId": "WORKLOAD-AUDIT-01",
+            "jobId": "WORKLOAD-AUDIT-01",
             "territoryZone": "Zone 1 - High Throughput",
             "slotStartIso": "2026-10-02 13:00",
             "paypalTransactionId": "TXN-AUDIT-9021",

@@ -41,8 +41,8 @@ logger = logging.getLogger("external_buyer_agent")
 
 class ExternalBuyerAgent:
     """
-    Autonomous Buyer Agent that acts on behalf of a contractor to negotiate,
-    mandate-check, and purchase business telephony solutions headlessly over MCP.
+    Autonomous Buyer Agent that acts on behalf of a client to negotiate,
+    mandate-check, and purchase autonomous compute solutions headlessly over MCP.
     """
 
     def __init__(
@@ -54,7 +54,6 @@ class ExternalBuyerAgent:
         contractor_email: Optional[str] = None,
         trade_id: Optional[str] = None,
         budget_cap: float = 100.00,
-        area_code: str = "703",
         webhook_url: Optional[str] = None,
         verbose: bool = True,
         reset_ledger: bool = True,
@@ -72,7 +71,6 @@ class ExternalBuyerAgent:
         self.category = "AUTONOMOUS_NODE_SERVICE"
 
         self.budget_cap = budget_cap
-        self.area_code = area_code
         self.webhook_url = webhook_url
         self.verbose = verbose
         self.reset_ledger = reset_ledger
@@ -577,11 +575,6 @@ async def main():
         help="Do not reset spending mandate ledger before execution",
     )
     parser.add_argument(
-        "--area-code",
-        default="703",
-        help="Local area code for region allocation (default: 703)",
-    )
-    parser.add_argument(
         "--simulate-exhaustion",
         action="store_true",
         default=False,
@@ -608,7 +601,6 @@ async def main():
         contractor_email=args.email,
         trade_id=args.trade,
         budget_cap=args.budget,
-        area_code=args.area_code,
         webhook_url=args.webhook_url,
         verbose=not args.json,
         reset_ledger=args.reset_ledger,

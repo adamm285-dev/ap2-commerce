@@ -335,3 +335,140 @@ async def test_openai_compatible_runner_local_http_mock(monkeypatch):
     assert any("STEP 5: SIGNED" in s for s in res["step_log"])
     assert any("STEP 6: PURCHASED" in s for s in res["step_log"])
     assert agent.signatures_produced == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_buyer_agent_unreadable_limits_produces_zero_signatures():
+    """
+    Verifies that if an open mandate is truncated or disclosures are missing,
+    the pre-signature verification fails closed, producing 0 signatures.
+    """
+    email = "unread-limits@example.com"
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch"],
+    )
+    # Strip disclosures: token up to first ~
+    truncated_chk = ts_mandates["open_checkout_mandate_token"].split("~")[0] + "~"
+    truncated_pay = ts_mandates["open_payment_mandate_token"].split("~")[0] + "~"
+
+    agent = LLMBuyerAgent(
+        agent_id="test-unread-agent",
+        monthly_budget_cap=60.00,
+        buyer_email=email,
+    )
+
+    res = await agent.run_autonomous_procurement(
+        owner_request="Procure compute under $60/month",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token=truncated_chk,
+        open_payment_mandate_token=truncated_pay,
+    )
+
+    assert agent.signatures_produced == 0
+    assert res.get("status") != "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_llm_buyer_agent_tampered_checkout_jwt_produces_zero_signatures():
+    """
+    Verifies that if a hostile seller or attacker tampers with the Checkout JWT signature,
+    the deterministic pre-signature guard intercepts it, producing 0 signatures.
+    """
+    from ap2.sdk.jwt_helper import create_jwt
+    import base64
+    from backend.services.ap2_service import create_merchant_checkout
+
+    email = "tampered-jwt@example.com"
+    ts_mandates = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch"],
+    )
+
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    header_b64, payload_b64, _ = rec["checkout_jwt"].split(".")
+    pad = lambda s: s + "=" * (-len(s) % 4)
+    header = json.loads(base64.urlsafe_b64decode(pad(header_b64)))
+    payload = json.loads(base64.urlsafe_b64decode(pad(payload_b64)))
+
+    fake_key = JWK.generate(kty="EC", crv="P-256", kid="fake-seller-key")
+    forged_jwt = create_jwt(header, payload, fake_key)
+
+    class ForgedCheckoutRunner(BaseModelRunner):
+        async def decide_next_action(self, system_prompt, messages, tools):
+            return {
+                "thought": "I will try to sign against a forged merchant Checkout JWT.",
+                "action": "call_tool",
+                "tool_name": "sign_and_purchase",
+                "tool_call_id": "call_forged_sign_01",
+                "parameters": {
+                    "tier_id": "ap2-batch",
+                    "monthly_price": 49.99,
+                    "checkout_jwt": forged_jwt,
+                    "checkout_hash": rec["checkout_hash"],
+                    "nonce": rec["nonce"],
+                },
+            }
+
+    agent = LLMBuyerAgent(
+        agent_id="test-forged-jwt-agent",
+        monthly_budget_cap=60.00,
+        buyer_email=email,
+        model_runner=ForgedCheckoutRunner(),
+    )
+
+    res = await agent.run_autonomous_procurement(
+        owner_request="Procure batch compute node under $60",
+        target_tier="ap2-batch",
+        open_checkout_mandate_token=ts_mandates["open_checkout_mandate_token"],
+        open_payment_mandate_token=ts_mandates["open_payment_mandate_token"],
+    )
+
+    assert agent.signatures_produced == 0
+    assert res.get("status") == "REJECTED"
+    assert res.get("error") == "PRE_SIGNATURE_CONSTRAINT_VIOLATION"
+
+
+def test_mint_demo_owner_limits_to_file_refuses_when_live_mode(monkeypatch, tmp_path):
+    """
+    Verifies that mint_demo_owner_limits_to_file raises PermissionError when
+    settings.mock_external_apis is False.
+    """
+    from backend.config import settings
+    from backend.agents.llm_buyer_agent import mint_demo_owner_limits_to_file
+
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+    target = str(tmp_path / "test_limits.json")
+    with pytest.raises(PermissionError) as exc_info:
+        mint_demo_owner_limits_to_file(target, budget=60.00)
+    assert "mock_external_apis is True" in str(exc_info.value)
+
+
+def test_openai_compatible_runner_api_key_env(monkeypatch):
+    """
+    Verifies that OpenAICompatibleRunner accepts api_key_env, reads from that specific
+    environment variable, and does NOT fall back across OPENAI_API_KEY/XAI_API_KEY.
+    """
+    monkeypatch.setenv("MY_CUSTOM_MODEL_KEY", "secret-custom-key-12345")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+    runner = OpenAICompatibleRunner(
+        model="custom-model",
+        base_url="https://api.custom-ai.org/v1",
+        api_key_env="MY_CUSTOM_MODEL_KEY",
+    )
+    assert runner.api_key == "secret-custom-key-12345"
+
+    # Test error when explicit env var is missing and mock_external_apis is False
+    from backend.config import settings
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+    monkeypatch.delenv("NONEXISTENT_KEY_VAR", raising=False)
+    with pytest.raises(ValueError):
+        OpenAICompatibleRunner(
+            model="custom-model",
+            base_url="https://api.custom-ai.org/v1",
+            api_key_env="NONEXISTENT_KEY_VAR",
+        )

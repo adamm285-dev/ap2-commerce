@@ -11,6 +11,12 @@ _worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
 _base = os.environ.get("A2A_DB_PATH") or os.path.join(tempfile.gettempdir(), f"a2a_test_{os.getpid()}")
 os.environ["A2A_DB_PATH"] = f"{_base}_{_worker}.db"
 
+from pathlib import Path
+_resolved_test_db = Path(os.environ["A2A_DB_PATH"]).resolve()
+_dev_db = (Path(__file__).parent.parent / "data" / "a2a_commerce.db").resolve()
+if _resolved_test_db == _dev_db:
+    raise RuntimeError(f"CRITICAL SAFETY VIOLATION: Test suite attempting to run against production/dev database: {_dev_db}")
+
 import pytest
 from ..config import settings
 from ..services.paypal_service import paypal_service
@@ -49,9 +55,14 @@ def isolate_database_for_each_test():
     Ensures each unit and regression test runs against a clean database state and clean proxies,
     preventing state leakage across tests while preserving schema and default seeds.
     """
-    from ..database import reset_all_data
+    from ..database import get_db_path, reset_all_data
     from ..services.mandate_evaluator import ledger
     from ..server import clear_processed_webhooks
+
+    active_db = get_db_path().resolve()
+    dev_db = (Path(__file__).parent.parent / "data" / "a2a_commerce.db").resolve()
+    if active_db == dev_db:
+        raise RuntimeError(f"CRITICAL SAFETY VIOLATION: Test suite attempted to mutate dev database: {dev_db}")
 
     reset_all_data()
     ledger.reset()

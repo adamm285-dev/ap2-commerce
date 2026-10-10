@@ -661,24 +661,39 @@ def register_buyer_key(
 
 # --- Open Mandate Settlements Tracking ---
 
-def get_open_mandate_settlement_totals(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[int, int]:
+def get_open_mandate_settlement_totals(
+    mandate_hash: str,
+    exclude_subscription_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Tuple[int, int]:
     """
     Returns (total_amount_cents, total_uses) for a given open payment mandate hash.
     Used to construct MandateContext for AP2 Budget and AgentRecurrence evaluation.
+    If exclude_subscription_id is provided, excludes that subscription's settlement so replays don't double-count.
     """
     if not mandate_hash:
         return 0, 0
     conn = get_connection(db_path)
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(DISTINCT subscription_id) AS total_uses
-            FROM open_mandate_settlements
-            WHERE mandate_hash = ?
-            """,
-            (mandate_hash.strip(),),
-        )
+        if exclude_subscription_id:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(DISTINCT subscription_id) AS total_uses
+                FROM open_mandate_settlements
+                WHERE mandate_hash = ? AND subscription_id != ?
+                """,
+                (mandate_hash.strip(), exclude_subscription_id.strip()),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(DISTINCT subscription_id) AS total_uses
+                FROM open_mandate_settlements
+                WHERE mandate_hash = ?
+                """,
+                (mandate_hash.strip(),),
+            )
         row = cur.fetchone()
         if row:
             return int(row.get("total_amount") or 0), int(row.get("total_uses") or 0)
@@ -1006,6 +1021,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM spend_history")
             conn.execute("DELETE FROM processed_webhooks")
             conn.execute("DELETE FROM dispatch_slots")
+            conn.execute("DELETE FROM open_mandate_settlements")
             placeholders = ",".join("?" for _ in _DEFAULT_BUYER_KIDS)
             conn.execute(f"DELETE FROM buyer_keys WHERE kid NOT IN ({placeholders})", list(_DEFAULT_BUYER_KIDS))
     finally:

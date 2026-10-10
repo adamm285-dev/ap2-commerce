@@ -414,3 +414,106 @@ def test_trusted_surface_end_to_end_verification():
     assert v_res["monthly_price"] == 49.99
     assert v_res["checkout_receipt"] is not None
     assert v_res["payment_receipt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_identifier_only_replay_rejected_with_zero_record_fields():
+    """
+    Verifies that calling purchase_subscription with only an identifier (mandate_proof_hash or offer_id)
+    and no valid chains or matching authorized legacy proof is strictly rejected without returning
+    any cached subscription record fields (subscription_id, payment_token, vault_id, payer_id, buyer_email).
+    """
+    email = "ident-only@example.com"
+    ts_res = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch"],
+    )
+    chk_rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+
+    closed_chk = CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk_rec["checkout_jwt"], checkout_hash=chk_rec["checkout_hash"])
+    chk_chain = mandate_client.present(holder_key=agent_key, mandate_token=ts_res["open_checkout_mandate_token"], payloads=[closed_chk], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    closed_pay = PaymentMandate(
+        vct="mandate.payment.1",
+        transaction_id=chk_rec["checkout_hash"],
+        payment_amount=Amount(amount=4999, currency="USD"),
+        payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+        payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_ident"),
+    )
+    pay_chain = mandate_client.present(holder_key=agent_key, mandate_token=ts_res["open_payment_mandate_token"], payloads=[closed_pay], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+    # Legitimate first purchase
+    first = await seller_agent.purchase_subscription(
+        offer_id=chk_rec["checkout_hash"][:16],
+        contractor_email=email,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=chk_rec["checkout_jwt"],
+    )
+    assert first["status"] in ("ACTIVE", "APPROVAL_PENDING")
+
+    # Attacker attempts replay carrying only the checkout hash / proof hash with zero chains
+    attacker_res = await seller_agent.purchase_subscription(
+        mandate_proof_hash=chk_rec["checkout_hash"],
+    )
+    assert attacker_res["status"] == "REJECTED"
+    for field in ("subscription_id", "payment_token", "vault_id", "payer_id", "buyer_email"):
+        assert field not in attacker_res
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier_id,price", [
+    ("ap2-batch", 49.99),
+    ("ap2-gateway", 79.99),
+    ("ap2-cluster", 179.99),
+])
+async def test_twelve_payments_succeed_and_thirteenth_fails_all_three_tiers(tier_id, price):
+    """
+    Verifies that the default yearly budget ceiling (integer cents = monthly_cap * 12)
+    allows exactly 12 payments for all three tiers ($49.99, $79.99, $179.99), and rejects
+    the 13th payment with error code 'invalid_mandate'.
+    """
+    email = f"recur-{tier_id}@example.com"
+    ts_res = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=price,
+        allowed_tiers=[tier_id],
+    )
+    open_chk_tok = ts_res["open_checkout_mandate_token"]
+    open_pay_tok = ts_res["open_payment_mandate_token"]
+    agent_key = get_demo_agent_key()
+    mandate_client = MandateClient()
+    price_cents = int(round(price * 100))
+
+    results = []
+    for i in range(13):
+        chk_rec = create_merchant_checkout(tier_id, price, email)
+        closed_chk = CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk_rec["checkout_jwt"], checkout_hash=chk_rec["checkout_hash"])
+        chk_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_chk_tok, payloads=[closed_chk], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+        closed_pay = PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=chk_rec["checkout_hash"],
+            payment_amount=Amount(amount=price_cents, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id=f"vault_rec_{i}"),
+        )
+        pay_chain = mandate_client.present(holder_key=agent_key, mandate_token=open_pay_tok, payloads=[closed_pay], aud=AP2_MERCHANT_ID, nonce=chk_rec["nonce"])
+
+        res = await seller_agent.purchase_subscription(
+            tier_id=tier_id,
+            agreed_monthly_rate=price,
+            checkout_mandate_chain=chk_chain,
+            payment_mandate_chain=pay_chain,
+            checkout_jwt=chk_rec["checkout_jwt"],
+            buyer_email=email,
+            nonce=chk_rec["nonce"],
+        )
+        results.append(res)
+
+    assert [r.get("status") in ("ACTIVE", "APPROVAL_PENDING") for r in results[:12]] == [True] * 12
+    assert results[12].get("status") == "REJECTED"
+    assert results[12].get("error") == "invalid_mandate"

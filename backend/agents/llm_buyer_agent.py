@@ -54,17 +54,40 @@ from ap2.sdk.generated.payment_mandate import PaymentMandate
 from ap2.sdk.generated.types.amount import Amount
 from ap2.sdk.generated.types.merchant import Merchant
 from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
-from ap2.sdk.mandate import MandateClient
+from ap2.sdk.generated.types.checkout import Checkout
+from ap2.sdk.generated.open_checkout_mandate import (
+    OpenCheckoutMandate,
+    AllowedMerchants as ChkAllowedMerchants,
+    LineItems as ChkLineItems,
+)
+from ap2.sdk.generated.open_payment_mandate import (
+    OpenPaymentMandate,
+    AmountRange as PayAmountRange,
+    AllowedPayees as PayAllowedPayees,
+    Budget as PayBudget,
+)
+from ap2.sdk.mandate import MandateClient, SdJwtMandate
 from ap2.sdk.sdjwt import common
+from ap2.sdk.jwt_helper import verify_jwt
+from ap2.sdk.constraints import (
+    check_checkout_constraints,
+    check_payment_constraints,
+    MandateContext,
+)
 from ap2.sdk.utils import b64url_decode
 
 from ..config import settings
+from ..database import get_open_mandate_settlement_totals
 from ..services.ap2_keys import get_demo_agent_key
 from ..services.ap2_service import (
     AP2_MERCHANT_ID,
     AP2_MERCHANT_NAME,
     dollars_to_minor_units,
     minor_units_to_dollars,
+    get_merchant_public_key,
+    resolve_root_public_key,
+    compute_checkout_hash,
+    compute_open_payment_mandate_hash,
 )
 from ..services.plan_catalog import resolve_plan
 from .seller_agent import seller_agent
@@ -305,12 +328,23 @@ class OpenAICompatibleRunner(BaseModelRunner):
         model: str,
         base_url: str,
         api_key: Optional[str] = None,
+        api_key_env: Optional[str] = None,
     ):
         if not model or not base_url:
             raise ValueError("OpenAICompatibleRunner requires explicit 'model' and 'base_url'.")
         self.model = model
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("XAI_API_KEY") or "mock-key"
+        if api_key:
+            self.api_key = api_key
+        elif api_key_env:
+            env_val = os.environ.get(api_key_env)
+            if not env_val:
+                raise ValueError(f"Environment variable '{api_key_env}' is not set or empty.")
+            self.api_key = env_val
+        elif settings.mock_external_apis:
+            self.api_key = "mock-key"
+        else:
+            raise ValueError("Explicit 'api_key' or 'api_key_env' is required when mock_external_apis is False.")
 
     async def decide_next_action(
         self,
@@ -447,130 +481,99 @@ class LLMBuyerAgent:
         open_pay_tok: str,
     ) -> Tuple[bool, str]:
         """
-        Deterministic check before every signature on every path.
-        Decodes the open mandates and confirms:
-        - the tier is in LineItems;
-        - the price is at most AmountRange.max;
-        - the payee is allowed;
-        - the currency is USD;
-        - the tier and price match the merchant-signed Checkout JWT.
-        If any check fails, returns (False, reason).
+        Deterministic pre-signature guard conforming to AP2 v0.2 Protocol.
+        1. Verifies merchant ES256 signature on Checkout JWT with get_merchant_public_key().
+        2. Parses Checkout object using Checkout.model_validate(chk_payload).
+        3. Decodes open checkout and payment mandates with SdJwtMandate.from_sd_jwt and resolve_root_public_key.
+        4. Fails closed: ensures AllowedMerchants and LineItems exist on checkout;
+           ensures AmountRange, AllowedPayees, and Budget exist on payment.
+        5. Evaluates candidate closed mandates using check_checkout_constraints and check_payment_constraints with MandateContext.
+        If any check or decoding fails, returns (False, reason) and halts before producing any signatures.
         """
+        if not chk_jwt:
+            return False, "MISSING_CHECKOUT_JWT: Merchant checkout JWT is required to verify tier and price integrity."
+        if not open_chk_tok or not open_pay_tok:
+            return False, "MISSING_OPEN_MANDATES: Both open checkout and open payment mandate tokens are required."
+
+        # 1. Verify merchant ES256 signature on Checkout JWT and parse Checkout object
         try:
-            price_cents = dollars_to_minor_units(monthly_price)
+            merchant_pub_key = get_merchant_public_key()
+            chk_payload = verify_jwt(chk_jwt, merchant_pub_key)
+            checkout_obj = Checkout.model_validate(chk_payload)
+            checkout_hash = compute_checkout_hash(chk_jwt)
+        except Exception as e:
+            return False, f"CHECKOUT_JWT_VERIFICATION_FAILED: Merchant Checkout JWT signature or structure invalid: {e}"
 
-            def extract_claims(tok: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-                parsed = common.parse_token(tok)
-                claims = dict(parsed.payload)
-                objs = []
-                for d in parsed.disclosures:
-                    try:
-                        raw = b64url_decode(d)
-                        arr = json.loads(raw)
-                        if isinstance(arr, list):
-                            if len(arr) == 3 and isinstance(arr[1], str):
-                                claims[arr[1]] = arr[2]
-                            elif len(arr) == 2 and isinstance(arr[1], dict):
-                                if "vct" in arr[1] or "constraints" in arr[1]:
-                                    claims.update(arr[1])
-                                objs.append(arr[1])
-                    except Exception:
-                        pass
-                return claims, objs
+        # 2. Decode open checkout and payment mandates with SdJwtMandate.from_sd_jwt
+        try:
+            parsed_chk = common.parse_token(open_chk_tok)
+            chk_root_key = resolve_root_public_key(parsed_chk, buyer_email=self.buyer_email)
+            open_chk_mandate = SdJwtMandate.from_sd_jwt(open_chk_tok, chk_root_key, OpenCheckoutMandate)
 
-            # 1. Decode Open Checkout Mandate claims
-            chk_claims, chk_objs = extract_claims(open_chk_tok)
-            allowed_line_items = []
-            allowed_merchants = []
+            parsed_pay = common.parse_token(open_pay_tok)
+            pay_root_key = resolve_root_public_key(parsed_pay, buyer_email=self.buyer_email)
+            open_pay_mandate = SdJwtMandate.from_sd_jwt(open_pay_tok, pay_root_key, OpenPaymentMandate)
+        except Exception as e:
+            return False, f"OPEN_MANDATE_DECODE_FAILED: Could not read or verify open mandate tokens: {e}"
 
-            for obj in chk_objs:
-                oid = obj.get("id")
-                if oid:
-                    if "batch" in oid or "gateway" in oid or "cluster" in oid:
-                        allowed_line_items.append(oid.strip().lower())
-                    elif "merchant" in oid:
-                        allowed_merchants.append(oid)
+        # 3. Fail closed: ensure required constraints exist on open mandates
+        chk_constraints = open_chk_mandate.mandate_payload.constraints or []
+        has_allowed_merchants = any(isinstance(c, ChkAllowedMerchants) for c in chk_constraints)
+        has_line_items = any(isinstance(c, ChkLineItems) for c in chk_constraints)
+        if not (has_allowed_merchants and has_line_items):
+            return False, "MISSING_REQUIRED_CHECKOUT_CONSTRAINTS: Open checkout mandate must contain AllowedMerchants and LineItems constraints."
 
-            for c in chk_claims.get("constraints", []):
-                ctype = c.get("type", "") if isinstance(c, dict) else getattr(c, "type", "")
-                if ctype == "checkout.line_items":
-                    items = c.get("items", []) if isinstance(c, dict) else getattr(c, "items", [])
-                    for req in items:
-                        acc = req.get("acceptable_items", []) if isinstance(req, dict) else getattr(req, "acceptable_items", [])
-                        for it in acc:
-                            iid = it.get("id") if isinstance(it, dict) else getattr(it, "id", None)
-                            if iid:
-                                allowed_line_items.append(iid.strip().lower())
-                elif ctype == "checkout.allowed_merchants":
-                    merchants = c.get("allowed", []) or c.get("merchants", []) if isinstance(c, dict) else getattr(c, "allowed", [])
-                    for m in merchants:
-                        mid = m.get("id") if isinstance(m, dict) else getattr(m, "id", None)
-                        if mid:
-                            allowed_merchants.append(mid)
+        pay_constraints = open_pay_mandate.mandate_payload.constraints or []
+        has_amount_range = any(isinstance(c, PayAmountRange) for c in pay_constraints)
+        has_allowed_payees = any(isinstance(c, PayAllowedPayees) for c in pay_constraints)
+        has_budget = any(isinstance(c, PayBudget) for c in pay_constraints)
+        if not (has_amount_range and has_allowed_payees and has_budget):
+            return False, "MISSING_REQUIRED_PAYMENT_CONSTRAINTS: Open payment mandate must contain AmountRange, AllowedPayees, and Budget constraints."
 
-            if allowed_line_items and purch_tier.lower() not in allowed_line_items:
-                return False, f"TIER_NOT_IN_LINE_ITEMS: Tier '{purch_tier}' is not in permitted LineItems ({allowed_line_items})."
+        # 4. Check tier and price match against merchant Checkout object
+        price_cents = dollars_to_minor_units(monthly_price)
+        chk_line_items = checkout_obj.line_items or []
+        first_item = chk_line_items[0].item if chk_line_items else None
+        jwt_tier = first_item.id if first_item else None
+        if jwt_tier and purch_tier and jwt_tier.strip().lower() != purch_tier.strip().lower():
+            return False, f"CHECKOUT_TIER_MISMATCH: Checkout JWT tier '{jwt_tier}' does not match purchase tier '{purch_tier}'."
 
-            if allowed_merchants and AP2_MERCHANT_ID not in allowed_merchants:
-                return False, f"MERCHANT_NOT_ALLOWED: Merchant '{AP2_MERCHANT_ID}' not in allowed_merchants."
+        jwt_total_cents = None
+        for tot in (checkout_obj.totals or []):
+            if tot.type == "total":
+                jwt_total_cents = tot.amount
+                break
+        if jwt_total_cents is None and first_item:
+            jwt_total_cents = first_item.price
+        if jwt_total_cents is not None and jwt_total_cents != price_cents:
+            return False, f"CHECKOUT_PRICE_MISMATCH: Checkout JWT total ({jwt_total_cents} cents) does not match purchase price ({price_cents} cents)."
 
-            # 2. Decode Open Payment Mandate claims
-            pay_claims, pay_objs = extract_claims(open_pay_tok)
-            amount_range_max_cents = None
-            amount_currency = None
-            allowed_payees = []
+        # 5. Evaluate candidate closed mandates against open constraints using AP2 SDK evaluators
+        try:
+            chk_violations = check_checkout_constraints(open_chk_mandate.mandate_payload, checkout_obj)
+            if chk_violations:
+                return False, f"CHECKOUT_CONSTRAINT_VIOLATION: {'; '.join(chk_violations)}"
 
-            for obj in pay_objs:
-                oid = obj.get("id")
-                if oid and "merchant" in oid:
-                    allowed_payees.append(oid)
+            candidate_pay = PaymentMandate(
+                vct="mandate.payment.1",
+                transaction_id=checkout_hash,
+                payment_amount=Amount(amount=price_cents, currency="USD"),
+                payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id=f"vault_{self.agent_id}"),
+            )
 
-            for c in pay_claims.get("constraints", []):
-                ctype = c.get("type", "") if isinstance(c, dict) else getattr(c, "type", "")
-                if ctype == "payment.amount_range":
-                    amount_range_max_cents = c.get("max") if isinstance(c, dict) else getattr(c, "max", None)
-                    amount_currency = c.get("currency") if isinstance(c, dict) else getattr(c, "currency", None)
-                elif ctype == "payment.allowed_payees":
-                    payees = c.get("allowed", []) if isinstance(c, dict) else getattr(c, "allowed", [])
-                    for p in payees:
-                        pid = p.get("id") if isinstance(p, dict) else getattr(p, "id", None)
-                        if pid:
-                            allowed_payees.append(pid)
+            open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
+            tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+            mandate_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
 
-            if amount_currency and amount_currency.upper() != "USD":
-                return False, f"CURRENCY_MISMATCH: Mandate currency is '{amount_currency}', expected 'USD'."
-
-            if amount_range_max_cents is not None and price_cents > amount_range_max_cents:
-                return False, f"AMOUNT_RANGE_EXCEEDED: Price {price_cents} cents (${monthly_price:.2f}) exceeds AmountRange.max {amount_range_max_cents} cents."
-
-            if allowed_payees and AP2_MERCHANT_ID not in allowed_payees:
-                return False, f"PAYEE_NOT_ALLOWED: Payee '{AP2_MERCHANT_ID}' not in allowed_payees ({allowed_payees})."
-
-            # 3. Decode and verify merchant-signed Checkout JWT match
-            if not chk_jwt:
-                return False, "MISSING_CHECKOUT_JWT: Merchant checkout JWT is required to verify tier and price integrity."
-
-            chk_payload = decode_jwt_unverified(chk_jwt)
-            chk_line_items = chk_payload.get("line_items", [])
-            chk_tier = None
-            if chk_line_items:
-                first_item = chk_line_items[0]
-                chk_tier = first_item.get("item", {}).get("id") or first_item.get("id")
-            if chk_tier and chk_tier.strip().lower() != purch_tier.strip().lower():
-                return False, f"CHECKOUT_TIER_MISMATCH: Checkout JWT tier '{chk_tier}' does not match purchase tier '{purch_tier}'."
-
-            chk_totals = chk_payload.get("totals", [])
-            chk_total_cents = None
-            for tot in chk_totals:
-                if tot.get("type") == "total":
-                    chk_total_cents = tot.get("amount")
-                    break
-            if chk_total_cents is not None and chk_total_cents != price_cents:
-                return False, f"CHECKOUT_PRICE_MISMATCH: Checkout JWT total ({chk_total_cents} cents) does not match purchase price ({price_cents} cents)."
-
-            chk_currency = chk_payload.get("currency", "USD")
-            if chk_currency.upper() != "USD":
-                return False, f"CHECKOUT_CURRENCY_MISMATCH: Checkout JWT currency '{chk_currency}' is not 'USD'."
+            pay_violations = check_payment_constraints(
+                open_pay_mandate.mandate_payload,
+                candidate_pay,
+                open_checkout_hash=checkout_hash,
+                mandate_context=mandate_ctx,
+            )
+            if pay_violations:
+                return False, f"PAYMENT_CONSTRAINT_VIOLATION: {'; '.join(pay_violations)}"
 
             return True, "Pre-signature constraints verified successfully."
         except Exception as e:
@@ -920,6 +923,9 @@ def mint_demo_owner_limits_to_file(
     Trusted Surface key and writes them to a file for the buyer agent to consume.
     Mock mode only.
     """
+    if not settings.mock_external_apis:
+        raise PermissionError("mint_demo_owner_limits_to_file is permitted only when mock_external_apis is True.")
+
     from ..services.trusted_surface_service import create_trusted_surface_open_mandates
 
     res = create_trusted_surface_open_mandates(
@@ -945,6 +951,7 @@ async def _main():
     parser.add_argument("--mint-owner-limits", action="store_true", help="Demo owner command: write open mandates to file (mock mode only)")
     parser.add_argument("--model", type=str, default=None, help="Explicit model identifier for OpenAICompatibleRunner")
     parser.add_argument("--base-url", type=str, default=None, help="Explicit base URL for OpenAICompatibleRunner")
+    parser.add_argument("--api-key-env", type=str, default=None, help="Name of environment variable containing API key for OpenAICompatibleRunner")
     args = parser.parse_args()
 
     limits_path = args.mandates_file
@@ -970,7 +977,11 @@ async def _main():
 
     runner = None
     if args.model and args.base_url:
-        runner = OpenAICompatibleRunner(model=args.model, base_url=args.base_url)
+        runner = OpenAICompatibleRunner(
+            model=args.model,
+            base_url=args.base_url,
+            api_key_env=args.api_key_env,
+        )
 
     agent = LLMBuyerAgent(
         agent_id="buyer-agent-llm-01",

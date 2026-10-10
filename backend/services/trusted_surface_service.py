@@ -128,13 +128,23 @@ def create_trusted_surface_open_mandates(
 
     # 2. Open Payment Mandate Constraints
     monthly_cap_cents = dollars_to_minor_units(monthly_budget_cap)
-    yearly_ceiling_dollars = yearly_budget_ceiling if yearly_budget_ceiling is not None else (monthly_budget_cap * 12)
-    yearly_ceiling_cents = dollars_to_minor_units(yearly_ceiling_dollars)
+    if yearly_budget_ceiling is not None:
+        yearly_ceiling_cents = dollars_to_minor_units(yearly_budget_ceiling)
+    else:
+        yearly_ceiling_cents = monthly_cap_cents * 12
+
+    # Compute ceiling in dollars ensuring int(ceiling_dollars * 100) exactly matches integer cents
+    yearly_ceiling_dollars = yearly_ceiling_cents / 100.0
+    if int(yearly_ceiling_dollars * 100) < yearly_ceiling_cents:
+        yearly_ceiling_dollars = (yearly_ceiling_cents + 1e-6) / 100.0
+    assert int(yearly_ceiling_dollars * 100) == yearly_ceiling_cents, (
+        f"Budget ceiling float precision mismatch: {int(yearly_ceiling_dollars * 100)} != {yearly_ceiling_cents}"
+    )
 
     pay_constraints = [
         AmountRange(currency="USD", min=1, max=monthly_cap_cents),
         AgentRecurrence(frequency=Frequency.MONTHLY, max_occurrences=12),
-        Budget(currency="USD", max=float(yearly_ceiling_dollars)),
+        Budget(currency="USD", max=yearly_ceiling_dollars),
         AllowedPayees(
             allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]
         ),

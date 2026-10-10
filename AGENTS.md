@@ -25,6 +25,8 @@ These rules apply to every task in this repo. The owner has an independent revie
 
 - `backend/tests/test_security_regressions.py` belongs to the owner's reviewer. **Don't edit, skip or delete it.** Tests marked `KNOWN_ISSUE` are open findings. When your fix makes one pass, pytest reports `XPASS(strict)`: remove only that marker, in the same commit as the fix.
 - Run tests from the repo root with `python -m pytest backend/tests -q -n 4`, so the temp-database isolation in `conftest.py` applies. Tests must never touch `backend/data/a2a_commerce.db`.
+- **One-off commands count too.** Any `python -c` or ad-hoc script that imports the backend must first set `A2A_DB_PATH` to a temp file. Two test owner keys reached the dev database that way on 2026-10-10.
+- `backend/tests/conformance/` holds **unmodified copies of Google's AP2 tests**, like `backend/vendor/`. Never edit them, not even comments or variable names; they must stay identical to `backend/vendor/ap2/tests/`.
 - Before reporting, run the full test suite and `npm run build`. `npx tsc --noEmit -p .` checks nothing here.
 
 ## Reports

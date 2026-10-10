@@ -41,6 +41,7 @@ from ap2.sdk.generated.types.total import Total
 from ap2.sdk.jwt_helper import create_jwt, verify_jwt
 from ap2.sdk.mandate import MandateClient
 from ap2.sdk.payment_mandate_chain import PaymentMandateChain
+from ap2.sdk.constraints import MandateContext
 from ap2.sdk.sdjwt import common
 
 from ..config import settings
@@ -399,6 +400,7 @@ def verify_ap2_chains(
     expected_nonce: Optional[str] = None,
     enforce_replay_defense: bool = True,
     buyer_email: Optional[str] = None,
+    mandate_context: Optional[MandateContext] = None,
 ) -> Dict[str, Any]:
     """
     Verifies the complete AP2 v0.2 Checkout and Payment Mandate chains.
@@ -590,9 +592,11 @@ def verify_ap2_chains(
 
         try:
             payment_chain = PaymentMandateChain.parse(payment_payloads)
+            ctx = mandate_context if mandate_context is not None else MandateContext(total_amount=0, total_uses=0)
             pay_violations = payment_chain.verify(
                 expected_transaction_id=checkout_hash,
                 expected_open_checkout_hash=checkout_hash,
+                mandate_context=ctx,
             )
             if pay_violations:
                 detail = "; ".join(pay_violations)

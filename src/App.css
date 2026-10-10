@@ -138,6 +138,27 @@
   transform: translateY(-1px);
 }
 
+.btn-trusted-surface {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid #14b8a6;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.3);
+}
+
+.btn-trusted-surface:hover {
+  background: linear-gradient(135deg, #0f766e, #115e59);
+  transform: translateY(-1px);
+}
+
 /* Studio Area */
 .studio-canvas-container {
   flex: 1;

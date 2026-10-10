@@ -9,3 +9,7 @@ MODIFICATIONS (Apache License, Version 2.0, Section 4.b):
   by caller in verify(), even on intermediate hops (typ in TYP_INTERMEDIATE), to ensure
   test_verify_rejects_aud_mismatch and test_verify_rejects_nonce_mismatch pass as specified
   by Google's test suite.
+- sdk/sdjwt/common.py: In delegate_claims_from_model, serialize payload with mode='json' so
+  enum constraints (such as Frequency in AgentRecurrence) serialize to JSON-compatible strings
+  for sd_jwt.create().
+

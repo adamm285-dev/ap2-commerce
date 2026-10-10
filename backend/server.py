@@ -77,6 +77,10 @@ from .services.ap2_service import (
     verify_receipt_jwt,
     get_issued_checkout,
 )
+from .services.trusted_surface_service import (
+    create_trusted_surface_open_mandates,
+    enroll_trusted_surface_key,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -563,6 +567,89 @@ async def get_checkout_endpoint(order_id: str):
     if not record:
         raise HTTPException(status_code=404, detail=f"Checkout '{order_id}' not found.")
     return record
+
+
+# --- AP2 Trusted Surface (Human Authorization Boundary) ---
+class TrustedSurfaceSignLimitsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    buyerEmail: str = Field(..., alias="buyer_email", description="Human owner billing email bound to registered key")
+    monthlyBudgetCap: float = Field(..., alias="monthly_budget_cap", description="Monthly spending limit in USD (AmountRange.max)")
+    yearlyBudgetCeiling: Optional[float] = Field(default=None, alias="yearly_budget_ceiling", description="Yearly spend ceiling in USD (Budget.max)")
+    allowedTiers: Optional[List[str]] = Field(default=None, alias="allowed_tiers", description="Allowed compute tier IDs")
+    agentPublicJwk: Optional[Dict[str, Any]] = Field(default=None, alias="agent_public_jwk", description="Agent public key JWK to bind in cnf claim")
+    validityHours: int = Field(default=24, alias="validity_hours", description="Hours until open mandate expires")
+    humanConfirmed: bool = Field(default=True, alias="human_confirmed", description="Explicit human confirmation flag")
+
+
+class TrustedSurfaceEnrollRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    kid: str = Field(..., description="Unique key identifier for the human owner")
+    publicKeyJwk: Dict[str, Any] = Field(..., alias="public_key_jwk", description="Owner P-256 public key JWK")
+    buyerEmail: str = Field(..., alias="buyer_email", description="Owner billing email")
+    businessName: Optional[str] = Field(default="Nexus Autonomous Systems Corp", alias="business_name")
+    monthlyBudgetCap: Optional[float] = Field(default=None, alias="monthly_budget_cap")
+
+
+@app.post("/api/trusted-surface/sign-limits", tags=["Trusted Surface"])
+@app.post("/api/agent/trusted-surface/sign-limits", tags=["Trusted Surface"])
+async def trusted_surface_sign_limits_endpoint(req: TrustedSurfaceSignLimitsRequest):
+    """
+    Non-agentic Trusted Surface endpoint: Human owner sets programmatic limits and signs
+    AP2 v0.2 Open Checkout and Open Payment Mandates.
+    Enforces non-agentic human authorization (explicit confirmation required).
+    """
+    if not req.humanConfirmed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "status": "REJECTED",
+                "error": "HUMAN_CONFIRMATION_REQUIRED",
+                "reason": "Agents cannot self-authorize spending limits. Explicit human confirmation is required.",
+            },
+        )
+
+    from jwcrypto.jwk import JWK
+    agent_key = None
+    if req.agentPublicJwk:
+        try:
+            agent_key = JWK(**req.agentPublicJwk)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid agentPublicJwk: {e}")
+
+    try:
+        res = create_trusted_surface_open_mandates(
+            buyer_email=req.buyerEmail,
+            monthly_budget_cap=req.monthlyBudgetCap,
+            yearly_budget_ceiling=req.yearlyBudgetCeiling,
+            allowed_tiers=req.allowedTiers,
+            agent_key=agent_key,
+            validity_seconds=req.validityHours * 3600,
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Trusted surface mandate signing error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/trusted-surface/enroll", status_code=status.HTTP_201_CREATED, tags=["Trusted Surface"])
+@app.post("/api/agent/trusted-surface/enroll", status_code=status.HTTP_201_CREATED, tags=["Trusted Surface"])
+async def trusted_surface_enroll_endpoint(req: TrustedSurfaceEnrollRequest):
+    """
+    Enrolls a human owner's P-256 public key (JWK) bound to buyer_email in the buyer key registry.
+    """
+    try:
+        res = enroll_trusted_surface_key(
+            kid=req.kid,
+            public_key_jwk=req.publicKeyJwk,
+            buyer_email=req.buyerEmail,
+            business_name=req.businessName or "Nexus Autonomous Systems Corp",
+            monthly_budget_cap=req.monthlyBudgetCap,
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Trusted surface enrollment error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 # --- Contractor AI Copilot Conversational Engine ---

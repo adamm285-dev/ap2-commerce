@@ -41,6 +41,7 @@ import { ZapierMcpView } from './components/ZapierMcpView';
 import { SellerCopilotView } from './components/SellerCopilotView';
 import { EnterpriseFleetLedger } from './components/EnterpriseFleetLedger';
 import { type NodeSettingsData } from './components/NodeSettingsView';
+import { TrustedSurfaceLimitsModal } from './components/TrustedSurfaceLimitsModal';
 import './App.css';
 
 // 1. Initialize AG Studio License if supplied via environment
@@ -117,6 +118,8 @@ export function App() {
 
   const [isPendingDepositLocked, setIsPendingDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTrustedSurfaceOpen, setIsTrustedSurfaceOpen] = useState(false);
+  const [_trustedSurfaceTokens, setTrustedSurfaceTokens] = useState<any | null>(null);
   const [isNegotiating, setIsNegotiating] = useState(false);
   const [negotiationResult, setNegotiationResult] = useState<AgentNegotiationResponse | null>(null);
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult | null>(null);
@@ -781,22 +784,37 @@ export function App() {
                   alignItems: 'flex-start',
                 }}
               >
-                <button
-                  className="btn-simulate"
-                  onClick={() => setIsModalOpen(true)}
-                  style={{
-                    height: '36px',
-                    padding: '0 14px',
-                    fontSize: '12px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxSizing: 'border-box',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Sliders size={14} /> Simulate AP2 Purchase
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn-trusted-surface"
+                    onClick={() => setIsTrustedSurfaceOpen(true)}
+                    style={{
+                      height: '36px',
+                      padding: '0 14px',
+                      fontSize: '12px',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <ShieldCheck size={14} /> Set My Limits (Trusted Surface)
+                  </button>
+                  <button
+                    className="btn-simulate"
+                    onClick={() => setIsModalOpen(true)}
+                    style={{
+                      height: '36px',
+                      padding: '0 14px',
+                      fontSize: '12px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Sliders size={14} /> Simulate AP2 Purchase
+                  </button>
+                </div>
 
                 {/* Expand / Collapse Button (Uniform across all 4 Tabs) */}
                 <button
@@ -1555,6 +1573,18 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Modal: Trusted Surface - Set My Limits (Open Mandate Signer) */}
+      <TrustedSurfaceLimitsModal
+        isOpen={isTrustedSurfaceOpen}
+        onClose={() => setIsTrustedSurfaceOpen(false)}
+        initialEmail="agent-alpha@nexus-systems.io"
+        initialBudgetCap={maxMonthlyBudget}
+        onMandatesSigned={(tokens) => {
+          setTrustedSurfaceTokens(tokens);
+          console.log('[TrustedSurface] Open mandates signed:', tokens);
+        }}
+      />
     </div>
   );
 }

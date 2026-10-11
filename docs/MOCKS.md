@@ -118,3 +118,9 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Gives the workload scenario in the back-office view something to show.
 - **To make it real:** Call a backend endpoint that performs (or dry-runs and says so) each step, as the onboarding scenario does.
 
+### M-022: Default buyer keys seeded without challenge-response enrollment
+- **Where:** `backend/database.py::init_db`
+- **What it fakes:** Default buyer keys seeded directly into SQLite without cryptographic challenge-response signature verification.
+- **Why:** Allows offline unit tests and mock demos to authenticate known buyer agents without interactive challenge enrollment.
+- **To make it real:** Require all buyer agents to complete the challenge-response registration flow (`/api/agent/keys/challenge` and `/api/agent/keys/register`) before their keys are trusted.
+

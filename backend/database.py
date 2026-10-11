@@ -22,7 +22,6 @@ from .config import settings, get_db_path
 logger = logging.getLogger("a2a_database")
 
 _DEFAULT_BUYER_KIDS = {
-    "ap2-seller-ed25519-v1",
     "ap2-buyer-ed25519-v1",
     "buyer-agent-01",
     "buyer-agent-001",
@@ -230,10 +229,11 @@ def init_db(db_path: Optional[Path] = None) -> None:
             if "deposit_payment_id" in slot_cols and "payment_id" not in slot_cols:
                 cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN deposit_payment_id TO payment_id")
 
-            # Seed default buyer keys if table is empty
+            # Seed default buyer keys if table is empty in mock/demo mode
             cur.execute("SELECT COUNT(*) as count FROM buyer_keys")
             count = cur.fetchone()["count"]
-            if count == 0:
+            # MOCK(M-022): default buyer keys seeded only in mock mode without challenge enrollment
+            if count == 0 and getattr(settings, "mock_external_apis", False):
                 buyer_pub = (
                     os.getenv("A2A_BUYER_PUBLIC_KEY")
                     or getattr(settings, "a2a_buyer_public_key", None)
@@ -501,6 +501,11 @@ def save_mandate(key: str, details: Dict[str, Any], db_path: Optional[Path] = No
     """Registers an authorized mandate and offer under its lookup key."""
     if not key or not details:
         return
+    tier_id = (details.get("tier_id") or "").strip()
+    if not tier_id or tier_id == "*":
+        return
+    contractor_email = (details.get("contractor_email") or "").strip().lower() or None
+    cap_val = float(details.get("authoritative_budget_cap") or details.get("monthly_budget_cap") or details.get("amount") or 0.0)
     conn = get_connection(db_path)
     try:
         with conn:
@@ -527,10 +532,10 @@ def save_mandate(key: str, details: Dict[str, Any], db_path: Optional[Path] = No
                     details.get("offer_id"),
                     details.get("mandate_proof_hash") or details.get("proof_hash") or key.strip(),
                     details.get("buyer_agent_id", "buyer-agent-01"),
-                    (details.get("contractor_email") or "").strip().lower() or None,
-                    details.get("tier_id", "*"),
+                    contractor_email,
+                    tier_id,
                     float(details.get("amount") or 0.0),
-                    float(details.get("monthly_budget_cap") or 100.0),
+                    cap_val,
                     float(details.get("registered_at") or time.time()),
                     float(details.get("expires_at") or (time.time() + 1800)),
                     json.dumps(details),

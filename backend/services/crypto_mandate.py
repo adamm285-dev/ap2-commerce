@@ -79,15 +79,16 @@ from ..database import BuyerKeysProxy
 # Known / registered buyer agent public keys (kid -> public_key_hex)
 # Prevents arbitrary third parties from forging mandates for known contractors, backed by persistent SQLite storage
 REGISTERED_BUYER_KEYS = BuyerKeysProxy()
-for _default_kid in [
-    DEFAULT_BUYER_KID,
-    "ap2-buyer-ed25519-v1",
-    "buyer-agent-01",
-    "ap2-buyer",
-    "claude-desktop-buyer",
-]:
-    if _default_kid not in REGISTERED_BUYER_KEYS or REGISTERED_BUYER_KEYS[_default_kid] == "a0" * 32:
-        REGISTERED_BUYER_KEYS[_default_kid] = DEFAULT_BUYER_PUBLIC_KEY_HEX
+if getattr(settings, "mock_external_apis", False):
+    for _default_kid in [
+        DEFAULT_BUYER_KID,
+        "ap2-buyer-ed25519-v1",
+        "buyer-agent-01",
+        "ap2-buyer",
+        "claude-desktop-buyer",
+    ]:
+        if _default_kid not in REGISTERED_BUYER_KEYS or REGISTERED_BUYER_KEYS[_default_kid] == "a0" * 32:
+            REGISTERED_BUYER_KEYS[_default_kid] = DEFAULT_BUYER_PUBLIC_KEY_HEX
 
 
 
@@ -99,6 +100,8 @@ def register_buyer_key(kid: str, public_key_hex: str):
 def is_trusted_buyer_key(kid: Optional[str], public_key_hex: Optional[str]) -> bool:
     """Checks if the (kid, public_key_hex) pair matches a registered buyer key."""
     if not kid or not public_key_hex:
+        return False
+    if kid == DEFAULT_SELLER_KID or "seller" in kid.lower():
         return False
     expected = REGISTERED_BUYER_KEYS.get(kid)
     if not expected:

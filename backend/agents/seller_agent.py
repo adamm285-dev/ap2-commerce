@@ -449,11 +449,14 @@ class SellerAgent:
             category=category,
         )
         auth_entry = {
+            "status": "PENDING_CHECKOUT",
+            "is_offer": True,
             "tier_id": tier_id,
             "amount": amount,
             "buyer_agent_id": buyer_agent_id,
             "contractor_email": email,
-            "monthly_budget_cap": monthly_budget_cap,
+            "claimed_budget_cap": monthly_budget_cap,
+            "monthly_budget_cap": amount,
             "negotiation_id": negotiation_id,
             "offer_id": offer_id,
             "proof_hash": proof_hash,
@@ -1134,17 +1137,11 @@ class SellerAgent:
             old_sub_id = None
             old_sub = None
 
-        # Resolve effective monthly budget cap
-        if ap2_verify_res and ap2_verify_res.get("authoritative_budget_cap") is not None:
-            cap = ap2_verify_res["authoritative_budget_cap"]
-        else:
-            cap = auth.get("monthly_budget_cap")
-            saved_cap = ledger.get_saved_cap(norm_email)
-            if saved_cap is not None:
-                cap = saved_cap
+        # Resolve authoritative monthly budget cap strictly from owner-signed chain
+        cap = ap2_verify_res.get("authoritative_budget_cap") if ap2_verify_res else None
         if cap is None:
             ref = mandate_proof_hash or offer_id or "missing_cap"
-            desc = "BUDGET_CAP_NOT_FOUND: No authoritative budget cap found in verified mandate chain or contractor record."
+            desc = "BUDGET_CAP_NOT_FOUND: Verified payment mandate chain carries no owner-signed price limit or AmountRange constraint."
             err_receipt = create_checkout_receipt_jwt(
                 order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
                 closed_mandate_reference=ref,
@@ -1335,7 +1332,7 @@ class SellerAgent:
                 amount=agreed_monthly_rate,
                 recurrence="monthly",
                 category="autonomous-node-service",
-                tier_id=tier_id or "*",
+                tier_id=tier_id or "ap2-batch",
                 contractor_email=contractor_email,
                 negotiation_id=negotiation_id,
             )
@@ -1451,6 +1448,9 @@ class SellerAgent:
             response["replaces_subscription_id"] = old_sub_id
 
         # Cache for strict idempotency
+        if auth and isinstance(auth, dict):
+            auth["status"] = "COMPLETED"
+            auth["subscription_id"] = sub_id
         if mandate_proof_hash:
             _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
         if auth.get("offer_id"):

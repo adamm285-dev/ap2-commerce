@@ -154,7 +154,7 @@ def build_ap2_intent_mandate(
     amount: float,
     recurrence: str,
     category: str,
-    tier_id: str = "*",
+    tier_id: str = "ap2-batch",
     contractor_email: Optional[str] = None,
     negotiation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -175,7 +175,7 @@ def build_buyer_intent_mandate(
     amount: float,
     recurrence: str,
     category: str,
-    tier_id: str = "*",
+    tier_id: str = "ap2-batch",
     contractor_email: Optional[str] = None,
     negotiation_id: Optional[str] = None,
     private_key_hex: Optional[str] = None,
@@ -663,39 +663,6 @@ def evaluate_spending_mandate(
         nonce=uuid.uuid4().hex[:16],
     )
 
-    ap2_mandate = build_ap2_intent_mandate(
-        buyer_agent_id=request.buyer_agent_id,
-        amount=request.amount,
-        recurrence=request.recurrence.value,
-        category=request.category,
-    )
-
-    # Register mandate authorization
-    register_authorized_mandate(
-        proof_hash,
-        {
-            "tier_id": "*",
-            "amount": request.amount,
-            "buyer_agent_id": request.buyer_agent_id,
-            "monthly_budget_cap": cap,
-            "ap2_mandate": ap2_mandate,
-        },
-    )
-    register_authorized_mandate(
-        asym_proof["signature"],
-        {
-            "tier_id": "*",
-            "amount": request.amount,
-            "buyer_agent_id": request.buyer_agent_id,
-            "monthly_budget_cap": cap,
-            "ap2_mandate": ap2_mandate,
-        },
-    )
-
-    # Note: Spend is recorded when purchase_subscription is finalized, not during evaluation!
-    # Monthly cap remaining is calculated as projected remaining budget
-    projected_remaining = round(cap - request.amount, 2)
-
     if abs(request.amount - 49.99) < 0.05:
         agreed_tier_id = "ap2-batch"
         agreed_plan_id = settings.paypal_plan_id_batch
@@ -705,6 +672,35 @@ def evaluate_spending_mandate(
     else:
         agreed_tier_id = "ap2-gateway"
         agreed_plan_id = settings.paypal_plan_id_gateway
+
+    clean_email = email.strip().lower() if email else None
+    ap2_mandate = build_ap2_intent_mandate(
+        buyer_agent_id=request.buyer_agent_id,
+        amount=request.amount,
+        recurrence=request.recurrence.value,
+        category=request.category,
+        tier_id=agreed_tier_id,
+        contractor_email=clean_email,
+    )
+
+    # Storing an authorization from an evaluation offer must record email and tier (never wildcard *)
+    if clean_email:
+        offer_entry = {
+            "status": "PENDING_CHECKOUT",
+            "is_offer": True,
+            "tier_id": agreed_tier_id,
+            "amount": request.amount,
+            "buyer_agent_id": request.buyer_agent_id,
+            "contractor_email": clean_email,
+            "monthly_budget_cap": request.amount,
+            "ap2_mandate": ap2_mandate,
+        }
+        register_authorized_mandate(proof_hash, offer_entry)
+        register_authorized_mandate(asym_proof["signature"], offer_entry)
+
+    # Note: Spend is recorded when purchase_subscription is finalized, not during evaluation!
+    # Monthly cap remaining is calculated as projected remaining budget
+    projected_remaining = round(cap - request.amount, 2)
 
     return SpendingMandateResponse(
         approved=True,

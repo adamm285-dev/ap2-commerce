@@ -154,7 +154,7 @@ def build_ap2_intent_mandate(
     amount: float,
     recurrence: str,
     category: str,
-    tier_id: str = "ap2-batch",
+    tier_id: str,
     contractor_email: Optional[str] = None,
     negotiation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -175,7 +175,7 @@ def build_buyer_intent_mandate(
     amount: float,
     recurrence: str,
     category: str,
-    tier_id: str = "ap2-batch",
+    tier_id: str,
     contractor_email: Optional[str] = None,
     negotiation_id: Optional[str] = None,
     private_key_hex: Optional[str] = None,

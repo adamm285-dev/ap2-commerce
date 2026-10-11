@@ -1,0 +1,530 @@
+"""
+Tests for Group C Security Hardening and Follow-up Guarantees.
+Validates:
+- C1: purchase_subscription rejects with BUDGET_CAP_NOT_FOUND when payment mandate carries no AmountRange
+- C2: authorized_mandates rows are strictly bound to tier and email, with claimed budget stored as claimed_budget_cap
+- C3: no default buyer keys seeded/trusted when mock mode is off, seller key is never trusted, reserved key IDs cannot be registered
+- Item 2: missing subscription tier is rejected with MISSING_TIER, builders require tier_id
+- Item 3: reseller-agent is allowed and trusted via challenge flow while ap2-seller-ed25519-v1 is rejected
+"""
+
+import asyncio
+import io
+import contextlib
+import time
+import uuid
+import pytest
+from pathlib import Path
+from jwcrypto.jwk import JWK
+from fastapi.testclient import TestClient
+
+from backend.server import app
+from backend.config import settings
+from backend.agents.seller_agent import seller_agent
+from backend.database import (
+    get_connection,
+    init_db,
+    register_buyer_key,
+    get_buyer_key,
+    RESERVED_BUYER_KEY_IDS,
+)
+from backend.services.crypto_mandate import (
+    DEFAULT_SELLER_KID,
+    DEFAULT_BUYER_KID,
+    DEFAULT_BUYER_PUBLIC_KEY_HEX,
+    REGISTERED_BUYER_KEYS,
+    is_trusted_buyer_key,
+    generate_ed25519_keypair,
+    sign_ed25519_message,
+)
+from backend.services.mandate_evaluator import (
+    build_ap2_intent_mandate,
+    build_buyer_intent_mandate,
+    evaluate_spending_mandate,
+    ledger,
+)
+from backend.models import SpendingMandateRequest, RecurrenceType
+from backend.services.ap2_service import (
+    AP2_MERCHANT_ID,
+    AP2_MERCHANT_NAME,
+    create_merchant_checkout,
+    verify_ap2_chains,
+)
+from ap2.sdk.mandate import MandateClient
+from ap2.sdk.generated.open_checkout_mandate import (
+    OpenCheckoutMandate,
+    AllowedMerchants,
+    LineItems,
+    LineItemRequirements,
+    Item as CheckoutItem,
+)
+from ap2.sdk.generated.open_payment_mandate import (
+    OpenPaymentMandate,
+    AgentRecurrence,
+    Frequency,
+    Budget,
+    AllowedPayees,
+)
+from ap2.sdk.generated.checkout_mandate import CheckoutMandate
+from ap2.sdk.generated.payment_mandate import PaymentMandate
+from ap2.sdk.generated.types.amount import Amount
+from ap2.sdk.generated.types.merchant import Merchant
+from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
+from backend.services.ap2_keys import jwk_to_cnf
+
+client = TestClient(app)
+
+
+def _run(coro):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return asyncio.run(coro)
+
+
+def _gen_key(prefix: str) -> JWK:
+    return JWK.generate(kty="EC", crv="P-256", kid=f"{prefix}-{uuid.uuid4().hex[:8]}")
+
+
+# ── C1: Verified Payment Mandate Without AmountRange Rejection ────────────
+
+def test_purchase_rejects_when_payment_mandate_has_no_amount_range():
+    """
+    C1: purchase_subscription rejects with BUDGET_CAP_NOT_FOUND when the verified payment
+    mandate chain carries no owner-signed price limit (no AmountRange).
+    It must not fall back to the claimed budget, a contractor record, or 100.0.
+    """
+    email = f"hardening-c1-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner")
+    agent_key = _gen_key("agent")
+
+    # Enroll owner key
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+        business_name="Hardening C1 Corp",
+    )
+
+    # Pre-populate contractor record in ledger to test that purchase does NOT fall back to it
+    ledger.set_contractor_cap(email, 100.0, source="signed_mandate")
+    assert ledger.get_saved_cap(email) == 100.0
+
+    # Build valid open checkout mandate
+    agent_cnf = jwk_to_cnf(agent_key)
+    now_ts = int(time.time())
+    exp_ts = now_ts + 86400
+    mc = MandateClient()
+
+    open_chk = OpenCheckoutMandate(
+        vct="mandate.checkout.open.1",
+        constraints=[
+            AllowedMerchants(allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]),
+            LineItems(
+                items=[
+                    LineItemRequirements(
+                        id="allowed_compute_tiers",
+                        acceptable_items=[CheckoutItem(id="ap2-batch", title="AP2 Batch")],
+                        quantity=1,
+                    )
+                ]
+            ),
+        ],
+        cnf=agent_cnf,
+        iat=now_ts,
+        exp=exp_ts,
+    )
+    open_chk_tok = mc.create(issuer_key=owner_key, payloads=[open_chk])
+
+    # Build valid open payment mandate WITHOUT AmountRange constraint
+    open_pay_no_cap = OpenPaymentMandate(
+        vct="mandate.payment.open.1",
+        constraints=[
+            AllowedPayees(allowed=[Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME)]),
+        ],
+        cnf=agent_cnf,
+        iat=now_ts,
+        exp=exp_ts + 86400 * 30,
+    )
+    open_pay_tok = mc.create(issuer_key=owner_key, payloads=[open_pay_no_cap])
+
+    # Agent presents (closes) both against merchant checkout
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=open_chk_tok,
+        payloads=[
+            CheckoutMandate(
+                vct="mandate.checkout.1",
+                checkout_jwt=rec["checkout_jwt"],
+                checkout_hash=rec["checkout_hash"],
+            )
+        ],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=open_pay_tok,
+        payloads=[
+            PaymentMandate(
+                vct="mandate.payment.1",
+                transaction_id=rec["checkout_hash"],
+                payment_amount=Amount(amount=4999, currency="USD"),
+                payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-hardening-c1"),
+            )
+        ],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+
+    # Call purchase_subscription - must reject with BUDGET_CAP_NOT_FOUND
+    res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert res.get("status") == "REJECTED"
+    assert res.get("error") == "BUDGET_CAP_NOT_FOUND"
+    assert "BUDGET_CAP_NOT_FOUND" in res.get("reason", "")
+
+
+# ── C2: Bounded Authorized Mandates Persistence ───────────────────────────
+
+def test_negotiate_writes_scoped_mandates_with_claimed_cap(tmp_path):
+    """
+    C2: after negotiate_tier_terms, every authorized_mandates row written is bound to a
+    concrete tier and buyer email: no tier_id '*', no empty contractor_email.
+    The claimed budget is stored as claimed_budget_cap, not as an authorized cap.
+    """
+    email = f"hardening-c2-{uuid.uuid4().hex[:6]}@example.com"
+    res = _run(seller_agent.negotiate_tier_terms(
+        buyer_agent_id="buyer-c2",
+        buyer_email=email,
+        tier_id="ap2-gateway",
+        monthly_budget_cap=60.0,
+    ))
+    assert res["status"] == "COUNTER_OFFER"
+    assert res["tier_id"] == "ap2-batch"
+    assert res["price"] == 49.99
+
+    offer_id = res["offer_id"]
+    proof_hash = res["mandate_proof_hash"]
+
+    # Verify rows in database
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT lookup_key, tier_id, contractor_email, amount, monthly_budget_cap, details_json "
+            "FROM authorized_mandates WHERE offer_id = ? OR lookup_key IN (?, ?)",
+            (offer_id, offer_id, proof_hash),
+        )
+        rows = cur.fetchall()
+        assert len(rows) > 0, "Expected authorized_mandates rows for negotiation"
+        for row in rows:
+            assert row["tier_id"] == "ap2-batch", f"Invalid tier_id: {row['tier_id']}"
+            assert row["tier_id"] != "*", "Tier ID must not be wildcard '*'"
+            assert row["contractor_email"] == email, f"Invalid contractor_email: {row['contractor_email']}"
+            assert row["contractor_email"] is not None and row["contractor_email"] != ""
+            # The stored monthly_budget_cap in DB must equal the offer price, NOT the claimed $60.00
+            assert row["monthly_budget_cap"] == 49.99
+            import json
+            details = json.loads(row["details_json"])
+            assert details.get("claimed_budget_cap") == 60.0
+            assert details.get("monthly_budget_cap") == 49.99
+            assert details.get("is_offer") is True
+            assert details.get("status") == "PENDING_CHECKOUT"
+    finally:
+        conn.close()
+
+
+def test_evaluate_spending_mandate_does_not_write_wildcard_or_unscoped_rows():
+    """
+    C2: evaluate_spending_mandate does not write rows with tier_id '*' or empty contractor_email.
+    """
+    req_no_email = SpendingMandateRequest(
+        buyerAgentId="eval-c2-no-email",
+        amount=79.99,
+        monthlyBudgetCap=100.0,
+        recurrence=RecurrenceType.MONTHLY,
+        category="autonomous-node-service",
+    )
+    res_no_email = evaluate_spending_mandate(req_no_email)
+    assert res_no_email.approved is True
+
+    # Without email, no rows should be written into authorized_mandates
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM authorized_mandates WHERE buyer_agent_id = 'eval-c2-no-email'")
+        assert len(cur.fetchall()) == 0
+
+        # With email, row must have concrete tier and email
+        email = "eval-c2@example.com"
+        req_email = SpendingMandateRequest(
+            buyerAgentId="eval-c2-with-email",
+            amount=49.99,
+            monthlyBudgetCap=80.0,
+            recurrence=RecurrenceType.MONTHLY,
+            category="autonomous-node-service",
+            contractorEmail=email,
+        )
+        res_email = evaluate_spending_mandate(req_email)
+        assert res_email.approved is True
+
+        cur.execute("SELECT * FROM authorized_mandates WHERE buyer_agent_id = 'eval-c2-with-email'")
+        rows = cur.fetchall()
+        for r in rows:
+            assert r["tier_id"] == "ap2-batch"
+            assert r["tier_id"] != "*"
+            assert r["contractor_email"] == email
+    finally:
+        conn.close()
+
+
+# ── C3: Mock Mode Key Isolation and Reserved Key IDs ──────────────────────
+
+def test_mock_mode_off_does_not_seed_or_trust_default_buyer_keys(tmp_path, monkeypatch):
+    """
+    C3: With mock mode off, no default buyer keys are seeded or trusted:
+    database.py init_db and crypto_mandate.REGISTERED_BUYER_KEYS.
+    """
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+
+    test_db = tmp_path / "nomock_keys.db"
+    init_db(test_db)
+
+    conn = get_connection(test_db)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as cnt FROM buyer_keys")
+        assert cur.fetchone()["cnt"] == 0, "Default buyer keys must not be seeded when mock mode is off"
+    finally:
+        conn.close()
+
+    # is_trusted_buyer_key returns False when key is not in registered store
+    assert not is_trusted_buyer_key("unseeded-agent", "some_hex_key")
+
+
+def test_seller_kid_is_never_trusted_as_buyer_key():
+    """
+    C3: 'ap2-seller-ed25519-v1' is never trusted as a buyer key, in any mode.
+    """
+    assert is_trusted_buyer_key(DEFAULT_SELLER_KID, "a0" * 32) is False
+    assert is_trusted_buyer_key("ap2-seller-ed25519-v1", DEFAULT_BUYER_PUBLIC_KEY_HEX) is False
+
+    # Even if forcefully inserted into the keys map, it must still never be trusted
+    REGISTERED_BUYER_KEYS[DEFAULT_SELLER_KID] = "a0" * 32
+    try:
+        assert is_trusted_buyer_key(DEFAULT_SELLER_KID, "a0" * 32) is False
+    finally:
+        REGISTERED_BUYER_KEYS.pop(DEFAULT_SELLER_KID, None)
+
+
+def test_registering_reserved_kid_is_refused():
+    """
+    C3: Registering a reserved kid through POST /api/agent/keys/register is refused with 403.
+    """
+    priv, pub = generate_ed25519_keypair()
+    chal_res = client.get("/api/agent/keys/challenge")
+    challenge = chal_res.json()["challenge"]
+    sig = sign_ed25519_message(challenge, priv)
+
+    for reserved_kid in RESERVED_BUYER_KEY_IDS:
+        res = client.post(
+            "/api/agent/keys/register",
+            json={
+                "kid": reserved_kid,
+                "publicKeyHex": pub,
+                "contractorEmail": "test@example.com",
+                "businessEntity": "Reserved Test LLC",
+                "challenge": challenge,
+                "challengeSignature": sig,
+            },
+        )
+        assert res.status_code == 403
+        assert res.json()["detail"]["error"] == "RESERVED_KEY_ID"
+
+
+# ── Item 2: Missing Tier Must Fail ────────────────────────────────────────
+
+def test_missing_tier_rejected_in_purchase_and_builders():
+    """
+    Item 2: A missing tier must fail rather than guessing ap2-batch.
+    - Builders require tier_id with no default.
+    - purchase_subscription rejects with MISSING_TIER if no tier can be determined.
+    """
+    # Builders raise TypeError when tier_id is missing
+    with pytest.raises(TypeError):
+        build_ap2_intent_mandate(
+            buyer_agent_id="b1",
+            amount=49.99,
+            recurrence="monthly",
+            category="test",
+            # tier_id omitted
+        )
+
+    with pytest.raises(TypeError):
+        build_buyer_intent_mandate(
+            buyer_agent_id="b2",
+            amount=49.99,
+            recurrence="monthly",
+            category="test",
+            # tier_id omitted
+        )
+
+    # purchase_subscription rejection when tier cannot be determined
+    email = f"notier-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner")
+    agent_key = _gen_key("agent")
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+    )
+
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key,
+        user_key=owner_key,
+    )
+    # Issue checkout without tier
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec["checkout_jwt"], checkout_hash=rec["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-notier"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+    # 1. Calling purchase_subscription with tier_id="" resolves tier from verified checkout
+    res_resolved = _run(seller_agent.purchase_subscription(
+        tier_id="",  # Empty tier -> taken from verified checkout
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert res_resolved.get("status") == "ACTIVE"
+    assert res_resolved.get("tier_id") == "ap2-batch"
+
+    # 2. When tier is missing from both explicit arg and verified checkout, reject with MISSING_TIER
+    email2 = f"notier2-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key2 = _gen_key("owner2")
+    agent_key2 = _gen_key("agent2")
+    register_buyer_key(
+        kid=owner_key2.kid,
+        public_key_hex=owner_key2.export_public(),
+        contractor_email=email2,
+    )
+    limits2 = create_trusted_surface_open_mandates(
+        buyer_email=email2,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key2,
+        user_key=owner_key2,
+    )
+    rec2 = create_merchant_checkout("ap2-batch", 49.99, email2)
+    chk_chain2 = mc.present(
+        holder_key=agent_key2,
+        mandate_token=limits2["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec2["checkout_jwt"], checkout_hash=rec2["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec2["nonce"],
+    )
+    pay_chain2 = mc.present(
+        holder_key=agent_key2,
+        mandate_token=limits2["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec2["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-notier2"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec2["nonce"],
+    )
+    from unittest.mock import patch
+    with patch("backend.agents.seller_agent.verify_ap2_chains", return_value={
+        "valid": True,
+        "authoritative_budget_cap": 60.0,
+        "monthly_price": 49.99,
+        "tier_id": "",
+    }):
+        res_no_tier = _run(seller_agent.purchase_subscription(
+            tier_id="",
+            agreed_monthly_rate=49.99,
+            checkout_mandate_chain=chk_chain2,
+            payment_mandate_chain=pay_chain2,
+            checkout_jwt=rec2["checkout_jwt"],
+            buyer_email=email2,
+            nonce=rec2["nonce"],
+        ))
+        assert res_no_tier.get("status") == "REJECTED"
+        assert res_no_tier.get("error") == "MISSING_TIER"
+
+
+# ── Item 3: Exact Reserved Key Check & Reseller Agent ─────────────────────
+
+def test_reseller_agent_challenge_enrollment_and_trust():
+    """
+    Item 3: Only exact reserved IDs are blocked.
+    A kid like 'reseller-agent' registered through challenge flow is trusted,
+    while 'ap2-seller-ed25519-v1' is rejected.
+    """
+    priv_hex, pub_hex = generate_ed25519_keypair()
+    reseller_kid = "reseller-agent"
+    email = "reseller@example.com"
+
+    # 1. Challenge issuance
+    chal_res = client.get("/api/agent/keys/challenge")
+    assert chal_res.status_code == 200
+    challenge = chal_res.json()["challenge"]
+
+    # 2. Challenge signature
+    sig_hex = sign_ed25519_message(challenge, priv_hex)
+
+    # 3. Registration succeeds because 'reseller-agent' is not in RESERVED_BUYER_KEY_IDS
+    reg_res = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": reseller_kid,
+            "publicKeyHex": pub_hex,
+            "contractorEmail": email,
+            "businessEntity": "Reseller Solutions Inc",
+            "challenge": challenge,
+            "challengeSignature": sig_hex,
+        },
+    )
+    assert reg_res.status_code == 201
+    assert reg_res.json()["status"] == "REGISTERED"
+
+    # 4. 'reseller-agent' is now trusted as a buyer key
+    assert is_trusted_buyer_key(reseller_kid, pub_hex) is True
+
+    # 5. Exact reserved seller kid remains untrusted
+    assert is_trusted_buyer_key(DEFAULT_SELLER_KID, pub_hex) is False

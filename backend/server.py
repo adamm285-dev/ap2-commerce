@@ -102,6 +102,7 @@ from .database import (
     get_buyer_key,
     list_buyer_key_records,
     set_recurring_mandate_status,
+    RESERVED_BUYER_KEY_IDS,
 )
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
@@ -1169,14 +1170,7 @@ async def get_buyer_key_challenge_endpoint():
     )
 
 
-RESERVED_BUYER_KEY_IDS = {
-    "ap2-seller-ed25519-v1",
-    "ap2-buyer-ed25519-v1",
-    "buyer-agent-01",
-    "buyer-agent-001",
-    "claude-desktop-buyer",
-    "test-agent-001",
-}
+
 
 
 @app.post(

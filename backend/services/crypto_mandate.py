@@ -74,10 +74,11 @@ DEMO_TAMPER_PRIVATE_KEY_HEX = _DEMO_TAMPER_KEY.private_bytes_raw().hex()
 DEMO_TAMPER_PUBLIC_KEY_HEX = _DEMO_TAMPER_KEY.public_key().public_bytes_raw().hex()
 DEMO_TAMPER_KID = "demo-anti-tamper-ed25519"
 
-from ..database import BuyerKeysProxy
+from ..database import BuyerKeysProxy, RESERVED_BUYER_KEY_IDS
 
 # Known / registered buyer agent public keys (kid -> public_key_hex)
 # Prevents arbitrary third parties from forging mandates for known contractors, backed by persistent SQLite storage
+# MOCK(M-022): default buyer keys seeded in mock mode without challenge enrollment
 REGISTERED_BUYER_KEYS = BuyerKeysProxy()
 if getattr(settings, "mock_external_apis", False):
     for _default_kid in [
@@ -101,7 +102,8 @@ def is_trusted_buyer_key(kid: Optional[str], public_key_hex: Optional[str]) -> b
     """Checks if the (kid, public_key_hex) pair matches a registered buyer key."""
     if not kid or not public_key_hex:
         return False
-    if kid == DEFAULT_SELLER_KID or "seller" in kid.lower():
+    # ap2-seller-ed25519-v1 is reserved and never trusted as a buyer key
+    if kid == DEFAULT_SELLER_KID:
         return False
     expected = REGISTERED_BUYER_KEYS.get(kid)
     if not expected:

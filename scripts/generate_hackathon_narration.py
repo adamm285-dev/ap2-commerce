@@ -47,7 +47,7 @@ ACT_SCRIPTS = {
     "act5_kyc_compute": (
         "Subscriptions keep billing, so every month, when PayPal reports a renewal, the server re-checks it "
         "against the owner's signed mandate, and cancels in advance before the payment count, budget or term "
-        "runs out. It's backed by 559 passing tests, including Google's own AP2 SDK tests, unchanged. This is "
+        "runs out. It's backed by 567 passing tests, including Google's own AP2 SDK tests, unchanged. This is "
         "AP2 Autonomous Commerce, built for the PayPal AI Hackathon."
     ),
 }

@@ -1109,6 +1109,31 @@ class SellerAgent:
             }
 
         tier_id = verified_tier or tier_id
+        if not tier_id:
+            ref = mandate_proof_hash or offer_id or "missing_tier"
+            desc = "MISSING_TIER: No subscription tier specified or determined from verified checkout mandate."
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            return {
+                "status": "REJECTED",
+                "error": "MISSING_TIER",
+                "reason": desc,
+                "message": f"Purchase rejected: {desc}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
         agreed_monthly_rate = verified_price if verified_price is not None else agreed_monthly_rate
         verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
         verified_pay_receipt = ap2_verify_res.get("payment_receipt")
@@ -1332,7 +1357,7 @@ class SellerAgent:
                 amount=agreed_monthly_rate,
                 recurrence="monthly",
                 category="autonomous-node-service",
-                tier_id=tier_id or "ap2-batch",
+                tier_id=tier_id,
                 contractor_email=contractor_email,
                 negotiation_id=negotiation_id,
             )

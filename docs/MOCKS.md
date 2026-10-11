@@ -119,8 +119,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Call a backend endpoint that performs (or dry-runs and says so) each step, as the onboarding scenario does.
 
 ### M-022: Default buyer keys seeded without challenge-response enrollment
-- **Where:** `backend/database.py::init_db`
-- **What it fakes:** Default buyer keys seeded directly into SQLite without cryptographic challenge-response signature verification.
+- **Where:** `backend/database.py::init_db`, `backend/services/crypto_mandate.py::REGISTERED_BUYER_KEYS`
+- **What it fakes:** Default buyer keys seeded directly into SQLite and the in-memory key registry without cryptographic challenge-response signature verification. Mock mode also switches on by itself when PayPal keys are missing (M-001), so a deployment without PayPal keys would trust these demo keys.
 - **Why:** Allows offline unit tests and mock demos to authenticate known buyer agents without interactive challenge enrollment.
 - **To make it real:** Require all buyer agents to complete the challenge-response registration flow (`/api/agent/keys/challenge` and `/api/agent/keys/register`) before their keys are trusted.
 

@@ -612,6 +612,53 @@ def test_trigger_zapier_mcp_a2a_onboarding_sync():
     assert data["googleCalendarEventId"].startswith("gcal_briefing_")
 
 
+def test_trigger_zapier_mcp_a2a_onboarding_dry_run_fields():
+    payload = {
+        "workflowType": "a2a_onboarding",
+        "contractorName": "Autonomous Compute Buyer",
+        "businessEntity": "Demo Buyer Corp",
+        "allocatedDid": "mcp+https://gateway-01.ap2.market",
+        "tradeVertical": "Autonomous Cloud Compute",
+        "monthlySubscriptionFee": 79.99,
+        "paypalSubscriptionId": "I-AUTONOMOUS-8902",
+        "contractorEmail": "agent-alpha@example.com",
+    }
+    res = client.post("/api/mcp/zapier-sync", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "COMPLETED"
+    assert data["webhookDryRun"] is True
+    assert data["webhookDispatched"] is False
+    assert data["webhookStatusCode"] is None
+    assert data["webhookHeaders"] is not None
+    assert "X-AP2-Signature" in data["webhookHeaders"]
+    assert data["webhookHeaders"]["X-AP2-Signature"].startswith("sha256=")
+
+
+def test_trigger_zapier_mcp_a2a_onboarding_blocked_url():
+    payload = {
+        "workflowType": "a2a_onboarding",
+        "contractorName": "Autonomous Compute Buyer",
+        "businessEntity": "Demo Buyer Corp",
+        "allocatedDid": "mcp+https://gateway-01.ap2.market",
+        "tradeVertical": "Autonomous Cloud Compute",
+        "monthlySubscriptionFee": 79.99,
+        "paypalSubscriptionId": "I-AUTONOMOUS-8902",
+        "contractorEmail": "agent-alpha@example.com",
+        "webhookUrl": "http://192.168.1.50:8000/webhook",
+    }
+    res = client.post("/api/mcp/zapier-sync", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "COMPLETED"
+    assert data["webhookDryRun"] is False
+    assert data["webhookDispatched"] is False
+    assert data["webhookStatusCode"] is None
+    assert data["webhookError"] is not None
+    assert "SSRF" in data["webhookError"]
+
+
+
 def test_create_paypal_order_mock():
     payload = {
         "amount": 250.00,

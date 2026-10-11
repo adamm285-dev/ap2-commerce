@@ -127,7 +127,7 @@ export function ZapierMcpView({
       DocNumber: `AP2-SUB-${agentSubscription.paypalSubscriptionId.slice(-6)}`,
       TotalAmt: agentSubscription.monthlyFee,
       CurrencyRef: { value: 'USD', name: 'United States Dollar' },
-      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${agentSubscription.paypalSubscriptionId} | Monthly: $${agentSubscription.monthlyFee.toFixed(2)} USD\nDedicated Node: ${agentSubscription.allocatedDid} | Capability: ${agentSubscription.tradeVertical}\nMandate Chain: AP2-MANDATE-CHAIN-VERIFIED-v02\nCryptographic Attestation: AP2 v0.2 Dual Mandate Chain\nPurchaser: ${agentSubscription.contractorName} (${agentSubscription.businessEntity})`,
+      PrivateNote: `Autonomous AP2 Protocol.\nPayPal Sub: ${agentSubscription.paypalSubscriptionId} | Monthly: $${agentSubscription.monthlyFee.toFixed(2)} USD\nDedicated Node: ${agentSubscription.allocatedDid} | Capability: ${agentSubscription.tradeVertical}\nMandate Chain: AP2-MANDATE-CHAIN-v02\nCryptographic Attestation: AP2 v0.2 Dual Mandate Chain\nPurchaser: ${agentSubscription.contractorName} (${agentSubscription.businessEntity})`,
       GlobalTaxCalculation: 'NotApplicable',
       Line: [
         {
@@ -144,7 +144,7 @@ export function ZapierMcpView({
         },
       ],
     },
-    purchase_id: 'QBO-EXP-9124',
+    purchase_id: 'QBO-EXP-EXAMPLE',
   } : {
     Invoice: {
       CustomerRef: { value: '202', name: workloadDispatch.requesterName },
@@ -166,24 +166,12 @@ export function ZapierMcpView({
     purchase_id: 'QBO-INV-5501',
   });
 
-  const cloudEventsPreview = currentResult?.cloudeventsPayload || (activeScenario === 'a2a' ? {
-    specversion: '1.0',
-    id: 'ce-sub-99120482',
-    source: 'https://api.ap2protocol.org/mcp/seller',
-    type: 'com.ap2.settlement.subscription.activated',
-    datacontenttype: 'application/json',
-    time: new Date().toISOString(),
-    subject: `agent_${(agentSubscription.contractorName || agentSubscription.buyerAgentName || 'procure').toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    data: {
-      buyer_agent: agentSubscription.contractorName,
-      principal_entity: agentSubscription.businessEntity,
-      service_tier: agentSubscription.tradeVertical,
-      monthly_rate: agentSubscription.monthlyFee,
-      allocated_node_endpoint: agentSubscription.allocatedDid,
-      paypal_subscription_id: agentSubscription.paypalSubscriptionId,
-      ed25519_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
-      enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-      protocol_version: 'AP2-v1.4.1',
+  const cloudEventsPreview = currentResult?.cloudeventsPayload || currentResult?.erpPayload || (activeScenario === 'a2a' ? {
+    note: 'Example (no run yet)',
+    erp_export: {
+      status: 'SKIPPED',
+      service: 'QBO_ONLY',
+      routing: 'ERP dispatch via dedicated back-office export',
     },
   } : {
     specversion: '1.0',
@@ -207,11 +195,12 @@ export function ZapierMcpView({
   });
 
   const webhookPreview = currentResult?.webhookEnvelope || {
+    note: 'Example (no run yet)',
     headers: {
       'Content-Type': 'application/json',
-      'X-AP2-Signature': 'sha256=9b72e1858a74e47bcf056ad8564177d6118d098e94fae75896a297b83d8e578a',
+      'X-AP2-Signature': 'sha256=<computed by the backend>',
       'X-AP2-Timestamp': new Date().toISOString(),
-      'X-AP2-Delivery-Id': 'del_live_sync_001',
+      'X-AP2-Delivery-Id': 'dlv_<computed_by_backend>',
       'X-AP2-Event': activeScenario === 'a2a' ? 'ap2.subscription.provisioned' : 'ap2.workload.dispatched',
     },
     body: {
@@ -227,14 +216,15 @@ export function ZapierMcpView({
         currency: 'USD',
         allocated_node_endpoint: agentSubscription.allocatedDid,
         trade_vertical: agentSubscription.tradeVertical,
-        mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
+        mandate_proof_hash: '<computed by the backend>',
       } : undefined,
-      cloudevents_export: cloudEventsPreview,
+      erp_export: activeScenario === 'a2a' ? (currentResult?.erpPayload || { status: 'SKIPPED', service: 'QBO_ONLY' }) : undefined,
+      cloudevents_export: activeScenario === 'workload' ? cloudEventsPreview : undefined,
       qbo_export: qboPreview,
     },
-    status: 200,
-    targetUrl: 'https://hooks.zapier.com/hooks/catch/912837/b821af/',
-    deliveryId: 'del_live_sync_001',
+    status: null,
+    targetUrl: 'none (dry run)',
+    deliveryId: 'dlv_<computed_by_backend>',
   };
 
   return (
@@ -645,11 +635,37 @@ export function ZapierMcpView({
                   fontWeight: 700,
                   padding: '2px 8px',
                   borderRadius: '10px',
-                  backgroundColor: currentResult.isLiveBackend ? '#065f46' : '#854d0e',
-                  color: currentResult.isLiveBackend ? '#34d399' : '#fde047',
+                  backgroundColor: !currentResult.success
+                    ? '#7f1d1d'
+                    : currentResult.isLiveBackend
+                    ? currentResult.webhookDryRun
+                      ? '#0369a1'
+                      : currentResult.webhookDispatched
+                      ? '#065f46'
+                      : '#7f1d1d'
+                    : '#854d0e',
+                  color: !currentResult.success
+                    ? '#fca5a5'
+                    : currentResult.isLiveBackend
+                    ? currentResult.webhookDryRun
+                      ? '#7dd3fc'
+                      : currentResult.webhookDispatched
+                      ? '#34d399'
+                      : '#fca5a5'
+                    : '#fde047',
                 }}
               >
-                {currentResult.isLiveBackend ? '● FastAPI Backend Dispatched' : '○ Local Simulation'}
+                {!currentResult.success
+                  ? '● Export Failed'
+                  : currentResult.isLiveBackend
+                  ? currentResult.webhookDryRun
+                    ? '● Dry Run (Nothing Delivered)'
+                    : currentResult.webhookDispatched
+                    ? `● Delivered (HTTP ${currentResult.webhookStatusCode || 200})`
+                    : currentResult.webhookError
+                    ? '● Delivery Blocked / Failed'
+                    : '● Dry Run'
+                  : '○ Local Simulation'}
               </span>
             )}
           </div>
@@ -743,7 +759,13 @@ export function ZapierMcpView({
                         alignItems: 'center',
                         gap: '4px',
                         fontSize: '11px',
-                        color: '#34d399',
+                        color: log.status === 'DELIVERED'
+                          ? '#34d399'
+                          : log.status === 'DRY_RUN' || log.status === 'GENERATED'
+                          ? '#38bdf8'
+                          : log.status === 'FAILED' || log.status === 'BLOCKED'
+                          ? '#f87171'
+                          : '#a3e635',
                         fontWeight: 600,
                       }}
                     >
@@ -1034,9 +1056,23 @@ export function ZapierMcpView({
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#064e3b', color: '#6ee7b7' }}>
                   SSRF Domain Allowlisted
                 </span>
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#1e3a8a', color: '#93c5fd' }}>
-                  HTTP 200 OK Delivered
-                </span>
+                {!currentResult ? (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#334155', color: '#94a3b8' }}>
+                    Example (no run yet)
+                  </span>
+                ) : currentResult.webhookDryRun || (currentResult.webhookEnvelope && (currentResult.webhookEnvelope.dryRun || currentResult.webhookEnvelope.status === null)) ? (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#0369a1', color: '#e0f2fe' }}>
+                    Dry Run (0 Network Calls)
+                  </span>
+                ) : currentResult.webhookDispatched ? (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#064e3b', color: '#6ee7b7' }}>
+                    HTTP {currentResult.webhookStatusCode || currentResult.webhookEnvelope?.status || 200} Delivered
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#7f1d1d', color: '#fca5a5' }}>
+                    {currentResult.webhookError ? 'Delivery Blocked / Failed' : 'Failed'}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => copyToClipboard(JSON.stringify(webhookPreview, null, 2), 'webhook')}

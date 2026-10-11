@@ -130,6 +130,10 @@ class ZapierMcpDispatcher:
                 webhook_delivery_id=dispatch_res.get("delivery_id"),
                 webhook_dispatched=dispatch_res.get("dispatched", False),
                 webhook_status_code=dispatch_res.get("status_code"),
+                webhook_dry_run=dispatch_res.get("dry_run"),
+                webhook_headers=dispatch_res.get("headers"),
+                webhook_target_url=dispatch_res.get("target_url"),
+                webhook_error=dispatch_res.get("error"),
             )
 
         # MOCK(M-011): made-up ERP, QuickBooks and calendar IDs

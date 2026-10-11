@@ -6,7 +6,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 
 **Format.** One `### M-NNN: title` heading per entry, then four fields: `Where` (one or more backticked `path::symbol`), `What it fakes`, `Why`, and `To make it real`.
 
-**Retired IDs (never reuse):** M-013 (failing-open Vault capture, code deleted 2026-10-10), M-017 (frontend faked success when the backend was unreachable, fixed 2026-10-10; it now reports the failure).
+**Retired IDs (never reuse):** M-013 (failing-open Vault capture, code deleted 2026-10-10), M-017 (frontend faked success when the backend was unreachable, fixed 2026-10-10; it now reports the failure), M-021 (back-office run log reported deliveries that didn't happen, fixed 2026-10-10; now builds from backend delivery status and headers).
 
 ---
 
@@ -118,8 +118,3 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Gives the workload scenario in the back-office view something to show.
 - **To make it real:** Call a backend endpoint that performs (or dry-runs and says so) each step, as the onboarding scenario does.
 
-### M-021: The back-office run log reports deliveries that didn't happen
-- **Where:** `src/services/zapierMcpService.ts::executeZapierA2aWorkflow`
-- **What it fakes:** Delivery results. Even when the backend only did a dry run, the browser labels the QuickBooks, CloudEvents and webhook steps VERIFIED, and shows a hardcoded `X-AP2-Signature`, a placeholder `HMAC-MANDATE-VERIFIED-01` proof, `protocol_version: AP2-v1.4.1` and a fixed Zapier hook URL.
-- **Why:** Leftover presentation code from before the backend reported dry runs.
-- **To make it real:** Build the log from what the backend returns (for example `webhookDispatched` and the delivery ID) and label dry runs as dry runs.

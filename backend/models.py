@@ -218,6 +218,10 @@ class ZapierSyncResponse(BaseModel):
     webhook_delivery_id: Optional[str] = Field(default=None, alias="webhookDeliveryId")
     webhook_dispatched: Optional[bool] = Field(default=False, alias="webhookDispatched")
     webhook_status_code: Optional[int] = Field(default=None, alias="webhookStatusCode")
+    webhook_dry_run: Optional[bool] = Field(default=None, alias="webhookDryRun")
+    webhook_headers: Optional[Dict[str, Any]] = Field(default=None, alias="webhookHeaders")
+    webhook_target_url: Optional[str] = Field(default=None, alias="webhookTargetUrl")
+    webhook_error: Optional[str] = Field(default=None, alias="webhookError")
 
 
 # --- PayPal Order Management Models ---

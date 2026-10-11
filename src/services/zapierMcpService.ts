@@ -42,7 +42,7 @@ export interface ZapierMcpActionLog {
   actionId: string;
   toolName: string;
   targetApp: 'QuickBooks Online' | 'CloudEvents v1.0' | 'Zapier MCP EventBus' | 'Google Workspace' | 'Enterprise ERP' | 'Google Calendar';
-  status: 'PENDING' | 'EXECUTED' | 'VERIFIED';
+  status: 'PENDING' | 'EXECUTED' | 'GENERATED' | 'DRY_RUN' | 'DELIVERED' | 'FAILED' | 'BLOCKED' | 'SIMULATED';
   payloadSummary: string;
   timestamp: string;
 }
@@ -59,17 +59,21 @@ export interface ZapierExecutionResult {
   webhookEnvelope?: {
     headers: Record<string, string>;
     body: any;
-    status: number;
+    status: number | null;
     targetUrl: string;
     deliveryId: string;
+    dryRun?: boolean;
   };
+  webhookDryRun?: boolean;
+  webhookDispatched?: boolean;
+  webhookStatusCode?: number | null;
+  webhookError?: string | null;
 }
 
 /**
- * Executes the 3-step Zapier MCP automation chain for AP2 Autonomous Agent Onboarding:
- * 1. QuickBooks Online: Logs $79.99/mo recurring expense under GL 6300: Software & SaaS with PayPal Token
- * 2. CloudEvents v1.0: Publishes com.ap2.settlement.subscription.activated to MCP EventBus
- * 3. Zapier Catch-Hook: Dispatches signed HMAC-SHA256 webhook envelope to downstream ERP
+ * Executes the 2-step Zapier MCP automation chain for AP2 Autonomous Agent Onboarding:
+ * 1. QuickBooks Online: Prepares SaaS software purchase export package (GL 6300: Software & SaaS)
+ * 2. Webhook / EventBus: Dispatches authentic HMAC-SHA256 signed webhook envelope (or dry-run export)
  */
 export async function executeZapierA2aWorkflow(
   buyer: A2aBuyerOnboarding
@@ -101,66 +105,45 @@ export async function executeZapierA2aWorkflow(
 
     if (res.ok) {
       const data = await res.json();
-      // MOCK(M-021): every action is labeled VERIFIED even when the backend only did a dry run
+
+      const webhookStatus: ZapierMcpActionLog['status'] = data.webhookDryRun
+        ? 'DRY_RUN'
+        : data.webhookDispatched
+        ? 'DELIVERED'
+        : data.webhookError
+        ? (data.webhookError.includes('SSRF') || data.webhookError.includes('blocked') ? 'BLOCKED' : 'FAILED')
+        : 'FAILED';
+
+      const webhookSummary = data.webhookDryRun
+        ? `Dry run: computed authentic HMAC-SHA256 signature for export bundle (0 network calls dispatched)`
+        : data.webhookDispatched
+        ? `Dispatched HMAC-SHA256 signed webhook envelope to ${data.webhookTargetUrl || 'target'} (HTTP ${data.webhookStatusCode})`
+        : `Webhook dispatch blocked/failed: ${data.webhookError || 'unknown error'}`;
+
       const logs: ZapierMcpActionLog[] = [
         {
-          actionId: data.qboDraftInvoiceId || `QBO-EXP-${Math.floor(1000 + Math.random() * 9000)}`,
+          actionId: data.qboDraftInvoiceId || '',
           toolName: 'zapier_mcp_qbo_record_expense',
           targetApp: 'QuickBooks Online',
-          status: 'VERIFIED',
-          payloadSummary: `Recorded recurring $${buyer.monthlyFee.toFixed(2)}/mo SaaS software subscription expense under GL 6300: Software & SaaS. Attached PayPal Vault Token: ${buyer.paypalSubscriptionId} (${entity})`,
+          status: 'GENERATED',
+          payloadSummary: `Generated QuickBooks Online v3 Purchase payload ($${buyer.monthlyFee.toFixed(2)}/mo) under GL 6300: Software & SaaS for ${entity} (Sub: ${buyer.paypalSubscriptionId})`,
           timestamp: now(),
         },
         {
-          actionId: `CE-${Math.floor(10000 + Math.random() * 90000)}`,
-          toolName: 'zapier_mcp_cloudevents_publish',
-          targetApp: 'CloudEvents v1.0',
-          status: 'VERIFIED',
-          payloadSummary: `Published CloudEvents v1.0 event 'com.ap2.settlement.subscription.activated' for ${entity} bound to node endpoint ${endpoint} with Ed25519 mandate proof`,
-          timestamp: now(),
-        },
-        {
-          actionId: `HOOK-${Math.floor(10000 + Math.random() * 90000)}`,
+          actionId: data.webhookDeliveryId || '',
           toolName: 'zapier_mcp_eventbus_export',
           targetApp: 'Zapier MCP EventBus',
-          status: 'VERIFIED',
-          payloadSummary: `Dispatched HMAC-SHA256 signed webhook envelope to Zapier EventBus routing endpoint for ${email} (Replay Window: 300s)`,
+          status: webhookStatus,
+          payloadSummary: webhookSummary,
           timestamp: now(),
         },
       ];
 
-      const cloudeventsPayload = {
-        specversion: '1.0',
-        id: `ce-${Math.floor(100000 + Math.random() * 900000)}`,
-        source: 'https://api.ap2protocol.org/mcp/seller',
-        type: 'com.ap2.settlement.subscription.activated',
-        datacontenttype: 'application/json',
-        time: new Date().toISOString(),
-        subject: `agent_${agentName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-        data: {
-          buyer_agent: agentName,
-          principal_entity: entity,
-          service_tier: capability,
-          monthly_rate: buyer.monthlyFee,
-          allocated_node_endpoint: endpoint,
-          paypal_subscription_id: buyer.paypalSubscriptionId,
-          ed25519_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
-          enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-          protocol_version: 'AP2-v1.4.1',
-        },
-      };
-
       const webhookEnvelope = {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-AP2-Signature': 'sha256=9b72e1858a74e47bcf056ad8564177d6118d098e94fae75896a297b83d8e578a',
-          'X-AP2-Timestamp': new Date().toISOString(),
-          'X-AP2-Delivery-Id': data.webhookDeliveryId || `del_${Math.random().toString(36).substring(2, 10)}`,
-          'X-AP2-Event': 'ap2.subscription.provisioned',
-        },
+        headers: data.webhookHeaders || {},
         body: {
-          event: 'ap2.subscription.provisioned',
-          agent: {
+          event: 'a2a.subscription.provisioned',
+          contractor: {
             name: agentName,
             entity: entity,
             email: email,
@@ -169,16 +152,16 @@ export async function executeZapierA2aWorkflow(
             paypal_subscription_id: buyer.paypalSubscriptionId,
             monthly_fee: buyer.monthlyFee,
             currency: 'USD',
-            allocated_node_endpoint: endpoint,
+            allocated_did: endpoint,
             trade_vertical: capability,
-            mandate_proof_hash: 'HMAC-MANDATE-VERIFIED-01',
           },
-          cloudevents_export: cloudeventsPayload,
+          erp_export: data.erpPayload,
           qbo_export: data.qboPayload,
         },
-        status: data.webhookStatusCode ?? 200,
-        targetUrl: 'https://hooks.zapier.com/hooks/catch/912837/b821af/',
-        deliveryId: data.webhookDeliveryId || 'del_live_sync_001',
+        status: data.webhookStatusCode ?? null,
+        targetUrl: data.webhookTargetUrl || 'none (dry run)',
+        deliveryId: data.webhookDeliveryId || '',
+        dryRun: data.webhookDryRun ?? true,
       };
 
       return {
@@ -186,10 +169,13 @@ export async function executeZapierA2aWorkflow(
         jobId: syncId,
         logs,
         isLiveBackend: true,
-        cloudeventsPayload,
-        erpPayload: cloudeventsPayload,
+        erpPayload: data.erpPayload,
         qboPayload: data.qboPayload,
         webhookEnvelope,
+        webhookDryRun: data.webhookDryRun,
+        webhookDispatched: data.webhookDispatched,
+        webhookStatusCode: data.webhookStatusCode,
+        webhookError: data.webhookError,
       };
     }
   } catch (err) {
@@ -271,7 +257,7 @@ export async function executeZapierMcpWorkflow(
       actionId: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
       toolName: 'zapier_mcp_cloudevents_dispatch_workload',
       targetApp: 'CloudEvents v1.0',
-      status: 'VERIFIED',
+      status: 'SIMULATED',
       payloadSummary: `Dispatched CloudEvents v1.0 payload to ${targetNode} for 50,000 token workload (${capability})`,
       timestamp: now(),
     },
@@ -279,7 +265,7 @@ export async function executeZapierMcpWorkflow(
       actionId: workloadQboPayload.purchase_id,
       toolName: 'zapier_mcp_qbo_record_receipt',
       targetApp: 'QuickBooks Online',
-      status: 'VERIFIED',
+      status: 'SIMULATED',
       payloadSummary: `Generated QBO invoice & settlement receipt for $${lead.paymentAmount.toFixed(2)} via PayPal (Txn: ${lead.paypalTransactionId})`,
       timestamp: now(),
     },
@@ -287,7 +273,7 @@ export async function executeZapierMcpWorkflow(
       actionId: `EB-${Math.floor(1000 + Math.random() * 9000)}`,
       toolName: 'zapier_mcp_eventbus_route_enclave',
       targetApp: 'Zapier MCP EventBus',
-      status: 'VERIFIED',
+      status: 'SIMULATED',
       payloadSummary: `Routed execution credentials to ${lead.territoryZone} with execution target sub-350ms`,
       timestamp: now(),
     },

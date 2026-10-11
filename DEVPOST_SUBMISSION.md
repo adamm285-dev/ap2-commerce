@@ -86,8 +86,8 @@ When an AI agent buys cloud compute, four problems show up:
 | **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
-| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
-| **08** | **Empirical Verification** | 557 passing tests (188 SDK + 369 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 18 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
+| **08** | **Empirical Verification** | 559 passing tests (188 SDK + 371 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
 
@@ -116,7 +116,7 @@ python scripts/judge_audit_harness.py
 ```bash
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 pytest backend/tests/ -q -n 4
-# 557 passed, 9 skipped (188 Google AP2 SDK tests, byte-identical to upstream, + 369 project tests;
+# 559 passed, 9 skipped (188 Google AP2 SDK tests, byte-identical to upstream, + 371 project tests;
 # the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 
@@ -125,7 +125,7 @@ pytest backend/tests/ -q -n 4
 python scripts/check_mocks.py
 # docs/MOCKS.md matches the MOCK markers in the code.
 ```
-`docs/MOCKS.md` declares all 19 stand-ins for real behavior, and `backend/tests/test_mocks_ledger.py` fails if the ledger and the code disagree.
+`docs/MOCKS.md` declares all 18 stand-ins for real behavior, and `backend/tests/test_mocks_ledger.py` fails if the ledger and the code disagree.
 
 ---
 

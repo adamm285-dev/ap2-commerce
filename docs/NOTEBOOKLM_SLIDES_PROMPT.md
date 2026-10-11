@@ -33,8 +33,8 @@ SLIDE CORRECTIONS:
   `{"status": "REFUSED", "error": "PAYMENT_CONSTRAINT_VIOLATION"}`
   Say "two merchant-signed error receipts", not "dual-signed". Replace "self-heal workflows" with "counter-offers the best tier within budget".
 - Slide 6: Title "Demo Fleet Operations: Dashboard, Dispatch and Accounting Payloads". Put a visible "Seeded demo data" label on the fleet panel. Do not write "ARR" as revenue; write "Demo fleet: 14 subscriptions, 13 active, $1,219.87 MRR". Mark the QuickBooks payload "generated (dry run)". Leave the panels as simple outlined boxes with titles if you cannot show clean content; no generated tables or times.
-- Slide 7: Keep the 2x2 matrix but label it: Keys (disk → hardware-backed), Replay protection (in-memory → shared store), Rails (seller verifies AP2 → networks verify AP2), Revocation (expiry only → status list). Do not pair nonces with KMS; do not say CRL. Add a short list: renew limits after payment 12, check charge spacing, verify renewals on the PayPal sandbox, 19 declared mocks.
-- Slide 8: Title "Verification: Tests, Judge Audit and Declared Mocks". Panels: "557 passed, 9 skipped (188 Google AP2 SDK tests + 369 project tests)"; "9/9 judge checks, about 1 second, no API keys"; "19 declared mocks, checked by a test". Remove "Standards Contribution", "battle-tested" and "AP2 V1.x working group".
+- Slide 7: Keep the 2x2 matrix but label it: Keys (disk → hardware-backed), Replay protection (in-memory → shared store), Rails (seller verifies AP2 → networks verify AP2), Revocation (expiry only → status list). Do not pair nonces with KMS; do not say CRL. Add a short list: renew limits after payment 12, check charge spacing, verify renewals on the PayPal sandbox, 18 declared mocks.
+- Slide 8: Title "Verification: Tests, Judge Audit and Declared Mocks". Panels: "559 passed, 9 skipped (188 Google AP2 SDK tests + 371 project tests)"; "9/9 judge checks, about 1 second, no API keys"; "18 declared mocks, checked by a test". Remove "Standards Contribution", "battle-tested" and "AP2 V1.x working group".
 
 Generate the full 8-slide deck now, following these rules exactly.
 ```
@@ -51,5 +51,5 @@ Generate the full 8-slide deck now, following these rules exactly.
 | **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `Recurring Mandate Service` |
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `Seller Agent`, `AP2 ES256 SD-JWT Verifier` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 fleet ledger, Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `Enterprise Fleet Ledger`, `Back-Office Export` |
-| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `Hardware Keys`, `Shared State`, `Native AP2 Rails` |
-| **08** | **Empirical Verification** | 557 passing tests (188 SDK + 369 project); 9/9 judge checks in about a second; 19 declared mocks | `Automated Test Suite`, `Judge Audit Harness`, `Mock Ledger` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 18 declared mocks | `Hardware Keys`, `Shared State`, `Native AP2 Rails` |
+| **08** | **Empirical Verification** | 559 passing tests (188 SDK + 371 project); 9/9 judge checks in about a second; 18 declared mocks | `Automated Test Suite`, `Judge Audit Harness`, `Mock Ledger` |

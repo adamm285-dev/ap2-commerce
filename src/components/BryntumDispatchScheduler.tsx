@@ -1443,6 +1443,13 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         contractorName: 'AutonomousBuyerAgent',
         businessEntity: 'Acme Compute Co',
         monthlyBudgetCap: 100.0,
+        checkoutJwt: undefined,
+        checkoutHash: undefined,
+        nonce: undefined,
+        offerId: undefined,
+        openCheckoutMandateToken: undefined,
+        openPaymentMandateToken: undefined,
+        paypalSubscriptionId: undefined,
       };
 
       addWireLog({

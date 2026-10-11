@@ -104,6 +104,7 @@
 - `test_mocks_ledger.py`
 - `test_plan_catalog.py`
 - `test_plan_resolution.py`
+- `test_purchase_hardening.py`
 - `test_purchase_idempotency_regression.py`
 - `test_recurring_mandate_renewals.py`
 - `test_security_regressions.py`
@@ -217,6 +218,7 @@
 - `wallet.py`
 
 ### `docs/`
+- `AP2_Autonomous_Commerce_Presentation_Deck.pdf`
 - `MOCKS.md`
 - `NOTEBOOKLM_SLIDES_PROMPT.md`
 - `NOTEBOOKLM_SOURCE_DOCUMENT.md`

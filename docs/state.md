@@ -3,20 +3,18 @@
 <!-- Read on Turn 1 boot. Strictly pruned after milestone completion. -->
 
 ## Active Objective
-- Relocated SDCS v1.9.0 7-pillar cognitive scaffolding into docs/ alongside docs/MOCKS.md, verified upstream framework locator support, and confirmed all 557 backend tests, Gate L, Gate M, and Gate T pass.
+- Ship the PayPal AI Hackathon submission (deadline 2026-11-12 12:00 PM PST): truthful docs, honest demo, live Claude Desktop recording.
 
 ## Immediate Next Action (Post-Compact)
-- Await user steering or next milestone task.
+- Owner restarts the Claude app, then records the Chat-tab wallet demo (demo limits valid until 2026-10-12 17:17 UTC; re-run setup_claude_desktop_demo.py after that).
+- Owner picks a license (Apache-2.0 recommended, or MIT); then make LICENSE, README and apimatic.json agree.
+- Check the regenerated NotebookLM deck by extracting its text only (not found in the repo yet).
+- Narration audio needs owner approval (script calls Gemini).
 
 ## Immediate Blockers
-- None.
+- ap2-commerce must go public for submission; history still holds a retired HMAC secret, a business email and phone number.
 
 ## Active Verification Gates
-- [x] SDCS 7 pillars relocated to docs/ (spine.md, wiring.yaml, roadmap.md, state.md, app_map.md, decisions.md, evals.md, sessions/).
-- [x] SDCS framework locators upgraded and verified (236/236 framework tests passing).
-- [x] Gate L (Mocks Gate) passing: 19 mocks verified in docs/MOCKS.md (3/3 ledger tests green).
-- [x] Gate M (Cartography Gate) passing: docs/app_map.md synchronized and clean (0 drift).
-- [x] Gate T (Topology Gate) passing: wiring.yaml AST boundaries verified.
-- [x] Test suite passing: 557 passed, 9 skipped in 28.26s.
-- [x] Judge audit harness passing: 9/9 checks green.
-- [x] Frontend production build passing: built in 2.66s.
+- [x] 567 passed, 9 skipped (188 SDK + 379 project); judge audit 9/9.
+- [x] Gate L: 19 mocks (M-013, M-017, M-021 retired); Gate T and Gate M clean.
+- [x] Live MCP test: counter-offer bought, $200 overclaim refused by the wallet.

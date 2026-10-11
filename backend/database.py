@@ -122,7 +122,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
 
             CREATE TABLE IF NOT EXISTS contractor_budgets (
                 contractor_email TEXT PRIMARY KEY,
-                monthly_cap REAL NOT NULL DEFAULT 100.00,
+                monthly_cap REAL NOT NULL,
                 committed_spend REAL NOT NULL DEFAULT 0.00,
                 updated_at TEXT NOT NULL
             );
@@ -996,7 +996,7 @@ def set_contractor_cap(contractor_email: str, cap: float, db_path: Optional[Path
         conn.close()
 
 
-def get_contractor_cap(contractor_email: str, default_cap: float = 100.0, db_path: Optional[Path] = None) -> float:
+def get_contractor_cap(contractor_email: str, default_cap: Optional[float] = None, db_path: Optional[Path] = None) -> Optional[float]:
     """Gets the configured monthly budget cap for a contractor."""
     if not contractor_email:
         return default_cap
@@ -1006,7 +1006,13 @@ def get_contractor_cap(contractor_email: str, default_cap: float = 100.0, db_pat
         cur = conn.cursor()
         cur.execute("SELECT monthly_cap FROM contractor_budgets WHERE contractor_email = ?", (norm,))
         row = cur.fetchone()
-        return float(row["monthly_cap"]) if row else default_cap
+        if row:
+            return float(row["monthly_cap"])
+        cur.execute("SELECT monthly_cap FROM contractor_authorized_caps WHERE contractor_email = ?", (norm,))
+        auth_row = cur.fetchone()
+        if auth_row:
+            return float(auth_row["monthly_cap"])
+        return default_cap
     finally:
         conn.close()
 
@@ -1090,15 +1096,19 @@ def sync_contractor_commitment(
     conn = get_connection(db_path)
     try:
         with conn:
+            cur = conn.cursor()
+            cur.execute("SELECT monthly_cap FROM contractor_authorized_caps WHERE contractor_email = ?", (norm,))
+            row = cur.fetchone()
+            cap_val = float(row["monthly_cap"]) if row else rate
             conn.execute(
                 """
                 INSERT INTO contractor_budgets (contractor_email, monthly_cap, committed_spend, updated_at)
-                VALUES (?, 100.0, ?, ?)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(contractor_email) DO UPDATE SET
                     committed_spend = excluded.committed_spend,
                     updated_at = excluded.updated_at
                 """,
-                (norm, rate, now_iso),
+                (norm, cap_val, rate, now_iso),
             )
             if agent_id:
                 conn.execute(

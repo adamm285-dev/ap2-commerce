@@ -124,12 +124,14 @@ def _intent_mandate_body(
     issued_at_iso = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).isoformat()
     expires_at = now + AP2_INTENT_MANDATE_TTL_SEC
     expires_at_iso = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc).isoformat()
+    issuer = get_payee_id() if attestation == "seller_attested" else buyer_agent_id
     return {
         "mandate_id": f"mandate_{uuid.uuid4().hex[:16]}",
         "vct": "ap2.mandate.intent.1",
         "attestation": attestation,
         "kid": kid,
-        "issuer": buyer_agent_id,
+        "issuer": issuer,
+        "subject": buyer_agent_id,
         "payer": {"email": contractor_email.strip().lower() if contractor_email else None},
         "payee": get_payee_id(),
         "tier_id": tier_id,
@@ -385,7 +387,7 @@ def verify_authorized_mandate(
 class MandateLedger:
     """Thread-safe active ledger tracking cumulative monthly agent spend and active contractor commitments, backed by SQLite persistence."""
 
-    def __init__(self, monthly_cap: float = DEFAULT_MONTHLY_CAP):
+    def __init__(self, monthly_cap: Optional[float] = DEFAULT_MONTHLY_CAP):
         self.monthly_cap = monthly_cap
         self._current_spent = 0.0
         self._agent_spent: Dict[str, float] = {}
@@ -426,7 +428,7 @@ class MandateLedger:
             else:
                 effective_cap = db_get_contractor_cap(norm_email, self.monthly_cap)
         if effective_cap is None:
-            effective_cap = self.monthly_cap
+            effective_cap = self.monthly_cap or 0.0
 
         if norm_email:
             spent = db_get_contractor_committed_spend(norm_email)
@@ -569,7 +571,7 @@ def evaluate_spending_mandate(
     cap = (
         request.monthly_budget_cap
         if request.monthly_budget_cap is not None
-        else DEFAULT_MONTHLY_CAP
+        else (ledger.get_saved_cap(getattr(request, "contractor_email", None)) or 0.0)
     )
     agent_id = request.buyer_agent_id
 

@@ -92,7 +92,7 @@ AP2_SELLER_MCP_TOOLS = [
     },
     {
         "name": "negotiate_tier_terms",
-        "description": "Evaluates buyer budget cap against desired AP2 compute tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Batch Worker at $49.99/mo). Issues merchant-signed Checkout JWT (ES256) binding line items and price in integer minor units.",
+        "description": "Evaluates buyer budget cap against desired AP2 compute tier. If asking price exceeds budget, returns pre-approved counter-offer down-tiering to a plan within budget (e.g. Batch Worker at $49.99/mo). If buyer holds an existing active plan, replaces_subscription_id indicates the plan will be upgraded/replaced. Issues merchant-signed Checkout JWT (ES256) binding line items and price in integer minor units. Response fields: offer_id/order_id (merchant offer identifier), tier_id (offered plan), requested_tier_id (requested plan), agreed_monthly_rate/price (monthly price in USD), checkout_jwt (merchant-signed checkout JWT), checkout_hash/mandate_proof_hash (SHA-256 hash of checkout_jwt), next_action (instructions for buyer wallet to sign checkout_jwt before purchase).",
         "input_schema": {
             "type": "object",
             "required": ["buyer_agent_id", "buyer_email", "tier_id", "monthly_budget_cap"],
@@ -689,7 +689,9 @@ class SellerAgent:
                 "negotiation_id": issued["negotiation_id"],
                 "offer_id": issued["offer_id"],
                 "tier_id": tier_id,
+                "requested_tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
+                "price": standard_price,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": round(monthly_budget_cap - standard_price, 2),
                 "mandate_proof_hash": issued["hash"],
@@ -763,7 +765,6 @@ class SellerAgent:
                 recurrence, category, monthly_budget_cap,
                 buyer_intent_mandate=buyer_intent_mandate,
             )
-            down_hash = issued["hash"]
             remaining_after_down = round(monthly_budget_cap - 49.99, 2)
             counter_checkout = create_merchant_counter_offer(
                 requested_tier_id=tier_id,
@@ -771,7 +772,9 @@ class SellerAgent:
                 counter_price=49.99,
                 budget_cap=monthly_budget_cap,
                 contractor_email=email,
+                order_id=issued["offer_id"],
             )
+            down_hash = counter_checkout["checkout_hash"]
             next_action = {
                 "type": "tool_call",
                 "tool": "sign_checkout",
@@ -796,8 +799,14 @@ class SellerAgent:
             # Update registered mandate with counter-offer checkout details & nonce
             auth_entry = get_authorized_mandate(issued["offer_id"])
             if auth_entry:
+                auth_entry["checkout_jwt"] = counter_checkout["checkout_jwt"]
+                auth_entry["checkout_hash"] = down_hash
+                auth_entry["proof_hash"] = down_hash
+                auth_entry["mandate_proof_hash"] = down_hash
+                auth_entry["order_id"] = counter_checkout["order_id"]
+                auth_entry["nonce"] = counter_checkout.get("nonce")
                 auth_entry["counter_checkout_jwt"] = counter_checkout["checkout_jwt"]
-                auth_entry["counter_checkout_hash"] = counter_checkout["checkout_hash"]
+                auth_entry["counter_checkout_hash"] = down_hash
                 auth_entry["counter_order_id"] = counter_checkout["order_id"]
                 auth_entry["counter_nonce"] = counter_checkout.get("nonce")
                 register_authorized_mandate(issued["offer_id"], auth_entry)
@@ -816,7 +825,10 @@ class SellerAgent:
                 "original_request_approved": False,
                 "negotiation_id": issued["negotiation_id"],
                 "offer_id": issued["offer_id"],
-                "tier_id": tier_id,
+                "tier_id": down_tier_id,
+                "requested_tier_id": tier_id,
+                "agreed_monthly_rate": 49.99,
+                "price": 49.99,
                 "counter_offer_available": True,
                 "counter_offer_tier": down_tier_title,
                 "counter_offer_tier_id": down_tier_id,
@@ -826,11 +838,11 @@ class SellerAgent:
                 "ap2_intent_mandate": issued["ap2_mandate"],
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
                 "checkout_jwt": counter_checkout["checkout_jwt"],
-                "checkout_hash": counter_checkout["checkout_hash"],
+                "checkout_hash": down_hash,
                 "order_id": counter_checkout["order_id"],
                 "nonce": counter_checkout.get("nonce"),
                 "counter_offer_checkout_jwt": counter_checkout["checkout_jwt"],
-                "counter_offer_checkout_hash": counter_checkout["checkout_hash"],
+                "counter_offer_checkout_hash": down_hash,
                 "offer_expires_at": issued["offer_expires_at"],
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
                 "monthly_cap_remaining": remaining_after_down,
@@ -1130,8 +1142,31 @@ class SellerAgent:
             saved_cap = ledger.get_saved_cap(norm_email)
             if saved_cap is not None:
                 cap = saved_cap
-            if cap is None:
-                cap = 100.0
+        if cap is None:
+            ref = mandate_proof_hash or offer_id or "missing_cap"
+            desc = "BUDGET_CAP_NOT_FOUND: No authoritative budget cap found in verified mandate chain or contractor record."
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            return {
+                "status": "REJECTED",
+                "error": "BUDGET_CAP_NOT_FOUND",
+                "reason": desc,
+                "message": f"Purchase rejected: {desc}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
 
         # Purchase-time budget enforcement
         remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
@@ -1173,11 +1208,17 @@ class SellerAgent:
             }
 
         # 3. Invoke PayPal Gateway
+        subscriber_name = (
+            kwargs.get("subscriber_name")
+            or kwargs.get("contractor_name")
+            or auth.get("subscriber_name")
+            or (f"Buyer Agent ({buyer_id})" if buyer_id and buyer_id != "unknown" else "Buyer Agent")
+        )
         paypal_result = await paypal_service.create_subscription(
             tier_id=tier_id,
             agreed_monthly_rate=agreed_monthly_rate,
             contractor_email=contractor_email or "buyer-agent@example.com",
-            contractor_name="Autonomous Buyer Agent",
+            contractor_name=subscriber_name,
             offer_id=offer_id,
             mandate_proof_hash=mandate_proof_hash,
         )
@@ -1346,7 +1387,6 @@ class SellerAgent:
 
         plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile="ap2")
         product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
-        contractor_name = "Autonomous Buyer Agent"
         business_entity = "Autonomous Compute Network"
 
         response = {
@@ -1385,7 +1425,7 @@ class SellerAgent:
             "message": msg,
             "buyer_email": contractor_email,
             "contractor_email": contractor_email,
-            "subscriber_name": contractor_name,
+            "subscriber_name": subscriber_name,
             "business_entity": business_entity,
         }
         if not verified_chk_receipt:

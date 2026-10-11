@@ -183,6 +183,7 @@ def create_merchant_counter_offer(
     counter_price: float = 49.99,
     budget_cap: float = 60.00,
     contractor_email: Optional[str] = None,
+    order_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Creates a merchant-signed counter-offer Checkout JWT for the down-tier.
@@ -196,6 +197,7 @@ def create_merchant_counter_offer(
         tier_id=counter_tier_id,
         monthly_price=counter_price,
         contractor_email=contractor_email,
+        order_id=order_id,
         is_counter_offer=True,
         counter_reason=reason,
     )

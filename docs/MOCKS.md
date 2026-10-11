@@ -108,7 +108,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 
 ### M-019: UI controls that simulate events
 - **Where:** `src/components/BryntumDispatchScheduler.tsx::handleSimulateActivation`, `src/components/BryntumDispatchScheduler.tsx::handleSimulateInboundLeadAndLock`, `src/components/SellerCopilotView.tsx::triggerBuyerSimulatorIntro`
-- **What it fakes:** Line activation, inbound work and a buyer walkthrough, triggered by buttons rather than real events.
+- **What it fakes:** Line activation (runs server-side deck purchase and provisioning with demo keys), inbound work and a buyer walkthrough, triggered by buttons rather than real events.
 - **Why:** Lets a presenter show state changes on demand.
 - **To make it real:** Drive these views from real webhook and subscription events; keep the buttons only behind a demo flag.
 

@@ -52,6 +52,7 @@ export interface ApiWireLog {
 }
 
 import {
+  executeDeckAp2Purchase,
   executeProvisioningAfterSubscription,
   fetchFleetSchedule,
   lockTerritorySlot,
@@ -60,7 +61,7 @@ import {
 // Parsing & Enrichment Helpers for AP2 Autonomous Workload Fulfillment
 function getBuyerAgent(name: string): string {
   if (name.includes('101') || name.includes('Synthesis')) return 'agent:acme-ops';
-  if (name.includes('102') || name.includes('Negotiation')) return 'agent:gpt-4o:apex-procure';
+  if (name.includes('102') || name.includes('Negotiation')) return 'agent:acme-buyer';
   if (name.includes('201') || name.includes('Vector Ingestion')) return 'agent:pipeline-buyer';
   if (name.includes('202') || name.includes('Embeddings')) return 'agent:deepseek-v3:quant-research';
   if (name.includes('301') || name.includes('Smart Contract')) return 'agent:audit-buyer';
@@ -346,7 +347,7 @@ export function BryntumDispatchScheduler({
   const [activeTradeFilter, setActiveTradeFilter] = useState<string>('ALL');
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [totalDispatches, setTotalDispatches] = useState<number>(18);
-  const [totalVaultedDeposits, setTotalVaultedDeposits] = useState<number>(1219.87);
+  const [demoMrr, setDemoMrr] = useState<number>(1219.87);
   const [leadSimulationBanner, setLeadSimulationBanner] = useState<string | null>(null);
 
   // Master lists & dynamic filters for Enclave Matrix view
@@ -357,7 +358,7 @@ export function BryntumDispatchScheduler({
       trade: 'Dedicated AI Service Gateway',
       category: 'GATEWAY',
       entity: 'Ashburn Zone 1 • NVIDIA H100 SXM5',
-      did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
+      did: isDepositLocked ? 'gateway-01.ap2.example.com' : 'Awaiting Settlement',
       status: isDepositLocked ? 'ACTIVE_STREAMING' : 'PENDING_SUBSCRIPTION',
       throughput: '450 tasks/mo',
       latency: '14ms',
@@ -428,11 +429,11 @@ export function BryntumDispatchScheduler({
       ? [
           {
             id: 'locked-workload-slot-2',
-            name: `#204 Batch Worker Renewal ($${CATALOG_PLANS[0].price})`,
+            name: '#204 Batch Worker (Execution Window Reserved)',
             node: 'Node-02: High-Throughput Batch Worker',
             category: 'BATCH',
-            buyer: 'agent:gpt-4o:apex-procure',
-            status: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
+            buyer: 'agent:pipeline-buyer',
+            status: 'SLOT LOCKED (NO PAYMENT)',
             txn: 'TXN-DISPATCH-9022',
             window: '16:00 - 17:15 (Today, Oct 8)',
             color: '#34d399',
@@ -445,9 +446,9 @@ export function BryntumDispatchScheduler({
       name: isDepositLocked ? 'Dedicated Gateway Active • MCP Endpoint Bound' : 'Dedicated Gateway Pending • Awaiting Subscription',
       node: 'Node-01: Dedicated AI Service Gateway',
       category: 'GATEWAY',
-      buyer: 'agent:gpt-4o:apex-procure',
-      status: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO PAYPAL)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
-      txn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
+      buyer: 'agent:acme-ops',
+      status: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
+      txn: isDepositLocked ? 'I-A2A-DEMO-8902' : 'UNPAID',
       window: 'Continuous Streaming Session',
       color: isDepositLocked ? '#10b981' : '#f59e0b',
     },
@@ -478,7 +479,7 @@ export function BryntumDispatchScheduler({
       name: `#401 Dedicated Gateway Renewal ($${CATALOG_PLANS[1].price})`,
       node: 'Node-04: Dedicated AI Service Gateway',
       category: 'GATEWAY',
-      buyer: 'agent:gpt-4o:apex-procure',
+      buyer: 'agent:stream-buyer',
       status: `PAID $${CATALOG_PLANS[1].price} (PAYPAL VAULT)`,
       txn: 'TXN-SETTLE-6601',
       window: '08:00 - 09:30 • US-East Gateway Enclave',
@@ -588,10 +589,11 @@ export function BryntumDispatchScheduler({
       measuredDurationMs = Math.round(performance.now() - t0);
       measuredStatus = res.status;
       measuredStatusText = res.statusText;
+      const rawText = await res.text();
       try {
-        resData = await res.json();
+        resData = JSON.parse(rawText);
       } catch {
-        resData = await res.text();
+        resData = rawText;
       }
       if (res.ok) {
         isSuccess = true;
@@ -689,7 +691,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         name: 'Node-01: Dedicated AI Service Gateway',
         entity: 'Google Gemini 3.8 / Flash Sub-350ms Engine',
         trade: 'Dedicated AI Service Gateway',
-        did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
+        did: isDepositLocked ? 'gateway-01.ap2.example.com' : 'Awaiting Settlement',
         status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
         throughput: '450 tasks/mo',
         health: '98.4%',
@@ -752,7 +754,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-06 11:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-check-circle',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6610',
       },
       {
@@ -763,7 +765,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-06 12:30',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6620',
       },
       {
@@ -774,7 +776,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-06 14:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6630',
       },
       {
@@ -785,7 +787,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-06 10:00',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6640',
       },
       {
@@ -796,7 +798,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-06 15:30',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-6650',
       },
 
@@ -809,7 +811,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 10:30',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7710',
       },
       {
@@ -820,7 +822,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 14:15',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-microchip',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7715',
       },
       {
@@ -831,7 +833,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 10:00',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-database',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7720',
       },
       {
@@ -842,7 +844,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 12:45',
         eventColor: 'cyan',
         iconCls: 'b-fa b-fa-layer-group',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7728',
       },
       {
@@ -853,7 +855,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 11:30',
         eventColor: 'purple',
         iconCls: 'b-fa b-fa-shield-alt',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7730',
       },
       {
@@ -864,7 +866,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 15:30',
         eventColor: 'red',
         iconCls: 'b-fa b-fa-key',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7735',
       },
       {
@@ -875,7 +877,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 10:15',
         eventColor: 'green',
         iconCls: 'b-fa b-fa-bolt',
-        depositStatus: `SETTLED ($${CATALOG_PLANS[1].price} PAYPAL)`,
+        depositStatus: `CONFIRMED ($${CATALOG_PLANS[1].price}/MO)`,
         paypalTxn: 'TXN-SETTLE-7740',
       },
       {
@@ -886,7 +888,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 15:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-broadcast-tower',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7745',
       },
       {
@@ -897,7 +899,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         endDate: '2026-10-07 11:00',
         eventColor: 'blue',
         iconCls: 'b-fa b-fa-user-check',
-        depositStatus: 'SETTLED (INCLUDED IN PLAN)',
+        depositStatus: 'CONFIRMED (INCLUDED IN PLAN)',
         paypalTxn: 'TXN-SETTLE-7750',
       },
 
@@ -914,7 +916,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         eventColor: isDepositLocked ? 'green' : 'orange',
         iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
         depositStatus: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
-        paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
+        paypalTxn: isDepositLocked ? 'I-A2A-DEMO-8902' : 'UNPAID',
       },
       {
         id: 'workload-102',
@@ -1279,13 +1281,13 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               takeoffNotes: getExecutionSpecifications(name, resourceTrade),
               startDate: eventRecord.startDate ? new Date(eventRecord.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '13:00',
               endDate: eventRecord.endDate ? new Date(eventRecord.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '14:15',
-              depositStatus: eventRecord.depositStatus || 'SETTLED VIA PAYPAL',
+              depositStatus: eventRecord.depositStatus || 'CONFIRMED VIA PAYPAL',
               paypalTxn: eventRecord.paypalTxn || 'PAY-DEP-9921',
               resourceId: eventRecord.resourceId,
               resourceName: eventRecord.resource?.name || 'Assigned Execution Node',
               resourceEntity: getPrincipalEntity(name),
               resourceTrade: resourceTrade,
-              resourceDid: eventRecord.resource?.did || 'node-cluster-01.ap2.net',
+              resourceDid: eventRecord.resource?.did || 'gateway-01.ap2.example.com',
             });
             setDispatchWebhookStatus(null);
             setInvoiceStatus(null);
@@ -1354,7 +1356,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         eventColor: isDepositLocked ? 'green' : 'orange',
         iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
         depositStatus: isDepositLocked ? `ACTIVE ($${CATALOG_PLANS[1].price}/MO)` : `AWAITING PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
-        paypalTxn: isDepositLocked ? 'I-AUTONOMOUS-8902' : 'UNPAID',
+        paypalTxn: isDepositLocked ? 'I-A2A-DEMO-8902' : 'UNPAID',
       });
 
       const node1Resource =
@@ -1362,7 +1364,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         schedulerRef.current.resourceStore.find((r: any) => r.name?.includes('Node-01'));
       if (node1Resource) {
         node1Resource.set({
-          did: isDepositLocked ? 'node-cluster-01.ap2.net' : 'Awaiting Settlement',
+          did: isDepositLocked ? 'gateway-01.ap2.example.com' : 'Awaiting Settlement',
           status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',
         });
       }
@@ -1394,50 +1396,109 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     }
   };
 
-  // Simulate A2A PayPal Subscription: Calls FastAPI POST /api/agent/provision
+  // Simulate A2A PayPal Subscription: Calls FastAPI POST /api/agent/deck-purchase then POST /api/agent/provision
   // MOCK(M-019): button simulates a line activation
   const handleSimulateActivation = async () => {
     if (!schedulerRef.current) return;
     setIsCallingApi(true);
+
+    const buyerEmail = 'merchant@example.com';
+    const tierId = 'ap2-gateway';
+    const agreedRate = CATALOG_PLANS[1].price;
+    const planName = CATALOG_PLANS[1].name;
+
+    // Step 1: Execute real AP2 Deck Purchase
+    let deckResult: any;
     const t0 = performance.now();
-    let measuredStatus: number;
-    let measuredStatusText: string;
-    let measuredDurationMs: number;
-    let responseBody: any;
-    let requestPayload: any;
-    let isSuccess = false;
-
-    const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
-    requestPayload = {
-      subscription_id: simulatedSubId,
-      contractorEmail: 'merchant@example.com',
-      business_entity: 'Acme Compute Co',
-      trade_vertical: CATALOG_PLANS[1].name,
-      monthly_fee: CATALOG_PLANS[1].price,
-    };
-
     try {
-      const result = await executeProvisioningAfterSubscription(
-        simulatedSubId,
+      deckResult = await executeDeckAp2Purchase({
+        tierId,
+        agreedMonthlyRate: agreedRate,
+        buyerEmail,
+        principalEntity: 'Acme Compute Co',
+        contractorName: 'AutonomousBuyerAgent',
+      });
+      const deckDurationMs = Math.round(performance.now() - t0);
+
+      addWireLog({
+        method: 'POST',
+        endpoint: '/api/agent/deck-purchase',
+        status: deckResult.httpStatus,
+        statusText: deckResult.httpStatusText,
+        durationMs: deckDurationMs,
+        category: 'PayPal',
+        summary: `AP2 Deck Purchase • Sub ${deckResult.subscriptionId} Active ($${agreedRate}/mo)`,
+        request: deckResult.sentRequest,
+        response: deckResult.rawResponse,
+      });
+    } catch (err: any) {
+      const deckDurationMs = Math.round(performance.now() - t0);
+      const measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
+      const measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
+      const responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
+      const requestPayload = err?.sentRequest || {
+        tierId,
+        agreedMonthlyRate: agreedRate,
+        buyerEmail,
+        contractorName: 'AutonomousBuyerAgent',
+        businessEntity: 'Acme Compute Co',
+        monthlyBudgetCap: 100.0,
+      };
+
+      addWireLog({
+        method: 'POST',
+        endpoint: '/api/agent/deck-purchase',
+        status: measuredStatus,
+        statusText: measuredStatusText,
+        durationMs: deckDurationMs,
+        category: 'PayPal',
+        summary: `AP2 Deck Purchase failed (${measuredStatus} ${measuredStatusText})`,
+        request: requestPayload,
+        response: responseBody,
+      });
+
+      setApiStatus(`● Deck purchase failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsCallingApi(false);
+      return;
+    }
+
+    // Step 2: Provision using the real subscription ID returned from deck purchase
+    const realSubId = deckResult.subscriptionId;
+    const t1 = performance.now();
+    try {
+      const provResult = await executeProvisioningAfterSubscription(
+        realSubId,
         'Acme Compute Co',
-        CATALOG_PLANS[1].name
+        planName,
+        'us-east-1',
+        buyerEmail
       );
-      measuredDurationMs = Math.round(performance.now() - t0);
-      measuredStatus = result.httpStatus;
-      measuredStatusText = result.httpStatusText;
-      responseBody = result.rawResponse;
-      isSuccess = true;
+      const provDurationMs = Math.round(performance.now() - t1);
+
+      addWireLog({
+        method: 'POST',
+        endpoint: '/api/agent/provision',
+        status: provResult.httpStatus,
+        statusText: provResult.httpStatusText,
+        durationMs: provDurationMs,
+        category: 'MCP',
+        summary: `Node-01 Dedicated Gateway Provisioned • Sub ${realSubId} Active ($${agreedRate}/mo)`,
+        request: provResult.sentRequest,
+        response: provResult.rawResponse,
+      });
+
+      const assignedDid = provResult.allocatedDid || '(no DID returned)';
 
       const targetEvent =
         schedulerRef.current.eventStore.getById('workload-101') ||
         schedulerRef.current.eventStore.find((e: any) => e.name?.includes('Dedicated Gateway'));
       if (targetEvent) {
         targetEvent.set({
-          name: `Dedicated Gateway Active • MCP Endpoint: ${result.allocatedDid || 'node-cluster-01.ap2.net'} [BOUND]`,
+          name: `Dedicated Gateway Active • MCP Endpoint: ${assignedDid} [BOUND]`,
           eventColor: 'green',
           iconCls: 'b-fa b-fa-check-circle',
-          depositStatus: `ACTIVE ($${CATALOG_PLANS[1].price}/MO)`,
-          paypalTxn: simulatedSubId,
+          depositStatus: `ACTIVE ($${agreedRate}/MO)`,
+          paypalTxn: realSubId,
         });
       }
 
@@ -1446,44 +1507,45 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         schedulerRef.current.resourceStore.find((r: any) => r.name?.includes('Node-01'));
       if (node1Resource) {
         node1Resource.set({
-          did: result.allocatedDid || 'node-cluster-01.ap2.net',
+          did: assignedDid,
           status: 'ACTIVE_ENCLAVE_BOUND',
         });
       }
 
-      setApiStatus(`● Node-01 Active: ${result.allocatedDid || 'node-cluster-01.ap2.net'} via MCP (HTTP ${measuredStatus})`);
+      setApiStatus(`● Node-01 Active: ${assignedDid} via MCP (HTTP ${provResult.httpStatus})`);
       setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
-      setLeadSimulationBanner(`✓ Node-01 Dedicated Gateway Provisioned: ${result.allocatedDid || 'node-cluster-01.ap2.net'} bound to Sub ${simulatedSubId}!`);
+      setLeadSimulationBanner(`✓ Node-01 Dedicated Gateway Provisioned: ${assignedDid} bound to Sub ${realSubId}!`);
       setTimeout(() => setLeadSimulationBanner(null), 5000);
 
       if (onToggleDepositLock) {
         onToggleDepositLock(true);
       }
     } catch (err: any) {
-      measuredDurationMs = Math.round(performance.now() - t0);
-      measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
-      measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
-      responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
+      const provDurationMs = Math.round(performance.now() - t1);
+      const measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
+      const measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
+      const responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
+      const requestPayload = err?.sentRequest || {
+        subscriptionId: realSubId,
+        contractorEmail: buyerEmail,
+      };
+
+      addWireLog({
+        method: 'POST',
+        endpoint: '/api/agent/provision',
+        status: measuredStatus,
+        statusText: measuredStatusText,
+        durationMs: provDurationMs,
+        category: 'MCP',
+        summary: `Node-01 Provisioning failed (${measuredStatus} ${measuredStatusText})`,
+        request: requestPayload,
+        response: responseBody,
+      });
+
       setApiStatus(`● Provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsCallingApi(false);
     }
-
-    const summary = isSuccess
-      ? `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($${CATALOG_PLANS[1].price}/mo)`
-      : `Node-01 Provisioning failed (${measuredStatus} ${measuredStatusText})`;
-
-    addWireLog({
-      method: 'POST',
-      endpoint: '/api/agent/provision',
-      status: measuredStatus,
-      statusText: measuredStatusText,
-      durationMs: measuredDurationMs,
-      category: 'MCP',
-      summary,
-      request: requestPayload,
-      response: responseBody,
-    });
   };
 
   // Reset Node-01 and Node-02 back to initial baseline
@@ -1517,7 +1579,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     // 3. Reset slot locked state and metrics
     setIsSlotLocked(false);
     setTotalDispatches(18);
-    setTotalVaultedDeposits(1219.87);
+    setDemoMrr(1219.87);
 
     const node1Resource =
       schedulerRef.current.resourceStore.getById('node-1') ||
@@ -1537,7 +1599,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     }
   };
 
-  // Atomically locks an open workload execution slot on Node-02 upon simulated buyer agent intent mandate & verified PayPal capture
+  // Atomically locks an open workload execution slot on Node-02
   // MOCK(M-019): button simulates inbound work and a slot lock
   const handleSimulateInboundLeadAndLock = async () => {
     if (!schedulerRef.current || isLockingSlot || isSlotLocked) return;
@@ -1547,15 +1609,13 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     let measuredStatusText: string;
     let measuredDurationMs: number;
     let responseBody: any;
-    let requestPayload: any;
-    let isSuccess = false;
-
-    requestPayload = {
+    let requestPayload: any = {
       jobId: 'WORKLOAD-SLOT-02',
       territoryZone: 'Node-02: Batch Data & RAG Pipeline',
       slotStartIso: '2026-10-08 16:00',
       paypalTransactionId: 'AP2-TXN-DISPATCH-9022',
     };
+    let isSuccess = false;
 
     try {
       const res = await lockTerritorySlot(
@@ -1568,6 +1628,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       measuredStatus = res.httpStatus;
       measuredStatusText = res.httpStatusText;
       responseBody = res.rawResponse;
+      requestPayload = res.sentRequest || requestPayload;
 
       if (res.success) {
         isSuccess = true;
@@ -1579,20 +1640,18 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           (schedulerRef.current.eventStore as any).add({
             id: lockedEventId,
             resourceId: 'node-2',
-            name: `#204 Batch Worker Renewal (included in ${CATALOG_PLANS[0].name})`,
+            name: '#204 Batch Worker (Execution Window Reserved)',
             startDate: '2026-10-08 16:00',
             endDate: '2026-10-08 17:15',
             eventColor: 'blue',
             iconCls: 'b-fa b-fa-check-circle',
-            depositStatus: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
+            depositStatus: 'SLOT LOCKED (NO PAYMENT)',
             paypalTxn: 'TXN-DISPATCH-9022',
           });
         }
-        setTotalDispatches(19);
-        setTotalVaultedDeposits(1269.86);
-        setApiStatus(`● Enclave Execution Slot Locked: MCP Task Bound (HTTP ${measuredStatus})`);
+        setApiStatus(`● Slot locked: Node-02, 16:00 (HTTP ${measuredStatus})`);
         setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
-        setLeadSimulationBanner(`✓ Autonomous Buyer Mandate Verified: agent:gpt-4o:apex-procure dispatched to Node-02. $${CATALOG_PLANS[0].price} PayPal Payment Vaulted!`);
+        setLeadSimulationBanner(`✓ Slot locked: Node-02 execution window reserved for 16:00-17:15 (HTTP ${measuredStatus})`);
         setTimeout(() => setLeadSimulationBanner(null), 6000);
       }
     } catch (err: any) {
@@ -1600,13 +1659,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
       measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
       responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
+      requestPayload = err?.sentRequest || requestPayload;
       setApiStatus(`● Slot lock failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsLockingSlot(false);
     }
 
     const summary = isSuccess
-      ? `Node-02 Enclave hardware execution slot locked (16:00-17:15) • $${CATALOG_PLANS[0].price} PayPal Payment Vaulted`
+      ? `Slot locked: Node-02, 16:00 (HTTP ${measuredStatus})`
       : `Slot lock failed (${measuredStatus} ${measuredStatusText})`;
 
     addWireLog({
@@ -1788,7 +1848,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Workloads: <strong style={{ color: '#f8fafc' }}>{totalDispatches} Tasks</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Demo MRR: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+            <span>Demo MRR: <strong style={{ color: '#fbbf24' }}>${demoMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Tier Quotas: <strong style={{ color: '#38bdf8' }}>{tierQuotasLabel}</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span></span>
             <span style={{ color: '#475569' }}>&bull;</span>
@@ -1842,7 +1902,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Settlements</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${demoMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo</div>
                 <div style={{ fontSize: '9px', color: '#fbbf24' }}>Seeded demo fleet</div>
               </div>
             </div>
@@ -2427,7 +2487,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Demo Fleet MRR</div>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: '#a78bfa', marginTop: '2px' }}>${totalVaultedDeposits.toLocaleString()}</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#a78bfa', marginTop: '2px' }}>${demoMrr.toLocaleString()}</div>
                 <div style={{ fontSize: '10px', color: '#34d399', marginTop: '2px' }}>Seeded demo data</div>
               </div>
             </div>
@@ -2465,7 +2525,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                         resourceName: wl.node,
                         resourceEntity: getPrincipalEntity(wl.name),
                         resourceTrade: wl.node,
-                        resourceDid: 'node-cluster-01.ap2.net',
+                        resourceDid: 'gateway-01.ap2.example.com',
                       });
                     }}
                     style={{
@@ -2533,7 +2593,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                             resourceName: wl.node,
                             resourceEntity: getPrincipalEntity(wl.name),
                             resourceTrade: wl.node,
-                            resourceDid: 'node-cluster-01.ap2.net',
+                            resourceDid: 'gateway-01.ap2.example.com',
                           });
                         }}
                         style={{

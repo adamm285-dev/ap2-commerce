@@ -44,13 +44,15 @@ export interface AgentNegotiationResponse {
 }
 
 export interface DeckPurchaseOptions {
-  subscriptionId: string;
-  principalEntity: string;
+  subscriptionId?: string;
+  principalEntity?: string;
   contractorName?: string;
   capability?: string;
   agreedMonthlyRate?: number;
   monthlyBudgetCap?: number;
   negotiation?: AgentNegotiationResponse;
+  tierId?: string;
+  buyerEmail?: string;
 }
 
 export interface ProvisioningResult {
@@ -65,6 +67,7 @@ export interface ProvisioningResult {
   httpStatus: number;
   httpStatusText: string;
   rawResponse: any;
+  sentRequest?: any;
 }
 
 /** Thrown when the backend can't complete a call; nothing was purchased, provisioned or locked. */
@@ -72,13 +75,15 @@ export class BackendUnavailableError extends Error {
   httpStatus?: number;
   httpStatusText?: string;
   rawResponse?: any;
+  sentRequest?: any;
 
-  constructor(message: string, httpStatus?: number, httpStatusText?: string, rawResponse?: any) {
+  constructor(message: string, httpStatus?: number, httpStatusText?: string, rawResponse?: any, sentRequest?: any) {
     super(message);
     this.name = 'BackendUnavailableError';
     this.httpStatus = httpStatus;
     this.httpStatusText = httpStatusText;
     this.rawResponse = rawResponse;
+    this.sentRequest = sentRequest;
   }
 }
 
@@ -294,31 +299,34 @@ export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean
  */
 export async function executeProvisioningAfterSubscription(
   subscriptionId: string,
-  principalEntity: string,
+  principalEntity: string = 'Acme Compute Co',
   _capability: string = 'Dedicated AI Service Gateway',
-  _regionCluster: string = 'us-east-1'
+  _regionCluster: string = 'us-east-1',
+  contractorEmail: string = 'merchant@example.com'
 ): Promise<ProvisioningResult> {
   let failureReason = 'network error';
   let httpStatus: number | undefined;
   let httpStatusText: string | undefined;
   let rawResponse: any;
+  const sentRequest = {
+    subscriptionId: subscriptionId,
+    contractorEmail: contractorEmail,
+  };
 
   try {
     const res = await fetch('/api/agent/provision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subscriptionId: subscriptionId,
-        contractorEmail: 'merchant@example.com',
-      }),
+      body: JSON.stringify(sentRequest),
     });
 
     httpStatus = res.status;
     httpStatusText = res.statusText;
+    const rawText = await res.text();
     try {
-      rawResponse = await res.json();
+      rawResponse = JSON.parse(rawText);
     } catch {
-      rawResponse = await res.text();
+      rawResponse = rawText;
     }
 
     if (!res.ok) {
@@ -327,7 +335,7 @@ export async function executeProvisioningAfterSubscription(
       const data = rawResponse;
       return {
         success: true,
-        subscriptionId: data.subscriptionId,
+        subscriptionId: data.subscriptionId || subscriptionId,
         allocatedDid: data.assignedDid,
         carrierRespOrg: data.carrier || 'AP2 Autonomous Node Registry',
         kycBoundEntity: principalEntity,
@@ -337,6 +345,7 @@ export async function executeProvisioningAfterSubscription(
         httpStatus: res.status,
         httpStatusText: res.statusText,
         rawResponse: data,
+        sentRequest,
       };
     }
   } catch (err: any) {
@@ -356,7 +365,8 @@ export async function executeProvisioningAfterSubscription(
     `Provisioning backend unavailable (${failureReason}); no node was provisioned.`,
     httpStatus,
     httpStatusText,
-    rawResponse
+    rawResponse,
+    sentRequest
   );
 }
 
@@ -369,65 +379,99 @@ export async function executeDeckAp2Purchase(
   options: DeckPurchaseOptions
 ): Promise<ProvisioningResult> {
   const capLower = (options.capability || '').toLowerCase();
-  let tierId = 'ap2-gateway';
-  if (options.agreedMonthlyRate) {
-    if (Math.abs(options.agreedMonthlyRate - 49.99) < 0.05) tierId = 'ap2-batch';
-    else if (Math.abs(options.agreedMonthlyRate - 179.99) < 0.05) tierId = 'ap2-cluster';
-    else tierId = 'ap2-gateway';
-  } else if (capLower.includes('batch') || capLower.includes('solo') || capLower.includes('starter')) {
-    tierId = 'ap2-batch';
-  } else if (capLower.includes('cluster') || capLower.includes('enterprise')) {
-    tierId = 'ap2-cluster';
+  let tierId = options.tierId || 'ap2-gateway';
+  if (!options.tierId) {
+    if (options.agreedMonthlyRate) {
+      if (Math.abs(options.agreedMonthlyRate - 49.99) < 0.05) tierId = 'ap2-batch';
+      else if (Math.abs(options.agreedMonthlyRate - 179.99) < 0.05) tierId = 'ap2-cluster';
+      else tierId = 'ap2-gateway';
+    } else if (capLower.includes('batch') || capLower.includes('solo') || capLower.includes('starter')) {
+      tierId = 'ap2-batch';
+    } else if (capLower.includes('cluster') || capLower.includes('enterprise')) {
+      tierId = 'ap2-cluster';
+    }
   }
 
   const agreedPrice = options.agreedMonthlyRate ?? (tierId === 'ap2-batch' ? 49.99 : tierId === 'ap2-cluster' ? 179.99 : 79.99);
+  const buyerEmail = options.buyerEmail || 'merchant@example.com';
+  const sentRequest = {
+    tierId: tierId,
+    agreedMonthlyRate: agreedPrice,
+    buyerEmail: buyerEmail,
+    contractorName: options.contractorName || 'AutonomousBuyerAgent',
+    businessEntity: options.principalEntity || 'Acme Compute Co',
+    monthlyBudgetCap: options.monthlyBudgetCap || 100.0,
+    checkoutJwt: options.negotiation?.checkoutJwt,
+    checkoutHash: options.negotiation?.checkoutHash,
+    nonce: options.negotiation?.nonce,
+    offerId: options.negotiation?.offerId,
+    openCheckoutMandateToken: options.negotiation?.openCheckoutMandateToken,
+    openPaymentMandateToken: options.negotiation?.openPaymentMandateToken,
+    paypalSubscriptionId: options.subscriptionId,
+  };
 
   let failureReason = 'network error';
+  let httpStatus: number | undefined;
+  let httpStatusText: string | undefined;
+  let rawResponse: any;
+
   try {
     const res = await fetch('/api/agent/deck-purchase', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tierId: options.negotiation?.tierId || tierId,
-        agreedMonthlyRate: agreedPrice,
-        buyerEmail: 'agent-alpha@example.com',
-        contractorName: options.contractorName || 'AutonomousBuyerAgent',
-        businessEntity: options.principalEntity || 'Acme Compute Co',
-        monthlyBudgetCap: options.monthlyBudgetCap || 100.0,
-        checkoutJwt: options.negotiation?.checkoutJwt,
-        checkoutHash: options.negotiation?.checkoutHash,
-        nonce: options.negotiation?.nonce,
-        offerId: options.negotiation?.offerId,
-        openCheckoutMandateToken: options.negotiation?.openCheckoutMandateToken,
-        openPaymentMandateToken: options.negotiation?.openPaymentMandateToken,
-        paypalSubscriptionId: options.subscriptionId,
-      }),
+      body: JSON.stringify(sentRequest),
     });
+
+    httpStatus = res.status;
+    httpStatusText = res.statusText;
+    const rawText = await res.text();
+    try {
+      rawResponse = JSON.parse(rawText);
+    } catch {
+      rawResponse = rawText;
+    }
 
     if (!res.ok) {
       failureReason = `HTTP ${res.status}`;
-    }
-    if (res.ok) {
-      const data = await res.json();
+    } else {
+      const data = rawResponse;
       return {
         success: true,
-        subscriptionId: data.subscriptionId || options.subscriptionId,
+        subscriptionId: data.subscriptionId || options.subscriptionId || '',
         allocatedDid: data.assignedDid,
         carrierRespOrg: data.carrier || 'AP2 Autonomous Node Registry',
-        kycBoundEntity: options.principalEntity,
+        kycBoundEntity: options.principalEntity || 'Acme Compute Co',
         tcpaGuardActive: true,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         isLiveBackend: true,
         httpStatus: res.status,
         httpStatusText: res.statusText,
         rawResponse: data,
+        sentRequest,
       };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[AP2 Agent] AP2 purchase backend not reachable:', err);
+    if (!httpStatus && err?.status) {
+      httpStatus = err.status;
+    }
+    if (!httpStatusText && err?.statusText) {
+      httpStatusText = err.statusText;
+    }
+    if (!rawResponse && err?.message) {
+      rawResponse = { error: err.message };
+    }
   }
-  throw new BackendUnavailableError(`AP2 purchase backend unavailable (${failureReason}); nothing was purchased or provisioned.`);
+
+  throw new BackendUnavailableError(
+    `AP2 purchase backend unavailable (${failureReason}); nothing was purchased or provisioned.`,
+    httpStatus,
+    httpStatusText,
+    rawResponse,
+    sentRequest
+  );
 }
+
 export interface DispatchLockResult {
   success: boolean;
   slotLockedUntil: string;
@@ -438,6 +482,7 @@ export interface DispatchLockResult {
   httpStatus: number;
   httpStatusText: string;
   rawResponse: any;
+  sentRequest?: any;
 }
 
 /**
@@ -454,25 +499,27 @@ export async function lockDispatchSlot(
   let httpStatus: number | undefined;
   let httpStatusText: string | undefined;
   let rawResponse: any;
+  const sentRequest = {
+    jobId,
+    territoryZone,
+    slotStartIso,
+    paypalTransactionId,
+  };
 
   try {
     const res = await fetch('/api/agent/dispatch/lock-slot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobId,
-        territoryZone,
-        slotStartIso,
-        paypalTransactionId,
-      }),
+      body: JSON.stringify(sentRequest),
     });
 
     httpStatus = res.status;
     httpStatusText = res.statusText;
+    const rawText = await res.text();
     try {
-      rawResponse = await res.json();
+      rawResponse = JSON.parse(rawText);
     } catch {
-      rawResponse = await res.text();
+      rawResponse = rawText;
     }
 
     if (!res.ok) {
@@ -489,6 +536,7 @@ export async function lockDispatchSlot(
         httpStatus: res.status,
         httpStatusText: res.statusText,
         rawResponse: data,
+        sentRequest,
       };
     }
   } catch (err: any) {
@@ -508,7 +556,8 @@ export async function lockDispatchSlot(
     `Slot lock backend unavailable (${failureReason}); no slot was locked.`,
     httpStatus,
     httpStatusText,
-    rawResponse
+    rawResponse,
+    sentRequest
   );
 }
 

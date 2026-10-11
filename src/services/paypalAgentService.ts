@@ -62,13 +62,23 @@ export interface ProvisioningResult {
   tcpaGuardActive: boolean;
   timestamp: string;
   isLiveBackend?: boolean;
+  httpStatus: number;
+  httpStatusText: string;
+  rawResponse: any;
 }
 
 /** Thrown when the backend can't complete a call; nothing was purchased, provisioned or locked. */
 export class BackendUnavailableError extends Error {
-  constructor(message: string) {
+  httpStatus?: number;
+  httpStatusText?: string;
+  rawResponse?: any;
+
+  constructor(message: string, httpStatus?: number, httpStatusText?: string, rawResponse?: any) {
     super(message);
     this.name = 'BackendUnavailableError';
+    this.httpStatus = httpStatus;
+    this.httpStatusText = httpStatusText;
+    this.rawResponse = rawResponse;
   }
 }
 
@@ -289,6 +299,10 @@ export async function executeProvisioningAfterSubscription(
   _regionCluster: string = 'us-east-1'
 ): Promise<ProvisioningResult> {
   let failureReason = 'network error';
+  let httpStatus: number | undefined;
+  let httpStatusText: string | undefined;
+  let rawResponse: any;
+
   try {
     const res = await fetch('/api/agent/provision', {
       method: 'POST',
@@ -299,11 +313,18 @@ export async function executeProvisioningAfterSubscription(
       }),
     });
 
+    httpStatus = res.status;
+    httpStatusText = res.statusText;
+    try {
+      rawResponse = await res.json();
+    } catch {
+      rawResponse = await res.text();
+    }
+
     if (!res.ok) {
       failureReason = `HTTP ${res.status}`;
-    }
-    if (res.ok) {
-      const data = await res.json();
+    } else {
+      const data = rawResponse;
       return {
         success: true,
         subscriptionId: data.subscriptionId,
@@ -313,13 +334,30 @@ export async function executeProvisioningAfterSubscription(
         tcpaGuardActive: true,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         isLiveBackend: true,
+        httpStatus: res.status,
+        httpStatusText: res.statusText,
+        rawResponse: data,
       };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[AP2 Agent] Provisioning backend not reachable:', err);
+    if (!httpStatus && err?.status) {
+      httpStatus = err.status;
+    }
+    if (!httpStatusText && err?.statusText) {
+      httpStatusText = err.statusText;
+    }
+    if (!rawResponse && err?.message) {
+      rawResponse = { error: err.message };
+    }
   }
 
-  throw new BackendUnavailableError(`Provisioning backend unavailable (${failureReason}); no node was provisioned.`);
+  throw new BackendUnavailableError(
+    `Provisioning backend unavailable (${failureReason}); no node was provisioned.`,
+    httpStatus,
+    httpStatusText,
+    rawResponse
+  );
 }
 
 /**
@@ -380,6 +418,9 @@ export async function executeDeckAp2Purchase(
         tcpaGuardActive: true,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         isLiveBackend: true,
+        httpStatus: res.status,
+        httpStatusText: res.statusText,
+        rawResponse: data,
       };
     }
   } catch (err) {
@@ -394,6 +435,9 @@ export interface DispatchLockResult {
   territoryZone: string;
   paypalTransactionId: string;
   isLiveBackend?: boolean;
+  httpStatus: number;
+  httpStatusText: string;
+  rawResponse: any;
 }
 
 /**
@@ -407,6 +451,10 @@ export async function lockDispatchSlot(
   paypalTransactionId: string
 ): Promise<DispatchLockResult> {
   let failureReason = 'network error';
+  let httpStatus: number | undefined;
+  let httpStatusText: string | undefined;
+  let rawResponse: any;
+
   try {
     const res = await fetch('/api/agent/dispatch/lock-slot', {
       method: 'POST',
@@ -419,11 +467,18 @@ export async function lockDispatchSlot(
       }),
     });
 
+    httpStatus = res.status;
+    httpStatusText = res.statusText;
+    try {
+      rawResponse = await res.json();
+    } catch {
+      rawResponse = await res.text();
+    }
+
     if (!res.ok) {
       failureReason = `HTTP ${res.status}`;
-    }
-    if (res.ok) {
-      const data = await res.json();
+    } else {
+      const data = rawResponse;
       return {
         success: data.success,
         slotLockedUntil: data.slotLockedUntil,
@@ -431,13 +486,30 @@ export async function lockDispatchSlot(
         territoryZone: data.territoryZone,
         paypalTransactionId,
         isLiveBackend: true,
+        httpStatus: res.status,
+        httpStatusText: res.statusText,
+        rawResponse: data,
       };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[Dispatch Lock] Backend not reachable:', err);
+    if (!httpStatus && err?.status) {
+      httpStatus = err.status;
+    }
+    if (!httpStatusText && err?.statusText) {
+      httpStatusText = err.statusText;
+    }
+    if (!rawResponse && err?.message) {
+      rawResponse = { error: err.message };
+    }
   }
 
-  throw new BackendUnavailableError(`Slot lock backend unavailable (${failureReason}); no slot was locked.`);
+  throw new BackendUnavailableError(
+    `Slot lock backend unavailable (${failureReason}); no slot was locked.`,
+    httpStatus,
+    httpStatusText,
+    rawResponse
+  );
 }
 
 export interface FleetStats {

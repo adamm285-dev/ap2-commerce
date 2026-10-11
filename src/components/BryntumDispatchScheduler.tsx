@@ -34,6 +34,7 @@ import {
   Maximize2,
   Code2,
   Trash2,
+  AlertCircle,
 } from 'lucide-react';
 
 export interface ApiWireLog {
@@ -45,151 +46,10 @@ export interface ApiWireLog {
   statusText: string;
   durationMs: number;
   summary: string;
-  category: 'MCP' | 'Enclave Dispatch' | 'PayPal MIT' | 'QuickBooks/ERP' | 'Security';
+  category: 'MCP' | 'Enclave Dispatch' | 'PayPal' | 'QuickBooks/ERP' | 'Security';
   request: any;
   response: any;
 }
-
-const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
-  {
-    id: 'wire-log-01',
-    timestamp: '13:00:14',
-    method: 'JSON-RPC',
-    endpoint: 'http://127.0.0.1:8001/mcp',
-    status: 200,
-    statusText: 'OK',
-    durationMs: 14,
-    summary: 'MCP capability discovery initialized (8 tools exposed)',
-    category: 'MCP',
-    request: {
-      jsonrpc: '2.0',
-      id: 'mcp-init-01',
-      method: 'tools/list',
-      params: {},
-    },
-    response: {
-      jsonrpc: '2.0',
-      id: 'mcp-init-01',
-      result: {
-        tools: [
-          { name: 'get_service_catalog', description: 'Lists available seller capabilities and pricing' },
-          { name: 'negotiate_tier_terms', description: 'Evaluates buyer budget and generates counter-offers' },
-          { name: 'purchase_subscription', description: 'Initiates PayPal subscription and locks mandate' },
-          { name: 'provision_compute_node', description: 'Provisions dedicated enclave worker endpoint' },
-          { name: 'dispatch_zapier_mcp', description: 'Triggers CloudEvents v1.0 & QBO GL 6300 sync' },
-        ],
-      },
-    },
-  },
-  {
-    id: 'wire-log-02',
-    timestamp: '13:00:38',
-    method: 'POST',
-    endpoint: 'http://127.0.0.1:8001/api/crypto/verify-tamper',
-    status: 200,
-    statusText: 'OK',
-    durationMs: 22,
-    summary: 'Anti-tamper playground: Ed25519 demo signature verified',
-    category: 'Security',
-    request: {
-      contractor_id: 'contractor_acme_01',
-      monthly_cap_usd: 100.0,
-      agreed_price_usd: 79.99,
-      signature: 'ed25519_sig_4a9f82c0b7...d181c2',
-    },
-    response: {
-      valid: true,
-      circuit_breaker: 'ACTIVE',
-      reason: 'ANTI_TAMPER_PASSED',
-      timestamp: 1728392438,
-      verified_at: '2026-10-08T13:00:38Z',
-    },
-  },
-  {
-    id: 'wire-log-03',
-    timestamp: '13:01:12',
-    method: 'POST',
-    endpoint: 'https://api.sandbox.paypal.com/v1/billing/subscriptions',
-    status: 201,
-    statusText: 'CREATED',
-    durationMs: 138,
-    summary: 'PayPal subscription created: I-BW452NX993L2 ($79.99/mo)',
-    category: 'PayPal MIT',
-    request: {
-      plan_id: 'P-4KA989014W524233ANLCRSFQ',
-      subscriber: {
-        name: { given_name: 'agent:acme-procure' },
-        email_address: 'buyer-agent-ops@example.com',
-      },
-      application_context: {
-        user_action: 'SUBSCRIBE_NOW',
-        brand_name: 'AP2 Autonomous Operations Deck',
-      },
-    },
-    response: {
-      id: 'I-BW452NX993L2',
-      status: 'ACTIVE',
-      status_update_time: '2026-10-08T13:01:12Z',
-      plan_id: 'P-4KA989014W524233ANLCRSFQ',
-      billing_info: {
-        next_billing_time: '2026-11-08T10:00:00Z',
-        last_payment: { amount: { currency_code: 'USD', value: '79.99' } },
-      },
-    },
-  },
-  {
-    id: 'wire-log-04',
-    timestamp: '13:02:04',
-    method: 'POST',
-    endpoint: 'http://127.0.0.1:8001/api/agent/dispatch/lock-slot',
-    status: 200,
-    statusText: 'OK',
-    durationMs: 29,
-    summary: 'Node-02 Enclave hardware execution slot locked (16:00-17:15 EDT)',
-    category: 'Enclave Dispatch',
-    request: {
-      slot_id: 'WORKLOAD-SLOT-02',
-      resource_id: 'node-2',
-      enclave: 'Node-02: Batch Data & RAG Pipeline',
-      start_time: '2026-10-08 16:00',
-      end_time: '2026-10-08 17:15',
-      deposit_amount_usd: 49.99,
-      txn_ref: 'AP2-TXN-DISPATCH-9022',
-    },
-    response: {
-      success: true,
-      status: 'LOCKED',
-      allocated_did: 'node-cluster-02.ap2.net:8443',
-      hardware_enclave: 'Sealed Enclave (AMD SEV-SNP)',
-      deposit_vaulted_usd: 49.99,
-    },
-  },
-  {
-    id: 'wire-log-05',
-    timestamp: '13:02:45',
-    method: 'POST',
-    endpoint: 'http://127.0.0.1:8001/api/mcp/zapier-sync',
-    status: 200,
-    statusText: 'OK',
-    durationMs: 44,
-    summary: 'CloudEvents v1.0 & QBO GL 6300 back-office export committed',
-    category: 'QuickBooks/ERP',
-    request: {
-      event_type: 'ap2.workload.scheduled',
-      event_id: 'evt_9021_cloud_sync',
-      subscriber: 'Acme Compute Co',
-      gl_account: '6300 - Dues & Subscriptions: Software & SaaS',
-      amount_usd: 79.99,
-    },
-    response: {
-      success: true,
-      qbo_status: 'POSTED',
-      gl_entry_id: 'gl_6300_txn_9021',
-      event_id: 'evt_9021_cloud_sync',
-      downline_synced: true,
-    },
-  },
-];
 
 import {
   executeProvisioningAfterSubscription,
@@ -659,7 +519,7 @@ export function BryntumDispatchScheduler({
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   // Wire Protocol Telemetry State
-  const [apiWireLogs, setApiWireLogs] = useState<ApiWireLog[]>(INITIAL_API_WIRE_LOGS);
+  const [apiWireLogs, setApiWireLogs] = useState<ApiWireLog[]>([]);
   const [wireCategoryFilter, setWireCategoryFilter] = useState<string>('ALL');
   const [dockHeight, setDockHeight] = useState<'collapsed' | 'normal' | 'expanded'>('normal');
   const [selectedWireLog, setSelectedWireLog] = useState<ApiWireLog | null>(null);
@@ -694,36 +554,85 @@ export function BryntumDispatchScheduler({
     setIsSendingWebhook(true);
     setDispatchWebhookStatus(null);
     const t0 = performance.now();
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setIsSendingWebhook(false);
-    const durationMs = Math.round(performance.now() - t0);
-    const webhookId = `whk_${Math.random().toString(36).substring(2, 9)}`;
-    setDispatchWebhookStatus(`Dispatched fulfillment webhook to ${selectedAppointment.customerName} (${selectedAppointment.resourceDid}) • Delivery ID: ${webhookId}`);
+    let measuredStatus: number;
+    let measuredStatusText: string;
+    let measuredDurationMs: number;
+    let resData: any;
+    let isSuccess = false;
+    let isDryRun = false;
+    let deliveryId = 'N/A';
+
+    const requestBody = {
+      workflow_type: 'a2a_onboarding',
+      job_id: selectedAppointment.id,
+      customer_name: selectedAppointment.customerName,
+      property_address: selectedAppointment.jobAddress,
+      payment_amount: 79.99,
+      paypal_txn_id: selectedAppointment.paypalTxn,
+      contractor_name: selectedAppointment.customerName,
+      business_entity: selectedAppointment.resourceEntity || 'Acme Compute Co',
+      allocated_did: selectedAppointment.resourceDid,
+      trade_vertical: selectedAppointment.name,
+      monthly_subscription_fee: 79.99,
+      paypal_subscription_id: selectedAppointment.paypalTxn,
+      contractor_email: 'buyer-agent-ops@example.com',
+      dry_run: true,
+    };
+
+    try {
+      const res = await fetch('/api/mcp/zapier-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = res.status;
+      measuredStatusText = res.statusText;
+      try {
+        resData = await res.json();
+      } catch {
+        resData = await res.text();
+      }
+      if (res.ok) {
+        isSuccess = true;
+        isDryRun = resData?.status === 'DRY_RUN_COMPLETED' || (!resData?.webhook_dispatched && !resData?.webhookDispatched);
+        deliveryId = resData?.webhook_delivery_id || resData?.webhookDeliveryId || 'N/A';
+      }
+    } catch (err: any) {
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
+      measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
+      resData = { error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      setIsSendingWebhook(false);
+    }
+
+    if (isSuccess) {
+      const statusMsg = isDryRun
+        ? `Dry run completed for ${selectedAppointment.customerName} (${selectedAppointment.resourceDid}) • Delivery ID: ${deliveryId}`
+        : `Dispatched fulfillment webhook to ${selectedAppointment.customerName} (${selectedAppointment.resourceDid}) • Delivery ID: ${deliveryId}`;
+      setDispatchWebhookStatus(statusMsg);
+    } else {
+      setDispatchWebhookStatus(`Webhook dispatch failed (${measuredStatus} ${measuredStatusText})`);
+    }
     setTimeout(() => setDispatchWebhookStatus(null), 6000);
+
+    const summary = isSuccess
+      ? isDryRun
+        ? `Zapier MCP sync dry run for ${selectedAppointment.name} • Delivery ID: ${deliveryId}`
+        : `Dispatched fulfillment webhook for ${selectedAppointment.name} • Delivery: ${deliveryId}`
+      : `Zapier MCP sync failed (${measuredStatus} ${measuredStatusText}) for ${selectedAppointment.name}`;
 
     addWireLog({
       method: 'POST',
-      endpoint: 'http://127.0.0.1:8001/api/mcp/zapier-sync',
-      status: 200,
-      statusText: 'OK',
-      durationMs: durationMs > 0 ? durationMs : 45,
+      endpoint: '/api/mcp/zapier-sync',
+      status: measuredStatus,
+      statusText: measuredStatusText,
+      durationMs: measuredDurationMs,
       category: 'QuickBooks/ERP',
-      summary: `Dispatched fulfillment webhook for ${selectedAppointment.name} • Delivery: ${webhookId}`,
-      request: {
-        event_type: 'ap2.workload.fulfillment.completed',
-        delivery_id: webhookId,
-        buyer_agent: selectedAppointment.customerName,
-        enclave_endpoint: selectedAppointment.resourceDid,
-        workload_scope: selectedAppointment.name,
-        paypal_txn: selectedAppointment.paypalTxn,
-      },
-      response: {
-        success: true,
-        delivery_status: 'DELIVERED',
-        http_code: 200,
-        handshake_ack: `ACK_${webhookId}`,
-        event_bus_synced: true,
-      },
+      summary,
+      request: requestBody,
+      response: resData,
     });
   };
 
@@ -761,26 +670,6 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     URL.revokeObjectURL(url);
     setInvoiceStatus(`AP2_Workload_Execution_Receipt_${selectedAppointment.paypalTxn}.txt`);
     setTimeout(() => setInvoiceStatus(null), 4000);
-
-    addWireLog({
-      method: 'GET',
-      endpoint: `http://127.0.0.1:8001/api/settlement/receipt/${selectedAppointment.id}`,
-      status: 200,
-      statusText: 'OK',
-      durationMs: 18,
-      category: 'Security',
-      summary: `Generated execution receipt: AP2_Workload_Execution_Receipt_${selectedAppointment.paypalTxn}.txt`,
-      request: {
-        workload_id: selectedAppointment.id,
-        paypal_txn: selectedAppointment.paypalTxn,
-        format: 'text/plain',
-      },
-      response: {
-        receipt_status: 'GENERATED_AND_DOWNLOADED',
-        sha256_hash: '98499e3f5739d9879697cb97e8045d',
-        tamper_proof: true,
-      },
-    });
   };
 
   const handleCopyEndpoint = () => {
@@ -1511,16 +1400,33 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (!schedulerRef.current) return;
     setIsCallingApi(true);
     const t0 = performance.now();
+    let measuredStatus: number;
+    let measuredStatusText: string;
+    let measuredDurationMs: number;
+    let responseBody: any;
+    let requestPayload: any;
+    let isSuccess = false;
+
+    const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
+    requestPayload = {
+      subscription_id: simulatedSubId,
+      contractorEmail: 'merchant@example.com',
+      business_entity: 'Acme Compute Co',
+      trade_vertical: CATALOG_PLANS[1].name,
+      monthly_fee: CATALOG_PLANS[1].price,
+    };
 
     try {
-      const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
-
       const result = await executeProvisioningAfterSubscription(
         simulatedSubId,
         'Acme Compute Co',
         CATALOG_PLANS[1].name
       );
-      const durationMs = Math.round(performance.now() - t0);
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = result.httpStatus;
+      measuredStatusText = result.httpStatusText;
+      responseBody = result.rawResponse;
+      isSuccess = true;
 
       const targetEvent =
         schedulerRef.current.eventStore.getById('workload-101') ||
@@ -1545,43 +1451,39 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         });
       }
 
-      setApiStatus(`● Node-01 Active: node-cluster-01.ap2.net via MCP (HTTP 201)`);
+      setApiStatus(`● Node-01 Active: ${result.allocatedDid || 'node-cluster-01.ap2.net'} via MCP (HTTP ${measuredStatus})`);
       setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
-      setLeadSimulationBanner(`✓ Node-01 Dedicated Gateway Provisioned: node-cluster-01.ap2.net bound to Sub ${simulatedSubId}!`);
+      setLeadSimulationBanner(`✓ Node-01 Dedicated Gateway Provisioned: ${result.allocatedDid || 'node-cluster-01.ap2.net'} bound to Sub ${simulatedSubId}!`);
       setTimeout(() => setLeadSimulationBanner(null), 5000);
 
       if (onToggleDepositLock) {
         onToggleDepositLock(true);
       }
-
-      addWireLog({
-        method: 'POST',
-        endpoint: 'http://127.0.0.1:8001/api/agent/provision',
-        status: 201,
-        statusText: 'CREATED',
-        durationMs: durationMs > 0 ? durationMs : 118,
-        category: 'MCP',
-        summary: `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($${CATALOG_PLANS[1].price}/mo)`,
-        request: {
-          subscription_id: simulatedSubId,
-          business_entity: 'Acme Compute Co',
-          trade_vertical: CATALOG_PLANS[1].name,
-          preferred_area_code: '703',
-          monthly_fee: CATALOG_PLANS[1].price,
-        },
-        response: {
-          status: 'ACTIVE_STREAMING',
-          allocated_did: result.allocatedDid || 'node-cluster-01.ap2.net',
-          carrier_cluster: 'US-East (Ashburn Zone 1)',
-          service_plan: `AP2 Dedicated AI Gateway ($${CATALOG_PLANS[1].price}/mo)`,
-          sub_id: simulatedSubId,
-        },
-      });
-    } catch (err) {
+    } catch (err: any) {
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
+      measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
+      responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
       setApiStatus(`● Provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsCallingApi(false);
     }
+
+    const summary = isSuccess
+      ? `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($${CATALOG_PLANS[1].price}/mo)`
+      : `Node-01 Provisioning failed (${measuredStatus} ${measuredStatusText})`;
+
+    addWireLog({
+      method: 'POST',
+      endpoint: '/api/agent/provision',
+      status: measuredStatus,
+      statusText: measuredStatusText,
+      durationMs: measuredDurationMs,
+      category: 'MCP',
+      summary,
+      request: requestPayload,
+      response: responseBody,
+    });
   };
 
   // Reset Node-01 and Node-02 back to initial baseline
@@ -1633,29 +1535,6 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (onToggleDepositLock) {
       onToggleDepositLock(false);
     }
-
-    addWireLog({
-      method: 'POST',
-      endpoint: 'http://127.0.0.1:8001/api/agent/reset-baseline',
-      status: 200,
-      statusText: 'OK',
-      durationMs: 12,
-      category: 'MCP',
-      summary: 'Reset Node-01 and Node-02 workloads back to unallocated baseline',
-      request: {
-        target_nodes: ['node-1', 'node-2'],
-        action: 'RESET_WORKLOAD_STATE',
-        revert_dispatches_to: 18,
-        revert_deposits_to: 1219.87,
-      },
-      response: {
-        status: 'SUCCESS',
-        node_1_status: `AWAITING_PAYPAL ($${CATALOG_PLANS[1].price}/MO)`,
-        node_2_slot: 'REMOVED',
-        dispatches_total: 18,
-        vaulted_deposits_usd: 1219.87,
-      },
-    });
   };
 
   // Atomically locks an open workload execution slot on Node-02 upon simulated buyer agent intent mandate & verified PayPal capture
@@ -1664,6 +1543,20 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (!schedulerRef.current || isLockingSlot || isSlotLocked) return;
     setIsLockingSlot(true);
     const t0 = performance.now();
+    let measuredStatus: number;
+    let measuredStatusText: string;
+    let measuredDurationMs: number;
+    let responseBody: any;
+    let requestPayload: any;
+    let isSuccess = false;
+
+    requestPayload = {
+      jobId: 'WORKLOAD-SLOT-02',
+      territoryZone: 'Node-02: Batch Data & RAG Pipeline',
+      slotStartIso: '2026-10-08 16:00',
+      paypalTransactionId: 'AP2-TXN-DISPATCH-9022',
+    };
+
     try {
       const res = await lockTerritorySlot(
         'WORKLOAD-SLOT-02',
@@ -1671,8 +1564,13 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         '2026-10-08 16:00',
         'AP2-TXN-DISPATCH-9022'
       );
-      const durationMs = Math.round(performance.now() - t0);
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = res.httpStatus;
+      measuredStatusText = res.httpStatusText;
+      responseBody = res.rawResponse;
+
       if (res.success) {
+        isSuccess = true;
         setIsSlotLocked(true);
         const lockedEventId = 'locked-workload-slot-2';
         const existing = schedulerRef.current.eventStore.getById(lockedEventId);
@@ -1692,43 +1590,36 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         }
         setTotalDispatches(19);
         setTotalVaultedDeposits(1269.86);
-        setApiStatus('● Enclave Execution Slot Locked: MCP Task Bound (HTTP 200)');
+        setApiStatus(`● Enclave Execution Slot Locked: MCP Task Bound (HTTP ${measuredStatus})`);
         setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
         setLeadSimulationBanner(`✓ Autonomous Buyer Mandate Verified: agent:gpt-4o:apex-procure dispatched to Node-02. $${CATALOG_PLANS[0].price} PayPal Payment Vaulted!`);
         setTimeout(() => setLeadSimulationBanner(null), 6000);
-
-        addWireLog({
-          method: 'POST',
-          endpoint: 'http://127.0.0.1:8001/api/agent/dispatch/lock-slot',
-          status: 200,
-          statusText: 'OK',
-          durationMs: durationMs > 0 ? durationMs : 28,
-          category: 'Enclave Dispatch',
-          summary: `Node-02 Enclave hardware execution slot locked (16:00-17:15) • $${CATALOG_PLANS[0].price} PayPal Payment Vaulted`,
-          request: {
-            slot_id: 'WORKLOAD-SLOT-02',
-            resource: 'Node-02: Batch Data & RAG Pipeline',
-            scheduled_start: '2026-10-08 16:00',
-            scheduled_end: '2026-10-08 17:15',
-            buyer_agent: 'agent:gpt-4o:apex-procure',
-            deposit_amount_usd: CATALOG_PLANS[0].price,
-            txn_ref: 'AP2-TXN-DISPATCH-9022',
-          },
-          response: {
-            success: true,
-            status: 'LOCKED',
-            event_id: lockedEventId,
-            enclave_endpoint: 'node-cluster-02.ap2.net:8443',
-            allocated_resource: 'node-2',
-            deposit_status: `SETTLED ($${CATALOG_PLANS[0].price} PAYPAL)`,
-          },
-        });
       }
-    } catch (err) {
+    } catch (err: any) {
+      measuredDurationMs = Math.round(performance.now() - t0);
+      measuredStatus = err?.httpStatus ?? (err?.status ?? 0);
+      measuredStatusText = err?.httpStatusText ?? (err?.statusText ?? (measuredStatus === 0 ? 'NETWORK_ERROR' : 'ERROR'));
+      responseBody = err?.rawResponse ?? { error: err instanceof Error ? err.message : String(err) };
       setApiStatus(`● Slot lock failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsLockingSlot(false);
     }
+
+    const summary = isSuccess
+      ? `Node-02 Enclave hardware execution slot locked (16:00-17:15) • $${CATALOG_PLANS[0].price} PayPal Payment Vaulted`
+      : `Slot lock failed (${measuredStatus} ${measuredStatusText})`;
+
+    addWireLog({
+      method: 'POST',
+      endpoint: '/api/agent/dispatch/lock-slot',
+      status: measuredStatus,
+      statusText: measuredStatusText,
+      durationMs: measuredDurationMs,
+      category: 'Enclave Dispatch',
+      summary,
+      request: requestPayload,
+      response: responseBody,
+    });
   };
 
   return (
@@ -2730,7 +2621,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 { id: 'ALL', label: 'All Calls' },
                 { id: 'MCP', label: 'MCP' },
                 { id: 'Enclave Dispatch', label: 'Enclave Dispatch' },
-                { id: 'PayPal MIT', label: 'PayPal MIT' },
+                { id: 'PayPal', label: 'PayPal' },
                 { id: 'QuickBooks/ERP', label: 'QuickBooks/ERP' },
                 { id: 'Security', label: 'Security' },
               ].map((tab) => (
@@ -2833,9 +2724,13 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         {/* Dock Log List (when open) */}
         {dockHeight !== 'collapsed' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {apiWireLogs.filter((log) => wireCategoryFilter === 'ALL' || log.category.toLowerCase().includes(wireCategoryFilter.toLowerCase())).length === 0 ? (
+            {apiWireLogs.length === 0 ? (
               <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
-                No API calls matching current filter. Trigger a workload lock, PayPal simulation, or reset to watch live execution calls.
+                No API calls yet. Actions in this view will appear here.
+              </div>
+            ) : apiWireLogs.filter((log) => wireCategoryFilter === 'ALL' || log.category.toLowerCase().includes(wireCategoryFilter.toLowerCase())).length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
+                No API calls matching current filter.
               </div>
             ) : (
               apiWireLogs
@@ -3051,10 +2946,53 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* Real-time Action Feedback Banners */}
             {dispatchWebhookStatus && (
-              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontSize: '11px', lineHeight: 1.4 }}>
-                <CheckCircle2 size={18} style={{ flexShrink: 0, color: '#10b981' }} />
+              <div
+                style={{
+                  backgroundColor: dispatchWebhookStatus.includes('failed')
+                    ? 'rgba(239, 68, 68, 0.15)'
+                    : dispatchWebhookStatus.includes('Dry run')
+                    ? 'rgba(234, 179, 8, 0.15)'
+                    : 'rgba(16, 185, 129, 0.15)',
+                  border: `1px solid ${
+                    dispatchWebhookStatus.includes('failed')
+                      ? 'rgba(239, 68, 68, 0.4)'
+                      : dispatchWebhookStatus.includes('Dry run')
+                      ? 'rgba(234, 179, 8, 0.4)'
+                      : 'rgba(16, 185, 129, 0.4)'
+                  }`,
+                  borderRadius: '8px',
+                  padding: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  color: dispatchWebhookStatus.includes('failed')
+                    ? '#f87171'
+                    : dispatchWebhookStatus.includes('Dry run')
+                    ? '#facc15'
+                    : '#34d399',
+                  fontSize: '11px',
+                  lineHeight: 1.4,
+                }}
+              >
+                {dispatchWebhookStatus.includes('failed') ? (
+                  <AlertCircle size={18} style={{ flexShrink: 0, color: '#ef4444' }} />
+                ) : (
+                  <CheckCircle2
+                    size={18}
+                    style={{
+                      flexShrink: 0,
+                      color: dispatchWebhookStatus.includes('Dry run') ? '#eab308' : '#10b981',
+                    }}
+                  />
+                )}
                 <div>
-                  <div style={{ fontWeight: 700 }}>Autonomous Fulfillment Webhook Dispatched</div>
+                  <div style={{ fontWeight: 700 }}>
+                    {dispatchWebhookStatus.includes('failed')
+                      ? 'Autonomous Fulfillment Webhook Failed'
+                      : dispatchWebhookStatus.includes('Dry run')
+                      ? 'Autonomous Fulfillment Webhook (Dry Run)'
+                      : 'Autonomous Fulfillment Webhook Dispatched'}
+                  </div>
                   <div style={{ color: '#cbd5e1', fontSize: '11px' }}>{dispatchWebhookStatus}</div>
                 </div>
               </div>

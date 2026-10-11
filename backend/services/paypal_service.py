@@ -452,11 +452,13 @@ class PayPalService:
                         "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
                         "rel": "self",
                         "method": "GET",
+                        "simulated": True,
                     },
                     {
                         "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}/cancel",
                         "rel": "cancel",
                         "method": "POST",
+                        "simulated": True,
                     },
                 ],
             }

@@ -101,8 +101,10 @@ async def test_machine_readable_next_action_and_offer_id_binding():
     assert "next_action" in neg
     next_action_1 = neg["next_action"]
     assert next_action_1["type"] == "tool_call"
-    assert next_action_1["tool"] == "purchase_subscription"
-    params_1 = next_action_1["parameters"]
+    assert next_action_1["tool"] == "sign_checkout"
+    assert next_action_1["parameters"]["checkout_jwt"] == neg["checkout_jwt"]
+    assert next_action_1["then_call"]["tool"] == "purchase_subscription"
+    params_1 = next_action_1["then_call"]["parameters"]
     assert params_1["offer_id"] == neg["offer_id"]
 
     # Step 2: Purchase using offer_id and AP2 v0.2 chains
@@ -440,7 +442,7 @@ async def test_signed_cap_overrides_unsigned_param():
     )
     assert neg["status"] == "COUNTER_OFFER"
     assert neg["counter_offer_tier_id"] == "ap2-batch"
-    assert neg["next_action"]["parameters"]["tier_id"] == "ap2-batch"
+    assert neg["next_action"]["then_call"]["parameters"]["tier_id"] == "ap2-batch"
     assert neg["counter_offer_amount"] == 49.99
     assert neg["monthly_budget_cap"] == 60.00  # Enforced signed cap!
 

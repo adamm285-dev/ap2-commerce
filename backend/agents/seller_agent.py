@@ -163,7 +163,7 @@ AP2_SELLER_MCP_TOOLS = [
     },
     {
         "name": "purchase_subscription",
-        "description": "Binds a verified AP2 v0.2 Mandate Chain (Checkout + Payment SD-JWTs) or signed AP2 Cart Mandate offer to PayPal Recurring Vault for automated monthly billing. Returns merchant-signed Checkout Receipt and Payment Receipt.",
+        "description": "Verifies AP2 v0.2 Mandate Chains (Checkout + Payment SD-JWTs) signed by the buyer wallet and creates the subscription. Returns merchant-signed Checkout Receipt and Payment Receipt.",
         "input_schema": {
             "type": "object",
             "required": ["buyer_email"],
@@ -662,21 +662,25 @@ class SellerAgent:
                 recurrence, category, monthly_budget_cap,
                 buyer_intent_mandate=buyer_intent_mandate,
             )
-            next_action_params: Dict[str, Any] = {
-                "offer_id": issued["offer_id"],
-                "tier_id": tier_id,
-                "agreed_monthly_rate": standard_price,
-                "mandate_proof_hash": issued["hash"],
-                "buyer_email": email,
-                "checkout_jwt": issued["checkout_jwt"],
-                "checkout_hash": issued["checkout_hash"],
-                "nonce": issued.get("nonce"),
-            }
-
             next_action = {
                 "type": "tool_call",
-                "tool": "purchase_subscription",
-                "parameters": next_action_params,
+                "tool": "sign_checkout",
+                "server": "buyer wallet",
+                "parameters": {
+                    "checkout_jwt": issued["checkout_jwt"],
+                },
+                "then_call": {
+                    "tool": "purchase_subscription",
+                    "server": "seller",
+                    "parameters": {
+                        "offer_id": issued["offer_id"],
+                        "tier_id": tier_id,
+                        "agreed_monthly_rate": standard_price,
+                        "buyer_email": email,
+                        "checkout_mandate_chain": "<from sign_checkout>",
+                        "payment_mandate_chain": "<from sign_checkout>",
+                    },
+                },
             }
             res_approved: Dict[str, Any] = {
                 "status": "APPROVED",
@@ -768,21 +772,25 @@ class SellerAgent:
                 budget_cap=monthly_budget_cap,
                 contractor_email=email,
             )
-            next_action_params = {
-                "offer_id": issued["offer_id"],
-                "tier_id": down_tier_id,
-                "agreed_monthly_rate": 49.99,
-                "mandate_proof_hash": down_hash,
-                "buyer_email": email,
-                "checkout_jwt": counter_checkout["checkout_jwt"],
-                "checkout_hash": counter_checkout["checkout_hash"],
-                "nonce": counter_checkout.get("nonce"),
-            }
-
             next_action = {
                 "type": "tool_call",
-                "tool": "purchase_subscription",
-                "parameters": next_action_params,
+                "tool": "sign_checkout",
+                "server": "buyer wallet",
+                "parameters": {
+                    "checkout_jwt": counter_checkout["checkout_jwt"],
+                },
+                "then_call": {
+                    "tool": "purchase_subscription",
+                    "server": "seller",
+                    "parameters": {
+                        "offer_id": issued["offer_id"],
+                        "tier_id": down_tier_id,
+                        "agreed_monthly_rate": 49.99,
+                        "buyer_email": email,
+                        "checkout_mandate_chain": "<from sign_checkout>",
+                        "payment_mandate_chain": "<from sign_checkout>",
+                    },
+                },
             }
 
             # Update registered mandate with counter-offer checkout details & nonce
@@ -799,7 +807,7 @@ class SellerAgent:
                 f"Requested plan '{tier_id}' lists at ${standard_price:.2f}/mo, which exceeds monthly budget cap of ${monthly_budget_cap:.2f}. "
                 f"Counter-offer available: Down-tier to '{get_plan('ap2-batch')['title']}' at {plan_summary('ap2-batch')}, "
                 f"leaving ${remaining_after_down:.2f} in your monthly budget. "
-                f"Execute next_action tool call with offer_id='{issued['offer_id']}' to bind to PayPal Vault."
+                f"Sign checkout_jwt with buyer wallet, then call purchase_subscription with offer_id='{issued['offer_id']}' and the signed mandate chains."
             )
 
             res_counter = {
@@ -903,8 +911,8 @@ class SellerAgent:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Tool implementation: Binds verified AP2 Intent Mandate, AP2 Cart Mandate, or AP2 v0.2 Mandate Chain
-        to PayPal Recurring Vault.
+        Tool implementation: Verifies AP2 Intent Mandate, AP2 Cart Mandate, or AP2 v0.2 Mandate Chain
+        and creates the subscription.
         Cryptographically verifies the mandate proof against tier, rate, and buyer identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
@@ -1183,7 +1191,8 @@ class SellerAgent:
         vault_id = paypal_result.get("vault_id") or f"vault_tok_{sub_id.lower().replace('-', '_')}"
         payment_token = paypal_result.get("payment_token") or f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
         paypal_req_id = paypal_result.get("paypal_request_id") or f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
-        hateoas_links = paypal_result.get("hateoas_links") or [
+        is_mock = getattr(paypal_service, "mock_mode", False)
+        default_hateoas = [
             {
                 "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
                 "rel": "self",
@@ -1195,6 +1204,10 @@ class SellerAgent:
                 "method": "POST",
             },
         ]
+        hateoas_links = paypal_result.get("hateoas_links") or default_hateoas
+        if is_mock and hateoas_links:
+            for link in hateoas_links:
+                link["simulated"] = True
         if not approval_url and hateoas_links:
             for link in hateoas_links:
                 if link.get("rel") == "approve":
@@ -1361,7 +1374,7 @@ class SellerAgent:
             "paypal_vault_status": vault_status,
             "vault_billing_authorized": vault_authorized,
             "vault_customer_present": customer_present,
-            "paypal_environment": "sandbox",
+            "paypal_environment": "mock" if getattr(paypal_service, "mock_mode", False) else "sandbox",
             "paypal_request_id": paypal_req_id,
             "create_time": created_time,
             "next_billing_time": next_billing,

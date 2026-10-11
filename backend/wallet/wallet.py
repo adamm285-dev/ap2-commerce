@@ -24,10 +24,11 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from jwcrypto.jwk import JWK
 
@@ -72,13 +73,20 @@ PAYMENT_INSTRUMENT = PaymentInstrument(type="paypal_vault", id="vault_agent_mit"
 class WalletRefusal(Exception):
     """The wallet refused to act. `code` is stable and machine-readable."""
 
-    def __init__(self, code: str, reason: str):
-        super().__init__(f"{code}: {reason}")
+    def __init__(self, code: str, reason: str, message: Optional[str] = None):
+        msg = message or reason
+        super().__init__(f"{code}: {msg}")
         self.code = code
         self.reason = reason
+        self.message = msg
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"status": "REFUSED", "error": self.code, "reason": self.reason}
+        return {
+            "status": "REFUSED",
+            "error": self.code,
+            "reason": self.reason,
+            "message": self.message,
+        }
 
 
 def wallet_dir() -> Path:
@@ -319,6 +327,74 @@ class BuyerWallet:
             ),
         }
 
+    @staticmethod
+    def _format_cents(cents: int) -> str:
+        return f"${cents / 100:.2f}"
+
+    @classmethod
+    def _format_checkout_violation(
+        cls, violations: List[str], checkout: Checkout, lim: _OwnerLimits
+    ) -> str:
+        formatted = []
+        for v in violations:
+            if "Merchant" in v and "not allowed" in v:
+                m_name = (checkout.merchant.name if checkout.merchant else None) or (checkout.merchant.id if checkout.merchant else "unknown")
+                formatted.append(f"Merchant '{m_name}' is not in the owner's allowed merchant list.")
+            elif "line_items" in v or "line item" in v:
+                tier_id = checkout.line_items[0].item.id if (checkout.line_items and checkout.line_items[0].item) else "unknown"
+                formatted.append(f"Plan '{tier_id}' is not in the owner's allowed plans list.")
+            else:
+                formatted.append(v)
+        return "; ".join(formatted)
+
+    @classmethod
+    def _format_payment_violation(
+        cls,
+        violations: List[str],
+        total_cents: int,
+        lim: _OwnerLimits,
+        used_cents: int,
+        used_count: int,
+    ) -> str:
+        formatted = []
+        for v in violations:
+            # 1. AmountRange: Amount <amt> exceeds maximum <max>
+            m_max = re.search(r"Amount (\d+) exceeds maximum (\d+)", v)
+            if m_max:
+                amt = int(m_max.group(1))
+                max_cents = int(m_max.group(2))
+                formatted.append(f"{cls._format_cents(amt)} exceeds the owner's {cls._format_cents(max_cents)} per-purchase limit")
+                continue
+
+            # 2. AmountRange below min: Amount <amt> below minimum <min>
+            m_min = re.search(r"Amount (\d+) below minimum (\d+)", v)
+            if m_min:
+                amt = int(m_min.group(1))
+                min_cents = int(m_min.group(2))
+                formatted.append(f"{cls._format_cents(amt)} is below the owner's {cls._format_cents(min_cents)} minimum amount")
+                continue
+
+            # 3. Budget cumulative spend: Cumulative spend <cum> exceeds budget limit <limit> (past spend: <past>)
+            m_cum = re.search(r"Cumulative spend (\d+) exceeds budget limit (\d+) \(past spend: (\d+)\)", v)
+            if m_cum:
+                budget_limit = int(m_cum.group(2))
+                past_spend = int(m_cum.group(3))
+                remaining = max(0, budget_limit - past_spend)
+                formatted.append(
+                    f"{cls._format_cents(total_cents)} exceeds the remaining budget of "
+                    f"{cls._format_cents(remaining)} ({cls._format_cents(budget_limit)} limit, "
+                    f"{cls._format_cents(past_spend)} already spent)"
+                )
+                continue
+
+            # 4. Payee not allowed
+            if "Payee" in v or "payee" in v:
+                formatted.append(f"Payee is not in the owner's allowed payee list: {v}")
+                continue
+
+            formatted.append(v)
+        return "; ".join(formatted)
+
     def sign_checkout(self, checkout_jwt: Any) -> Dict[str, Any]:
         """
         Verifies a merchant-signed Checkout JWT against the owner's limits and, only if every
@@ -370,7 +446,9 @@ class BuyerWallet:
         except Exception as e:
             raise WalletRefusal("CONSTRAINT_EVALUATION_FAILED", f"Could not evaluate checkout constraints: {e}")
         if chk_violations:
-            raise WalletRefusal("CHECKOUT_CONSTRAINT_VIOLATION", "; ".join(chk_violations))
+            raw_reason = "; ".join(chk_violations)
+            msg = self._format_checkout_violation(chk_violations, checkout, lim)
+            raise WalletRefusal("CHECKOUT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
 
         closed_pay = PaymentMandate(
             vct="mandate.payment.1",
@@ -391,7 +469,9 @@ class BuyerWallet:
         except Exception as e:
             raise WalletRefusal("CONSTRAINT_EVALUATION_FAILED", f"Could not evaluate payment constraints: {e}")
         if pay_violations:
-            raise WalletRefusal("PAYMENT_CONSTRAINT_VIOLATION", "; ".join(pay_violations))
+            raw_reason = "; ".join(pay_violations)
+            msg = self._format_payment_violation(pay_violations, total_cents, lim, used_cents, used_count)
+            raise WalletRefusal("PAYMENT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
 
         # 4. Every check passed: sign with the agent key only
         agent_key = self._agent_key()

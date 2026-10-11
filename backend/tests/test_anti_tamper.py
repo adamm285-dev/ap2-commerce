@@ -198,7 +198,7 @@ async def test_purchase_subscription_deterministic_id():
     assert res1["status"] == "ACTIVE"
     assert res1["subscription_id"] == res2["subscription_id"]
     assert res1["subscription_id"].startswith("I-A2A-VAULT-")
-    assert res1["paypal_environment"] == "sandbox"
+    assert res1["paypal_environment"] == "mock"
 
 
 @pytest.mark.asyncio

@@ -327,7 +327,7 @@ async def test_seller_agent_counter_offer_returns_counter_checkout_jwt():
     assert neg["counter_offer_amount"] == 49.99
     assert "checkout_jwt" in neg
     assert "counter_offer_checkout_jwt" in neg
-    assert neg["next_action"]["parameters"]["agreed_monthly_rate"] == 49.99
+    assert neg["next_action"]["then_call"]["parameters"]["agreed_monthly_rate"] == 49.99
 
 
 @pytest.mark.asyncio

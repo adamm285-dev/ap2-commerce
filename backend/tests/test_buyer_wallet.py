@@ -166,6 +166,8 @@ async def test_wallet_refuses_price_above_owner_cap_even_if_agent_overstates_bud
     assert is_error
     assert refused["status"] == "REFUSED"
     assert refused["error"] == "PAYMENT_CONSTRAINT_VIOLATION"
+    assert "Amount 7999 exceeds maximum 6000" in refused["reason"]
+    assert refused["message"] == "$79.99 exceeds the owner's $60.00 per-purchase limit"
     assert "checkout_mandate_chain" not in refused and "payment_mandate_chain" not in refused
 
     after, _ = _wallet(demo, "get_spending_limits")
@@ -272,6 +274,8 @@ def test_wallet_counts_prior_signatures_against_total_budget(demo):
     with pytest.raises(WalletRefusal) as exc:
         demo.wallet.sign_checkout(third)  # 14997 cents > 10000
     assert exc.value.code == "PAYMENT_CONSTRAINT_VIOLATION"
+    assert "Cumulative spend 14997 exceeds budget limit 10000" in exc.value.reason
+    assert exc.value.message == "$49.99 exceeds the remaining budget of $0.02 ($100.00 limit, $99.98 already spent)"
     assert demo.wallet.describe_limits()["signed_so_far_cents"] == 9998
 
 

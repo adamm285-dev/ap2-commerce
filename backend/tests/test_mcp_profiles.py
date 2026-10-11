@@ -192,7 +192,8 @@ async def test_ap2_negotiation_counter_offer_and_settlement(monkeypatch):
     assert neg_data["counter_offer_tier"] == "High-Throughput Batch Worker"
     assert neg_data["monthly_cap_remaining"] == 10.01  # 60.00 - 49.99
     assert "next_action" in neg_data
-    assert neg_data["next_action"]["tool"] == "purchase_subscription"
+    assert neg_data["next_action"]["tool"] == "sign_checkout"
+    assert neg_data["next_action"]["then_call"]["tool"] == "purchase_subscription"
 
     offer_id = neg_data["offer_id"]
     proof_hash = neg_data["mandate_proof_hash"]

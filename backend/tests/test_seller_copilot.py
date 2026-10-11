@@ -50,7 +50,7 @@ async def test_copilot_approval_and_a2a_execution():
     # Verify step 3: compute node
     step3 = exec_result["protocol_trace"][2]
     assert step3["method"] == "tools/call:provision_compute_node"
-    assert "FastMCP" in step3["carrier"]
+    assert "MCP" in step3["carrier"]
 
     # Verify step 4: zapier sync
     step4 = exec_result["protocol_trace"][3]
@@ -65,7 +65,7 @@ async def test_copilot_audit_intent():
     assert resp["phase"] == "AUDIT"
     assert "rfc 8032" in resp["reply"].lower()
     assert "paypal subscriptions" in resp["reply"].lower()
-    assert "fastmcp" in resp["reply"].lower()
+    assert "mcp over https" in resp["reply"].lower()
     assert resp["action_type"] == "INSPECT_AUDIT_TRAIL"
 
 

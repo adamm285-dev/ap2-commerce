@@ -126,7 +126,7 @@ class ProvisionResponse(BaseModel):
 
     status: str
     assigned_did: Optional[str] = Field(default=None, alias="assignedDid")
-    carrier: Optional[str] = "Dual-Transport FastMCP (RFC 8032)"
+    carrier: Optional[str] = "MCP over HTTPS (JSON-RPC 2.0)"
     routing_state: Optional[str] = Field(default="ACTIVE_COMPUTE_NODE", alias="routingState")
     subscription_id: str = Field(alias="subscriptionId")
     failover_triggered: Optional[bool] = Field(

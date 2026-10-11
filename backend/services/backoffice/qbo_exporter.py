@@ -59,7 +59,7 @@ class QboExporter:
             f"PayPal Sub: {paypal_subscription_id} | {memo_plan}\n"
             f"Endpoint: {allocated_did} | Vertical: {trade_vertical}\n"
             f"Mandate Proof Hash: {mandate_proof_hash}\n"
-            f"Carrier RFC Attestation: Dual-Transport FastMCP (RFC 8032)\n"
+            f"Carrier: MCP over HTTPS (JSON-RPC 2.0)\n"
             f"Purchaser: {contractor_name} ({business_entity})"
         )
 

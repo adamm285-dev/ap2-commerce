@@ -438,7 +438,7 @@ class ExternalBuyerAgent:
             }
         node_endpoint = prov.get("endpoint")
         allocated_node_id = prov.get("node_id")
-        carrier = "Dual-Transport FastMCP (RFC 8032)"
+        carrier = "MCP over HTTPS (JSON-RPC 2.0)"
         routing_state = "NODE_ACTIVE"
         assigned_did = node_endpoint
         self.log(f"   Allocated Node:  {allocated_node_id}")

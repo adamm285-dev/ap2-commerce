@@ -973,12 +973,12 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const replyMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'copilot',
-      text: `⚡ **ERP Webhooks & Double-Entry Accounting Connected!**\n\n• **Zapier Catch-Hook URL**: \`${url}\`\n• **QuickBooks Expense Account**: \`${acct}\`\n• **Operating Revenue Account**: \`${nodeSettings.qboGlRevenueAccount}\`\n\nEvery settled transaction will now automatically stream CloudEvents v1.0 JSON-RPC to your webhook and book GAAP purchase records to your General Ledger. Configured in **Tab 4** on the right!\n\n👉 **Ready for Step 5?** Click the button below to verify FastMCP and launch the interactive test simulator:`,
+      text: `⚡ **ERP Webhooks & Double-Entry Accounting Connected!**\n\n• **Zapier Catch-Hook URL**: \`${url}\`\n• **QuickBooks Expense Account**: \`${acct}\`\n• **Operating Revenue Account**: \`${nodeSettings.qboGlRevenueAccount}\`\n\nEvery settled transaction will now automatically stream CloudEvents v1.0 JSON-RPC to your webhook and book GAAP purchase records to your General Ledger. Configured in **Tab 4** on the right!\n\n👉 **Ready for Step 5?** Click the button below to verify MCP and launch the interactive test simulator:`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
         step: 5,
-        label: '➡️ Proceed to Step 5: FastMCP & Live Simulator',
+        label: '➡️ Proceed to Step 5: MCP & Live Simulator',
       },
       suggestedActions: [],
     };
@@ -992,7 +992,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const introMsg: ChatMessage = {
       id: `msg-${Date.now() + 1}`,
       sender: 'copilot',
-      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Demo Enterprise Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, cryptographically signing Ed25519 spending mandates, and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately and signs with an Ed25519 authorization hash.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: authorizes recurring billing via PayPal Vault MIT, provisions your FastMCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
+      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Demo Enterprise Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, cryptographically signing Ed25519 spending mandates, and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately and signs with an Ed25519 authorization hash.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: authorizes recurring billing via PayPal Vault MIT, provisions your MCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
@@ -1176,13 +1176,13 @@ ZAPIER_MCP_CATCH_HOOK_URL=https://hooks.zapier.com/hooks/catch/12345/abcdef/
       suggestedActions = [];
     } else {
       setSettingsTabOverride('agent_card');
-      title = 'Step 05: Launch FastMCP Server & Run Interactive Test Simulator';
-      content = `🚀 **Step 05: Launch FastMCP Server & Run Interactive Simulator**
+      title = 'Step 05: Launch MCP Server & Run Interactive Test Simulator';
+      content = `🚀 **Step 05: Launch MCP Server & Run Interactive Simulator**
 
-👉 **I have brought up Tab 5 (FastMCP & Agent Card) in the right pane for you.**
-You can inspect your live \`.well-known/agent.json\` card, export your \`.env\` configuration, or test the FastMCP endpoint. When you're ready, launch the live simulator below to test your complete node with an autonomous buyer agent!
+👉 **I have brought up Tab 5 (MCP & Agent Card) in the right pane for you.**
+You can inspect your live \`.well-known/agent.json\` card, export your \`.env\` configuration, or test the MCP endpoint. When you're ready, launch the live simulator below to test your complete node with an autonomous buyer agent!
 
-**1. Start the FastMCP Daemon**:
+**1. Start the MCP Daemon**:
 \`\`\`bash
 python -m uvicorn backend.server:app --host 127.0.0.1 --port 8001 --reload
 \`\`\`
@@ -1366,7 +1366,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         lower.includes('step 05') ||
         lower.includes('step five') ||
         lower.includes('how do i launch') ||
-        lower.includes('verify fastmcp') ||
+        lower.includes('verify mcp') ||
         lower.includes('fastmcp') ||
         lower.includes('daemon') ||
         lower.includes('agent card') ||
@@ -1526,7 +1526,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const catalogReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `📡 **AP2 Seller Capability Catalog Query (FastMCP JSON-RPC 2.0)**\nConnected to Seller Node endpoint: \`http://127.0.0.1:8001/mcp\`\n\n**Available Machine-to-Machine Capabilities:**\n1. **High-Throughput Batch Worker** — \`$49.99/mo\`\n   • Quota: 125 workload tasks/mo\n   • Execution: Asynchronous job queue\n   • Cluster: US-Central Batch Vector RAG\n\n2. **Dedicated AI Service Gateway** — \`$79.99/mo\`\n   • Quota: 450 workload tasks/mo\n   • Execution: Real-time low-latency routing\n   • Cluster: US-East Low-Latency Inference Gateway\n\n3. **Enterprise Cluster Node** — \`$179.99/mo\`\n   • Quota: 1,200 workload tasks/mo\n   • Execution: Multi-node cluster scaling\n   • Cluster: Hardware-Enclave Bound High Concurrency\n\n*All plans require RFC 8032 Ed25519 cryptographic intent signing and settle via PayPal Subscriptions & Vault MIT.*`,
+          text: `📡 **AP2 Seller Capability Catalog Query (MCP JSON-RPC 2.0)**\nConnected to Seller Node endpoint: \`http://127.0.0.1:8001/mcp\`\n\n**Available Machine-to-Machine Capabilities:**\n1. **High-Throughput Batch Worker** — \`$49.99/mo\`\n   • Quota: 125 workload tasks/mo\n   • Execution: Asynchronous job queue\n   • Cluster: US-Central Batch Vector RAG\n\n2. **Dedicated AI Service Gateway** — \`$79.99/mo\`\n   • Quota: 450 workload tasks/mo\n   • Execution: Real-time low-latency routing\n   • Cluster: US-East Low-Latency Inference Gateway\n\n3. **Enterprise Cluster Node** — \`$179.99/mo\`\n   • Quota: 1,200 workload tasks/mo\n   • Execution: Multi-node cluster scaling\n   • Cluster: Hardware-Enclave Bound High Concurrency\n\n*All plans require RFC 8032 Ed25519 cryptographic intent signing and settle via PayPal Subscriptions & Vault MIT.*`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'IDLE',
           suggestedActions: [
@@ -1649,7 +1649,7 @@ I can guide you through every step of getting your autonomous seller node online
 • **Step 02**: RFC 8032 Ed25519 Keys & Anti-Tamper Verification
 • **Step 03**: PayPal Subscriptions & Vault MIT Recurring Billing
 • **Step 04**: QuickBooks Online (GL 6300) & Zapier CloudEvents
-• **Step 05**: FastMCP Daemon (port 8001) & Live Buyer Simulation
+• **Step 05**: MCP Daemon (port 8001) & Live Buyer Simulation
 
 You can speak any step (e.g. *"Step 1"*, *"Generate keys"*, *"Connect PayPal"*) or click a suggested action below:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1680,7 +1680,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
 • **Step 02**: RFC 8032 Ed25519 keys and anti-tamper security.
 • **Step 03**: PayPal merchant billing via Vault MIT.
 • **Step 04**: QuickBooks Online & Zapier EventBus webhooks.
-• **Step 05**: FastMCP daemon and live buyer agent testing.
+• **Step 05**: MCP daemon and live buyer agent testing.
 
 👉 Click any step card above or choose a suggested action below to continue:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1793,7 +1793,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>FastMCP Daemon:</span>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>MCP Daemon:</span>
             <code style={{ fontSize: '11px', backgroundColor: '#131d31', border: '1px solid #1e293b', color: '#38bdf8', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
               http://127.0.0.1:8001/mcp
             </code>
@@ -1976,14 +1976,14 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '10px', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em' }}>STEP 05</span>
               <span style={{ fontSize: '9px', fontWeight: 700, backgroundColor: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', padding: '1px 5px', borderRadius: '3px' }}>
-                8001 / FastMCP
+                8001 / MCP
               </span>
             </div>
             <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
               Launch Daemon &amp; Test
             </div>
             <p style={{ fontSize: '10px', color: '#94a3b8', margin: 0, lineHeight: 1.35 }}>
-              Start the FastMCP server, expose agent card (.well-known/agent.json), and test with the live simulator.
+              Start the MCP server, expose agent card (.well-known/agent.json), and test with the live simulator.
             </p>
             <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '9px', color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <CheckCircle2 size={11} /> Ready to Simulate
@@ -1995,7 +1995,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
 
       {/* DUAL PANE MAIN WORKSPACE */}
       <div style={{ display: 'grid', gridTemplateColumns: isChatExpanded ? '1fr' : '1fr 1fr', flex: 1, gap: '16px', minHeight: 0 }}>
-        {/* LEFT PANE: FastMCP Protocol Sandbox (Buyer Agent Simulator) */}
+        {/* LEFT PANE: MCP Protocol Sandbox (Buyer Agent Simulator) */}
         <div
           style={{
             display: 'flex',
@@ -2043,7 +2043,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {copilotMode === 'onboarding'
                       ? (isChatMenuCollapsed ? 'Onboarding Assistant' : 'Node Setup & Onboarding Assistant')
-                      : (isChatMenuCollapsed ? 'FastMCP Simulator' : 'Interactive FastMCP Protocol Simulator')}
+                      : (isChatMenuCollapsed ? 'MCP Simulator' : 'Interactive MCP Protocol Simulator')}
                   </span>
                   <span
                     style={{
@@ -2938,7 +2938,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                             </span>
                           </div>
                           <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', lineHeight: 1.4 }}>
-                            FastMCP daemon is live on <code>http://127.0.0.1:8001/mcp</code>. Ready to test external buyer agent discovery, spending mandates, and counter-offer bargaining!
+                            MCP daemon is live on <code>http://127.0.0.1:8001/mcp</code>. Ready to test external buyer agent discovery, spending mandates, and counter-offer bargaining!
                           </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button

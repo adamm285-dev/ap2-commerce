@@ -75,7 +75,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 buyer_agent_id TEXT,
                 subscriber_country_code TEXT DEFAULT 'US',
                 assigned_did TEXT,
-                carrier TEXT DEFAULT 'Dual-Transport FastMCP (RFC 8032)',
+                carrier TEXT DEFAULT 'MCP over HTTPS (JSON-RPC 2.0)',
                 routing_state TEXT,
                 replaced_by TEXT,
                 mandate_proof_hash TEXT,
@@ -310,7 +310,7 @@ def save_subscription(sub: Dict[str, Any], db_path: Optional[Path] = None) -> No
                     sub.get("buyer_agent_id"),
                     sub.get("subscriber_country_code", "US"),
                     sub.get("assigned_did"),
-                    sub.get("carrier", "Dual-Transport FastMCP (RFC 8032)"),
+                    sub.get("carrier", "MCP over HTTPS (JSON-RPC 2.0)"),
                     sub.get("routing_state"),
                     sub.get("replaced_by"),
                     sub.get("mandate_proof_hash"),
@@ -1562,7 +1562,7 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
             "plan_id": plan_id,
             "buyer_agent_id": item["buyer_agent"],
             "assigned_did": item["allocated_did"] if is_active else None,
-            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "carrier": "MCP over HTTPS (JSON-RPC 2.0)",
             "routing_state": "CLOUD",
             "subscriber_country_code": "US",
             "offer_id": item["id"],
@@ -1731,9 +1731,9 @@ def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") ->
 
     pending_count = total_subscribers - active_lines
     if pending_count > 0:
-        compliance_guard = f"{active_lines}/{total_subscribers} Ed25519 mandates verified, {pending_count} pending"
+        compliance_guard = f"{active_lines}/{total_subscribers} subscriptions active, {pending_count} pending"
     else:
-        compliance_guard = f"{active_lines}/{total_subscribers} Ed25519 mandates verified (100% Anti-Tamper Strict)"
+        compliance_guard = f"{active_lines}/{total_subscribers} subscriptions active"
 
     return {
         "total_mrr": round(total_mrr, 2),
@@ -1742,7 +1742,7 @@ def get_fleet_stats(db_path: Optional[Path] = None, profile: str = "default") ->
         "annualized_gmv": annualized_gmv,
         "mandates_cleared": mandates_cleared,
         "compliance_guard": compliance_guard,
-        "carrier_resporg": "Dual-Transport FastMCP (RFC 8032)",
+        "carrier_resporg": "MCP over HTTPS (JSON-RPC 2.0)",
         "trade_breakdown": list(trade_counts.values()),
     }
 

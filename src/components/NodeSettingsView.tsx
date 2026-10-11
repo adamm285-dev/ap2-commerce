@@ -391,7 +391,7 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
 # Generated: ${new Date().toISOString()}
 # ====================================================================
 
-# 1. Company & FastMCP Daemon
+# 1. Company & MCP Daemon
 A2A_COMPANY_NAME="${escapeEnv(settings.companyName)}"
 A2A_BUSINESS_ENTITY="${escapeEnv(settings.businessEntity)}"
 A2A_TRADE_VERTICAL="${escapeEnv(settings.tradeVertical)}"
@@ -553,7 +553,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
           { key: 'crypto', label: '2. Ed25519 Keys', icon: Key },
           { key: 'paypal', label: '3. PayPal Rails', icon: CreditCard },
           { key: 'erp', label: '4. QuickBooks & CRM', icon: Globe },
-          { key: 'agent_card', label: '5. FastMCP Card', icon: FileCode },
+          { key: 'agent_card', label: '5. MCP Card', icon: FileCode },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSettingsTab === tab.key;
@@ -631,12 +631,12 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
       {/* Tab 1: Business Profile & Service Catalog (Combined) */}
       {(activeSettingsTab === 'catalog' || (activeSettingsTab as string) === 'profile') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Section 1A: Company Legal Entity & FastMCP Daemon Config */}
+          {/* Section 1A: Company Legal Entity & MCP Daemon Config */}
           <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ borderBottom: '1px solid #1e293b', paddingBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Building size={16} color="#38bdf8" /> Company Legal Entity &amp; FastMCP Daemon Config
+                  <Building size={16} color="#38bdf8" /> Company Legal Entity &amp; MCP Daemon Config
                 </h3>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
                   This identity is presented to external autonomous buyer agents in contract negotiations, discoverability cards, and invoices.
@@ -718,7 +718,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px' }}>
-                  FastMCP Daemon Port &amp; Route
+                  MCP Daemon Port &amp; Route
                 </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
@@ -735,7 +735,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                   />
                 </div>
                 <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '6px', fontSize: '11px', color: '#94a3b8', lineHeight: 1.4 }}>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>💡 What is this?</span> FastMCP is the Model Context Protocol communication daemon that external buyer agents connect to. Port <code>{settings.mcpPort}</code> is the network port your Python backend listens on, and route <code>{settings.mcpPath}</code> is the standard JSON-RPC 2.0 endpoint. For standard turnkey deployments, keep the default <code>8001</code> and <code>/mcp</code>.
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>💡 What is this?</span> The MCP server is the Model Context Protocol endpoint that external buyer agents connect to. Port <code>{settings.mcpPort}</code> is the network port your Python backend listens on, and route <code>{settings.mcpPath}</code> is the standard JSON-RPC 2.0 endpoint. For standard turnkey deployments, keep the default <code>8001</code> and <code>/mcp</code>.
                 </div>
               </div>
             </div>
@@ -1256,7 +1256,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
         </div>
       )}
 
-      {/* Tab 5: FastMCP & Agent Card Exposer */}
+      {/* Tab 5: MCP & Agent Card Exposer */}
       {activeSettingsTab === 'agent_card' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', minHeight: 0 }}>
           {/* Left: Agent Discovery Card */}
@@ -1302,7 +1302,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                   Generated Repository <code>.env</code> File
                 </h4>
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  Save to your project root to run the FastMCP seller daemon.
+                  Save to your project root to run the MCP seller daemon.
                 </div>
               </div>
               <button

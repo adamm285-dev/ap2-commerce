@@ -486,7 +486,7 @@ export const nodeClusterData: NodeClusterRecord[] = [
     tcr_campaign_id: 'AP2-CLUSTER-ALPHA',
     monthly_quota_minutes: 5000,
     stir_shaken_level: 'Attestation Tier A (Cryptographic Mandate)',
-    inbound_routing_mode: 'FastMCP Stream (Gemini 3.8 / Sub-350ms)',
+    inbound_routing_mode: 'MCP Stream (Gemini 3.8 / Sub-350ms)',
     node_cluster: 'Node-01: High-Speed Inference Cluster',
     concurrency_capacity: '1,500 requests/sec',
   },
@@ -761,7 +761,7 @@ export const initialDashboardState: AgReportState = {
           },
           format: {
             title: { enabled: true, text: 'Autonomous Worker Node Clusters & Routing Registry' },
-            subtitle: { enabled: true, text: 'Enclave Node Capacity & FastMCP Execution Attestation' },
+            subtitle: { enabled: true, text: 'Enclave Node Capacity & MCP Execution Attestation' },
           },
         },
       },

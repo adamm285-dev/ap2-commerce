@@ -138,7 +138,7 @@ def test_provision_line_endpoint():
     data = res.json()
     assert data["status"] in ("ALLOCATED", "PROVISIONED")
     assert data["endpoint"].startswith("mcp+https://")
-    assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
+    assert data["carrier"] == "MCP over HTTPS (JSON-RPC 2.0)"
 
 
 def test_provision_line_endpoint_multi_area_codes():
@@ -164,7 +164,7 @@ def test_provision_line_endpoint_multi_area_codes():
         data = res.json()
         assert data["status"] in ("ALLOCATED", "PROVISIONED")
         assert data["endpoint"].startswith("mcp+https://")
-        assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
+        assert data["carrier"] == "MCP over HTTPS (JSON-RPC 2.0)"
 
 
 def test_paypal_webhook_verified():

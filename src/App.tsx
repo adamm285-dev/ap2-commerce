@@ -430,7 +430,7 @@ export function App() {
                   AP2 Seller Operations Deck
                 </h1>
                 <p className="brand-subtitle" style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0 0', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Autonomous Agent Payments Protocol (AP2) Commerce &bull; Turnkey FastMCP Merchant Node &bull; PayPal Subscriptions
+                  Autonomous Agent Payments Protocol (AP2) Commerce &bull; Turnkey MCP Merchant Node &bull; PayPal Subscriptions
                 </p>
               </div>
             </div>
@@ -563,12 +563,12 @@ export function App() {
                 {/* Merged Gray Line & Row 2: Secondary View Switchers (Every tab has a custom Row 2) */}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '3px 0', width: '100%' }} />
 
-                {/* Tab 1 Setup: FastMCP Status */}
+                {/* Tab 1 Setup: MCP Status */}
                 {activeTab === 'copilot' && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '30px', width: '100%', padding: '0 8px' }}>
                     <span style={{ fontSize: '11px', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                      FastMCP Active &bull; {typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'} &bull; RFC 8032 Ed25519
+                      MCP Active &bull; {typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'} &bull; RFC 8032 Ed25519
                     </span>
                   </div>
                 )}
@@ -905,7 +905,7 @@ export function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Tools:</span>
-                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>5 FastMCP Tools</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>8 MCP Tools</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Status:</span>
@@ -995,7 +995,7 @@ export function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Bridge:</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>Zapier FastMCP</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>Zapier MCP</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>ERP:</span>
@@ -1147,7 +1147,7 @@ export function App() {
             <div className="modal-body">
               <p style={{ fontSize: '13px', color: '#94a3b8' }}>
                 Simulate how an external <strong>Autonomous Buyer Agent</strong> discovers seller node capabilities,
-                verifies cryptographic spending mandate caps, negotiates with the AP2 Seller FastMCP Server, and executes a
+                verifies cryptographic spending mandate caps, negotiates with the AP2 Seller MCP Server, and executes a
                 recurring PayPal billing agreement with verified RFC 8032 Ed25519 attestations.
               </p>
 
@@ -1289,7 +1289,7 @@ export function App() {
                   disabled={isNegotiating || Boolean(negotiationResult?.mandateSatisfied)}
                 >
                   {isNegotiating
-                    ? 'Evaluating Mandate & Seller FastMCP...'
+                    ? 'Evaluating Mandate & Seller MCP...'
                     : negotiationResult?.mandateSatisfied
                     ? `✓ 1. Mandate Policy Verified ($${negotiationResult.monthlyFee.toFixed(2)}/mo)`
                     : '1. Run AP2 Autonomous Negotiation'}
@@ -1353,7 +1353,7 @@ export function App() {
                     </span>
                   </div>
                   <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements & cryptographic budget ceiling...</div>
-                  <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller FastMCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
+                  <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller MCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
                   <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.requestedPlanName || negotiationResult.agreedPlanName} @ ${(negotiationResult.requestedMonthlyRate ?? negotiationResult.monthlyFee).toFixed(2)}/mo</div>
                   {negotiationResult.isCounterOffer && (
                     <div className="negotiation-line warning" style={{ fontWeight: 600 }}>

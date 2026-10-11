@@ -4,7 +4,7 @@ Executes the complete multi-agent compute loop through the FastAPI REST server:
 1. Opportunity Discovery & Catalog Scoping
 2. Autonomous Spending Mandate Governance (Ed25519 / HMAC verification)
 3. Delegated PayPal Order / Subscription Authorization
-4. Compute Node Provisioning (FastMCP endpoint allocation)
+4. Compute Node Provisioning (MCP endpoint allocation)
 5. Post-Payment Back-Office Automation via Zapier MCP (QBO, Enterprise Webhook)
 6. Downstream Workload Dispatch & Bryntum Slot Locking
 7. Lead / Workload Event CRM Sync via Zapier MCP

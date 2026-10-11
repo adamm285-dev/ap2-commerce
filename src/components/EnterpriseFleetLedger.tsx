@@ -1722,7 +1722,7 @@ export function EnterpriseFleetLedger({
                               {selectedTxn.allocated_did}
                             </div>
                             <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                              FastMCP JSON-RPC 2.0 &bull; Cryptographic Attestation Tier A
+                              MCP JSON-RPC 2.0 &bull; Cryptographic Attestation Tier A
                             </div>
                           </div>
                           <button
@@ -1832,14 +1832,14 @@ export function EnterpriseFleetLedger({
                         </div>
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                           <span style={{ fontSize: '11px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                            FastMCP Bridge
+                            MCP Bridge
                           </span>
                           <span style={{ fontSize: '11px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
                             QBO GL 6300 Exported
                           </span>
                         </div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          Real-time ledger sync via FastMCP tool calling to Enterprise ERP and QuickBooks Online GL Account #6300.
+                          Real-time ledger sync via MCP tool calling to Enterprise ERP and QuickBooks Online GL Account #6300.
                         </div>
                       </div>
                     </>

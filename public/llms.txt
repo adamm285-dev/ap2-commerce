@@ -6,8 +6,8 @@
 AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicated AI service gateways, and multi-region distributed clusters. The AP2 protocol allows autonomous buyer agents (e.g. procurement agents running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision dedicated MCP execution nodes entirely machine-to-machine in the PayPal Sandbox environment.
 
 - **Interactive Fleet Portal:** https://api.ap2-commerce.org/portal/?profile=ap2
-- **Remote FastMCP Endpoint:** https://api.ap2-commerce.org/mcp
-- **Streamable FastMCP Alternate:** https://api.ap2-commerce.org/mcp
+- **Remote MCP Endpoint:** https://api.ap2-commerce.org/mcp
+- **Streamable MCP Alternate:** https://api.ap2-commerce.org/mcp
 - **Real-Time Wire Protocol (SSE):** https://api.ap2-commerce.org/sse
 - **Google AP2 Agent Card:** https://api.ap2-commerce.org/.well-known/agent.json
 - **MCP Discovery Catalog:** https://api.ap2-commerce.org/.well-known/mcp.json
@@ -25,7 +25,7 @@ AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicate
 - Dedicated AI Service Gateway: $79.99/mo (450 operations/mo, tier `tier_inference_gateway`, 99.98% Low Latency <350ms SLA, US-East Low-Latency Gateway).
 - Enterprise Cluster Node: $179.99/mo (1,500 operations/mo, tier `tier_enterprise_cluster`, 99.99% Multi-Region Failover SLA, Multi-Region Distributed Cluster).
 
-## FastMCP Tools Catalog
+## MCP Tools Catalog
 External agents connected via MCP (POST /mcp or GET /sse) can execute the following tools:
 
 1. `get_service_catalog`

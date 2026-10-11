@@ -1,5 +1,5 @@
 """
-Integration Tests for Remote Streamable HTTP / SSE FastMCP Endpoint
+Integration Tests for Remote Streamable HTTP / SSE MCP Endpoint
 and US-Domestic Only (NANP) Provisioning Constraints.
 """
 
@@ -14,7 +14,7 @@ client = TestClient(app)
 
 
 def test_mcp_get_status():
-    """GET /mcp returns FastMCP machine-readable online status when Accept is not SSE."""
+    """GET /mcp returns MCP machine-readable online status when Accept is not SSE."""
     res = client.get("/mcp")
     assert res.status_code == 200
     data = res.json()
@@ -132,7 +132,7 @@ def test_mcp_post_jsonrpc_tools_call():
 
 @pytest.mark.asyncio
 async def test_provision_compute_node_mcp_endpoint():
-    """Verify that provision_compute_node allocates a dedicated FastMCP compute endpoint."""
+    """Verify that provision_compute_node allocates a dedicated MCP compute endpoint."""
     sub_id = "I-TEST-COMPUTE-NODE-01"
     contractor_email = "node.buyer@example.com"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
@@ -151,7 +151,7 @@ async def test_provision_compute_node_mcp_endpoint():
     )
     assert res["status"] == "PROVISIONED"
     assert res["endpoint"].startswith("mcp+https://gateway-01.example.com/agents/node-gateway-")
-    assert res["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
+    assert res["carrier"] == "MCP over HTTPS (JSON-RPC 2.0)"
     assert res["routing_state"] == "ACTIVE_COMPUTE_NODE"
 
 
@@ -204,4 +204,4 @@ def test_rest_provision_endpoint_success_and_error():
     data = res.json()
     assert data["status"] in ("ALLOCATED", "PROVISIONED")
     assert data["endpoint"].startswith("mcp+https://")
-    assert data["carrier"] == "Dual-Transport FastMCP (RFC 8032)"
+    assert data["carrier"] == "MCP over HTTPS (JSON-RPC 2.0)"

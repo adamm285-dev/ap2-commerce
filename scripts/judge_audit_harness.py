@@ -107,8 +107,8 @@ def print_fail(msg: str):
 def run_judge_audit():
     print_header("AP2 AUTONOMOUS COMMERCE: AGENTIC COMMERCE & AP2 PROTOCOL JUDGE AUDIT")
     print(f"  Target Event: {BOLD}PayPal AI Hackathon 2026{RESET}")
-    print(f"  Standard:     {BOLD}Model Context Protocol (MCP 2024-11-05){RESET}")
-    print(f"  Payment Rail: {BOLD}PayPal Subscriptions & Vault MIT{RESET}")
+    print(f"  Standards:    {BOLD}AP2 v0.2 (ES256 SD-JWT) + Model Context Protocol (MCP 2024-11-05){RESET}")
+    print(f"  Payment Rail: {BOLD}PayPal Subscriptions{RESET}")
     print(f"  Time:         {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
 
     # -------------------------------------------------------------------------
@@ -286,7 +286,7 @@ def run_judge_audit():
     assert eval_inflated.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
     assert eval_inflated.get("checkout_receipt") is not None
     assert eval_inflated.get("payment_receipt") is not None
-    print_pass(f"Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED ({eval_inflated['error']}, Dual Signed Error Receipts)")
+    print_pass(f"Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED ({eval_inflated['error']}, 2 merchant-signed error receipts)")
 
     # 4c: Payee alteration (Altered payee entity)
     tampered_pay_payee = PaymentMandate(
@@ -314,7 +314,7 @@ def run_judge_audit():
     assert eval_payee.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
     assert eval_payee.get("checkout_receipt") is not None
     assert eval_payee.get("payment_receipt") is not None
-    print_pass(f"Tamper Test (Payee Alteration): REJECTED ({eval_payee['error']}, Dual Signed Error Receipts)")
+    print_pass(f"Tamper Test (Payee Alteration): REJECTED ({eval_payee['error']}, 2 merchant-signed error receipts)")
 
     # 4d: Spending cap breach ($70.00 cap vs $79.99 agreed price)
     low_cap_open = create_trusted_surface_open_mandates(
@@ -341,7 +341,7 @@ def run_judge_audit():
     assert eval_cap.get("error") in (ERR_INVALID_MANDATE, "invalid_mandate")
     assert eval_cap.get("checkout_receipt") is not None
     assert eval_cap.get("payment_receipt") is not None
-    print_pass(f"Tamper Test (Budget Cap Breach $70.00 Cap vs $79.99 Price): REJECTED ({eval_cap['error']}, Dual Signed Error Receipts)")
+    print_pass(f"Tamper Test (Budget Cap Breach $70.00 Cap vs $79.99 Price): REJECTED ({eval_cap['error']}, 2 merchant-signed error receipts)")
 
     # -------------------------------------------------------------------------
     # CHECK 5: Autonomous Compute Node Provisioning & KYC Identity Enforcement
@@ -396,7 +396,7 @@ def run_judge_audit():
     # -------------------------------------------------------------------------
     # CHECK 7: Telemetry & Financial Mathematics Reconciliation
     # -------------------------------------------------------------------------
-    print_step(7, "Enterprise Fleet Ledger & AP2 Telemetry Reconciliation")
+    print_step(7, "Fleet Ledger Reconciliation (Seeded Demo Fleet)")
     stats_res = client.get("/api/fleet/stats")
     assert stats_res.status_code == 200, f"Failed to get fleet stats: {stats_res.text}"
     stats_data = stats_res.json()
@@ -419,10 +419,10 @@ def run_judge_audit():
     assert backend_arr == expected_arr, f"ARR mismatch: {backend_arr} != {expected_arr}"
     assert mandates_cleared == active_count, f"Mandates cleared mismatch: {mandates_cleared} != {active_count}"
 
-    print_pass(f"Fleet Scale:          {active_count} Active Autonomous Nodes (Total Subscriptions: {len(transactions)})")
-    print_pass(f"Active Fleet MRR:     ${backend_mrr:,.2f}/mo (Reconciled sum of active subscriptions)")
-    print_pass(f"Autonomous GMV (ARR): ${backend_arr:,.2f} ARR (Exact: ${backend_mrr:,.2f} × 12)")
-    print_pass(f"Mandates Cleared:     {mandates_cleared} Mandates (1:1 per active subscription)")
+    print_pass(f"Fleet Scale:          {active_count} active of {len(transactions)} seeded demo subscriptions")
+    print_pass(f"Demo Fleet MRR:       ${backend_mrr:,.2f}/mo (stats match the sum of active ledger rows)")
+    print_pass(f"Demo Fleet ARR:       ${backend_arr:,.2f} (MRR × 12; demo data, not revenue)")
+    print_pass(f"Active Lines:         {mandates_cleared} (stats match the active ledger rows)")
 
     # -------------------------------------------------------------------------
     # CHECK 8: Live Fleet Ledger & Bryntum Scheduling Verification
@@ -432,7 +432,7 @@ def run_judge_audit():
     assert ledger_res.status_code == 200
     ledger_data = ledger_res.json()
     assert ledger_data.get("count") >= 14
-    print_pass(f"AG Studio Fleet Ledger: Hydrated {ledger_data.get('count')} subscriptions from SQLite WAL")
+    print_pass(f"AG Studio Fleet Ledger: Loaded {ledger_data.get('count')} seeded subscriptions from SQLite")
 
     stats_res = client.get("/api/fleet/stats")
     assert stats_res.status_code == 200
@@ -445,7 +445,7 @@ def run_judge_audit():
     sched_data = sched_res.json()
     assert len(sched_data.get("resources", [])) >= 4
     assert len(sched_data.get("events", [])) >= 4
-    print_pass(f"Bryntum Scheduler: Verified {len(sched_data.get('resources', []))} cluster nodes & {len(sched_data.get('events', []))} workload tasks")
+    print_pass(f"Bryntum Scheduler: Loaded {len(sched_data.get('resources', []))} cluster nodes & {len(sched_data.get('events', []))} seeded workload tasks")
 
     # Lock dispatch slot via API
     lock_res = client.post(

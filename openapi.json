@@ -314,7 +314,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 MCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_m2m_sse_get",
         "responses": {
           "200": {
@@ -334,7 +334,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 MCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_api_mcp_sse_get",
         "responses": {
           "200": {
@@ -355,7 +355,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 MCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_mcp_sse_get",
         "responses": {
           "200": {
@@ -376,7 +376,7 @@
           "MCP Wire Protocol"
         ],
         "summary": "Mcp Wire Stream",
-        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 FastMCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
+        "description": "Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames\n    exchanged between agents and the AP2 MCP Server.\n    Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.",
         "operationId": "mcp_wire_stream_sse_get",
         "responses": {
           "200": {
@@ -2335,7 +2335,7 @@
               }
             ],
             "title": "Carrier",
-            "default": "Dual-Transport FastMCP (RFC 8032)"
+            "default": "MCP over HTTPS (JSON-RPC 2.0)"
           },
           "routingState": {
             "anyOf": [

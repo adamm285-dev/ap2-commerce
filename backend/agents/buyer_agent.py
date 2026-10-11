@@ -252,8 +252,8 @@ class BuyerAgent:
         if pay_receipt:
             print(f"   Signed Payment Receipt:    {pay_receipt[:32]}...\n")
 
-        # Phase 5: FastMCP Compute Node Provisioning
-        print("🖥️ [Phase 5: FastMCP Compute Node Provisioning]")
+        # Phase 5: MCP Compute Node Provisioning
+        print("🖥️ [Phase 5: MCP Compute Node Provisioning]")
         provision_result = await seller_agent.provision_compute_node(
             subscription_id=subscription_id,
             contractor_email=self.contractor_email,

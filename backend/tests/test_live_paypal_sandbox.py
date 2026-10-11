@@ -21,7 +21,7 @@ def test_compliance_note_in_provision_response():
     resp = ProvisionResponse(
         status="ALLOCATED",
         endpoint="mcp+https://gateway-01.example.com/mcp",
-        carrier="Dual-Transport FastMCP (RFC 8032)",
+        carrier="MCP over HTTPS (JSON-RPC 2.0)",
         routingState="ACTIVE_COMPUTE_NODE",
         subscriptionId="I-TEST-SUB-01",
     )
@@ -40,7 +40,7 @@ def test_llms_txt_endpoints():
         text = res.text
         assert "AP2 Autonomous Seller Node Protocol" in text
         assert "PayPal Sandbox demo for the PayPal AI Hackathon" in text
-        assert "FastMCP Tools Catalog" in text
+        assert "MCP Tools Catalog" in text
         assert "Dynamic Buyer Key Registration" in text
 
 

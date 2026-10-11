@@ -5,7 +5,7 @@ Verifies AP2 v0.2 Merchant-side capabilities:
 2. Dual-chain verification using Google's AP2 reference SDK.
 3. Merchant-signed Checkout Receipt and Payment Receipt JWT generation & validation.
 4. Seller Agent tool integration (negotiate_tier_terms, purchase_subscription).
-5. FastMCP / REST endpoints for JWKS, Checkouts, and Receipts.
+5. MCP / REST endpoints for JWKS, Checkouts, and Receipts.
 """
 
 import json

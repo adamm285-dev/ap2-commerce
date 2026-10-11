@@ -1554,7 +1554,7 @@ class SellerAgent:
             "node_type": clean_node_type,
             "endpoint": endpoint,
             "assigned_did": endpoint,
-            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "carrier": "MCP over HTTPS (JSON-RPC 2.0)",
             "routing_state": "ACTIVE_COMPUTE_NODE",
             "workload_tasks_per_month": workload_tasks,
             "next_action": {

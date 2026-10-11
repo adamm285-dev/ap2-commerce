@@ -158,7 +158,7 @@ class SellerCopilot:
                 f"🛡️ **A2A Protocol Cryptographic Audit Trail Verified:**\n\n"
                 f"• **Step 1: Mandate Evaluation (RFC 8032)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog. Sealed via Ed25519 dual-key signatures and HMAC-SHA256 integrity.\n"
                 f"• **Step 2: PayPal Subscriptions Rails**: Authenticated recurring billing agreement (`I-AUTONOMOUS-8902`) with PayPal Vault merchant-initiated tokenization for zero off-session human intervention.\n"
-                f"• **Step 3: Dual-Transport FastMCP Binding**: Dedicated mcp+https compute endpoint provisioned with Dual-Transport FastMCP (RFC 8032).\n"
+                f"• **Step 3: MCP Endpoint Binding**: Dedicated mcp+https compute endpoint provisioned with MCP over HTTPS (JSON-RPC 2.0).\n"
                 f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to QuickBooks Online API v3 expense in Account 6300 (`QBO-EXP-9921`).\n\n"
                 f"You can review the live JSON-RPC 2.0 frames in the right panel or click **Back-Office Payloads** in the top bar for raw artifacts."
             )
@@ -426,7 +426,7 @@ class SellerCopilot:
             "protocol": "MCP JSON-RPC 2.0",
             "method": "tools/call:provision_compute_node",
             "assigned_did": assigned_did,
-            "carrier": "Dual-Transport FastMCP (RFC 8032)",
+            "carrier": "MCP over HTTPS (JSON-RPC 2.0)",
             "routing_state": "ACTIVE_COMPUTE_NODE",
             "attestation_status": "100% ED25519 SIGNED MANDATE",
         })

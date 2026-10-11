@@ -170,7 +170,7 @@ TRADE_CATALOG = [
         title="Dedicated AI Service Gateway",
         monthlySubscription=79.99,
         depositRange="$0.00",
-        description=f"Synchronous low-latency AI service gateway, {quota_label('ap2-gateway')}, and dual-transport FastMCP stream.",
+        description=f"Synchronous low-latency AI service gateway, {quota_label('ap2-gateway')}, and MCP stream over HTTP.",
         workloadTasksPerMonth=450,
     ),
     TradeService(
@@ -259,13 +259,13 @@ async def mcp_get_endpoint(request: Request):
     """
     Handles GET requests to /mcp.
     If Accept header requests text/event-stream, opens the SSE stream with the standard MCP handshake.
-    Otherwise returns a machine-readable JSON status of the FastMCP server.
+    Otherwise returns a machine-readable JSON status of the MCP server.
     """
     accept = request.headers.get("accept", "")
     if "text/event-stream" in accept:
         return await mcp_wire_stream(request)
     return {
-        "name": "AP2 Autonomous Seller FastMCP Server",
+        "name": "AP2 Autonomous Seller MCP Server",
         "version": "1.0.0",
         "protocolVersion": "2024-11-05",
         "transport": "streamable_http",
@@ -397,7 +397,7 @@ async def llms_txt_discovery():
 async def mcp_wire_stream(request: Request):
     """
     Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames
-    exchanged between agents and the AP2 FastMCP Server.
+    exchanged between agents and the AP2 MCP Server.
     Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.
     """
     async def event_generator():

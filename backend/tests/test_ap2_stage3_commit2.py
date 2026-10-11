@@ -66,7 +66,7 @@ async def test_negotiate_below_minimum_budget_issues_dual_signed_error_receipts(
 
 @pytest.mark.asyncio
 async def test_negotiate_unauthorized_category_issues_dual_signed_error_receipts():
-    """Verifies that an unauthorized spending category returns REJECTED and dual signed error receipts."""
+    """Verifies that an unauthorized spending category returns REJECTED and two merchant-signed error receipts."""
     res = await seller_agent.negotiate_tier_terms(
         buyer_agent_id="test-agent-cat",
         buyer_email="buyer-cat@example.com",
@@ -93,7 +93,7 @@ async def test_negotiate_unauthorized_category_issues_dual_signed_error_receipts
 
 @pytest.mark.asyncio
 async def test_negotiate_no_better_offer_issues_dual_signed_error_receipts():
-    """Verifies that when buyer is already on best viable tier within budget, negotiate returns NO_BETTER_OFFER with dual signed error receipts."""
+    """Verifies that when buyer is already on best viable tier within budget, negotiate returns NO_BETTER_OFFER with two merchant-signed error receipts."""
     from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, _ACTIVE_CONTRACTOR_SUBSCRIPTIONS
 
     email = "already-best@example.com"
@@ -320,7 +320,7 @@ async def test_purchase_budget_cap_breach_issues_dual_signed_error_receipts():
 
 @pytest.mark.asyncio
 async def test_buyer_agent_autonomous_cycle_records_ap2_receipts():
-    """Verifies BuyerAgent completes autonomous cycle and preserves dual signed receipts in ledger entry."""
+    """Verifies BuyerAgent completes autonomous cycle and preserves both signed receipts in ledger entry."""
     buyer = BuyerAgent(
         agent_id="test-ap2-agent-01",
         monthly_budget_cap=100.00,

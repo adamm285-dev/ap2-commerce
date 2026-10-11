@@ -55,7 +55,7 @@ def test_subscription_persistence_across_connections(persist_db: Path):
         "agreed_monthly_rate": 79.99,
         "plan_id": "P-AP2-SERVICE-GATEWAY",
         "assigned_did": "mcp+https://gateway-01.ap2.market",
-        "carrier": "FastMCP Gateway",
+        "carrier": "MCP Gateway",
         "routing_state": "FL",
         "subscriber_country_code": "US",
         "paypal_vault_status": "VAULT_BOUND",

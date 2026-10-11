@@ -45,7 +45,7 @@ export interface ApiWireLog {
   statusText: string;
   durationMs: number;
   summary: string;
-  category: 'FastMCP' | 'Enclave Dispatch' | 'PayPal MIT' | 'QuickBooks/ERP' | 'Security';
+  category: 'MCP' | 'Enclave Dispatch' | 'PayPal MIT' | 'QuickBooks/ERP' | 'Security';
   request: any;
   response: any;
 }
@@ -59,8 +59,8 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     status: 200,
     statusText: 'OK',
     durationMs: 14,
-    summary: 'FastMCP capability discovery initialized (5 tools exposed)',
-    category: 'FastMCP',
+    summary: 'MCP capability discovery initialized (8 tools exposed)',
+    category: 'MCP',
     request: {
       jsonrpc: '2.0',
       id: 'mcp-init-01',
@@ -268,7 +268,7 @@ function getShortWorkloadTitle(name: string): string {
   }
   if (name.includes('Deep Research')) return '#101 Deep Research';
   if (name.includes('Consensus Inference')) return '#102 Consensus Eval';
-  if (name.includes('Sandbox')) return '#103 FastMCP Sandbox';
+  if (name.includes('Sandbox')) return '#103 MCP Sandbox';
   if (name.includes('Vector Ingestion')) return '#201 Vector RAG Ingest';
   if (name.includes('Context Embeddings')) return '#202 Task Quota Allocation';
   if (name.includes('Semantic Graph')) return '#203 Semantic Index';
@@ -542,7 +542,7 @@ export function BryntumDispatchScheduler({
       name: 'Node-04: Dedicated AI Service Gateway (Stream Processing)',
       trade: 'Dedicated AI Service Gateway',
       category: 'GATEWAY',
-      entity: 'East Zone 4 • FastMCP Stream Bridge',
+      entity: 'East Zone 4 • MCP Stream Bridge',
       did: 'node-cluster-04.ap2.net',
       status: 'ACTIVE_STREAMING',
       throughput: '120ms Duplex RT',
@@ -586,7 +586,7 @@ export function BryntumDispatchScheduler({
       : []),
     {
       id: 'workload-101',
-      name: isDepositLocked ? 'Dedicated Gateway Active • FastMCP Endpoint Bound' : 'Dedicated Gateway Pending • Awaiting Subscription',
+      name: isDepositLocked ? 'Dedicated Gateway Active • MCP Endpoint Bound' : 'Dedicated Gateway Pending • Awaiting Subscription',
       node: 'Node-01: Dedicated AI Service Gateway',
       category: 'GATEWAY',
       buyer: 'agent:gpt-4o:apex-procure',
@@ -653,7 +653,7 @@ export function BryntumDispatchScheduler({
 
   const [apiStatus, setApiStatus] = useState<string>(
     isDepositLocked
-      ? '● Node-01 Active: Dedicated Gateway via FastMCP (HTTP 201)'
+      ? '● Node-01 Active: Dedicated Gateway via MCP (HTTP 201)'
       : `○ Pending: Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription Authorization`
   );
 
@@ -862,7 +862,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'workload-06-101',
         resourceId: 'node-1',
-        name: '#071 FastMCP Baseline Handshake (included in Dedicated AI Service Gateway)',
+        name: '#071 MCP Baseline Handshake (included in Dedicated AI Service Gateway)',
         startDate: '2026-10-06 09:30',
         endDate: '2026-10-06 11:00',
         eventColor: 'blue',
@@ -1022,7 +1022,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         id: 'workload-101',
         resourceId: 'node-1',
         name: isDepositLocked
-          ? `Dedicated Gateway Active • FastMCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
+          ? `Dedicated Gateway Active • MCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
           : `Dedicated Gateway Pending • Awaiting PayPal Subscription ($${CATALOG_PLANS[1].price}/mo)`,
         startDate: '2026-10-08 13:00',
         endDate: '2026-10-08 14:15',
@@ -1464,7 +1464,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (targetEvent) {
       targetEvent.set({
         name: isDepositLocked
-          ? `Dedicated Gateway Active • FastMCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
+          ? `Dedicated Gateway Active • MCP Endpoint Bound ($${CATALOG_PLANS[1].price}/mo)`
           : `Dedicated Gateway Pending • Awaiting PayPal Subscription ($${CATALOG_PLANS[1].price}/mo)`,
         eventColor: isDepositLocked ? 'green' : 'orange',
         iconCls: isDepositLocked ? 'b-fa b-fa-check-circle' : 'b-fa b-fa-clock',
@@ -1484,7 +1484,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
 
       setApiStatus(
         isDepositLocked
-          ? '● Node-01 Active: Dedicated Gateway via FastMCP (HTTP 201)'
+          ? '● Node-01 Active: Dedicated Gateway via MCP (HTTP 201)'
           : `○ Pending: Awaiting $${CATALOG_PLANS[1].price}/mo PayPal Subscription Authorization`
       );
       setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
@@ -1531,7 +1531,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         schedulerRef.current.eventStore.find((e: any) => e.name?.includes('Dedicated Gateway'));
       if (targetEvent) {
         targetEvent.set({
-          name: `Dedicated Gateway Active • FastMCP Endpoint: ${result.allocatedDid || 'node-cluster-01.ap2.net'} [BOUND]`,
+          name: `Dedicated Gateway Active • MCP Endpoint: ${result.allocatedDid || 'node-cluster-01.ap2.net'} [BOUND]`,
           eventColor: 'green',
           iconCls: 'b-fa b-fa-check-circle',
           depositStatus: `ACTIVE ($${CATALOG_PLANS[1].price}/MO)`,
@@ -1549,7 +1549,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         });
       }
 
-      setApiStatus(`● Node-01 Active: node-cluster-01.ap2.net via FastMCP (HTTP 201)`);
+      setApiStatus(`● Node-01 Active: node-cluster-01.ap2.net via MCP (HTTP 201)`);
       setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
       setLeadSimulationBanner(`✓ Node-01 Dedicated Gateway Provisioned: node-cluster-01.ap2.net bound to Sub ${simulatedSubId}!`);
       setTimeout(() => setLeadSimulationBanner(null), 5000);
@@ -1564,7 +1564,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         status: 201,
         statusText: 'CREATED',
         durationMs: durationMs > 0 ? durationMs : 118,
-        category: 'FastMCP',
+        category: 'MCP',
         summary: `Node-01 Dedicated Gateway Provisioned • Sub ${simulatedSubId} Active ($${CATALOG_PLANS[1].price}/mo)`,
         request: {
           subscription_id: simulatedSubId,
@@ -1644,7 +1644,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       status: 200,
       statusText: 'OK',
       durationMs: 12,
-      category: 'FastMCP',
+      category: 'MCP',
       summary: 'Reset Node-01 and Node-02 workloads back to unallocated baseline',
       request: {
         target_nodes: ['node-1', 'node-2'],
@@ -1696,7 +1696,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         }
         setTotalDispatches(19);
         setTotalVaultedDeposits(1269.86);
-        setApiStatus('● Enclave Execution Slot Locked: FastMCP Task Bound (HTTP 200)');
+        setApiStatus('● Enclave Execution Slot Locked: MCP Task Bound (HTTP 200)');
         setLastPaymentSync(new Date().toISOString().replace('T', ' ').substring(0, 19));
         setLeadSimulationBanner(`✓ Autonomous Buyer Mandate Verified: agent:gpt-4o:apex-procure dispatched to Node-02. $${CATALOG_PLANS[0].price} PayPal Payment Vaulted!`);
         setTimeout(() => setLeadSimulationBanner(null), 6000);
@@ -1911,7 +1911,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           <div style={{ fontSize: '11px', color: '#94a3b8', paddingLeft: '34px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             <span style={{ color: '#38bdf8', fontWeight: 600 }}>PayPal Vault Settled</span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>QBO &amp; FastMCP Sync &bull; 5 Active Autonomous Node Enclaves</span>
+            <span>QBO &amp; MCP Sync &bull; 5 Active Autonomous Node Enclaves</span>
           </div>
         )}
 
@@ -2535,7 +2535,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>FastMCP Concurrency</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>MCP Concurrency</div>
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>14 Active Streams</div>
               </div>
               <div>
@@ -2732,7 +2732,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginRight: '2px', whiteSpace: 'nowrap' }}>FILTER:</span>
               {[
                 { id: 'ALL', label: 'All Calls' },
-                { id: 'FastMCP', label: 'FastMCP' },
+                { id: 'MCP', label: 'MCP' },
                 { id: 'Enclave Dispatch', label: 'Enclave Dispatch' },
                 { id: 'PayPal MIT', label: 'PayPal MIT' },
                 { id: 'QuickBooks/ERP', label: 'QuickBooks/ERP' },
@@ -3210,7 +3210,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle2 size={13} style={{ color: '#34d399' }} />
-                  <span>Protocol: AP2 FastMCP JSON-RPC 2.0 Streaming Interface</span>
+                  <span>Protocol: AP2 MCP JSON-RPC 2.0 Streaming Interface</span>
                 </div>
               </div>
             </div>

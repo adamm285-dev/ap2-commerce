@@ -46,7 +46,7 @@ def test_get_fleet_stats_endpoint():
     assert stats["total_mrr"] in (1219.87, 1269.86)
     assert stats["annualized_gmv"] == round(stats["total_mrr"] * 12, 2)
     assert stats["mandates_cleared"] == stats["active_lines"]
-    assert "FastMCP" in stats["carrier_resporg"]
+    assert "MCP" in stats["carrier_resporg"]
     assert len(stats["trade_breakdown"]) > 0
 
 
@@ -100,7 +100,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
         "tier_id": "ap2-batch",
         "agreed_monthly_rate": 49.99,
         "plan_id": "P-AP2-BATCH-WORKER",
-        "carrier": "Dual-Transport FastMCP (RFC 8032)",
+        "carrier": "MCP over HTTPS (JSON-RPC 2.0)",
         "routing_state": "ACTIVE_COMPUTE_NODE",
         "subscriber_country_code": "US",
         "assigned_did": "mcp+https://batch-01.example.com/mcp",
@@ -175,8 +175,8 @@ def test_ap2_profile_fleet_endpoints():
     assert stats["active_lines"] == 13
     assert stats["total_mrr"] > 0
     assert stats["annualized_gmv"] == round(stats["total_mrr"] * 12, 2)
-    assert "Ed25519" in stats["compliance_guard"]
-    assert "FastMCP" in stats["carrier_resporg"]
+    assert "subscriptions active" in stats["compliance_guard"]
+    assert "MCP" in stats["carrier_resporg"]
     assert len(stats["trade_breakdown"]) == 3
     breakdown_caps = {item["trade"] for item in stats["trade_breakdown"]}
     assert breakdown_caps == allowed_capabilities

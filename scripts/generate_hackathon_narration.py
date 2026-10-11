@@ -32,7 +32,7 @@ ACT_SCRIPTS = {
         "spending mandate cap of $100 a month and negotiates directly with the AP2 Seller Node over Model Context Protocol. "
         "Once approved, the agent issues an Ed25519 cryptographic proof and executes a recurring "
         "$79.99-a-month PayPal subscription with verified KYC identity, instantly provisioning a "
-        "dedicated FastMCP compute endpoint."
+        "dedicated MCP compute endpoint."
     ),
     "act3_bryntum_agstudio": (
         "In our operations deck, Bryntum Scheduler visualizes compute node allocation across "

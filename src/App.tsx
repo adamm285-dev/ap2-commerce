@@ -1038,7 +1038,7 @@ export function App() {
                 if (idx !== -1) {
                   const updated = [...prev];
                   const agreedRate = maxMonthlyBudget < 79.99 ? 49.99 : 79.99;
-                  const planTitle = agreedRate === 49.99 ? 'AP2 Solo Node (125k Executions/mo)' : 'AP2 Enterprise Cluster (500k Executions/mo)';
+                  const planTitle = agreedRate === 49.99 ? 'High-Throughput Batch Worker ($49.99/mo)' : 'Dedicated AI Service Gateway ($79.99/mo)';
                   updated[idx] = {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),

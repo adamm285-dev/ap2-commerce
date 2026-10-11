@@ -668,8 +668,10 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     fetchM2MPayloads();
   };
 
-  const triggerTestCycle = async () => {
+  // Returns the node the backend provisioned, or null when the run failed
+  const triggerTestCycle = async (): Promise<string | null> => {
     setIsTriggeringTestRun(true);
+    let provisionedDid: string | null = null;
     try {
       let adminKey = sessionAdminKey || (window as any).__FS_ADMIN_KEY || '';
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -713,6 +715,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
         if (runData && (runData.provisioned_did || runData.assigned_did)) {
           const did = runData.provisioned_did || runData.assigned_did;
           setLastAllocatedDid(did);
+          provisionedDid = did;
 
           const trace = runData.protocol_trace || [
             {
@@ -745,7 +748,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
               assigned_did: did.includes('.') ? did : 'node-cluster-01.ap2.net:8443',
               carrier: 'AP2 Autonomous Worker Enclave',
               routing_state: 'ACTIVE_ENCLAVE_BOUND',
-              tcpa_status: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
+              tcpa_status: 'AP2 CHAIN VERIFIED (ES256)',
               lata_failover_active: simulateExhaustion,
               allocated_area_code: 'US-East Cluster (Ashburn)',
             },
@@ -780,6 +783,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     } finally {
       setIsTriggeringTestRun(false);
     }
+    return provisionedDid;
   };
 
   const copyToClipboard = (text: string, key: string) => {
@@ -992,7 +996,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const introMsg: ChatMessage = {
       id: `msg-${Date.now() + 1}`,
       sender: 'copilot',
-      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Demo Enterprise Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, cryptographically signing Ed25519 spending mandates, and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately and signs with an Ed25519 authorization hash.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: authorizes recurring billing via PayPal Vault MIT, provisions your MCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
+      text: `👋 **Hi! I'm the AP2 Live Buyer Agent Simulator.**\n\n### 🎯 My Purpose\nI act as an external autonomous buyer agent (e.g. \`agent:gpt-4o:apex-procure\` on behalf of **Demo Enterprise Inc**) interacting with your AP2 Seller Node over the **Model Context Protocol (MCP 2024-11-05)**.\n\nMy purpose is to test your seller node end-to-end: evaluating your pricing catalog, negotiating within strict programmatic budget caps, presenting owner-signed AP2 spending mandates (ES256), and executing PayPal recurring subscriptions with instant worker node allocation.\n\n### ⚡ What I Can Do (Choose a Test Below):\n\n• **1. Sub-Budget Bargaining ($60 Cap vs $80 Service)**\n  I submit a purchase mandate capped at \`$60.00/mo\` for your \`$79.99/mo\` Dedicated Gateway. Your seller agent detects the budget breach and autonomously counter-offers your \`$49.99/mo\` Batch Worker tier within my budget.\n\n• **2. Direct Match Authorization ($100 Cap vs $80 Service)**\n  I submit a spending mandate with a \`$100.00/mo\` cap, which your seller agent approves immediately.\n\n• **3. Anti-Tamper Security Defense (Attack Simulation)**\n  I attempt to forge a mandate (+1¢ price tampering or altered entity). Your node's cryptographic anti-tamper verifier catches the signature mismatch and terminates the transaction.\n\n• **4. Live PayPal Settlement & Node Provisioning**\n  Executes the complete payment rail: creates a recurring PayPal subscription, provisions your MCP cluster endpoint, and dispatches the QBO GL 6300 / Zapier back-office sync.\n\nClick any of the test scenarios below to start!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
@@ -1423,7 +1427,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const bargainReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `⚡ **AP2 Autonomous Counter-Offer Bargaining Protocol**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$60.00/mo\` (Policy Breach: $79.99 > $60.00)\n• **Bargaining State**: Inbound intent mandate rejected at standard tier rate.\n\n🔄 **Autonomous Counter-Offer Generated by AP2 Seller Agent:**\n• **Offered Service**: High-Throughput Batch Worker\n• **Agreed Rate**: \`$49.99/mo\` (\`$10.01\` headroom within buyer's $60.00 mandate cap)\n• **Mandate Nonce**: \`0x${Math.random().toString(16).substring(2, 10)}\`\n• **Cart Mandate**: Signed with seller Ed25519 key (RFC 8032).\n\nReady for single-click execution authorization:`,
+          text: `⚡ **AP2 Autonomous Counter-Offer Bargaining Protocol**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$60.00/mo\` (Policy Breach: $79.99 > $60.00)\n• **Bargaining State**: Inbound intent mandate rejected at standard tier rate.\n\n🔄 **Autonomous Counter-Offer Generated by AP2 Seller Agent:**\n• **Offered Service**: High-Throughput Batch Worker\n• **Agreed Rate**: \`$49.99/mo\` (\`$10.01\` headroom within buyer's $60.00 mandate cap)\n• **Mandate Nonce**: \`0x${Math.random().toString(16).substring(2, 10)}\`\n• **Checkout**: The seller signs it with its ES256 merchant key (AP2 v0.2).\n\nReady for single-click execution authorization:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'PROPOSAL',
           proposal: {
@@ -1526,7 +1530,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const catalogReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `📡 **AP2 Seller Capability Catalog Query (MCP JSON-RPC 2.0)**\nConnected to Seller Node endpoint: \`http://127.0.0.1:8001/mcp\`\n\n**Available Machine-to-Machine Capabilities:**\n1. **High-Throughput Batch Worker** — \`$49.99/mo\`\n   • Quota: 125 workload tasks/mo\n   • Execution: Asynchronous job queue\n   • Cluster: US-Central Batch Vector RAG\n\n2. **Dedicated AI Service Gateway** — \`$79.99/mo\`\n   • Quota: 450 workload tasks/mo\n   • Execution: Real-time low-latency routing\n   • Cluster: US-East Low-Latency Inference Gateway\n\n3. **Enterprise Cluster Node** — \`$179.99/mo\`\n   • Quota: 1,200 workload tasks/mo\n   • Execution: Multi-node cluster scaling\n   • Cluster: Hardware-Enclave Bound High Concurrency\n\n*All plans require RFC 8032 Ed25519 cryptographic intent signing and settle via PayPal Subscriptions & Vault MIT.*`,
+          text: `📡 **AP2 Seller Capability Catalog Query (MCP JSON-RPC 2.0)**\nConnected to Seller Node endpoint: \`http://127.0.0.1:8001/mcp\`\n\n**Available Machine-to-Machine Capabilities:**\n1. **High-Throughput Batch Worker** — \`$49.99/mo\`\n   • Quota: 125 workload tasks/mo\n   • Execution: Asynchronous job queue\n   • Cluster: US-Central Batch Vector RAG\n\n2. **Dedicated AI Service Gateway** — \`$79.99/mo\`\n   • Quota: 450 workload tasks/mo\n   • Execution: Real-time low-latency routing\n   • Cluster: US-East Low-Latency Inference Gateway\n\n3. **Enterprise Cluster Node** — \`$179.99/mo\`\n   • Quota: 1,200 workload tasks/mo\n   • Execution: Multi-node cluster scaling\n   • Cluster: Hardware-Enclave Bound High Concurrency\n\n*Purchases require owner-signed AP2 v0.2 mandates (ES256 SD-JWT) and settle through PayPal Subscriptions.*`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'IDLE',
           suggestedActions: [
@@ -1603,11 +1607,24 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
       }
 
       if (lower.includes('approve') || lower.includes('execute') || lower.includes('settlement')) {
-        await triggerTestCycle();
+        const provisionedDid = await triggerTestCycle();
+        if (!provisionedDid) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now() + 1}`,
+              sender: 'copilot',
+              text: `⚠️ **The test run did not complete.**\n\nThe backend didn't return a provisioned node, so nothing was purchased or settled. Check that the backend is running and the admin key is set, then try again.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            },
+          ]);
+          setIsLoading(false);
+          return;
+        }
         const execReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `🎉 **AP2 Autonomous Settlement & Fulfillment Complete!**\n\nThe autonomous transaction has been cryptographically confirmed and settled:\n\n• **Buyer Agent**: \`${localContractorName}\`\n• **Principal Entity**: \`${localBusinessEntity}\`\n• **Assigned Endpoint**: Node-01 (Inference Gateway / \`${lastAllocatedDid || 'node-cluster-01.ap2.net:8443'}\`)\n• **PayPal Agreement**: Active recurring MIT subscription token authorized\n• **Cryptographic Attestation**: RFC 8032 Ed25519 verified (Anti-tamper: PASS)\n• **Back-Office Sync**: QuickBooks Online GL 6300 & CloudEvents v1.0 Webhook provisioned\n\nThe contract is live! View the mutated row in the **Settlement Ledger & BI** (AG Grid) or **Worker Node Scheduler** (Bryntum).`,
+          text: `🎉 **AP2 Autonomous Settlement & Fulfillment Complete!**\n\nThe seller verified the AP2 mandate chain and provisioned the node:\n\n• **Buyer Agent**: \`${localContractorName}\`\n• **Principal Entity**: \`${localBusinessEntity}\`\n• **Assigned Endpoint**: \`${provisionedDid}\`\n• **PayPal Subscription**: Active recurring subscription\n• **AP2 Mandate Chain**: Verified by the seller (ES256)\n• **Back-Office Export**: QuickBooks Online GL 6300 payload generated (dry run unless a webhook is configured)\n\nThe contract is live! View the mutated row in the **Settlement Ledger & BI** (AG Grid) or **Worker Node Scheduler** (Bryntum).`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'COMPLETED',
           suggestedActions: [
@@ -3509,7 +3526,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
                       Node Endpoint: <strong style={{ color: '#34d399', fontSize: '13px' }}>{liveTrace[2]?.assigned_did || 'node-cluster-01.ap2.net:8443'}</strong><br />
-                      Worker Node: {liveTrace[2]?.carrier || 'AP2 Autonomous Worker Node'} &bull; Spending Guard: <code>RFC 8032 ED25519 VERIFIED</code>
+                      Worker Node: {liveTrace[2]?.carrier || 'AP2 Autonomous Worker Node'} &bull; Spending Guard: <code>AP2 CHAIN VERIFIED (ES256)</code>
                     </div>
                   </div>
 

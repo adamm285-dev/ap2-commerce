@@ -533,7 +533,7 @@ export function ZapierMcpView({
                     marginTop: '2px',
                   }}
                 >
-                  <ShieldCheck size={12} /> Anti-Tamper Guard: RFC 8032 Ed25519 Verified (Monotonic Nonce Bound)
+                  <ShieldCheck size={12} /> Simulated in the browser: no signature check
                 </div>
               </div>
             </div>
@@ -599,7 +599,7 @@ export function ZapierMcpView({
                   Autonomous Escrow Settlement: ${workloadDispatch.paymentAmount.toFixed(2)}
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                  PayPal Vault MIT Txn: {workloadDispatch.paypalTransactionId}
+                  PayPal Txn (simulated): {workloadDispatch.paypalTransactionId}
                 </div>
               </div>
             </div>

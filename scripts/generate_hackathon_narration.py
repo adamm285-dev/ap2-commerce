@@ -22,37 +22,33 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ACT_SCRIPTS = {
     "act1_problem": (
-        "Every day, autonomous software agents and developer teams hit severe compute capacity bottlenecks. "
-        "Procuring specialized execution nodes still requires manual credit card forms, API dashboard logins, "
-        "and human onboarding fatigue. AP2 Autonomous Commerce solves this with an Autonomous Agent-to-Agent "
-        "Commerce protocol built on PayPal Subscriptions and Vault."
+        "AI agents are starting to buy what they need, like compute. Usually that means handing them a card "
+        "number, and any page or reply the agent reads can steer it. AP2 Autonomous Commerce is built on AP2, "
+        "the agent payments protocol Google donated to the FIDO Alliance, with PayPal Subscriptions as the "
+        "payment rail."
     ),
     "act2_buyer_agent": (
-        "Meet an autonomous buyer agent needing dedicated compute. The agent evaluates its pre-approved "
-        "spending mandate cap of $100 a month and negotiates directly with the AP2 Seller Node over Model Context Protocol. "
-        "Once approved, the agent issues an Ed25519 cryptographic proof and executes a recurring "
-        "$79.99-a-month PayPal subscription with verified KYC identity, instantly provisioning a "
-        "dedicated MCP compute endpoint."
+        "Here, a desktop AI agent shops for a compute node under a $60 monthly limit its owner signed in "
+        "advance. It asks for the $79.99 gateway, and the seller counter-offers the $49.99 batch worker. The "
+        "agent never holds a key. A separate wallet checks the signed price against the owner's limit before "
+        "signing. Even when we told the seller our budget was $200, the wallet refused."
     ),
     "act3_bryntum_agstudio": (
-        "In our operations deck, Bryntum Scheduler visualizes compute node allocation across "
-        "regional workload zones. Notice the subscriber node dynamically mutates in place "
-        "from amber awaiting payment to vibrant green node active upon payment confirmation. "
-        "Meanwhile, AG Studio version 3 embeds high-density analytics, allowing fleet managers "
-        "to toggle between View and Edit modes, customize visual reports, and reconcile over "
-        "$13,400 in ARR across 14 autonomous nodes."
+        "In the operations deck, AG Studio and AG Grid show the fleet ledger, with floating filters and View "
+        "and Edit modes, while Bryntum Scheduler lays out the compute dispatch calendar. The fleet you see "
+        "here is seeded demo data, and we label it that way. When a node is provisioned through the backend, "
+        "its card turns from amber to green."
     ),
     "act4_zapier_mcp": (
-        "Once PayPal verifies the payment, our Zapier Model Context Protocol bridge fires an "
-        "autonomous downline action chain: logging the recurring software expense into QuickBooks Online "
-        "general ledger Account 6300, routing the node endpoint into operational systems, and scheduling "
-        "the morning node health audit on Google Calendar — eliminating manual bookkeeping entirely."
+        "After a purchase, the back-office export builds a QuickBooks Online expense mapped to general ledger "
+        "account 6300, plus a calendar entry for the node's health check. It checks the destination, signs "
+        "the payload, and sends it to a Zapier hook once one is configured. Until then, it's a dry run."
     ),
     "act5_kyc_compute": (
-        "Crucially, every compute node allocation is cryptographically anchored to verified PayPal subscriber identity — "
-        "ensuring mathematical non-repudiation with RFC 8032 Ed25519 dual mandates. "
-        "With 233 automated tests, complete OpenAPI 3.1 specifications for SDK generation, "
-        "and zero human friction, this is AP2 Autonomous Commerce. Built for the PayPal AI Hackathon."
+        "Subscriptions keep billing, so every month, when PayPal reports a renewal, the server re-checks it "
+        "against the owner's signed mandate, and cancels in advance before the payment count, budget or term "
+        "runs out. It's backed by 557 passing tests, including Google's own AP2 SDK tests, unchanged. This is "
+        "AP2 Autonomous Commerce, built for the PayPal AI Hackathon."
     ),
 }
 

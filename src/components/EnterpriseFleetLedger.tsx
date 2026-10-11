@@ -828,7 +828,7 @@ export function EnterpriseFleetLedger({
                       {activeLinesCount} Agents
                     </div>
                     <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px', whiteSpace: 'nowrap' }}>
-                      Ed25519 Verified &bull; RFC 8032 Bound
+                      Active lines &bull; seeded demo data
                     </div>
                   </div>
                   <div style={{ paddingBottom: '2px' }}>
@@ -876,14 +876,14 @@ export function EnterpriseFleetLedger({
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: '6px' }}>
                   <div>
                     <div style={{ fontSize: '22px', fontWeight: 800, color: '#34d399', lineHeight: 1.1 }}>
-                      100% Ed25519
+                      AP2 ES256
                     </div>
                     <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px', whiteSpace: 'nowrap' }}>
-                      {activeLinesCount} Enclaves Bound &bull;{' '}
+                      {activeLinesCount} Active Lines &bull;{' '}
                       {quarantinedCount > 0 ? (
                         <span style={{ color: '#f87171', fontWeight: 600 }}>{quarantinedCount} Quarantined</span>
                       ) : (
-                        <span style={{ color: '#34d399', fontWeight: 600 }}>0 Quarantined (Secure)</span>
+                        <span style={{ color: '#34d399', fontWeight: 600 }}>0 Quarantined</span>
                       )}
                     </div>
                   </div>

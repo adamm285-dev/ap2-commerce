@@ -89,7 +89,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     status: 200,
     statusText: 'OK',
     durationMs: 22,
-    summary: 'RFC 8032 Ed25519 mandate anti-tamper signature verified',
+    summary: 'Anti-tamper playground: Ed25519 demo signature verified',
     category: 'Security',
     request: {
       contractor_id: 'contractor_acme_01',
@@ -113,7 +113,7 @@ const INITIAL_API_WIRE_LOGS: ApiWireLog[] = [
     status: 201,
     statusText: 'CREATED',
     durationMs: 138,
-    summary: 'PayPal Vault MIT agreement established: I-BW452NX993L2 ($79.99/mo)',
+    summary: 'PayPal subscription created: I-BW452NX993L2 ($79.99/mo)',
     category: 'PayPal MIT',
     request: {
       plan_id: 'P-4KA989014W524233ANLCRSFQ',
@@ -241,12 +241,8 @@ function getClusterEndpoint(name: string): string {
   return 'https://api.ap2protocol.org/mcp/node-05 (Global Supervised Enclave)';
 }
 
-function getEd25519Fingerprint(name: string): string {
-  if (name.includes('101')) return '0x9f8a221b7c9e1248b401 [Ed25519 RFC 8032]';
-  if (name.includes('201')) return '0x7b2c55108812fa4910cc [Ed25519 RFC 8032]';
-  if (name.includes('301')) return '0x3d4e889144f89d1288bb [Ed25519 RFC 8032]';
-  if (name.includes('401')) return '0x8a1b992422c199bf33aa [Ed25519 RFC 8032]';
-  return '0x5c88aa1199e1284f00bb [Ed25519 RFC 8032]';
+function getDemoSignatureLabel(_name: string): string {
+  return 'Demo node (no signature)';
 }
 
 function getExecutionSpecifications(name: string, trade: string): string {
@@ -746,8 +742,8 @@ Cryptographic Sig: ${selectedAppointment.clientFingerprint || selectedAppointmen
 
 Fulfillment State: ${selectedAppointment.depositStatus}
 PayPal Txn ID:     ${selectedAppointment.paypalTxn}
-Settlement Rail:   PayPal Subscriptions & Vault MIT
-Mandate Standard:  Ed25519 AP2 Signed Mandate (RFC 8032)
+Settlement Rail:   PayPal Subscriptions
+Mandate Standard:  AP2 v0.2 (ES256 SD-JWT)
 Anti-Tamper Hash:  SHA256: 98499e3f5739d9879697cb97e8045d (MATCH)
 Execution Specs:   ${selectedAppointment.takeoffNotes}
 Timestamp:         ${new Date().toISOString()}
@@ -1390,7 +1386,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               customerName: getBuyerAgent(name),
               projectScope: getWorkloadScope(name),
               jobAddress: getClusterEndpoint(name),
-              clientFingerprint: getEd25519Fingerprint(name),
+              clientFingerprint: getDemoSignatureLabel(name),
               takeoffNotes: getExecutionSpecifications(name, resourceTrade),
               startDate: eventRecord.startDate ? new Date(eventRecord.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '13:00',
               endDate: eventRecord.endDate ? new Date(eventRecord.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '14:15',
@@ -1901,7 +1897,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Workloads: <strong style={{ color: '#f8fafc' }}>{totalDispatches} Tasks</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
-            <span>Vaulted: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+            <span>Demo MRR: <strong style={{ color: '#fbbf24' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             <span style={{ color: '#475569' }}>&bull;</span>
             <span>Tier Quotas: <strong style={{ color: '#38bdf8' }}>{tierQuotasLabel}</strong> <span style={{ fontSize: '9px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 4px', borderRadius: '3px' }}>Tasks/Mo</span></span>
             <span style={{ color: '#475569' }}>&bull;</span>
@@ -1955,8 +1951,8 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Settlements</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Captured</div>
-                <div style={{ fontSize: '9px', color: '#fbbf24' }}>Vault MIT Settled</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f8fafc' }}>${totalVaultedDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo</div>
+                <div style={{ fontSize: '9px', color: '#fbbf24' }}>Seeded demo fleet</div>
               </div>
             </div>
 
@@ -2521,7 +2517,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '10px', color: '#94a3b8' }}>Settlement Rail:</span>
-                <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700 }}>PayPal Subscriptions &amp; Vault MIT</span>
+                <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700 }}>PayPal Subscriptions</span>
               </div>
             </div>
 
@@ -2539,9 +2535,9 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>14 Active Streams</div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>PayPal Vaulted Mandates</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Demo Fleet MRR</div>
                 <div style={{ fontSize: '16px', fontWeight: 800, color: '#a78bfa', marginTop: '2px' }}>${totalVaultedDeposits.toLocaleString()}</div>
-                <div style={{ fontSize: '10px', color: '#34d399', marginTop: '2px' }}>100% Ed25519 Verified</div>
+                <div style={{ fontSize: '10px', color: '#34d399', marginTop: '2px' }}>Seeded demo data</div>
               </div>
             </div>
 
@@ -2568,7 +2564,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                         customerName: wl.buyer,
                         projectScope: getWorkloadScope(wl.name),
                         jobAddress: getClusterEndpoint(wl.name),
-                        clientFingerprint: getEd25519Fingerprint(wl.name),
+                        clientFingerprint: getDemoSignatureLabel(wl.name),
                         takeoffNotes: getExecutionSpecifications(wl.name, wl.node),
                         startDate: '08:00',
                         endDate: '09:30',
@@ -2636,7 +2632,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                             customerName: wl.buyer,
                             projectScope: getWorkloadScope(wl.name),
                             jobAddress: getClusterEndpoint(wl.name),
-                            clientFingerprint: getEd25519Fingerprint(wl.name),
+                            clientFingerprint: getDemoSignatureLabel(wl.name),
                             takeoffNotes: getExecutionSpecifications(wl.name, wl.node),
                             startDate: '08:00',
                             endDate: '09:30',
@@ -3153,7 +3149,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             {/* Financial & Payment Verification */}
             <div style={{ backgroundColor: '#131d31', borderRadius: '8px', padding: '14px', border: '1px solid #1e293b' }}>
               <div style={{ fontSize: '11px', color: '#34d399', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>
-                PayPal Payment Rail &bull; Vault MIT
+                PayPal Payment Rail &bull; Subscriptions
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Settlement State</span>

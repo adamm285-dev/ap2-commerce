@@ -346,9 +346,9 @@ export function App() {
               trade_vertical: actualTier,
               service_plan: agreedPlanName,
               paypal_sub_id: subId,
-              kyc_status: 'VERIFIED (PayPal Identity Bound)',
+              kyc_status: 'SUBSCRIBER EMAIL MATCHED',
               allocated_did: result.allocatedDid,
-              tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
+              tcpa_guard: 'AP2 CHAIN VERIFIED (ES256)',
               status: 'ACTIVE_STREAMING',
             };
             return updated;
@@ -365,10 +365,10 @@ export function App() {
             service_plan: agreedPlanName,
             monthly_amount: agreedMonthlyAmount,
             paypal_sub_id: subId,
-            kyc_status: 'VERIFIED (PayPal Identity Bound)',
+            kyc_status: 'SUBSCRIBER EMAIL MATCHED',
             kyc_legal_entity: businessEntity,
             allocated_did: result.allocatedDid,
-            tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
+            tcpa_guard: 'AP2 CHAIN VERIFIED (ES256)',
             status: 'ACTIVE_STREAMING',
           };
           return [newTxn, ...prev];
@@ -568,7 +568,7 @@ export function App() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '30px', width: '100%', padding: '0 8px' }}>
                     <span style={{ fontSize: '11px', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                      MCP Active &bull; {typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'} &bull; RFC 8032 Ed25519
+                      MCP Active &bull; {typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'} &bull; AP2 v0.2 (ES256)
                     </span>
                   </div>
                 )}
@@ -913,7 +913,7 @@ export function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Auth:</span>
-                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>RFC 8032</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>AP2 ES256</span>
                 </div>
               </div>
             )}
@@ -1045,9 +1045,9 @@ export function App() {
                     service_plan: planTitle,
                     monthly_amount: agreedRate,
                     paypal_sub_id: subscriptionId,
-                    kyc_status: 'VERIFIED (PayPal Identity Bound)',
+                    kyc_status: 'SUBSCRIBER EMAIL MATCHED',
                     allocated_did: allocatedDid,
-                    tcpa_guard: 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)',
+                    tcpa_guard: 'AP2 CHAIN VERIFIED (ES256)',
                     status: 'ACTIVE_STREAMING',
                   };
                   return updated;
@@ -1097,9 +1097,9 @@ export function App() {
                     ...updated[idx],
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
                     status: locked ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT',
-                    kyc_status: locked ? 'VERIFIED (PayPal Identity Bound)' : 'PENDING_MANDATE_SIGNATURE',
+                    kyc_status: locked ? 'DEMO (NOT VERIFIED)' : 'PENDING_MANDATE_SIGNATURE',
                     allocated_did: locked ? 'node-cluster-01.ap2.net' : 'node-cluster-01.ap2.net',
-                    tcpa_guard: locked ? 'RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)' : 'PENDING_AUTHORIZATION',
+                    tcpa_guard: locked ? 'DEMO ACTIVATION (NOT VERIFIED)' : 'PENDING_AUTHORIZATION',
                     paypal_sub_id: locked
                       ? updated[idx].paypal_sub_id.startsWith('I-')
                         ? updated[idx].paypal_sub_id
@@ -1148,7 +1148,7 @@ export function App() {
               <p style={{ fontSize: '13px', color: '#94a3b8' }}>
                 Simulate how an external <strong>Autonomous Buyer Agent</strong> discovers seller node capabilities,
                 verifies cryptographic spending mandate caps, negotiates with the AP2 Seller MCP Server, and executes a
-                recurring PayPal billing agreement with verified RFC 8032 Ed25519 attestations.
+                recurring PayPal subscription once the seller verifies the AP2 mandate chain (ES256).
               </p>
 
               <div
@@ -1380,10 +1380,10 @@ export function App() {
               <div className="kyc-verification-box">
                 <Lock size={18} color="#34d399" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div className="kyc-details">
-                  <h4>Cryptographic Mandate &amp; RFC 8032 Security Guard</h4>
+                  <h4>AP2 Mandate &amp; Subscriber Checks</h4>
                   <p>
-                    Workloads are provisioned strictly via verified buyer agent Ed25519 signatures and authenticated PayPal billing agreements.
-                    Execution nodes enforce strict monotonic replay counters and anti-tamper hash verification &mdash; zero unauthorized overages, zero fraudulent executions.
+                    Nodes are provisioned only after the seller verifies the buyer's AP2 mandate chain (ES256) and the PayPal subscription is active.
+                    Provisioning also checks that the buyer's email matches the subscription, and a replayed mandate is rejected.
                   </p>
                 </div>
               </div>
@@ -1531,7 +1531,7 @@ export function App() {
                     </div>
                     <div>
                       <strong>Cryptographic Policy Guard:</strong>{' '}
-                      <span style={{ color: '#34d399' }}>RFC 8032 ED25519 VERIFIED (ANTI-TAMPER PASS)</span>
+                      <span style={{ color: '#34d399' }}>AP2 CHAIN VERIFIED (ES256)</span>
                     </div>
                   </div>
                   <button

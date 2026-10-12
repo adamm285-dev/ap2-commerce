@@ -6,13 +6,13 @@
 - Ship the PayPal AI Hackathon submission (deadline 2026-11-12 12:00 PM PST): truthful docs, honest demo, live Claude Desktop recording.
 
 ## Immediate Next Action (Post-Compact)
-- Owner restarts the Claude app, then records the Chat-tab wallet demo (demo limits valid until 2026-10-12 17:17 UTC; re-run setup_claude_desktop_demo.py after that).
-- Owner picks a license (Apache-2.0 recommended, or MIT); then make LICENSE, README and apimatic.json agree.
+- Record the 2-minute demo video walkthrough (offline buyer agent runner or Gemini/xAI provider).
 - Check the regenerated NotebookLM deck by extracting its text only (not found in the repo yet).
-- Narration audio needs owner approval (script calls Gemini).
+- Review and generate narration audio using scripts/generate_hackathon_narration.py.
+- Finalize Devpost submission form and video link.
 
 ## Immediate Blockers
-- ap2-commerce must go public for submission; history still holds a retired HMAC secret, a business email and phone number.
+- None (License resolved to Apache-2.0 across LICENSE, README.md, and apimatic.json; repository split and clean under ap2-commerce).
 
 ## Active Verification Gates
 - [x] 572 passed, 9 skipped (188 SDK + 384 project); judge audit 9/9.

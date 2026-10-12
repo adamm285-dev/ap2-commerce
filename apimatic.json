@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "company": "AP2 Autonomous Marketplace",
     "copyright": "Copyright (c) 2026 AP2 Autonomous Marketplace. All rights reserved.",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "repositoryUrl": "https://github.com/adamm285-dev/ap2-commerce"
   },
   "portal": {

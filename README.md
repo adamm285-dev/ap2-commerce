@@ -172,4 +172,4 @@ Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md)
 
 ## 7. License
 
-Authored by Adam Murphy. See [`LICENSE`](LICENSE): all rights reserved while licensing terms are evaluated for the final release. The vendored AP2 SDK in `backend/vendor/ap2/` is Google's, under the Apache License 2.0.
+Authored by Adam Murphy. Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for terms. The vendored AP2 SDK in `backend/vendor/ap2/` is Google's, also under the Apache License 2.0.

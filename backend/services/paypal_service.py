@@ -741,7 +741,7 @@ class PayPalService:
 
             expected_hmac = self.generate_mock_webhook_signature(raw_body or "")
             sig_clean = sig.strip()
-            if sig_clean.lower() == expected_hmac.lower():
+            if hmac.compare_digest(sig_clean.lower(), expected_hmac.lower()):
                 logger.info(f"[PayPal Webhook MOCK] Verified HMAC transmission signature ({sig_clean[:16]}...).")
                 return {"verification_status": "SUCCESS", "mock_mode": True}
 

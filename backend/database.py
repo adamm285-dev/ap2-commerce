@@ -1418,6 +1418,7 @@ def is_direct_charge_replayed(
 def register_node_operator(
     operator_data: Dict[str, Any],
     db_path: Optional[Path] = None,
+    allow_overwrite: bool = False,
 ) -> Dict[str, Any]:
     """Registers or updates a compute node operator."""
     op_id = (operator_data.get("operator_id") or f"op_{uuid.uuid4().hex[:10]}").strip()
@@ -1441,6 +1442,10 @@ def register_node_operator(
 
     status = (operator_data.get("status") or "ACTIVE").strip().upper()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    existing = get_node_operator(op_id, db_path=db_path)
+    if existing and existing.get("email") != email and not allow_overwrite:
+        raise ValueError(f"OPERATOR_ALREADY_EXISTS: Cannot overwrite payout destination for '{op_id}'.")
 
     conn = get_connection(db_path)
     try:
@@ -1468,7 +1473,7 @@ def register_node_operator(
             "assigned_nodes": json.loads(assigned_json),
             "split_bps": split_bps,
             "status": status,
-            "created_at": now_iso,
+            "created_at": existing["created_at"] if existing else now_iso,
             "updated_at": now_iso,
         }
     finally:

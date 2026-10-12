@@ -13,7 +13,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Set
 
 from ..database import (
     register_node_operator,
@@ -79,6 +79,7 @@ class MarketplacePayoutService:
         split_bps: int = DEFAULT_OPERATOR_SPLIT_BPS,
         payout_recipient_type: str = "EMAIL",
         operator_id: Optional[str] = None,
+        allow_overwrite: bool = False,
         db_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """Registers or updates a compute node operator in the marketplace registry."""
@@ -91,7 +92,7 @@ class MarketplacePayoutService:
             "payout_recipient_type": payout_recipient_type,
             "status": "ACTIVE",
         }
-        return register_node_operator(op_data, db_path=db_path)
+        return register_node_operator(op_data, db_path=db_path, allow_overwrite=allow_overwrite)
 
     @staticmethod
     def get_operator(operator_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
@@ -151,12 +152,13 @@ class MarketplacePayoutService:
 
         # Deduplicate: check existing payout items for this cycle to prevent double disbursements
         existing_items = list_payout_items(db_path=db_path)
-        disbursed_sub_ids: Set[str] = set()
+        disbursed_sub_ids_this_cycle: Set[str] = set()
         for item in existing_items:
-            # Check if this item is for the current cycle
-            sub_id = item.get("subscription_id")
-            if sub_id:
-                disbursed_sub_ids.add(sub_id)
+            item_id = str(item.get("item_id") or "")
+            if item_id.startswith(f"item_{cycle}_"):
+                sub_id = item.get("subscription_id")
+                if sub_id:
+                    disbursed_sub_ids_this_cycle.add(sub_id)
 
         # Build payout items
         paypal_items: List[Dict[str, Any]] = []
@@ -169,8 +171,8 @@ class MarketplacePayoutService:
 
         for sub in active_subs:
             sub_id = sub["subscription_id"]
-            if sub_id in disbursed_sub_ids and not subscription_ids:
-                logger.info(f"[Marketplace Payouts] Skipping already disbursed subscription {sub_id}")
+            if sub_id in disbursed_sub_ids_this_cycle:
+                logger.info(f"[Marketplace Payouts] Skipping already disbursed subscription {sub_id} for cycle {cycle}")
                 continue
 
             monthly_rate = float(sub.get("agreed_monthly_rate", 0.0))

@@ -621,8 +621,13 @@ async def revoke_mandate_endpoint(req: RevokeMandateRequest):
         return res
     except ValueError as e:
         logger.warning(f"Mandate revocation failed: {e}")
+        status_code = (
+            status.HTTP_403_FORBIDDEN
+            if "UNAUTHORIZED" in str(e)
+            else (status.HTTP_401_UNAUTHORIZED if "SIGNATURE" in str(e) or "KEY" in str(e) else status.HTTP_400_BAD_REQUEST)
+        )
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED if "SIGNATURE" in str(e) or "KEY" in str(e) else status.HTTP_400_BAD_REQUEST,
+            status_code=status_code,
             detail={"status": "REJECTED", "error": "REVOCATION_FAILED", "reason": str(e)},
         )
 
@@ -659,7 +664,7 @@ class RegisterOperatorRequest(BaseModel):
     name: str = Field(..., description="Compute node operator or infrastructure provider name")
     email: str = Field(..., description="Operator PayPal email address for payouts")
     assignedNodes: Optional[List[str]] = Field(default=None, alias="assigned_nodes", description="Assigned compute node IDs or pattern prefixes")
-    splitBps: int = Field(default=8500, alias="split_bps", description="Operator revenue share in basis points (e.g. 8500 = 85.00%)")
+    splitBps: int = Field(default=8500, ge=0, le=10000, alias="split_bps", description="Operator revenue share in basis points (e.g. 8500 = 85.00%)")
     payoutRecipientType: str = Field(default="EMAIL", alias="payout_recipient_type", description="PayPal recipient type (EMAIL or PAYER_ID)")
     operatorId: Optional[str] = Field(default=None, alias="operator_id", description="Optional custom operator identifier")
 
@@ -673,9 +678,17 @@ class ExecuteBatchPayoutRequest(BaseModel):
 
 
 @app.post("/api/marketplace/operators/register", status_code=status.HTTP_201_CREATED, tags=["Marketplace Payouts"])
-async def register_operator_endpoint(req: RegisterOperatorRequest):
+async def register_operator_endpoint(req: RegisterOperatorRequest, request: Request):
     """Registers or updates a compute node operator in the two-sided marketplace."""
     from .services.marketplace_payout_service import marketplace_payout_service
+    is_admin = _has_admin_key(request)
+    if req.operatorId:
+        existing = marketplace_payout_service.get_operator(req.operatorId)
+        if existing and existing.get("email") != req.email.strip().lower() and not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"OPERATOR_MODIFICATION_FORBIDDEN: Admin authorization required to update payout destination for '{req.operatorId}'.",
+            )
     try:
         op = marketplace_payout_service.register_operator(
             name=req.name,
@@ -684,9 +697,12 @@ async def register_operator_endpoint(req: RegisterOperatorRequest):
             split_bps=req.splitBps,
             payout_recipient_type=req.payoutRecipientType,
             operator_id=req.operatorId,
+            allow_overwrite=is_admin,
         )
         return {"status": "SUCCESS", "operator": op}
     except ValueError as e:
+        if "OPERATOR_ALREADY_EXISTS" in str(e):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
@@ -709,13 +725,18 @@ async def get_operator_endpoint(operator_id: str):
 
 
 @app.post("/api/marketplace/payouts/execute-batch", tags=["Marketplace Payouts"])
-async def execute_batch_payout_endpoint(req: ExecuteBatchPayoutRequest):
+async def execute_batch_payout_endpoint(req: ExecuteBatchPayoutRequest, request: Request):
     """
     Executes automated monthly batch payouts to compute node operators via PayPal Payouts REST API.
     Calculates integer cents margins (85% operator / 15% platform take-rate with zero float drift),
     disburses funds via PayPal, and exports QBO v3 Bills.
     """
     from .services.marketplace_payout_service import marketplace_payout_service
+    if not settings.mock_external_apis and not _has_admin_key(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin authorization required to execute live PayPal batch disbursements.",
+        )
     try:
         res = await marketplace_payout_service.execute_fleet_payout_batch(
             cycle_id=req.cycleId,
@@ -1950,7 +1971,14 @@ async def paypal_webhook_receiver(request: Request):
 
     # De-duplicate verified webhook events by unique PayPal event ID (replay protection)
     event_id = body.get("id")
-    if event_id and event_id in _PROCESSED_WEBHOOK_IDS:
+    if not event_id or not isinstance(event_id, str) or not event_id.strip():
+        logger.warning(f"[SECURITY] PayPal webhook event rejected: missing or empty event ID.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing or invalid PayPal webhook event ID.",
+        )
+    event_id = event_id.strip()
+    if event_id in _PROCESSED_WEBHOOK_IDS:
         logger.info(f"[PayPal Webhook] Duplicate verified event {event_id} ({event_type}) received; skipping duplicate execution.")
         return {
             "status": "already_processed",
@@ -1959,8 +1987,7 @@ async def paypal_webhook_receiver(request: Request):
             "verification_status": "SUCCESS",
             "duplicate": True,
         }
-    if event_id:
-        _PROCESSED_WEBHOOK_IDS.add(event_id)
+    _PROCESSED_WEBHOOK_IDS.add(event_id)
 
     recurring_check: Optional[Dict[str, Any]] = None
 
@@ -2256,7 +2283,7 @@ async def get_ap2_direct_charge_endpoint(charge_id: str):
     status_code=status.HTTP_200_OK,
     tags=["AP2 Native Direct Rail"],
 )
-async def list_ap2_direct_charges_endpoint(limit: int = 50):
+async def list_ap2_direct_charges_endpoint(limit: int = Query(default=50, ge=1, le=500)):
     """Lists recent direct AP2 charges."""
     charges = Ap2GatewayService.list_charges(limit=limit)
     return DirectChargeListResponse(count=len(charges), charges=charges)

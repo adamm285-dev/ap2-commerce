@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..database import (
     get_buyer_key,
+    get_buyer_key_email,
+    get_connection,
     get_mandate_revocation,
     is_mandate_revoked,
     list_revoked_mandates,
@@ -33,6 +35,47 @@ from .crypto_mandate import (
 from .paypal_service import paypal_service
 
 logger = logging.getLogger("mandate_revocation_service")
+
+
+def resolve_mandate_owner(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Resolves the contractor email and/or buyer_key_id bound to a mandate proof hash.
+    Returns (contractor_email, buyer_key_id).
+    """
+    clean = mandate_hash.strip()
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        # 1. Check subscriptions table
+        cur.execute(
+            "SELECT contractor_email FROM subscriptions WHERE mandate_proof_hash = ? OR subscription_id = ? LIMIT 1",
+            (clean, clean),
+        )
+        row = cur.fetchone()
+        if row and row["contractor_email"]:
+            return row["contractor_email"].strip().lower(), None
+
+        # 2. Check authorized_mandates table
+        cur.execute(
+            "SELECT contractor_email FROM authorized_mandates WHERE proof_hash = ? OR lookup_key = ? OR offer_id = ? LIMIT 1",
+            (clean, clean, clean),
+        )
+        row = cur.fetchone()
+        if row and row["contractor_email"]:
+            return row["contractor_email"].strip().lower(), None
+
+        # 3. Check direct_charges table
+        cur.execute(
+            "SELECT buyer_key_id FROM direct_charges WHERE mandate_id = ? LIMIT 1",
+            (clean,),
+        )
+        row = cur.fetchone()
+        if row and row["buyer_key_id"]:
+            return None, row["buyer_key_id"].strip()
+
+        return None, None
+    finally:
+        conn.close()
 
 
 def canonical_revocation_message(mandate_proof_hash: str, timestamp_iso: str, reason: str) -> str:
@@ -97,14 +140,30 @@ async def revoke_mandate(
     """
     Cryptographically revokes an AP2 Open Mandate.
     1. Verifies owner signature against registered buyer keys.
-    2. Records the revocation in the SQLite revoked_mandates status list.
-    3. Automatically stops any active PayPal subscriptions bound to this mandate.
-    4. Reconciles contractor ledgers and marks compute nodes stopped.
+    2. Validates timestamp freshness and mandate ownership authorization.
+    3. Records the revocation in the SQLite revoked_mandates status list.
+    4. Automatically stops any active PayPal subscriptions bound to this mandate.
+    5. Reconciles contractor ledgers and marks compute nodes stopped.
     """
     clean_hash = mandate_proof_hash.strip()
     clean_kid = kid.strip()
     clean_reason = (reason or "Owner manual revocation").strip()
     now_iso = timestamp_iso or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # 0. Validate timestamp freshness if provided (max 300s skew)
+    if timestamp_iso:
+        try:
+            ts = datetime.datetime.fromisoformat(timestamp_iso.strip().replace("Z", "+00:00"))
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+            skew = abs((now_dt - ts).total_seconds())
+            if skew > 300:
+                raise ValueError(
+                    f"REVOCATION_TIMESTAMP_OUT_OF_BOUNDS: Timestamp '{timestamp_iso}' clock skew ({skew:.1f}s) exceeds 300s limit."
+                )
+        except ValueError as e:
+            if "REVOCATION_TIMESTAMP" in str(e):
+                raise
+            raise ValueError(f"INVALID_TIMESTAMP_FORMAT: {e}")
 
     # 1. Verify owner signature
     valid, msg = verify_revocation_signature(
@@ -118,6 +177,32 @@ async def revoke_mandate(
     if not valid:
         logger.warning(f"[SECURITY] Mandate revocation signature rejected for {clean_hash}: {msg}")
         raise ValueError(msg)
+
+    # 1.5 Verify mandate ownership authorization (Fail closed against unauthorized cross-tenant revocation)
+    target_email, target_kid = resolve_mandate_owner(clean_hash, db_path=db_path)
+    if not target_email and not target_kid:
+        from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+        for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
+            if isinstance(s_data, dict):
+                p_hash = (s_data.get("mandate_proof_hash") or "").strip()
+                chk_h = (s_data.get("checkout_hash") or "").strip()
+                if clean_hash in (p_hash, chk_h, s_id):
+                    target_email = (s_data.get("contractor_email") or "").strip().lower()
+                    break
+
+    signer_email = get_buyer_key_email(clean_kid, db_path=db_path)
+    if target_email:
+        if not signer_email or signer_email.strip().lower() != target_email:
+            raise ValueError(
+                f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' ({signer_email or 'unbound'}) is not authorized to revoke mandates belonging to '{target_email}'."
+            )
+    elif target_kid:
+        if clean_kid != target_kid:
+            target_kid_email = get_buyer_key_email(target_kid, db_path=db_path)
+            if not signer_email or signer_email.strip().lower() != (target_kid_email or "").strip().lower():
+                raise ValueError(
+                    f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' is not authorized to revoke mandates issued by '{target_kid}'."
+                )
 
     # 2. Record revocation in persistent status list
     record = record_mandate_revocation(

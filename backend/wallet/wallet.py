@@ -15,6 +15,16 @@ Checkout JWT passes every owner constraint, evaluated with the vendored Google A
 Tier, price, merchant and nonce are read from the merchant-signed checkout, never from
 the caller, so an LLM relaying the checkout cannot change what gets signed.
 
+Pessimistic Reservation Architecture:
+A signed checkout chain is recorded in ledger.json at signing time and counts against the
+owner's budget and purchase count until the mandate expires. The wallet operates client-side
+and cannot know whether a signed checkout settles immediately or is abandoned. Releasing
+reserved budget on an error receipt would allow budget bypass (signing -> tampering ->
+obtaining an error receipt -> releasing reservation -> honest retry settling for free).
+A true release path requires terminal merchant-voided receipts not present in AP2 v0.2.
+Because rejections on the seller do not burn the mandate, honest retries can settle
+against the existing reservation without double-counting.
+
 This module deliberately imports nothing from the seller side (agents, services, database).
 """
 
@@ -514,61 +524,4 @@ class BuyerWallet:
                 "Call the seller's purchase_subscription with offer_id (from negotiate_tier_terms), "
                 "buyer_email, checkout_mandate_chain and payment_mandate_chain."
             ),
-        }
-
-    def void_rejected_checkout(self, error_receipt_jwt: str) -> Dict[str, Any]:
-        """
-        Releases the reserved spending budget and purchase slot in this wallet
-        when presented with a valid merchant-signed Error receipt for a rejected purchase.
-        """
-        if not isinstance(error_receipt_jwt, str) or not error_receipt_jwt.strip():
-            raise WalletRefusal("MISSING_RECEIPT_JWT", "error_receipt_jwt is required to release reserved budget.")
-        error_receipt_jwt = error_receipt_jwt.strip()
-
-        # 1. Verify receipt with pinned merchant key
-        merchant_pub = _load_key(self.dir / MERCHANT_PUBLIC_KEY_FILE, "pinned merchant public key", private=False)
-        try:
-            receipt = verify_jwt(error_receipt_jwt, merchant_pub)
-        except Exception as e:
-            raise WalletRefusal("RECEIPT_SIGNATURE_INVALID", f"Receipt is not signed by the pinned merchant key: {e}")
-
-        if not isinstance(receipt, dict):
-            raise WalletRefusal("RECEIPT_MALFORMED", "Receipt payload is not an object.")
-
-        # 2. Must be an Error receipt
-        status = receipt.get("status")
-        if status != "Error":
-            raise WalletRefusal("RECEIPT_NOT_ERROR", f"Only Error receipts can release budget (found status: '{status}').")
-
-        ref = receipt.get("reference") or receipt.get("closed_mandate_reference")
-        if not ref or not isinstance(ref, str):
-            raise WalletRefusal("RECEIPT_MALFORMED", "Receipt missing reference.")
-
-        # 3. Check ledger and release
-        lim = self._load_limits()
-        ledger = self._read_ledger()
-        entry = ledger.get("open_payment_mandates", {}).get(lim.payment_key, {})
-        signed = entry.get("signed", {})
-
-        if ref not in signed:
-            raise WalletRefusal("CHECKOUT_NOT_FOUND", f"Reference '{ref}' was not found in active wallet signatures.")
-
-        released_entry = signed.pop(ref)
-        released_cents = released_entry.get("amount_cents", 0) if isinstance(released_entry, dict) else 0
-
-        tmp = self.dir / (LEDGER_FILE + ".tmp")
-        tmp.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
-        os.replace(tmp, self.dir / LEDGER_FILE)
-
-        budget = _constraint(lim.payment.constraints, Budget)
-        budget_cents = int(budget.max * 100)
-        used_cents, used_count = self._usage(lim.payment_key)
-
-        return {
-            "status": "RELEASED",
-            "released_checkout_hash": ref,
-            "released_amount_cents": released_cents,
-            "remaining_budget_cents": max(budget_cents - used_cents, 0),
-            "purchases_signed": used_count,
-            "message": f"Successfully released {self._format_cents(released_cents)} reservation back to wallet budget.",
         }

@@ -351,3 +351,109 @@ def test_sale_without_subscription_is_ignored(stops):
     result = _check(None, billing_agreement=False)
     assert result["outcome"] == "IGNORED" and result["reason"] == "NOT_A_SUBSCRIPTION_SALE"
     assert stops == []
+
+
+# ── 6. Advanced Webhook Lifecycle & Revocation Enforcement (Sprint 1) ────────
+
+
+def _post_webhook(event_type, resource, sign=True):
+    raw = json.dumps({"id": f"WH-{uuid.uuid4().hex}", "event_type": event_type, "resource": resource})
+    sig = paypal_service.generate_mock_webhook_signature(raw) if sign else "forged-signature"
+    res = client.post("/api/paypal/webhook", content=raw,
+                      headers={"Content-Type": "application/json", "PAYPAL-TRANSMISSION-SIG": sig})
+    return res.status_code, res.json()
+
+
+@pytest.mark.asyncio
+async def test_webhook_subscription_suspended_and_reactivated(tmp_path):
+    """
+    BILLING.SUBSCRIPTION.SUSPENDED halts active nodes and clears ledger commitment;
+    BILLING.SUBSCRIPTION.RE-ACTIVATED restores status to ACTIVE and re-binds commitment.
+    """
+    from backend.services.mandate_evaluator import ledger
+    p = await _agent_purchase(tmp_path)
+
+    # 1. Initially active with committed spend
+    assert _COMPLETED_SUBSCRIPTIONS[p.sub_id]["status"] == "ACTIVE"
+    cap = ledger.get_saved_cap(p.email) or 60.0
+    rem_active = ledger.get_remaining_budget(agent_id="renewal-test", cap=cap, contractor_email=p.email)
+    assert round(rem_active, 2) == round(cap - 49.99, 2)
+
+    # 2. Suspend subscription via webhook
+    code, body = _post_webhook("BILLING.SUBSCRIPTION.SUSPENDED", {"id": p.sub_id, "subscriber": {"email_address": p.email}})
+    assert code == 200, body
+    assert _COMPLETED_SUBSCRIPTIONS[p.sub_id]["status"] == "SUSPENDED"
+    assert _COMPLETED_SUBSCRIPTIONS[p.sub_id]["node_status"] == "SUSPENDED"
+    rem_suspended = ledger.get_remaining_budget(agent_id="renewal-test", cap=cap, contractor_email=p.email)
+    assert round(rem_suspended, 2) == round(cap, 2)
+
+    # 3. Reactivate subscription via webhook
+    code, body = _post_webhook("BILLING.SUBSCRIPTION.RE-ACTIVATED", {"id": p.sub_id, "subscriber": {"email_address": p.email}})
+    assert code == 200, body
+    assert _COMPLETED_SUBSCRIPTIONS[p.sub_id]["status"] == "ACTIVE"
+    assert _COMPLETED_SUBSCRIPTIONS[p.sub_id]["node_status"] == "ACTIVE"
+    rem_restored = ledger.get_remaining_budget(agent_id="renewal-test", cap=cap, contractor_email=p.email)
+    assert round(rem_restored, 2) == round(cap - 49.99, 2)
+
+
+@pytest.mark.asyncio
+async def test_webhook_payment_sale_refunded_qbo_credit_memo(tmp_path):
+    """
+    PAYMENT.SALE.REFUNDED produces authentic QuickBooks Online API v3 Credit Memo
+    and records an offset refund in recurring_charges.
+    """
+    p = await _agent_purchase(tmp_path)
+    sale_id = f"SALE-{uuid.uuid4().hex[:8].upper()}"
+    _check(p.sub_id, days_after=0, sale_id=sale_id)
+
+    refund_id = f"REF-{uuid.uuid4().hex[:8].upper()}"
+    code, body = _post_webhook(
+        "PAYMENT.SALE.REFUNDED",
+        {
+            "id": refund_id,
+            "sale_id": sale_id,
+            "billing_agreement_id": p.sub_id,
+            "amount": {"total": "49.99", "currency": "USD"},
+            "reason_code": "CUSTOMER_SATISFACTION",
+            "create_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        },
+    )
+    assert code == 200, body
+    assert body["event_type"] == "PAYMENT.SALE.REFUNDED"
+    cm = body["qbo_credit_memo"]
+    assert cm["entity"] == "QuickBooks_Online"
+    assert cm["api_version"] == "v3"
+    assert cm["payload"]["CreditMemo"]["TotalAmt"] == 49.99
+    assert cm["account_mapping"]["refund_amount"] == 49.99
+
+    # Verify offset in recurring_charges
+    chg = get_recurring_charge(refund_id)
+    assert chg is not None
+    assert chg["status"] == "REFUNDED"
+    assert chg["amount_cents"] == -4999
+
+
+@pytest.mark.asyncio
+async def test_recurring_charge_rejected_on_revoked_mandate(tmp_path, stops):
+    """
+    A PayPal renewal charge attempted on a cryptographically revoked mandate
+    is immediately rejected (OUT_OF_MANDATE) and cancels the subscription.
+    """
+    from backend.database import record_mandate_revocation
+    p = await _agent_purchase(tmp_path)
+    m_hash = compute_open_payment_mandate_hash(p.limits["open_payment_mandate_token"])
+
+    # Revoke the open payment mandate in the persistent status list
+    record_mandate_revocation(
+        mandate_proof_hash=m_hash,
+        revoked_by_kid="any-kid",
+        reason="Security breach / compromised buyer node",
+        signature_hex="aa" * 64,
+    )
+
+    # Attempt renewal charge on revoked mandate
+    result = _check(p.sub_id, days_after=CYCLE_DAYS)
+    assert result["outcome"] == "OUT_OF_MANDATE"
+    assert result["action"] == "CANCEL"
+    assert "MANDATE_REVOKED" in result["reason"]
+

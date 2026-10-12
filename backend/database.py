@@ -221,6 +221,17 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 node_assigned TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+
+            -- Cryptographic mandate revocation status list (AP2 v0.2 / SPEC-001 v1.9.0)
+            CREATE TABLE IF NOT EXISTS revoked_mandates (
+                revocation_id TEXT PRIMARY KEY,
+                mandate_proof_hash TEXT NOT NULL UNIQUE,
+                revoked_by_kid TEXT NOT NULL,
+                revoked_at TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                signature_hex TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_revoked_mandates_hash ON revoked_mandates(mandate_proof_hash);
             """)
 
             cur = conn.cursor()
@@ -932,6 +943,91 @@ def get_open_mandate_total_usage(mandate_hash: str, db_path: Optional[Path] = No
         conn.close()
 
 
+# --- Cryptographic Mandate Revocation Operations (SPEC-001 v1.9.0) ---
+
+def record_mandate_revocation(
+    mandate_proof_hash: str,
+    revoked_by_kid: str,
+    reason: str,
+    signature_hex: str,
+    revoked_at: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Records an owner-signed mandate revocation. Fail-closed against duplicate or empty inputs."""
+    if not mandate_proof_hash or not revoked_by_kid or not signature_hex:
+        raise ValueError("mandate_proof_hash, revoked_by_kid, and signature_hex are required.")
+
+    clean_hash = mandate_proof_hash.strip()
+    revocation_id = f"rev_{uuid.uuid4().hex[:12]}"
+    now_iso = revoked_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO revoked_mandates (revocation_id, mandate_proof_hash, revoked_by_kid, revoked_at, reason, signature_hex)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(mandate_proof_hash) DO UPDATE SET
+                    revocation_id = excluded.revocation_id,
+                    revoked_by_kid = excluded.revoked_by_kid,
+                    revoked_at = excluded.revoked_at,
+                    reason = excluded.reason,
+                    signature_hex = excluded.signature_hex
+                """,
+                (revocation_id, clean_hash, revoked_by_kid.strip(), now_iso, reason.strip(), signature_hex.strip()),
+            )
+        return {
+            "revocation_id": revocation_id,
+            "mandate_proof_hash": clean_hash,
+            "revoked_by_kid": revoked_by_kid.strip(),
+            "revoked_at": now_iso,
+            "reason": reason.strip(),
+            "signature_hex": signature_hex.strip(),
+        }
+    finally:
+        conn.close()
+
+
+def is_mandate_revoked(mandate_proof_hash: Optional[str], db_path: Optional[Path] = None) -> bool:
+    """Returns True if the given mandate proof hash or checkout hash is present in the revocation list."""
+    if not mandate_proof_hash or not str(mandate_proof_hash).strip():
+        return False
+    clean_hash = str(mandate_proof_hash).strip()
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM revoked_mandates WHERE mandate_proof_hash = ? LIMIT 1", (clean_hash,))
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def get_mandate_revocation(mandate_proof_hash: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Retrieves revocation details for a mandate proof hash if revoked."""
+    if not mandate_proof_hash or not str(mandate_proof_hash).strip():
+        return None
+    clean_hash = str(mandate_proof_hash).strip()
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM revoked_mandates WHERE mandate_proof_hash = ? LIMIT 1", (clean_hash,))
+        return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def list_revoked_mandates(limit: int = 100, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Lists recent cryptographic mandate revocations ordered by revocation time desc."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM revoked_mandates ORDER BY revoked_at DESC LIMIT ?", (max(1, int(limit)),))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_buyer_key(kid: str, db_path: Optional[Path] = None) -> Optional[str]:
     """Retrieves a registered public key hex by key ID."""
     if not kid:
@@ -1225,6 +1321,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM open_mandate_settlements")
             conn.execute("DELETE FROM recurring_mandates")
             conn.execute("DELETE FROM recurring_charges")
+            conn.execute("DELETE FROM revoked_mandates")
             placeholders = ",".join("?" for _ in _DEFAULT_BUYER_KIDS)
             conn.execute(f"DELETE FROM buyer_keys WHERE kid NOT IN ({placeholders})", list(_DEFAULT_BUYER_KIDS))
     finally:

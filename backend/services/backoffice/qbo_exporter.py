@@ -185,5 +185,114 @@ class QboExporter:
             },
         }
 
+    def format_credit_memo_payload(
+        self,
+        contractor_name: str,
+        business_entity: str,
+        contractor_email: str,
+        refund_amount: float,
+        paypal_subscription_id: str,
+        paypal_refund_id: str,
+        original_sale_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        txn_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generates an authentic QuickBooks Online API v3 CreditMemo payload for a refunded subscription charge.
+        Maps the credit to Software & SaaS COGS/Expense account 6300 as a negative expense offset.
+        """
+        date_str = txn_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        doc_number = f"CM-{paypal_refund_id[-6:] if len(paypal_refund_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
+
+        private_memo = (
+            f"AP2 Autonomous Commerce Protocol Refund / Credit Memo.\n"
+            f"PayPal Sub: {paypal_subscription_id} | Refund ID: {paypal_refund_id}\n"
+            f"Original Sale: {original_sale_id or 'N/A'} | Reason: {reason or 'Subscription Charge Refunded'}\n"
+            f"Beneficiary: {contractor_name} ({business_entity} <{contractor_email}>)"
+        )
+
+        return {
+            "CreditMemo": {
+                "DocNumber": doc_number,
+                "TxnDate": date_str,
+                "TotalAmt": float(f"{refund_amount:.2f}"),
+                "CurrencyRef": {
+                    "value": "USD",
+                    "name": "United States Dollar",
+                },
+                "CustomerRef": {
+                    "value": "1",
+                    "name": f"{contractor_name} ({business_entity})",
+                },
+                "PrivateNote": private_memo,
+                "Line": [
+                    {
+                        "Id": "1",
+                        "LineNum": 1,
+                        "Amount": float(f"{refund_amount:.2f}"),
+                        "DetailType": "SalesItemLineDetail",
+                        "Description": f"AP2 Autonomous Commerce Refund — {reason or 'Service Credit'} (Ref: {paypal_refund_id})",
+                        "SalesItemLineDetail": {
+                            "ItemRef": {
+                                "value": "1",
+                                "name": "AP2 Services",
+                            },
+                            "UnitPrice": float(f"{refund_amount:.2f}"),
+                            "Qty": 1,
+                            "TaxCodeRef": {
+                                "value": "NON",
+                            },
+                        },
+                    }
+                ],
+            }
+        }
+
+    def export_refund_credit_memo(
+        self,
+        contractor_name: str,
+        business_entity: str,
+        contractor_email: str,
+        refund_amount: float,
+        paypal_subscription_id: str,
+        paypal_refund_id: str,
+        original_sale_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        txn_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Assembles complete QBO export package for a refunded charge.
+        """
+        synthetic_cm_id = f"QBO-CM-{uuid.uuid4().hex[:8].upper()}"
+        payload = self.format_credit_memo_payload(
+            contractor_name=contractor_name,
+            business_entity=business_entity,
+            contractor_email=contractor_email,
+            refund_amount=refund_amount,
+            paypal_subscription_id=paypal_subscription_id,
+            paypal_refund_id=paypal_refund_id,
+            original_sale_id=original_sale_id,
+            reason=reason,
+            txn_date=txn_date,
+        )
+        return {
+            "entity": "QuickBooks_Online",
+            "api_version": "v3",
+            "credit_memo_id": synthetic_cm_id,
+            "target_endpoint": "https://quickbooks.api.intuit.com/v3/company/{realmId}/creditmemo",
+            "http_method": "POST",
+            "headers": {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            "payload": payload,
+            "account_mapping": {
+                "expense_account": f"{self.default_expense_account_id} - {self.default_expense_account_name}",
+                "clearing_account": f"{self.default_clearing_account_id} - {self.default_clearing_account_name}",
+                "refund_amount": refund_amount,
+                "currency": "USD",
+            },
+        }
+
 
 qbo_exporter = QboExporter()

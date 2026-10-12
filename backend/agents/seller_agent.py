@@ -1063,6 +1063,7 @@ class SellerAgent:
                 mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
         mandate_proof_hash = mandate_proof_hash or checkout_hash
 
+        from ..database import is_mandate_revoked
         from ..services.ap2_service import clear_stored_receipt
 
         def _reject_purchase(desc: str, err_code: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1097,6 +1098,11 @@ class SellerAgent:
             if extra:
                 ret.update(extra)
             return ret
+
+        if is_mandate_revoked(mandate_proof_hash) or (offer_id and is_mandate_revoked(offer_id)):
+            desc = "MANDATE_REVOKED: Mandate has been cryptographically revoked by owner."
+            logger.warning(f"[SECURITY] {desc}")
+            return _reject_purchase(desc, "MANDATE_REVOKED")
 
         # Parameter integrity: if buyer provided tier_id or rate, they must match verified chain
         if tier_id and verified_tier and tier_id != verified_tier:

@@ -46,6 +46,7 @@ from ..database import (
     get_open_mandate_total_usage,
     get_recurring_charge,
     get_recurring_mandate,
+    is_mandate_revoked,
     record_recurring_charge,
     save_recurring_mandate,
 )
@@ -242,6 +243,11 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
     if record.get("status") in ("CANCELLED", "SUSPENDED", "STOP_FAILED"):
         return finish(OUT_OF_MANDATE, ACTION_CANCEL,
                       f"CHARGE_AFTER_STOP: subscription was already {record['status'].lower()}.", mandate)
+
+    # A charge on a cryptographically revoked mandate is unauthorized
+    if is_mandate_revoked(mandate_hash):
+        return finish(OUT_OF_MANDATE, ACTION_CANCEL,
+                      "MANDATE_REVOKED: owner revoked this payment mandate.", mandate)
 
     created_at = _parse_time(record.get("created_at")) or charged_at
     is_initial = (

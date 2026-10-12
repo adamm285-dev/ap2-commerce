@@ -579,6 +579,68 @@ async def get_checkout_endpoint(order_id: str):
     return record
 
 
+# --- Cryptographic Mandate Revocation Endpoints (SPEC-001 v1.9.0) ---
+
+class RevokeMandateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    mandateProofHash: str = Field(..., alias="mandate_proof_hash", description="Hash of the mandate being revoked")
+    kid: str = Field(..., description="Key ID of registered buyer key used to sign revocation")
+    reason: str = Field(default="Owner manual revocation", description="Reason for revocation")
+    timestampIso: Optional[str] = Field(default=None, alias="timestamp_iso", description="ISO 8601 timestamp of revocation")
+    signature: str = Field(..., description="Cryptographic signature over canonical REVOKE message")
+
+
+@app.post("/api/mandates/revoke", tags=["Mandate Revocation"])
+@app.post("/api/agent/mandates/revoke", tags=["Mandate Revocation"])
+async def revoke_mandate_endpoint(req: RevokeMandateRequest):
+    """
+    Cryptographically revokes an AP2 Open Mandate.
+    Requires owner signature verifying against registered buyer keys.
+    Immediately stops any active PayPal subscriptions bound to this mandate.
+    """
+    from .services.mandate_revocation_service import revoke_mandate
+    try:
+        res = await revoke_mandate(
+            mandate_proof_hash=req.mandateProofHash,
+            kid=req.kid,
+            reason=req.reason,
+            signature=req.signature,
+            timestamp_iso=req.timestampIso,
+        )
+        return res
+    except ValueError as e:
+        logger.warning(f"Mandate revocation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED if "SIGNATURE" in str(e) or "KEY" in str(e) else status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "REVOCATION_FAILED", "reason": str(e)},
+        )
+
+
+@app.get("/api/mandates/revocations", tags=["Mandate Revocation"])
+async def list_revoked_mandates_endpoint(limit: int = Query(default=100, ge=1, le=1000)):
+    """Returns the cryptographic mandate revocation status list (SPEC-001 v1.9.0)."""
+    from .database import list_revoked_mandates
+    revocations = list_revoked_mandates(limit=limit)
+    return {
+        "status": "success",
+        "count": len(revocations),
+        "revocations": revocations,
+    }
+
+
+@app.get("/api/mandates/revocations/{mandate_hash}", tags=["Mandate Revocation"])
+async def get_mandate_revocation_endpoint(mandate_hash: str):
+    """Checks whether a specific mandate proof hash has been cryptographically revoked."""
+    from .database import get_mandate_revocation
+    rec = get_mandate_revocation(mandate_hash)
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"revoked": False, "message": f"Mandate '{mandate_hash}' is not in the revocation status list."},
+        )
+    return {"revoked": True, "revocation": rec}
+
+
 # --- AP2 Trusted Surface (Human Authorization Boundary) ---
 class TrustedSurfaceSignLimitsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
@@ -1506,6 +1568,7 @@ def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optio
     if sub_id in _COMPLETED_SUBSCRIPTIONS:
         sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
         sub_record["status"] = new_status
+        sub_record["node_status"] = new_status
         sub_record["vault_billing_authorized"] = False
         sub_record["paypal_vault_status"] = f"VAULT_{new_status}"
         email = sub_record.get("contractor_email")
@@ -1526,6 +1589,7 @@ def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optio
         for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
             if isinstance(v, dict) and v.get("subscription_id") == sub_id:
                 v["status"] = new_status
+                v["node_status"] = new_status
                 v["vault_billing_authorized"] = False
                 v["paypal_vault_status"] = f"VAULT_{new_status}"
     else:
@@ -1534,6 +1598,41 @@ def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optio
     # Reconcile contractor ledger strictly from subscription state:
     # commitment = rate of the contractor's one ACTIVE subscription.
     # Replaced, cancelled, or suspended subscriptions contribute 0.0 to commitment.
+    if email:
+        reconcile_contractor_ledger(email)
+
+
+def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = None) -> None:
+    """Restores a suspended subscription back to ACTIVE and reconciles the buyer's ledger."""
+    from .agents.seller_agent import (
+        _COMPLETED_SUBSCRIPTIONS,
+        _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
+        reconcile_contractor_ledger,
+    )
+
+    email = None
+    if sub_id in _COMPLETED_SUBSCRIPTIONS:
+        sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
+        sub_record["status"] = "ACTIVE"
+        sub_record["node_status"] = "ACTIVE"
+        sub_record["vault_billing_authorized"] = True
+        sub_record["paypal_vault_status"] = "VAULT_BOUND"
+        email = sub_record.get("contractor_email")
+
+        if email:
+            norm_email = email.strip().lower()
+            _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+
+        # Update aliases that point to the same record
+        for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
+            if isinstance(v, dict) and v.get("subscription_id") == sub_id:
+                v["status"] = "ACTIVE"
+                v["node_status"] = "ACTIVE"
+                v["vault_billing_authorized"] = True
+                v["paypal_vault_status"] = "VAULT_BOUND"
+    else:
+        email = fallback_email
+
     if email:
         reconcile_contractor_ledger(email)
 
@@ -1680,6 +1779,82 @@ async def paypal_webhook_receiver(request: Request):
             f"[PayPal Webhook] Received {event_type} for {sub_id}. Updating status to {new_status}."
         )
         _apply_subscription_stop(sub_id, new_status, resource.get("subscriber", {}).get("email_address"))
+
+    elif event_type in [
+        "BILLING.SUBSCRIPTION.RE-ACTIVATED",
+        "BILLING.SUBSCRIPTION.REACTIVATED",
+    ]:
+        resource = body.get("resource", {})
+        sub_id = resource.get("id", "UNKNOWN_SUB")
+        logger.info(
+            f"[PayPal Webhook] Received {event_type} for {sub_id}. Restoring status to ACTIVE."
+        )
+        _apply_subscription_reactivate(sub_id, resource.get("subscriber", {}).get("email_address"))
+
+    elif event_type == "PAYMENT.SALE.REFUNDED":
+        resource = body.get("resource", {})
+        refund_id = resource.get("id", f"ref_{uuid.uuid4().hex[:8]}")
+        sale_id = resource.get("sale_id") or resource.get("parent_payment")
+        sub_id = resource.get("billing_agreement_id")
+        amount_info = resource.get("amount") if isinstance(resource.get("amount"), dict) else {}
+        refund_amt_str = amount_info.get("total") or "0.00"
+        try:
+            refund_amount = float(refund_amt_str)
+        except (ValueError, TypeError):
+            refund_amount = 0.0
+
+        from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+        from .database import get_recurring_charge, record_recurring_charge
+        from .services.backoffice.qbo_exporter import qbo_exporter
+
+        parent_charge = None
+        if not sub_id and sale_id:
+            parent_charge = get_recurring_charge(sale_id)
+            if parent_charge:
+                sub_id = parent_charge.get("subscription_id")
+        elif sub_id and sale_id:
+            parent_charge = get_recurring_charge(sale_id)
+
+        sub_record = _COMPLETED_SUBSCRIPTIONS.get(sub_id) if sub_id else {}
+        contractor_name = (sub_record.get("contractor_name") if isinstance(sub_record, dict) else None) or "Autonomous Buyer"
+        business_entity = (sub_record.get("business_entity") if isinstance(sub_record, dict) else None) or "Autonomous Node Network"
+        contractor_email = (sub_record.get("contractor_email") if isinstance(sub_record, dict) else None) or resource.get("subscriber", {}).get("email_address") or "buyer@example.com"
+
+        qbo_credit_memo = qbo_exporter.export_refund_credit_memo(
+            contractor_name=contractor_name,
+            business_entity=business_entity,
+            contractor_email=contractor_email,
+            refund_amount=refund_amount,
+            paypal_subscription_id=sub_id or "UNKNOWN_SUB",
+            paypal_refund_id=refund_id,
+            original_sale_id=sale_id,
+            reason=resource.get("reason_code") or "PayPal Sale Refunded",
+        )
+
+        refund_cents = int(round(refund_amount * 100))
+        if sub_id:
+            mandate_hash = (parent_charge.get("mandate_hash") if parent_charge else None) or (sub_record.get("mandate_proof_hash") if isinstance(sub_record, dict) else None) or "unknown_hash"
+            record_recurring_charge(
+                sale_id=refund_id,
+                subscription_id=sub_id,
+                mandate_hash=mandate_hash,
+                amount_cents=-refund_cents,
+                currency=amount_info.get("currency") or "USD",
+                status="REFUNDED",
+                reason=resource.get("reason_code") or "Refund processed",
+                charged_at=resource.get("create_time") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            )
+
+        logger.info(f"[PayPal Webhook] Processed PAYMENT.SALE.REFUNDED for {refund_id} (${refund_amount:.2f}). QBO Credit Memo: {qbo_credit_memo['credit_memo_id']}")
+        response = {
+            "status": "received",
+            "event_type": event_type,
+            "verification_status": verification.get("verification_status", "SUCCESS"),
+            "refund_id": refund_id,
+            "refund_amount": refund_amount,
+            "qbo_credit_memo": qbo_credit_memo,
+        }
+        return response
 
     elif event_type == "PAYMENT.SALE.COMPLETED":
         # Recurring charge: check it against the owner's AP2 mandate (signature already verified above)

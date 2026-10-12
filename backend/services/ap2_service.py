@@ -494,6 +494,36 @@ def verify_ap2_chains(
                 "payment_receipt": None,
             }
 
+        # Step 1.5: Verify First — Mandate Revocation Status List Check (SPEC-001 v1.9.0)
+        from ..database import is_mandate_revoked
+        open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_token)
+        if is_mandate_revoked(checkout_hash) or is_mandate_revoked(open_pay_hash) or (order_id and is_mandate_revoked(order_id)):
+            msg = "MANDATE_REVOKED: This mandate has been cryptographically revoked by the owner."
+            logger.warning(f"[SECURITY] {msg}")
+            ref = f"chk_{checkout_hash[:16]}"
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=ref,
+                status="Error",
+                error="MANDATE_REVOKED",
+                error_description=msg,
+            )
+            pay_ref = f"pay_{checkout_hash[:16]}"
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=pay_ref,
+                status="Error",
+                error="MANDATE_REVOKED",
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": "MANDATE_REVOKED",
+                "error_description": msg,
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
+
         # Resolve buyer_email if not explicitly provided
         if not buyer_email:
             if checkout_hash in _ISSUED_CHECKOUTS:

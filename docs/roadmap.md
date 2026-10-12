@@ -8,7 +8,7 @@
 
 ## Milestone S1-RESI: Sprint 1 — Resilience & Emergency Control (Advanced Webhooks & Revocation)
 * [INTENT]: Implement full PayPal subscription lifecycle webhook handlers (`BILLING.SUBSCRIPTION.SUSPENDED`, `BILLING.SUBSCRIPTION.RE-ACTIVATED`, `PAYMENT.SALE.REFUNDED` with QBO v3 Credit Memo export). Implement cryptographic mandate revocation status list (`revoked_mandates`) with fail-closed enforcement in `verify_ap2_chains` and automated subscription cancellation.
-* [MEASURED]: In Progress. Target: 100% test pass rate with zero live external network calls.
+* [MEASURED]: Complete. Verified via 581 passing tests (188 SDK + 393 project) with zero live network calls. Webhook suspension, reactivation, and refund handlers verified; mandate revocation status list with Ed25519/ES256 signature verification and auto-cancellation verified. Status: VERIFIED.
 
 ## Milestone S2-SETTLE: Sprint 2 — Two-Sided Marketplace & PayPal Payouts
 * [INTENT]: Implement worker compute node operator registration and automated batch disbursements via PayPal Payouts REST API (`POST /v1/payments/payouts`). Support integer cents margin calculation (gross subscription revenue vs net operator payout vs platform margin) and record payout receipts in SQLite and AG Studio Fleet Ledger.

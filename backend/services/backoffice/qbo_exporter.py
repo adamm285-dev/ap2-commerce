@@ -294,5 +294,110 @@ class QboExporter:
             },
         }
 
+    def format_operator_payout_bill_payload(
+        self,
+        operator_name: str,
+        operator_email: str,
+        net_payout_dollars: float,
+        payout_batch_id: str,
+        payout_item_id: str,
+        subscription_id: str,
+        node_id: Optional[str] = None,
+        txn_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generates an authentic QuickBooks Online API v3 Bill/Purchase payload for an operator payout.
+        Maps the disbursement to GL Account 5000 (Cost of Goods Sold: Compute & Datacenter Infrastructure).
+        """
+        date_str = txn_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        doc_number = f"BILL-{payout_item_id[-6:] if len(payout_item_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
+
+        private_memo = (
+            f"AP2 Autonomous Commerce Protocol — Operator Compute Disbursement.\n"
+            f"Batch: {payout_batch_id} | Item: {payout_item_id}\n"
+            f"Subscription: {subscription_id} | Node: {node_id or 'Cluster Node'}\n"
+            f"Operator: {operator_name} <{operator_email}>"
+        )
+
+        return {
+            "Bill": {
+                "DocNumber": doc_number,
+                "TxnDate": date_str,
+                "TotalAmt": float(f"{net_payout_dollars:.2f}"),
+                "CurrencyRef": {
+                    "value": "USD",
+                    "name": "United States Dollar",
+                },
+                "VendorRef": {
+                    "value": "VEND-OP-01",
+                    "name": f"{operator_name} ({operator_email})",
+                },
+                "PrivateNote": private_memo,
+                "Line": [
+                    {
+                        "Id": "1",
+                        "LineNum": 1,
+                        "Amount": float(f"{net_payout_dollars:.2f}"),
+                        "DetailType": "AccountBasedExpenseLineDetail",
+                        "Description": f"Compute Node Infrastructure Operation ({node_id or 'Cluster'}) - PayPal Payout Ref: {payout_item_id}",
+                        "AccountBasedExpenseLineDetail": {
+                            "AccountRef": {
+                                "value": "5000",
+                                "name": "Cost of Goods Sold: Compute & Datacenter Infrastructure",
+                            },
+                            "BillableStatus": "NotBillable",
+                            "TaxCodeRef": {
+                                "value": "NON",
+                            },
+                        },
+                    }
+                ],
+            }
+        }
+
+    def export_operator_payout_bill(
+        self,
+        operator_name: str,
+        operator_email: str,
+        net_payout_dollars: float,
+        payout_batch_id: str,
+        payout_item_id: str,
+        subscription_id: str,
+        node_id: Optional[str] = None,
+        txn_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Assembles complete QBO export package for an operator compute disbursement.
+        """
+        synthetic_bill_id = f"QBO-BILL-{uuid.uuid4().hex[:8].upper()}"
+        payload = self.format_operator_payout_bill_payload(
+            operator_name=operator_name,
+            operator_email=operator_email,
+            net_payout_dollars=net_payout_dollars,
+            payout_batch_id=payout_batch_id,
+            payout_item_id=payout_item_id,
+            subscription_id=subscription_id,
+            node_id=node_id,
+            txn_date=txn_date,
+        )
+        return {
+            "entity": "QuickBooks_Online",
+            "api_version": "v3",
+            "bill_id": synthetic_bill_id,
+            "target_endpoint": "https://quickbooks.api.intuit.com/v3/company/{realmId}/bill",
+            "http_method": "POST",
+            "headers": {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            "payload": payload,
+            "account_mapping": {
+                "cogs_account": "5000 - Cost of Goods Sold: Compute & Datacenter Infrastructure",
+                "clearing_account": f"{self.default_clearing_account_id} - {self.default_clearing_account_name}",
+                "net_payout_amount": net_payout_dollars,
+                "currency": "USD",
+            },
+        }
+
 
 qbo_exporter = QboExporter()

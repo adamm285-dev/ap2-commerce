@@ -585,6 +585,121 @@ class PayPalService:
                 "mock_mode": False,
             }
 
+    async def create_payout_batch(
+        self,
+        sender_batch_id: str,
+        items: List[Dict[str, Any]],
+        email_subject: str = "You have a payout from AP2 Autonomous Commerce",
+        email_message: str = "Disbursement for autonomous compute node operation.",
+    ) -> Dict[str, Any]:
+        """
+        Creates a batch payout via PayPal Payouts REST API (POST /v1/payments/payouts).
+        In Mock Mode: Returns a deterministic synthetic batch response.
+        In Live Mode: Authenticates via OAuth2 and sends batch payout request to PayPal.
+        """
+        if not sender_batch_id or not sender_batch_id.strip():
+            raise ValueError("sender_batch_id is required for payout batch.")
+        if not items:
+            raise ValueError("items cannot be empty for payout batch.")
+
+        # MOCK(M-002): payout batch simulated, no PayPal call
+        if self.mock_mode:
+            batch_id = f"PAYOUTS-MOCK-{uuid.uuid4().hex[:12].upper()}"
+            total_cents = 0
+            formatted_items = []
+            for it in items:
+                amt_str = it.get("amount", {}).get("value") or "0.00"
+                total_cents += int(round(float(amt_str) * 100))
+                item_id = it.get("sender_item_id") or f"ITEM-MOCK-{uuid.uuid4().hex[:8].upper()}"
+                formatted_items.append({
+                    "payout_item_id": item_id,
+                    "transaction_id": f"TXN-PAYOUT-{uuid.uuid4().hex[:10].upper()}",
+                    "activity_id": f"ACT-{uuid.uuid4().hex[:8].upper()}",
+                    "transaction_status": "SUCCESS",
+                    "payout_item_fee": {"currency": "USD", "value": "0.25"},
+                    "payout_batch_id": batch_id,
+                    "payout_item": it,
+                })
+            total_dollars = f"{total_cents / 100:.2f}"
+            batch_header = {
+                "payout_batch_id": batch_id,
+                "batch_status": "SUCCESS",
+                "time_created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "time_completed": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "sender_batch_header": {
+                    "sender_batch_id": sender_batch_id,
+                    "email_subject": email_subject,
+                    "email_message": email_message,
+                    "recipient_type": "EMAIL",
+                },
+                "amount": {"currency": "USD", "value": total_dollars},
+                "fees": {"currency": "USD", "value": f"{len(items) * 0.25:.2f}"},
+            }
+            logger.info(f"[PayPal MOCK] Created synthetic payout batch {batch_id} with {len(items)} items (${total_dollars})")
+            return {
+                "batch_header": batch_header,
+                "items": formatted_items,
+                "mock_mode": True,
+            }
+
+        token = await self.get_access_token()
+        if not token:
+            raise RuntimeError("PayPal authentication failed.")
+
+        payload = {
+            "sender_batch_header": {
+                "sender_batch_id": sender_batch_id,
+                "email_subject": email_subject,
+                "email_message": email_message,
+                "recipient_type": "EMAIL",
+            },
+            "items": items,
+        }
+
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{self.base_url}/v1/payments/payouts",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=15.0,
+            )
+            res.raise_for_status()
+            return res.json()
+
+    async def get_payout_batch(self, payout_batch_id: str) -> Dict[str, Any]:
+        """
+        Retrieves the status of a batch payout (GET /v1/payments/payouts/{payout_batch_id}).
+        """
+        if not payout_batch_id or not payout_batch_id.strip():
+            raise ValueError("payout_batch_id is required.")
+
+        # MOCK(M-002): payout batch lookup simulated, no PayPal call
+        if self.mock_mode:
+            return {
+                "batch_header": {
+                    "payout_batch_id": payout_batch_id,
+                    "batch_status": "SUCCESS",
+                    "time_completed": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                },
+                "mock_mode": True,
+            }
+
+        token = await self.get_access_token()
+        if not token:
+            raise RuntimeError("PayPal authentication failed.")
+
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"{self.base_url}/v1/payments/payouts/{payout_batch_id.strip()}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10.0,
+            )
+            res.raise_for_status()
+            return res.json()
+
     # MOCK(M-003): computes the local HMAC that mock-mode webhooks are checked against
     @staticmethod
     def generate_mock_webhook_signature(raw_body: str) -> str:

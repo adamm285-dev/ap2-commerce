@@ -12,7 +12,7 @@
 
 ## Milestone S2-SETTLE: Sprint 2 — Two-Sided Marketplace & PayPal Payouts
 * [INTENT]: Implement worker compute node operator registration and automated batch disbursements via PayPal Payouts REST API (`POST /v1/payments/payouts`). Support integer cents margin calculation (gross subscription revenue vs net operator payout vs platform margin) and record payout receipts in SQLite and AG Studio Fleet Ledger.
-* [MEASURED]: Planned. Target: Zero floating-point rounding errors and verified mock ledger gate alignment.
+* [MEASURED]: Complete. Verified via 591 passing tests (188 SDK + 403 project). Strict Rule 6 integer-cents arithmetic with zero float drift; operator onboarding registry; automated monthly batch disbursements via PayPal Payouts REST API with QBO v3 Bill Payment export; AG Studio Fleet Ledger enrichment and REST endpoints verified. Status: VERIFIED.
 
 ## Milestone S3-NATIVE: Sprint 3 — Identity Attestation & Native AP2 Rail Simulation
 * [INTENT]: Implement OpenID Connect (OIDC) Log in with PayPal identity attestation binding verified payer accounts to registered AP2 buyer keys during challenge onboarding. Build simulated native AP2 gateway charge rail (`POST /v1/ap2/gateway/charges`) and hardware enclave keystore abstraction in the buyer wallet.

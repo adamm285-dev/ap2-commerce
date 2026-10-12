@@ -17,8 +17,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** In live deployments, refuse to start when live mode is requested and credentials are missing, instead of switching silently.
 
 ### M-002: PayPal REST calls are simulated in mock mode
-- **Where:** `backend/services/paypal_service.py::PayPalService.get_access_token`, `backend/services/paypal_service.py::PayPalService.get_sync_access_token`, `backend/services/paypal_service.py::PayPalService.stop_subscription`, `backend/services/paypal_service.py::PayPalService.create_order`, `backend/services/paypal_service.py::PayPalService.verify_subscription`, `backend/services/paypal_service.py::PayPalService.create_subscription`
-- **What it fakes:** OAuth tokens, orders, subscription creation (returned as ACTIVE with no buyer approval), subscription lookups, and cancel/suspend calls. No request reaches PayPal.
+- **Where:** `backend/services/paypal_service.py::PayPalService.get_access_token`, `backend/services/paypal_service.py::PayPalService.get_sync_access_token`, `backend/services/paypal_service.py::PayPalService.stop_subscription`, `backend/services/paypal_service.py::PayPalService.create_order`, `backend/services/paypal_service.py::PayPalService.verify_subscription`, `backend/services/paypal_service.py::PayPalService.create_subscription`, `backend/services/paypal_service.py::PayPalService.create_payout_batch`, `backend/services/paypal_service.py::PayPalService.get_payout_batch`
+- **What it fakes:** OAuth tokens, orders, subscription creation (returned as ACTIVE with no buyer approval), subscription lookups, cancel/suspend calls, and batch payouts. No request reaches PayPal.
 - **Why:** Project rule 9 (no live network calls) and credential-free judging.
 - **To make it real:** Set `MOCK_EXTERNAL_APIS=false` with sandbox credentials. The live branches exist but the live tests (`backend/tests/test_live_paypal_sandbox.py`) have not been run, and they don't cover cancel/suspend.
 

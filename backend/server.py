@@ -641,6 +641,117 @@ async def get_mandate_revocation_endpoint(mandate_hash: str):
     return {"revoked": True, "revocation": rec}
 
 
+# --- Two-Sided Marketplace & Operator Payouts Endpoints (SPEC-001 v1.9.0 / Milestone S2-SETTLE) ---
+
+class RegisterOperatorRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    name: str = Field(..., description="Compute node operator or infrastructure provider name")
+    email: str = Field(..., description="Operator PayPal email address for payouts")
+    assignedNodes: Optional[List[str]] = Field(default=None, alias="assigned_nodes", description="Assigned compute node IDs or pattern prefixes")
+    splitBps: int = Field(default=8500, alias="split_bps", description="Operator revenue share in basis points (e.g. 8500 = 85.00%)")
+    payoutRecipientType: str = Field(default="EMAIL", alias="payout_recipient_type", description="PayPal recipient type (EMAIL or PAYER_ID)")
+    operatorId: Optional[str] = Field(default=None, alias="operator_id", description="Optional custom operator identifier")
+
+
+class ExecuteBatchPayoutRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    cycleId: Optional[str] = Field(default=None, alias="cycle_id", description="Billing cycle identifier (e.g. '2026-10')")
+    senderBatchId: Optional[str] = Field(default=None, alias="sender_batch_id", description="Custom unique batch sender ID")
+    subscriptionIds: Optional[List[str]] = Field(default=None, alias="subscription_ids", description="Optional list of specific subscription IDs to disburse")
+    dryRun: bool = Field(default=False, alias="dry_run", description="If True, performs calculations and returns preview without executing PayPal payout")
+
+
+@app.post("/api/marketplace/operators/register", status_code=status.HTTP_201_CREATED, tags=["Marketplace Payouts"])
+async def register_operator_endpoint(req: RegisterOperatorRequest):
+    """Registers or updates a compute node operator in the two-sided marketplace."""
+    from .services.marketplace_payout_service import marketplace_payout_service
+    try:
+        op = marketplace_payout_service.register_operator(
+            name=req.name,
+            email=req.email,
+            assigned_nodes=req.assignedNodes,
+            split_bps=req.splitBps,
+            payout_recipient_type=req.payoutRecipientType,
+            operator_id=req.operatorId,
+        )
+        return {"status": "SUCCESS", "operator": op}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@app.get("/api/marketplace/operators", tags=["Marketplace Payouts"])
+async def list_operators_endpoint():
+    """Lists all registered compute node operators and their capacity assignments."""
+    from .services.marketplace_payout_service import marketplace_payout_service
+    operators = marketplace_payout_service.list_operators()
+    return {"status": "SUCCESS", "count": len(operators), "operators": operators}
+
+
+@app.get("/api/marketplace/operators/{operator_id}", tags=["Marketplace Payouts"])
+async def get_operator_endpoint(operator_id: str):
+    """Retrieves details of a registered compute node operator."""
+    from .services.marketplace_payout_service import marketplace_payout_service
+    op = marketplace_payout_service.get_operator(operator_id)
+    if not op:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Operator '{operator_id}' not found.")
+    return {"status": "SUCCESS", "operator": op}
+
+
+@app.post("/api/marketplace/payouts/execute-batch", tags=["Marketplace Payouts"])
+async def execute_batch_payout_endpoint(req: ExecuteBatchPayoutRequest):
+    """
+    Executes automated monthly batch payouts to compute node operators via PayPal Payouts REST API.
+    Calculates integer cents margins (85% operator / 15% platform take-rate with zero float drift),
+    disburses funds via PayPal, and exports QBO v3 Bills.
+    """
+    from .services.marketplace_payout_service import marketplace_payout_service
+    try:
+        res = await marketplace_payout_service.execute_fleet_payout_batch(
+            cycle_id=req.cycleId,
+            sender_batch_id=req.senderBatchId,
+            subscription_ids=req.subscriptionIds,
+            dry_run=req.dryRun,
+        )
+        return res
+    except Exception as e:
+        logger.error(f"[Marketplace Payouts] Batch payout failed: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/api/marketplace/payouts/batches", tags=["Marketplace Payouts"])
+async def list_payout_batches_endpoint(limit: int = Query(default=50, ge=1, le=500)):
+    """Lists historical PayPal payout batches with gross, payout, and platform margin totals."""
+    from .database import list_payout_batches
+    batches = list_payout_batches(limit=limit)
+    return {"status": "SUCCESS", "count": len(batches), "batches": batches}
+
+
+@app.get("/api/marketplace/payouts/batches/{batch_id}", tags=["Marketplace Payouts"])
+async def get_payout_batch_endpoint(batch_id: str):
+    """Retrieves a specific payout batch and its itemized disbursements."""
+    from .database import get_payout_batch
+    batch = get_payout_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Payout batch '{batch_id}' not found.")
+    return {"status": "SUCCESS", "batch": batch}
+
+
+@app.get("/api/marketplace/payouts/ledger", tags=["Marketplace Payouts"])
+async def get_operator_settlement_ledger_endpoint(operator_id: Optional[str] = Query(default=None)):
+    """Returns the itemized operator settlement ledger across all compute node workloads."""
+    from .services.marketplace_payout_service import marketplace_payout_service
+    ledger_entries = marketplace_payout_service.get_operator_settlement_ledger(operator_id=operator_id)
+    return {"status": "SUCCESS", "count": len(ledger_entries), "ledger": ledger_entries}
+
+
+@app.get("/api/marketplace/revenue-summary", tags=["Marketplace Payouts"])
+async def get_marketplace_revenue_summary_endpoint():
+    """Returns platform GMV, operator disbursements, platform retained margin, and effective take-rate."""
+    from .services.marketplace_payout_service import marketplace_payout_service
+    summary = marketplace_payout_service.get_marketplace_revenue_summary()
+    return {"status": "SUCCESS", "summary": summary}
+
+
 # --- AP2 Trusted Surface (Human Authorization Boundary) ---
 class TrustedSurfaceSignLimitsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")

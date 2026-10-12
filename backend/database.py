@@ -38,6 +38,38 @@ _DEFAULT_BUYER_KIDS: Set[str] = {
     "test-agent-001",
 }
 
+DEFAULT_NODE_OPERATORS: List[Dict[str, Any]] = [
+    {
+        "operator_id": "op_lambda_gpu",
+        "name": "Lambda Autonomous Compute",
+        "email": "payouts-lambda@example.com",
+        "payout_recipient_type": "EMAIL",
+        "assigned_nodes": ["node-batch-", "node-1", "node-2", "node-3", "node-4", "node-5"],
+        "split_bps": 8500,
+        "status": "ACTIVE",
+    },
+    {
+        "operator_id": "op_equinix_metal",
+        "name": "Equinix Metal Nodes",
+        "email": "payouts-equinix@example.com",
+        "payout_recipient_type": "EMAIL",
+        "assigned_nodes": ["node-gateway-", "node-6", "node-7", "node-8", "node-9", "node-10"],
+        "split_bps": 8500,
+        "status": "ACTIVE",
+    },
+    {
+        "operator_id": "op_coreweave_cluster",
+        "name": "CoreWeave Cluster Fleet",
+        "email": "payouts-coreweave@example.com",
+        "payout_recipient_type": "EMAIL",
+        "assigned_nodes": ["node-cluster-", "node-11", "node-12", "node-13", "node-14"],
+        "split_bps": 8500,
+        "status": "ACTIVE",
+    },
+]
+
+DEFAULT_NODE_OPERATOR_IDS: Set[str] = {op["operator_id"] for op in DEFAULT_NODE_OPERATORS}
+
 
 def _dict_factory(cursor: sqlite3.Cursor, row: Tuple[Any, ...]) -> Dict[str, Any]:
     """Row factory converting sqlite3 rows to native Python dictionaries."""
@@ -232,6 +264,54 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 signature_hex TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_revoked_mandates_hash ON revoked_mandates(mandate_proof_hash);
+
+            -- Two-Sided Marketplace: Node Operator Registry & PayPal Payouts (SPEC-001 v1.9.0 / Milestone S2-SETTLE)
+            CREATE TABLE IF NOT EXISTS node_operators (
+                operator_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                payout_recipient_type TEXT NOT NULL DEFAULT 'EMAIL',
+                assigned_nodes TEXT NOT NULL,
+                split_bps INTEGER NOT NULL DEFAULT 8500,
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_node_operators_email ON node_operators(email);
+            CREATE INDEX IF NOT EXISTS idx_node_operators_status ON node_operators(status);
+
+            CREATE TABLE IF NOT EXISTS payout_batches (
+                batch_id TEXT PRIMARY KEY,
+                sender_batch_id TEXT NOT NULL UNIQUE,
+                batch_status TEXT NOT NULL,
+                total_gross_cents INTEGER NOT NULL,
+                total_payout_cents INTEGER NOT NULL,
+                total_platform_fee_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                item_count INTEGER NOT NULL,
+                raw_response_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_payout_batches_status ON payout_batches(batch_status);
+
+            CREATE TABLE IF NOT EXISTS payout_items (
+                item_id TEXT PRIMARY KEY,
+                batch_id TEXT NOT NULL,
+                operator_id TEXT NOT NULL,
+                subscription_id TEXT NOT NULL,
+                receiver_email TEXT NOT NULL,
+                gross_amount_cents INTEGER NOT NULL,
+                platform_fee_cents INTEGER NOT NULL,
+                net_payout_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                status TEXT NOT NULL,
+                paypal_transaction_id TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_payout_items_batch_id ON payout_items(batch_id);
+            CREATE INDEX IF NOT EXISTS idx_payout_items_operator_id ON payout_items(operator_id);
+            CREATE INDEX IF NOT EXISTS idx_payout_items_sub_id ON payout_items(subscription_id);
             """)
 
             cur = conn.cursor()
@@ -267,6 +347,31 @@ def init_db(db_path: Optional[Path] = None) -> None:
                         VALUES (?, ?, ?, ?, ?)
                         """,
                         (kid, buyer_pub, "agent-alpha@example.com", "Demo Buyer Corp", now_iso),
+                    )
+
+            # Seed default node operators if table is empty in mock/demo mode
+            cur.execute("SELECT COUNT(*) as count FROM node_operators")
+            op_count = cur.fetchone()["count"]
+            if op_count == 0 and getattr(settings, "mock_external_apis", False):
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                for op in DEFAULT_NODE_OPERATORS:
+                    cur.execute(
+                        """
+                        INSERT OR IGNORE INTO node_operators 
+                        (operator_id, name, email, payout_recipient_type, assigned_nodes, split_bps, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            op["operator_id"],
+                            op["name"],
+                            op["email"],
+                            op.get("payout_recipient_type", "EMAIL"),
+                            json.dumps(op["assigned_nodes"]),
+                            op.get("split_bps", 8500),
+                            op.get("status", "ACTIVE"),
+                            now_iso,
+                            now_iso,
+                        ),
                     )
     finally:
         conn.close()
@@ -1028,6 +1133,280 @@ def list_revoked_mandates(limit: int = 100, db_path: Optional[Path] = None) -> L
         conn.close()
 
 
+# --- Two-Sided Marketplace & Node Operator Operations ---
+
+def register_node_operator(
+    operator_data: Dict[str, Any],
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Registers or updates a compute node operator."""
+    op_id = (operator_data.get("operator_id") or f"op_{uuid.uuid4().hex[:10]}").strip()
+    name = (operator_data.get("name") or "Autonomous Compute Operator").strip()
+    email = (operator_data.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise ValueError("Valid operator PayPal email is required.")
+
+    recipient_type = (operator_data.get("payout_recipient_type") or "EMAIL").strip().upper()
+    assigned = operator_data.get("assigned_nodes") or []
+    if isinstance(assigned, (list, set)):
+        assigned_json = json.dumps(list(assigned))
+    elif isinstance(assigned, str):
+        assigned_json = json.dumps([assigned])
+    else:
+        assigned_json = "[]"
+
+    split_bps = int(operator_data.get("split_bps") or 8500)
+    if split_bps < 0 or split_bps > 10000:
+        raise ValueError(f"split_bps must be between 0 and 10000 (got {split_bps})")
+
+    status = (operator_data.get("status") or "ACTIVE").strip().upper()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO node_operators (operator_id, name, email, payout_recipient_type, assigned_nodes, split_bps, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(operator_id) DO UPDATE SET
+                    name = excluded.name,
+                    email = excluded.email,
+                    payout_recipient_type = excluded.payout_recipient_type,
+                    assigned_nodes = excluded.assigned_nodes,
+                    split_bps = excluded.split_bps,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at
+                """,
+                (op_id, name, email, recipient_type, assigned_json, split_bps, status, now_iso, now_iso),
+            )
+        return {
+            "operator_id": op_id,
+            "name": name,
+            "email": email,
+            "payout_recipient_type": recipient_type,
+            "assigned_nodes": json.loads(assigned_json),
+            "split_bps": split_bps,
+            "status": status,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+    finally:
+        conn.close()
+
+
+def get_node_operator(operator_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    if not operator_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM node_operators WHERE operator_id = ?", (operator_id.strip(),))
+        row = cur.fetchone()
+        if row:
+            d = dict(row)
+            try:
+                d["assigned_nodes"] = json.loads(d["assigned_nodes"])
+            except Exception:
+                d["assigned_nodes"] = []
+            return d
+        return None
+    finally:
+        conn.close()
+
+
+def get_operator_by_email(email: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    if not email:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM node_operators WHERE email = ?", (email.strip().lower(),))
+        row = cur.fetchone()
+        if row:
+            d = dict(row)
+            try:
+                d["assigned_nodes"] = json.loads(d["assigned_nodes"])
+            except Exception:
+                d["assigned_nodes"] = []
+            return d
+        return None
+    finally:
+        conn.close()
+
+
+def get_operator_for_node(node_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Resolves which registered operator owns a specific compute node ID or node pattern."""
+    if not node_id:
+        return None
+    clean_node = node_id.strip().lower()
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM node_operators WHERE status = 'ACTIVE' ORDER BY created_at ASC")
+        rows = cur.fetchall()
+        for r in rows:
+            d = dict(r)
+            try:
+                assigned = json.loads(d["assigned_nodes"])
+            except Exception:
+                assigned = []
+            for pattern in assigned:
+                pat_clean = str(pattern).strip().lower()
+                if pat_clean and (pat_clean in clean_node or clean_node.startswith(pat_clean)):
+                    d["assigned_nodes"] = assigned
+                    return d
+        if rows:
+            fallback = dict(rows[0])
+            try:
+                fallback["assigned_nodes"] = json.loads(fallback["assigned_nodes"])
+            except Exception:
+                fallback["assigned_nodes"] = []
+            return fallback
+        return None
+    finally:
+        conn.close()
+
+
+def list_node_operators(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM node_operators ORDER BY created_at ASC")
+        result = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["assigned_nodes"] = json.loads(d["assigned_nodes"])
+            except Exception:
+                d["assigned_nodes"] = []
+            result.append(d)
+        return result
+    finally:
+        conn.close()
+
+
+# --- Payout Batches & Line Items Operations ---
+
+def record_payout_batch(
+    batch_data: Dict[str, Any],
+    items_data: List[Dict[str, Any]],
+    db_path: Optional[Path] = None,
+) -> None:
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO payout_batches (
+                    batch_id, sender_batch_id, batch_status, total_gross_cents, total_payout_cents,
+                    total_platform_fee_cents, currency, item_count, raw_response_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(batch_id) DO UPDATE SET
+                    batch_status = excluded.batch_status,
+                    total_gross_cents = excluded.total_gross_cents,
+                    total_payout_cents = excluded.total_payout_cents,
+                    total_platform_fee_cents = excluded.total_platform_fee_cents,
+                    item_count = excluded.item_count,
+                    raw_response_json = excluded.raw_response_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    batch_data["batch_id"].strip(),
+                    batch_data["sender_batch_id"].strip(),
+                    batch_data.get("batch_status", "SUCCESS"),
+                    int(batch_data.get("total_gross_cents", 0)),
+                    int(batch_data.get("total_payout_cents", 0)),
+                    int(batch_data.get("total_platform_fee_cents", 0)),
+                    batch_data.get("currency", "USD"),
+                    int(batch_data.get("item_count", len(items_data))),
+                    json.dumps(batch_data.get("raw_response", {})),
+                    batch_data.get("created_at") or now_iso,
+                    now_iso,
+                ),
+            )
+            for it in items_data:
+                conn.execute(
+                    """
+                    INSERT INTO payout_items (
+                        item_id, batch_id, operator_id, subscription_id, receiver_email,
+                        gross_amount_cents, platform_fee_cents, net_payout_cents, currency, status,
+                        paypal_transaction_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(item_id) DO UPDATE SET
+                        status = excluded.status,
+                        paypal_transaction_id = excluded.paypal_transaction_id
+                    """,
+                    (
+                        it["item_id"].strip(),
+                        batch_data["batch_id"].strip(),
+                        it["operator_id"].strip(),
+                        it["subscription_id"].strip(),
+                        it["receiver_email"].strip().lower(),
+                        int(it["gross_amount_cents"]),
+                        int(it["platform_fee_cents"]),
+                        int(it["net_payout_cents"]),
+                        it.get("currency", "USD"),
+                        it.get("status", "SUCCESS"),
+                        it.get("paypal_transaction_id"),
+                        it.get("created_at") or now_iso,
+                    ),
+                )
+    finally:
+        conn.close()
+
+
+def get_payout_batch(batch_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    if not batch_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM payout_batches WHERE batch_id = ?", (batch_id.strip(),))
+        row = cur.fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        cur.execute("SELECT * FROM payout_items WHERE batch_id = ?", (batch_id.strip(),))
+        res["items"] = [dict(it) for it in cur.fetchall()]
+        return res
+    finally:
+        conn.close()
+
+
+def list_payout_batches(limit: int = 50, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM payout_batches ORDER BY created_at DESC LIMIT ?", (max(1, int(limit)),))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def list_payout_items(
+    batch_id: Optional[str] = None,
+    operator_id: Optional[str] = None,
+    limit: int = 100,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        if batch_id and operator_id:
+            cur.execute("SELECT * FROM payout_items WHERE batch_id = ? AND operator_id = ? ORDER BY created_at DESC LIMIT ?", (batch_id.strip(), operator_id.strip(), max(1, int(limit))))
+        elif batch_id:
+            cur.execute("SELECT * FROM payout_items WHERE batch_id = ? ORDER BY created_at DESC LIMIT ?", (batch_id.strip(), max(1, int(limit))))
+        elif operator_id:
+            cur.execute("SELECT * FROM payout_items WHERE operator_id = ? ORDER BY created_at DESC LIMIT ?", (operator_id.strip(), max(1, int(limit))))
+        else:
+            cur.execute("SELECT * FROM payout_items ORDER BY created_at DESC LIMIT ?", (max(1, int(limit)),))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_buyer_key(kid: str, db_path: Optional[Path] = None) -> Optional[str]:
     """Retrieves a registered public key hex by key ID."""
     if not kid:
@@ -1322,6 +1701,31 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM recurring_mandates")
             conn.execute("DELETE FROM recurring_charges")
             conn.execute("DELETE FROM revoked_mandates")
+            conn.execute("DELETE FROM payout_items")
+            conn.execute("DELETE FROM payout_batches")
+            op_placeholders = ",".join("?" for _ in DEFAULT_NODE_OPERATOR_IDS)
+            conn.execute(f"DELETE FROM node_operators WHERE operator_id NOT IN ({op_placeholders})", list(DEFAULT_NODE_OPERATOR_IDS))
+            if getattr(settings, "mock_external_apis", False):
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                for op in DEFAULT_NODE_OPERATORS:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO node_operators 
+                        (operator_id, name, email, payout_recipient_type, assigned_nodes, split_bps, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            op["operator_id"],
+                            op["name"],
+                            op["email"],
+                            op.get("payout_recipient_type", "EMAIL"),
+                            json.dumps(op["assigned_nodes"]),
+                            op.get("split_bps", 8500),
+                            op.get("status", "ACTIVE"),
+                            now_iso,
+                            now_iso,
+                        ),
+                    )
             placeholders = ",".join("?" for _ in _DEFAULT_BUYER_KIDS)
             conn.execute(f"DELETE FROM buyer_keys WHERE kid NOT IN ({placeholders})", list(_DEFAULT_BUYER_KIDS))
     finally:
@@ -1796,6 +2200,15 @@ def get_fleet_ledger(
             anti_tamper = None
 
         display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
+        monthly_float = float(item["monthly_amount"])
+        gross_cents = int(round(monthly_float * 100))
+        net_cents = (gross_cents * 8500) // 10000
+        margin_cents = gross_cents - net_cents
+        node_ref = display_endpoint or item.get("allocated_did") or item["trade_vertical"]
+        op = get_operator_for_node(node_ref, db_path=db_path)
+        op_name = op["name"] if op else "Lambda Autonomous Compute"
+        op_email = op["email"] if op else "payouts-lambda@example.com"
+
         entry = {
             "id": item["id"],
             "timestamp": item["timestamp"],
@@ -1804,7 +2217,7 @@ def get_fleet_ledger(
             "principal_entity": item["principal_entity"],
             "trade_vertical": item["trade_vertical"],
             "service_plan": item["service_plan"],
-            "monthly_amount": float(item["monthly_amount"]),
+            "monthly_amount": monthly_float,
             "paypal_sub_id": display_sub_id,
             "kyc_status": kyc_status,
             "kyc_legal_entity": item["kyc_legal_entity"],
@@ -1812,6 +2225,11 @@ def get_fleet_ledger(
             "tcpa_guard": item["tcpa_guard"],
             "status": status,
             "data_source": "Demo data",
+            "operator_name": op_name,
+            "operator_email": op_email,
+            "operator_split_bps": 8500,
+            "operator_monthly_net": round(net_cents / 100, 2),
+            "platform_margin_fee": round(margin_cents / 100, 2),
         }
         if anti_tamper:
             entry["anti_tamper_hash"] = anti_tamper

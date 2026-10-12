@@ -237,9 +237,9 @@ Runs in-process against a temporary database in about a second, with no API keys
 ### 10.2 Automated Test Suite
 ```bash
 python -m pytest backend/tests -q -n 4
-# Result: 567 passed, 9 skipped in under a minute
+# Result: 570 passed, 9 skipped in under a minute
 ```
-- 188 tests are Google's AP2 SDK tests (byte-identical to upstream); 379 are project tests.
+- 188 tests are Google's AP2 SDK tests (byte-identical to upstream); 382 are project tests.
 - The 9 skipped tests need live services (4 call the PayPal sandbox, 5 probe a deployed server) and run only when explicitly enabled.
 - Includes 21 buyer wallet tests (`test_buyer_wallet.py`) and 23 renewal enforcement tests (`test_recurring_mandate_renewals.py`).
 - `conftest.py` points every test at a temporary database, so the development database is never touched.
@@ -332,14 +332,14 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 
 ### Slide 8: Verification
 - **Title:** Verification: Tests, Judge Audit and Declared Mocks
-- **Subtitle:** 567 passing tests, 9/9 judge checks, 19 declared mocks
-- **Visual:** Three panels. Left: "567 passed, 9 skipped": 188 Google AP2 SDK tests + 379 project tests; the 9 skipped need live services (PayPal sandbox, deployed server). Middle: "9/9 judge checks, about 1 second, no API keys." Right: "19 declared mocks in docs/MOCKS.md, checked by a test."
+- **Subtitle:** 570 passing tests, 9/9 judge checks, 19 declared mocks
+- **Visual:** Three panels. Left: "570 passed, 9 skipped": 188 Google AP2 SDK tests + 382 project tests; the 9 skipped need live services (PayPal sandbox, deployed server). Middle: "9/9 judge checks, about 1 second, no API keys." Right: "19 declared mocks in docs/MOCKS.md, checked by a test."
 - **Core Points:**
   - The 188 SDK tests are byte-identical to Google's upstream tests.
   - The judge audit runs in-process against a temporary database with no API keys.
   - Every simulated piece is declared, and a test fails if the declarations drift from the code.
 - **Code Anchor:** `scripts/judge_audit_harness.py`, `backend/tests/`, `docs/MOCKS.md`
-- **Narration (20s):** "Everything here is backed by tests: 567 passing, including Google's own 188 AP2 SDK tests unchanged, and a 9-check judge audit that runs in about a second with no API keys. And because prototypes fake things, every simulated piece is declared in a mock ledger that a test keeps honest."
+- **Narration (20s):** "Everything here is backed by tests: 570 passing, including Google's own 188 AP2 SDK tests unchanged, and a 9-check judge audit that runs in about a second with no API keys. And because prototypes fake things, every simulated piece is declared in a mock ledger that a test keeps honest."
 
 ---
 
@@ -371,4 +371,4 @@ This project does **not** use or claim any of the following. Do not depict them:
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
 | **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
-| **08** | **Verification** | 567 passing tests (188 SDK + 379 project); 9/9 judge checks in about a second; 19 declared mocks | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **08** | **Verification** | 570 passing tests (188 SDK + 382 project); 9/9 judge checks in about a second; 19 declared mocks | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |

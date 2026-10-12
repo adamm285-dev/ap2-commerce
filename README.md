@@ -10,7 +10,7 @@
 [![AG Studio: v3.0.0](https://img.shields.io/badge/AG%20Studio-v3.0.0-blue.svg)](https://www.ag-grid.com/studio/react/)
 [![PayPal Agent Toolkit](https://img.shields.io/badge/PayPal-Agent%20Toolkit-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 567 Passed](https://img.shields.io/badge/Tests-567%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
+[![Tests: 570 Passed](https://img.shields.io/badge/Tests-570%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -52,7 +52,7 @@ python scripts/judge_audit_harness.py
 ### 2. Run the Full Automated Test Suite
 ```bash
 pytest backend/tests/ -q -n 4
-# 567 passed, 9 skipped (188 tests from Google's AP2 SDK + 379 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
+# 570 passed, 9 skipped (188 tests from Google's AP2 SDK + 382 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in Google's AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
 
@@ -122,7 +122,7 @@ The 8-slide walkthrough reflects the codebase as of 2026-10-10:
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
 | **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
-| **08** | **Empirical Verification** | 567 passing tests (188 SDK + 379 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **08** | **Empirical Verification** | 570 passing tests (188 SDK + 382 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
 

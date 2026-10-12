@@ -312,6 +312,12 @@ def get_stored_receipt(reference: str) -> Optional[Dict[str, Any]]:
     return _RECEIPT_STORE.get(reference)
 
 
+def clear_stored_receipt(reference: str) -> None:
+    """Removes a stored receipt from the in-memory store by reference."""
+    _RECEIPT_STORE.pop(reference, None)
+
+
+
 def get_issued_checkout(identifier: str) -> Optional[Dict[str, Any]]:
     """Retrieves an issued merchant checkout record by order_id or checkout_hash."""
     return _ISSUED_CHECKOUTS.get(identifier)

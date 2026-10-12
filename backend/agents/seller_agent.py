@@ -222,6 +222,7 @@ AP2_SELLER_MCP_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
+                "subscription_id": {"type": "string", "description": "PayPal subscription ID to onboard (looks up subscription details if fee/endpoint omitted)"},
                 "workflow_type": {"type": "string", "default": "a2a_onboarding"},
                 "subscriber_name": {"type": "string"},
                 "business_entity": {"type": "string"},
@@ -1048,100 +1049,75 @@ class SellerAgent:
                     "reason": reason,
                     "message": f"Purchase rejected: {reason}",
                 }
-            return candidate_replay_sub
+            return {**candidate_replay_sub, "idempotent_replay": True}
 
         verified_tier = ap2_verify_res.get("tier_id")
         verified_price = ap2_verify_res.get("monthly_price")
+        checkout_hash = ap2_verify_res.get("checkout_hash")
+        closed_pay_obj = ap2_verify_res.get("closed_payment_mandate")
+        closed_pay_tx_id = getattr(closed_pay_obj, "transaction_id", None) if closed_pay_obj else None
+
+        if not mandate_proof_hash and offer_id:
+            auth_entry_lookup = get_authorized_mandate(offer_id)
+            if auth_entry_lookup:
+                mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
+        mandate_proof_hash = mandate_proof_hash or checkout_hash
+
+        from ..services.ap2_service import _RECEIPT_STORE
+
+        def _reject_purchase(desc: str, err_code: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            ref = checkout_hash or mandate_proof_hash or offer_id or "unknown_ref"
+            pay_ref = closed_pay_tx_id or ref
+            if checkout_hash:
+                _RECEIPT_STORE.pop(checkout_hash, None)
+            if closed_pay_tx_id:
+                _RECEIPT_STORE.pop(closed_pay_tx_id, None)
+            err_receipt = create_checkout_receipt_jwt(
+                order_id=offer_id or "unknown_order",
+                closed_mandate_reference=ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=pay_ref,
+                status="Error",
+                error=ERR_INVALID_MANDATE,
+                error_description=desc,
+            )
+            ret = {
+                "status": "REJECTED",
+                "error": err_code,
+                "reason": desc,
+                "message": f"Purchase rejected: {desc}",
+                "checkout_receipt": err_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
+            if extra:
+                ret.update(extra)
+            return ret
 
         # Parameter integrity: if buyer provided tier_id or rate, they must match verified chain
         if tier_id and verified_tier and tier_id != verified_tier:
             desc = f"TIER_MISMATCH_DETECTED: Requested tier '{tier_id}' does not match mandate chain tier '{verified_tier}'."
             logger.warning(f"[SECURITY] {desc}")
-            ref = mandate_proof_hash or offer_id or "unknown_ref"
-            err_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or "unknown_order",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            err_pay_receipt = create_payment_receipt_jwt(
-                payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            return {
-                "status": "REJECTED",
-                "error": "TIER_MISMATCH_DETECTED",
-                "reason": desc,
-                "message": f"Purchase rejected: {desc}",
-                "checkout_receipt": err_receipt,
-                "payment_receipt": err_pay_receipt,
-            }
+            return _reject_purchase(desc, "TIER_MISMATCH_DETECTED")
 
         if agreed_monthly_rate is not None and verified_price is not None and round(agreed_monthly_rate, 2) != round(verified_price, 2):
             desc = f"RATE_TAMPERING_DETECTED: Agreed monthly rate ${agreed_monthly_rate:.2f} does not match mandate chain price ${verified_price:.2f}."
             logger.warning(f"[SECURITY] {desc}")
-            ref = mandate_proof_hash or offer_id or "unknown_ref"
-            err_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or "unknown_order",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            err_pay_receipt = create_payment_receipt_jwt(
-                payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            return {
-                "status": "REJECTED",
-                "error": "RATE_TAMPERING_DETECTED",
-                "reason": desc,
-                "message": f"Purchase rejected: {desc}",
-                "checkout_receipt": err_receipt,
-                "payment_receipt": err_pay_receipt,
-            }
+            return _reject_purchase(desc, "RATE_TAMPERING_DETECTED")
 
         tier_id = verified_tier or tier_id
         if not tier_id:
-            ref = mandate_proof_hash or offer_id or "missing_tier"
             desc = "MISSING_TIER: No subscription tier specified or determined from verified checkout mandate."
-            err_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or "unknown_order",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            err_pay_receipt = create_payment_receipt_jwt(
-                payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            return {
-                "status": "REJECTED",
-                "error": "MISSING_TIER",
-                "reason": desc,
-                "message": f"Purchase rejected: {desc}",
-                "checkout_receipt": err_receipt,
-                "payment_receipt": err_pay_receipt,
-            }
+            logger.warning(f"[SECURITY] {desc}")
+            return _reject_purchase(desc, "MISSING_TIER")
+
         agreed_monthly_rate = verified_price if verified_price is not None else agreed_monthly_rate
         verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
         verified_pay_receipt = ap2_verify_res.get("payment_receipt")
-        if not mandate_proof_hash and offer_id:
-            auth_entry_lookup = get_authorized_mandate(offer_id)
-            if auth_entry_lookup:
-                mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
-        mandate_proof_hash = mandate_proof_hash or ap2_verify_res.get("checkout_hash")
 
         # Mandates issued without an email are locked to their first redeemer
         if mandate_proof_hash and contractor_email:
@@ -1165,30 +1141,9 @@ class SellerAgent:
         # Resolve authoritative monthly budget cap strictly from owner-signed chain
         cap = ap2_verify_res.get("authoritative_budget_cap") if ap2_verify_res else None
         if cap is None:
-            ref = mandate_proof_hash or offer_id or "missing_cap"
             desc = "BUDGET_CAP_NOT_FOUND: Verified payment mandate chain carries no owner-signed price limit or AmountRange constraint."
-            err_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            err_pay_receipt = create_payment_receipt_jwt(
-                payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            return {
-                "status": "REJECTED",
-                "error": "BUDGET_CAP_NOT_FOUND",
-                "reason": desc,
-                "message": f"Purchase rejected: {desc}",
-                "checkout_receipt": err_receipt,
-                "payment_receipt": err_pay_receipt,
-            }
+            logger.warning(f"[SECURITY] {desc}")
+            return _reject_purchase(desc, "BUDGET_CAP_NOT_FOUND")
 
         # Purchase-time budget enforcement
         remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
@@ -1199,35 +1154,19 @@ class SellerAgent:
                 f"[SECURITY] Purchase budget breach: rate ${agreed_monthly_rate:.2f}/mo exceeds "
                 f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
             )
-            ref = mandate_proof_hash or offer_id or "unknown_ref"
             desc = (
                 f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
                 f"${effective_available:.2f} (budget cap: ${cap:.2f})."
             )
-            err_receipt = create_payment_receipt_jwt(
-                payment_id=f"err_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
+            return _reject_purchase(
+                desc,
+                "BUDGET_EXHAUSTED",
+                extra={
+                    "monthly_budget_cap": round(cap, 2),
+                    "monthly_cap_remaining": round(remaining_before, 2),
+                    "active_subscription_id": old_sub_id,
+                },
             )
-            err_chk_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Error",
-                error=ERR_INVALID_MANDATE,
-                error_description=desc,
-            )
-            return {
-                "status": "REJECTED",
-                "error": "BUDGET_EXHAUSTED",
-                "reason": desc,
-                "monthly_budget_cap": round(cap, 2),
-                "monthly_cap_remaining": round(remaining_before, 2),
-                "active_subscription_id": old_sub_id,
-                "checkout_receipt": err_chk_receipt,
-                "payment_receipt": err_receipt,
-            }
 
         # 3. Invoke PayPal Gateway
         subscriber_name = (
@@ -1236,14 +1175,19 @@ class SellerAgent:
             or auth.get("subscriber_name")
             or (f"Buyer Agent ({buyer_id})" if buyer_id and buyer_id != "unknown" else "Buyer Agent")
         )
-        paypal_result = await paypal_service.create_subscription(
-            tier_id=tier_id,
-            agreed_monthly_rate=agreed_monthly_rate,
-            contractor_email=contractor_email or "buyer-agent@example.com",
-            contractor_name=subscriber_name,
-            offer_id=offer_id,
-            mandate_proof_hash=mandate_proof_hash,
-        )
+        try:
+            paypal_result = await paypal_service.create_subscription(
+                tier_id=tier_id,
+                agreed_monthly_rate=agreed_monthly_rate,
+                contractor_email=contractor_email or "buyer-agent@example.com",
+                contractor_name=subscriber_name,
+                offer_id=offer_id,
+                mandate_proof_hash=mandate_proof_hash,
+            )
+        except Exception as e:
+            desc = f"PAYPAL_SUBSCRIPTION_ERROR: Failed to create PayPal subscription: {e}"
+            logger.error(f"[PAYPAL] {desc}", exc_info=True)
+            return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
         sub_id = paypal_result["subscription_id"]
         sub_status = paypal_result.get("status", "ACTIVE")
         approval_url = paypal_result.get("approval_url")
@@ -1622,7 +1566,7 @@ class SellerAgent:
         _COMPLETED_SUBSCRIPTIONS[sub_key] = sub
 
         monthly_fee = sub.get("agreed_monthly_rate", 79.99)
-        proof = sub.get("traceable_proof") or sub.get("mandate_proof_hash") or f"mandate:{subscription_id}"
+        proof = sub.get("mandate_proof_hash") or sub.get("traceable_proof") or f"mandate:{subscription_id}"
 
         return {
             "status": "PROVISIONED",
@@ -1659,8 +1603,8 @@ class SellerAgent:
         business_entity: Optional[str] = None,
         node_endpoint: Optional[str] = None,
         service_vertical: Optional[str] = None,
-        monthly_subscription_fee: float = 79.99,
-        paypal_subscription_id: str = "I-AUTONOMOUS-8902",
+        monthly_subscription_fee: Optional[float] = None,
+        paypal_subscription_id: Optional[str] = None,
         buyer_email: Optional[str] = None,
         mandate_proof_hash: Optional[str] = None,
         webhook_url: Optional[str] = None,
@@ -1668,14 +1612,48 @@ class SellerAgent:
         contractor_email: Optional[str] = None,
         allocated_did: Optional[str] = None,
         trade_vertical: Optional[str] = None,
+        subscription_id: Optional[str] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Tool implementation: Dispatches downline business automation through Zapier MCP."""
-        sub_name = subscriber_name or contractor_name or "Autonomous Buyer Agent"
+        target_sub_id = subscription_id or paypal_subscription_id or kwargs.get("sub_id")
+        sub = None
+        if target_sub_id:
+            sub = _COMPLETED_SUBSCRIPTIONS.get(target_sub_id)
+            if not sub:
+                from ..database import get_subscription
+                sub = get_subscription(target_sub_id)
+
+        sub_name = (
+            subscriber_name
+            or contractor_name
+            or (sub.get("subscriber_name") or sub.get("contractor_name") if sub else None)
+            or "Autonomous Buyer Agent"
+        )
         biz_entity = business_entity or "Autonomous Node Network"
-        endpoint = node_endpoint or allocated_did or "mcp+https://gateway-01.example.com/agents/gateway"
+        endpoint = (
+            node_endpoint
+            or allocated_did
+            or (sub.get("node_endpoint") or sub.get("allocated_endpoint") or sub.get("endpoint") or sub.get("assigned_did") if sub else None)
+            or "mcp+https://gateway-01.example.com/agents/gateway"
+        )
         vertical = service_vertical or trade_vertical or "Autonomous Compute"
-        email = buyer_email or contractor_email or "buyer-agent@example.com"
+        email = (
+            buyer_email
+            or contractor_email
+            or (sub.get("buyer_email") or sub.get("contractor_email") if sub else None)
+            or "buyer-agent@example.com"
+        )
+
+        fee = monthly_subscription_fee
+        if fee is None:
+            fee = sub.get("agreed_monthly_rate", 79.99) if sub else 79.99
+
+        proof = (
+            mandate_proof_hash
+            or (sub.get("mandate_proof_hash") or sub.get("traceable_proof") if sub else None)
+        )
+        resolved_sub_id = target_sub_id or "I-AUTONOMOUS-8902"
 
         req = ZapierSyncRequest(
             workflowType=workflow_type,
@@ -1683,10 +1661,10 @@ class SellerAgent:
             businessEntity=biz_entity,
             allocatedDid=endpoint,
             tradeVertical=vertical,
-            monthlySubscriptionFee=monthly_subscription_fee,
-            paypalSubscriptionId=paypal_subscription_id,
+            monthlySubscriptionFee=fee,
+            paypalSubscriptionId=resolved_sub_id,
             contractorEmail=email,
-            mandateProofHash=mandate_proof_hash,
+            mandateProofHash=proof,
             webhookUrl=webhook_url,
         )
         res = await zapier_mcp_dispatcher.execute_downline_sync(req)

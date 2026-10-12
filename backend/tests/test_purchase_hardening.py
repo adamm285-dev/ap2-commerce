@@ -8,6 +8,7 @@ Validates:
 - Item 3: reseller-agent is allowed and trusted via challenge flow while ap2-seller-ed25519-v1 is rejected
 """
 
+import json
 import asyncio
 import io
 import contextlib
@@ -528,3 +529,279 @@ def test_reseller_agent_challenge_enrollment_and_trust():
 
     # 5. Exact reserved seller kid remains untrusted
     assert is_trusted_buyer_key(DEFAULT_SELLER_KID, pub_hex) is False
+
+
+# ── Round 2 Adversarial Live-Test Regressions ─────────────────────────────
+
+def test_tamper_rejection_does_not_burn_mandate_and_retry_succeeds():
+    """
+    Finding 1 & Finding 4:
+    A rejected purchase (e.g. rate tampering or tier mismatch) must roll back
+    the premature success receipt so that the mandate chain is not burned.
+    The honest retry with the untampered parameters must succeed without REPLAY_DETECTED.
+    Subsequent replay of the settled subscription returns idempotent_replay=True.
+    """
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+    email = f"tamper-retry-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner-t")
+    agent_key = _gen_key("agent-t")
+
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+        business_name="Adversarial Tamper Test Corp",
+    )
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key,
+        user_key=owner_key,
+    )
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec["checkout_jwt"], checkout_hash=rec["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-tamper1"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+    # 1. Tamper A: attempt to purchase with rate $0.01 instead of $49.99
+    tamper_rate_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=0.01,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert tamper_rate_res.get("status") == "REJECTED"
+    assert tamper_rate_res.get("error") == "RATE_TAMPERING_DETECTED"
+    assert "checkout_receipt" in tamper_rate_res
+    assert tamper_rate_res["checkout_receipt"] is not None
+
+    # 2. Honest retry with untampered rate ($49.99) using the SAME mandate
+    # Must NOT fail with REPLAY_DETECTED
+    honest_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert honest_res.get("status") == "ACTIVE"
+    assert honest_res.get("agreed_monthly_rate") == 49.99
+    sub_id = honest_res["subscription_id"]
+
+    # 3. Idempotent replay of already-settled subscription returns idempotent_replay=True
+    replay_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert replay_res.get("status") == "ACTIVE"
+    assert replay_res.get("subscription_id") == sub_id
+    assert replay_res.get("idempotent_replay") is True
+
+
+def test_tier_mismatch_rejection_does_not_burn_mandate_and_retry_succeeds():
+    """
+    Tamper B: Mismatched tier rejection rolls back receipt so retry with matching tier succeeds.
+    """
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+    email = f"tamper-tier-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner-b")
+    agent_key = _gen_key("agent-b")
+
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+    )
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key,
+        user_key=owner_key,
+    )
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec["checkout_jwt"], checkout_hash=rec["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-tamper2"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+    # Tamper B: Request tier ap2-gateway while mandate is for ap2-batch
+    tamper_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-gateway",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert tamper_res.get("status") == "REJECTED"
+    assert tamper_res.get("error") == "TIER_MISMATCH_DETECTED"
+
+    # Retry with correct tier succeeds
+    retry_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert retry_res.get("status") == "ACTIVE"
+
+
+def test_provision_node_and_dispatch_zapier_uses_subscription_record():
+    """
+    Finding 3 & Finding 4:
+    - provision_compute_node next_action passes clean mandate_proof_hash (not full traceable_proof).
+    - dispatch_zapier_mcp resolves subscription details (rate $49.99, batch endpoint) when called
+      with only subscription_id, instead of falling back to $79.99 and Gateway.
+    - MCP server layer _handle_mcp_request_internal also resolves subscription details properly.
+    """
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+    from backend.mcp_server import _handle_mcp_request_internal
+
+    email = f"dispatch-test-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner-d")
+    agent_key = _gen_key("agent-d")
+
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+    )
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key,
+        user_key=owner_key,
+    )
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec["checkout_jwt"], checkout_hash=rec["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-disp1"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+    purchase_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert purchase_res["status"] == "ACTIVE"
+    sub_id = purchase_res["subscription_id"]
+    proof_hash = purchase_res["mandate_proof_hash"]
+
+    # Test provision_compute_node
+    prov_res = _run(seller_agent.provision_compute_node(
+        subscription_id=sub_id,
+        buyer_email=email,
+        node_type="batch",
+    ))
+    assert prov_res["status"] == "PROVISIONED"
+    assert "batch" in prov_res["endpoint"]
+
+    # Verify next_action proof hash is clean (not "mandate:...|cart:...|hash:...")
+    next_action_params = prov_res["next_action"]["parameters"]
+    assert not next_action_params["mandate_proof_hash"].startswith("mandate:")
+    assert next_action_params["mandate_proof_hash"] == proof_hash
+
+    # Test dispatch_zapier_mcp on seller_agent with ONLY subscription_id
+    disp_res = _run(seller_agent.dispatch_zapier_mcp(
+        subscription_id=sub_id,
+    ))
+    purchase_data = disp_res["qboPayload"]["payload"]["Purchase"]
+    assert purchase_data["TotalAmt"] == 49.99
+    assert purchase_data["Line"][0]["Amount"] == 49.99
+    assert "batch" in purchase_data["PrivateNote"]
+    assert sub_id in purchase_data["PrivateNote"]
+    assert proof_hash in purchase_data["PrivateNote"]
+
+    # Test dispatch_zapier_mcp via MCP server JSON-RPC with ONLY subscription_id
+    mcp_call = {
+        "jsonrpc": "2.0",
+        "id": 999,
+        "method": "tools/call",
+        "params": {
+            "name": "dispatch_zapier_mcp",
+            "arguments": {
+                "subscription_id": sub_id,
+            },
+        },
+    }
+    mcp_resp = _run(_handle_mcp_request_internal(mcp_call))
+    assert "error" not in mcp_resp
+    result_data = json.loads(mcp_resp["result"]["content"][0]["text"])
+    mcp_purchase = result_data["qboPayload"]["payload"]["Purchase"]
+    assert mcp_purchase["TotalAmt"] == 49.99
+    assert mcp_purchase["Line"][0]["Amount"] == 49.99
+    assert "batch" in mcp_purchase["PrivateNote"]
+    assert sub_id in mcp_purchase["PrivateNote"]
+    assert proof_hash in mcp_purchase["PrivateNote"]
+
+

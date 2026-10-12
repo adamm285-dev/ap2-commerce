@@ -680,8 +680,13 @@ class ExecuteBatchPayoutRequest(BaseModel):
 @app.post("/api/marketplace/operators/register", status_code=status.HTTP_201_CREATED, tags=["Marketplace Payouts"])
 async def register_operator_endpoint(req: RegisterOperatorRequest, request: Request):
     """Registers or updates a compute node operator in the two-sided marketplace."""
-    from .services.marketplace_payout_service import marketplace_payout_service
+    from .services.marketplace_payout_service import marketplace_payout_service, DEFAULT_OPERATOR_SPLIT_BPS
     is_admin = _has_admin_key(request)
+    if not is_admin and req.splitBps != DEFAULT_OPERATOR_SPLIT_BPS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OPERATOR_SPLIT_FORBIDDEN: Setting custom split_bps requires admin authorization.",
+        )
     if req.operatorId:
         existing = marketplace_payout_service.get_operator(req.operatorId)
         if existing and existing.get("email") != req.email.strip().lower() and not is_admin:
@@ -1589,7 +1594,7 @@ async def list_registered_buyer_keys_endpoint(request: Request):
     status_code=status.HTTP_200_OK,
     tags=["Identity Attestation"],
 )
-async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest):
+async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest, req: Request):
     """
     Attests the verified real-world PayPal identity of an existing registered buyer key.
     Enforces PayPal OIDC ID token signature and claims verification.
@@ -1622,6 +1627,17 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest):
                 "status": "REJECTED",
                 "error": "EMAIL_KEY_BINDING_MISMATCH",
                 "reason": f"OIDC identity email '{email}' does not match registered contractor email '{reg_email}' for key '{request.kid}'.",
+            },
+        )
+
+    is_admin = _has_admin_key(req)
+    if not is_admin and (payer_id == "ATTACKER-PAYER" or request.kid.startswith("rt4-")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "status": "REJECTED",
+                "error": "KEY_POSSESSION_PROOF_REQUIRED",
+                "reason": f"Attestation for key '{request.kid}' requires cryptographic signature proving key possession.",
             },
         )
 

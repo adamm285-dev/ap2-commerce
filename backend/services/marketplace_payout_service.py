@@ -8,13 +8,14 @@ via PayPal Payouts REST API (POST /v1/payments/payouts), paired with QuickBooks 
 Bill Payment exports.
 """
 
-import re
-import uuid
+import asyncio
+import datetime
 import json
 import logging
-import datetime
 from pathlib import Path
+import re
 from typing import Dict, Any, List, Optional, Tuple, Set
+import uuid
 
 from ..database import (
     register_node_operator,
@@ -71,6 +72,20 @@ def integer_cents_to_dollars_string(cents: int) -> str:
 
 class MarketplacePayoutService:
     """Orchestrates operator registration and automated PayPal batch disbursements."""
+
+    _payout_lock: Optional[asyncio.Lock] = None
+    _payout_loop = None
+
+    @classmethod
+    def _get_payout_lock(cls) -> asyncio.Lock:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if cls._payout_lock is None or cls._payout_loop != current_loop:
+            cls._payout_lock = asyncio.Lock()
+            cls._payout_loop = current_loop
+        return cls._payout_lock
 
     @staticmethod
     def register_operator(
@@ -129,190 +144,203 @@ class MarketplacePayoutService:
             cycle = now_utc.strftime("%Y-%m")
         batch_sender_id = sender_batch_id or f"payout_batch_{cycle}_{uuid.uuid4().hex[:8]}"
 
-        # Gather active subscriptions
-        active_subs: List[Dict[str, Any]] = []
-        db_subs = list_subscriptions(db_path=db_path)
-        for s in db_subs:
-            if s.get("status") in ("ACTIVE", "ACTIVE_STREAMING"):
-                active_subs.append(s)
+        lock = cls._get_payout_lock()
+        async with lock:
+            # Gather active subscriptions
+            active_subs: List[Dict[str, Any]] = []
+            db_subs = list_subscriptions(db_path=db_path)
+            for s in db_subs:
+                if s.get("status") in ("ACTIVE", "ACTIVE_STREAMING"):
+                    active_subs.append(s)
 
-        # In demo / mock mode, if SQLite has only a subset of subscriptions, include seeded fleet
-        if len(active_subs) < 13:
-            fleet = get_fleet_ledger(db_path=db_path)
-            existing_ids = {s["subscription_id"] for s in active_subs}
-            for it in fleet:
-                if it.get("status") in ("ACTIVE", "ACTIVE_STREAMING"):
-                    sub_id = it.get("paypal_sub_id")
-                    if sub_id and sub_id not in ("AWAITING_PAYPAL_TOKEN", "NONE") and sub_id not in existing_ids:
-                        active_subs.append({
-                            "subscription_id": sub_id,
-                            "agreed_monthly_rate": float(it.get("monthly_amount", 0.0)),
-                            "tier_id": it.get("trade_vertical", "ap2-gateway"),
-                            "assigned_did": it.get("allocated_did"),
-                            "contractor_email": it.get("buyer_agent"),
-                            "status": "ACTIVE",
-                        })
-                        existing_ids.add(sub_id)
+            # In demo / mock mode, if SQLite has only a subset of subscriptions, include seeded fleet
+            if len(active_subs) < 13:
+                fleet = get_fleet_ledger(db_path=db_path)
+                existing_ids = {s["subscription_id"] for s in active_subs}
+                for it in fleet:
+                    if it.get("status") in ("ACTIVE", "ACTIVE_STREAMING"):
+                        sub_id = it.get("paypal_sub_id")
+                        if sub_id and sub_id not in ("AWAITING_PAYPAL_TOKEN", "NONE") and sub_id not in existing_ids:
+                            active_subs.append({
+                                "subscription_id": sub_id,
+                                "agreed_monthly_rate": float(it.get("monthly_amount", 0.0)),
+                                "tier_id": it.get("trade_vertical", "ap2-gateway"),
+                                "assigned_did": it.get("allocated_did"),
+                                "contractor_email": it.get("buyer_agent"),
+                                "status": "ACTIVE",
+                            })
+                            existing_ids.add(sub_id)
 
-        # Filter by requested subscription IDs if specified
-        if subscription_ids:
-            target_set = set(subscription_ids)
-            active_subs = [s for s in active_subs if s["subscription_id"] in target_set]
+            # Filter by requested subscription IDs if specified
+            if subscription_ids:
+                target_set = set(subscription_ids)
+                active_subs = [s for s in active_subs if s["subscription_id"] in target_set]
 
-        # Deduplicate: check existing payout items for this cycle to prevent double disbursements
-        existing_items = list_payout_items(db_path=db_path)
-        disbursed_sub_ids_this_cycle: Set[str] = set()
-        for item in existing_items:
-            item_id = str(item.get("item_id") or "")
-            if item_id.startswith(f"item_{cycle}_"):
+            # Deduplicate: check existing payout items for this cycle to prevent double disbursements
+            existing_items = list_payout_items(db_path=db_path)
+            disbursed_sub_ids_this_cycle: Set[str] = set()
+
+            month_match = re.match(r"^(\d{4}-\d{2})", cycle)
+            billing_month = month_match.group(1) if month_match else None
+
+            for item in existing_items:
                 sub_id = item.get("subscription_id")
-                if sub_id:
+                if not sub_id:
+                    continue
+                item_id = str(item.get("item_id") or "")
+                created_at = str(item.get("created_at") or "")
+
+                if item_id.startswith(f"item_{cycle}_"):
+                    disbursed_sub_ids_this_cycle.add(sub_id)
+                elif billing_month and (
+                    item_id.startswith(f"item_{billing_month}") or created_at.startswith(billing_month)
+                ):
                     disbursed_sub_ids_this_cycle.add(sub_id)
 
-        # Build payout items
-        paypal_items: List[Dict[str, Any]] = []
-        items_record: List[Dict[str, Any]] = []
-        qbo_bills: List[Dict[str, Any]] = []
+            # Build payout items
+            paypal_items: List[Dict[str, Any]] = []
+            items_record: List[Dict[str, Any]] = []
+            qbo_bills: List[Dict[str, Any]] = []
 
-        total_gross_cents = 0
-        total_payout_cents = 0
-        total_platform_fee_cents = 0
+            total_gross_cents = 0
+            total_payout_cents = 0
+            total_platform_fee_cents = 0
 
-        for sub in active_subs:
-            sub_id = sub["subscription_id"]
-            if sub_id in disbursed_sub_ids_this_cycle:
-                logger.info(f"[Marketplace Payouts] Skipping already disbursed subscription {sub_id} for cycle {cycle}")
-                continue
+            for sub in active_subs:
+                sub_id = sub["subscription_id"]
+                if sub_id in disbursed_sub_ids_this_cycle:
+                    logger.info(f"[Marketplace Payouts] Skipping already disbursed subscription {sub_id} for cycle {cycle}")
+                    continue
 
-            monthly_rate = float(sub.get("agreed_monthly_rate", 0.0))
-            if monthly_rate <= 0.0:
-                continue
+                monthly_rate = float(sub.get("agreed_monthly_rate", 0.0))
+                if monthly_rate <= 0.0:
+                    continue
 
-            gross_cents = dollars_to_integer_cents(monthly_rate)
-            node_ref = sub.get("assigned_did") or sub.get("allocated_did") or sub.get("tier_id") or "node-default"
-            operator = get_operator_for_node(str(node_ref), db_path=db_path)
-            if not operator:
-                # Default to primary operator
-                operators = list_node_operators(db_path=db_path)
-                operator = operators[0] if operators else {
-                    "operator_id": "op_lambda_gpu",
-                    "name": "Lambda Autonomous Compute",
-                    "email": "payouts-lambda@example.com",
-                    "payout_recipient_type": "EMAIL",
-                    "split_bps": DEFAULT_OPERATOR_SPLIT_BPS,
+                gross_cents = dollars_to_integer_cents(monthly_rate)
+                node_ref = sub.get("assigned_did") or sub.get("allocated_did") or sub.get("tier_id") or "node-default"
+                operator = get_operator_for_node(str(node_ref), db_path=db_path)
+                if not operator:
+                    # Default to primary operator
+                    operators = list_node_operators(db_path=db_path)
+                    operator = operators[0] if operators else {
+                        "operator_id": "op_lambda_gpu",
+                        "name": "Lambda Autonomous Compute",
+                        "email": "payouts-lambda@example.com",
+                        "payout_recipient_type": "EMAIL",
+                        "split_bps": DEFAULT_OPERATOR_SPLIT_BPS,
+                    }
+
+                split_bps = operator.get("split_bps", DEFAULT_OPERATOR_SPLIT_BPS)
+                net_operator_cents, platform_fee_cents = calculate_split_amounts_cents(gross_cents, split_bps)
+
+                item_uid = f"item_{cycle}_{sub_id.replace('-', '_')}"
+                net_dollars_str = integer_cents_to_dollars_string(net_operator_cents)
+
+                paypal_item = {
+                    "recipient_type": operator.get("payout_recipient_type", "EMAIL"),
+                    "amount": {
+                        "value": net_dollars_str,
+                        "currency": "USD",
+                    },
+                    "note": f"Compute node disbursement for cycle {cycle}: {sub_id} ({node_ref})",
+                    "sender_item_id": item_uid,
+                    "receiver": operator["email"],
+                }
+                paypal_items.append(paypal_item)
+
+                item_rec = {
+                    "item_id": item_uid,
+                    "operator_id": operator["operator_id"],
+                    "operator_name": operator["name"],
+                    "subscription_id": sub_id,
+                    "receiver_email": operator["email"],
+                    "gross_amount_cents": gross_cents,
+                    "platform_fee_cents": platform_fee_cents,
+                    "net_payout_cents": net_operator_cents,
+                    "currency": "USD",
+                    "status": "SUCCESS" if not dry_run else "DRY_RUN",
+                    "paypal_transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
+                    "node_ref": str(node_ref),
+                    "created_at": now_utc.isoformat(),
+                }
+                items_record.append(item_rec)
+
+                total_gross_cents += gross_cents
+                total_payout_cents += net_operator_cents
+                total_platform_fee_cents += platform_fee_cents
+
+                # Generate authentic QuickBooks Online v3 Bill payload for this disbursement
+                qbo_bill = qbo_exporter.export_operator_payout_bill(
+                    operator_name=operator["name"],
+                    operator_email=operator["email"],
+                    net_payout_dollars=float(net_dollars_str),
+                    payout_batch_id=batch_sender_id,
+                    payout_item_id=item_uid,
+                    subscription_id=sub_id,
+                    node_id=str(node_ref),
+                )
+                qbo_bills.append(qbo_bill)
+
+            if not paypal_items:
+                return {
+                    "status": "IDEMPOTENT_NOOP",
+                    "cycle_id": cycle,
+                    "sender_batch_id": batch_sender_id,
+                    "message": f"No pending compute node payouts for cycle {cycle} (all subscriptions settled).",
+                    "item_count": 0,
+                    "total_gross_cents": 0,
+                    "total_payout_cents": 0,
+                    "total_platform_fee_cents": 0,
+                    "disbursements": [],
                 }
 
-            split_bps = operator.get("split_bps", DEFAULT_OPERATOR_SPLIT_BPS)
-            net_operator_cents, platform_fee_cents = calculate_split_amounts_cents(gross_cents, split_bps)
+            batch_id = batch_sender_id
+            paypal_response = {}
 
-            item_uid = f"item_{cycle}_{sub_id.replace('-', '_')}"
-            net_dollars_str = integer_cents_to_dollars_string(net_operator_cents)
+            if not dry_run:
+                # Submit to PayPal Payouts REST API
+                paypal_response = await paypal_service.create_payout_batch(
+                    sender_batch_id=batch_sender_id,
+                    items=paypal_items,
+                    email_subject=f"AP2 Autonomous Commerce Compute Payout ({cycle})",
+                    email_message="Monthly compute node infrastructure disbursement from AP2 Autonomous Commerce.",
+                )
+                batch_id = paypal_response.get("batch_header", {}).get("payout_batch_id") or batch_sender_id
 
-            paypal_item = {
-                "recipient_type": operator.get("payout_recipient_type", "EMAIL"),
-                "amount": {
-                    "value": net_dollars_str,
+                # Save batch and line items in SQLite
+                batch_data = {
+                    "batch_id": batch_id,
+                    "sender_batch_id": batch_sender_id,
+                    "batch_status": paypal_response.get("batch_header", {}).get("batch_status", "SUCCESS"),
+                    "total_gross_cents": total_gross_cents,
+                    "total_payout_cents": total_payout_cents,
+                    "total_platform_fee_cents": total_platform_fee_cents,
                     "currency": "USD",
-                },
-                "note": f"Compute node disbursement for cycle {cycle}: {sub_id} ({node_ref})",
-                "sender_item_id": item_uid,
-                "receiver": operator["email"],
-            }
-            paypal_items.append(paypal_item)
+                    "item_count": len(items_record),
+                    "raw_response": paypal_response,
+                    "created_at": now_utc.isoformat(),
+                }
+                record_payout_batch(batch_data, items_record, db_path=db_path)
 
-            item_rec = {
-                "item_id": item_uid,
-                "operator_id": operator["operator_id"],
-                "operator_name": operator["name"],
-                "subscription_id": sub_id,
-                "receiver_email": operator["email"],
-                "gross_amount_cents": gross_cents,
-                "platform_fee_cents": platform_fee_cents,
-                "net_payout_cents": net_operator_cents,
-                "currency": "USD",
-                "status": "SUCCESS" if not dry_run else "DRY_RUN",
-                "paypal_transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
-                "node_ref": str(node_ref),
-                "created_at": now_utc.isoformat(),
-            }
-            items_record.append(item_rec)
-
-            total_gross_cents += gross_cents
-            total_payout_cents += net_operator_cents
-            total_platform_fee_cents += platform_fee_cents
-
-            # Generate authentic QuickBooks Online v3 Bill payload for this disbursement
-            qbo_bill = qbo_exporter.export_operator_payout_bill(
-                operator_name=operator["name"],
-                operator_email=operator["email"],
-                net_payout_dollars=float(net_dollars_str),
-                payout_batch_id=batch_sender_id,
-                payout_item_id=item_uid,
-                subscription_id=sub_id,
-                node_id=str(node_ref),
-            )
-            qbo_bills.append(qbo_bill)
-
-        if not paypal_items:
             return {
-                "status": "IDEMPOTENT_NOOP",
-                "cycle_id": cycle,
-                "sender_batch_id": batch_sender_id,
-                "message": f"No pending compute node payouts for cycle {cycle} (all subscriptions settled).",
-                "item_count": 0,
-                "total_gross_cents": 0,
-                "total_payout_cents": 0,
-                "total_platform_fee_cents": 0,
-                "disbursements": [],
-            }
-
-        batch_id = batch_sender_id
-        paypal_response = {}
-
-        if not dry_run:
-            # Submit to PayPal Payouts REST API
-            paypal_response = await paypal_service.create_payout_batch(
-                sender_batch_id=batch_sender_id,
-                items=paypal_items,
-                email_subject=f"AP2 Autonomous Commerce Compute Payout ({cycle})",
-                email_message="Monthly compute node infrastructure disbursement from AP2 Autonomous Commerce.",
-            )
-            batch_id = paypal_response.get("batch_header", {}).get("payout_batch_id") or batch_sender_id
-
-            # Save batch and line items in SQLite
-            batch_data = {
+                "status": "SUCCESS" if not dry_run else "DRY_RUN",
                 "batch_id": batch_id,
                 "sender_batch_id": batch_sender_id,
-                "batch_status": paypal_response.get("batch_header", {}).get("batch_status", "SUCCESS"),
+                "cycle_id": cycle,
+                "item_count": len(items_record),
                 "total_gross_cents": total_gross_cents,
                 "total_payout_cents": total_payout_cents,
                 "total_platform_fee_cents": total_platform_fee_cents,
+                "total_gross_dollars": float(f"{total_gross_cents / 100:.2f}"),
+                "total_payout_dollars": float(f"{total_payout_cents / 100:.2f}"),
+                "total_platform_fee_dollars": float(f"{total_platform_fee_cents / 100:.2f}"),
+                "effective_take_rate_bps": (total_platform_fee_cents * 10000 // total_gross_cents) if total_gross_cents > 0 else 0,
                 "currency": "USD",
-                "item_count": len(items_record),
-                "raw_response": paypal_response,
-                "created_at": now_utc.isoformat(),
+                "disbursements": items_record,
+                "qbo_bills_exported": len(qbo_bills),
+                "sample_qbo_bill": qbo_bills[0] if qbo_bills else None,
+                "paypal_batch_header": paypal_response.get("batch_header"),
             }
-            record_payout_batch(batch_data, items_record, db_path=db_path)
-
-        return {
-            "status": "SUCCESS" if not dry_run else "DRY_RUN",
-            "batch_id": batch_id,
-            "sender_batch_id": batch_sender_id,
-            "cycle_id": cycle,
-            "item_count": len(items_record),
-            "total_gross_cents": total_gross_cents,
-            "total_payout_cents": total_payout_cents,
-            "total_platform_fee_cents": total_platform_fee_cents,
-            "total_gross_dollars": float(f"{total_gross_cents / 100:.2f}"),
-            "total_payout_dollars": float(f"{total_payout_cents / 100:.2f}"),
-            "total_platform_fee_dollars": float(f"{total_platform_fee_cents / 100:.2f}"),
-            "effective_take_rate_bps": (total_platform_fee_cents * 10000 // total_gross_cents) if total_gross_cents > 0 else 0,
-            "currency": "USD",
-            "disbursements": items_record,
-            "qbo_bills_exported": len(qbo_bills),
-            "sample_qbo_bill": qbo_bills[0] if qbo_bills else None,
-            "paypal_batch_header": paypal_response.get("batch_header"),
-        }
 
     @staticmethod
     def get_marketplace_revenue_summary(db_path: Optional[Path] = None) -> Dict[str, Any]:

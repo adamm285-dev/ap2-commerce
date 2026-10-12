@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import time
 from typing import Any, Dict, Optional
 
@@ -138,14 +139,14 @@ class PayPalOidcService:
         # 2. Expiration, issued-at, and not-before verification
         now = time.time()
         exp = claims.get("exp")
-        if exp is None or not isinstance(exp, (int, float)):
-            raise ValueError("MISSING_EXPIRATION: Token missing valid 'exp' claim.")
+        if exp is None or not isinstance(exp, (int, float)) or not math.isfinite(exp):
+            raise ValueError("INVALID_EXPIRATION: Token missing valid finite 'exp' claim.")
         if exp < now:
             raise ValueError("EXPIRED_TOKEN: Identity attestation token has expired.")
 
         iat = claims.get("iat")
         if iat is not None:
-            if not isinstance(iat, (int, float)):
+            if not isinstance(iat, (int, float)) or not math.isfinite(iat):
                 raise ValueError("INVALID_IAT: 'iat' claim must be a numeric timestamp.")
             if iat > now + 300:
                 raise ValueError("FUTURE_TOKEN: Token 'iat' timestamp is in the future beyond allowed clock skew.")
@@ -156,7 +157,7 @@ class PayPalOidcService:
 
         nbf = claims.get("nbf")
         if nbf is not None:
-            if not isinstance(nbf, (int, float)):
+            if not isinstance(nbf, (int, float)) or not math.isfinite(nbf):
                 raise ValueError("INVALID_NBF: 'nbf' claim must be a numeric timestamp.")
             if nbf > now + 300:
                 raise ValueError("TOKEN_NOT_YET_VALID: Token 'nbf' timestamp is in the future.")
@@ -176,8 +177,11 @@ class PayPalOidcService:
             raise ValueError("MISSING_EMAIL: Token missing valid email address.")
 
         # 5. Nonce verification against challenge
+        token_nonce = claims.get("nonce")
+        if token_nonce is not None and not isinstance(token_nonce, str):
+            raise ValueError("INVALID_NONCE: Nonce must be a string.")
+
         if expected_nonce:
-            token_nonce = claims.get("nonce")
             if not token_nonce or token_nonce.strip() != expected_nonce.strip():
                 raise ValueError(
                     f"NONCE_MISMATCH: Token nonce '{token_nonce}' does not match expected challenge nonce '{expected_nonce}'."

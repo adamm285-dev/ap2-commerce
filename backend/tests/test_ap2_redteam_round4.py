@@ -77,7 +77,6 @@ async def _signed_revoke(key: JWK, target: str):
 # F1. Revocation prefix match + fail-open ownership => mass cancellation
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="RT4-F1: short-prefix revocation by any key cancels other tenants' subscriptions")
 @pytest.mark.asyncio
 async def test_rt4_prefix_revocation_cannot_cancel_other_tenants():
     victim_email = f"victim-{uuid.uuid4().hex[:6]}@enterprise.com"
@@ -103,7 +102,6 @@ async def test_rt4_prefix_revocation_cannot_cancel_other_tenants():
 # F2. Self-service key enrollment accepts any email unverified => revoke as victim
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="RT4-F2: key enrollment binds an unverified email, bypassing revocation ownership")
 @pytest.mark.asyncio
 async def test_rt4_unverified_email_claim_cannot_revoke_victim_mandate():
     victim_email = f"victim-{uuid.uuid4().hex[:6]}@enterprise.com"
@@ -124,7 +122,6 @@ async def test_rt4_unverified_email_claim_cannot_revoke_victim_mandate():
 # F3. Concurrent payout batches double-disburse (dedupe read -> await PayPal -> write)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="RT4-F3: concurrent execute_fleet_payout_batch pays the same subscription twice")
 @pytest.mark.asyncio
 async def test_rt4_concurrent_payout_batches_pay_once(monkeypatch):
     sub_id = f"I-RT4-PAY-{uuid.uuid4().hex[:8].upper()}"
@@ -154,7 +151,6 @@ async def test_rt4_concurrent_payout_batches_pay_once(monkeypatch):
     assert len(paid_items) == 1, f"PayPal was asked to pay {len(paid_items)} times: {paid_items}"
 
 
-@pytest.mark.xfail(strict=True, reason="RT4-F3b: dedupe is keyed on caller-chosen cycle_id, so a new label pays again")
 @pytest.mark.asyncio
 async def test_rt4_relabelled_cycle_does_not_repay():
     sub_id = f"I-RT4-CYC-{uuid.uuid4().hex[:8].upper()}"
@@ -175,7 +171,6 @@ async def test_rt4_relabelled_cycle_does_not_repay():
 # F4. Unauthenticated operator registration chooses its own split and claims nodes
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="RT4-F4: anyone can register an operator with split_bps=10000 and claim node patterns")
 def test_rt4_unauthenticated_operator_cannot_set_own_split():
     tag = uuid.uuid4().hex[:10]
     res = client.post("/api/marketplace/operators/register", json={
@@ -199,7 +194,6 @@ def _forge_oidc(claims: dict) -> str:
     return f"{h}.{p}.{enc(sig)}"
 
 
-@pytest.mark.xfail(strict=True, reason="RT4-F5: anyone can re-attest another tenant's key with a forged OIDC token")
 def test_rt4_identity_attest_requires_key_possession():
     victim = _key("rt4-attest-victim")
     victim_email = f"victim-{uuid.uuid4().hex[:6]}@enterprise.com"
@@ -211,7 +205,6 @@ def test_rt4_identity_attest_requires_key_possession():
     assert res.status_code >= 400 and identity.get("payer_id") != "ATTACKER-PAYER"
 
 
-@pytest.mark.xfail(strict=True, reason="RT4-F5b: exp=Infinity (no iat) yields a never-expiring OIDC token")
 def test_rt4_oidc_rejects_non_finite_exp():
     token = _forge_oidc({
         "iss": "https://www.paypal.com",

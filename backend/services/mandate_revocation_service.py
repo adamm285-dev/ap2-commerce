@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..database import (
+    get_buyer_identity,
     get_buyer_key,
     get_buyer_key_email,
     get_connection,
@@ -37,10 +38,30 @@ from .paypal_service import paypal_service
 logger = logging.getLogger("mandate_revocation_service")
 
 
-def resolve_mandate_owner(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[Optional[str], Optional[str]]:
+def _parse_ts_to_seconds(ts_val: Any) -> Optional[float]:
+    if ts_val is None:
+        return None
+    if isinstance(ts_val, (int, float)):
+        return float(ts_val)
+    if isinstance(ts_val, str):
+        try:
+            return float(ts_val)
+        except ValueError:
+            pass
+        try:
+            dt = datetime.datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+            return dt.timestamp()
+        except Exception:
+            pass
+    return None
+
+
+def resolve_mandate_owner(
+    mandate_hash: str, db_path: Optional[Path] = None
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    Resolves the contractor email and/or buyer_key_id bound to a mandate proof hash.
-    Returns (contractor_email, buyer_key_id).
+    Resolves the contractor email, buyer_key_id, and creation timestamp bound to a mandate proof hash.
+    Returns (contractor_email, buyer_key_id, created_at).
     """
     clean = mandate_hash.strip()
     conn = get_connection(db_path)
@@ -48,32 +69,33 @@ def resolve_mandate_owner(mandate_hash: str, db_path: Optional[Path] = None) -> 
         cur = conn.cursor()
         # 1. Check subscriptions table
         cur.execute(
-            "SELECT contractor_email FROM subscriptions WHERE mandate_proof_hash = ? OR subscription_id = ? LIMIT 1",
+            "SELECT contractor_email, created_at FROM subscriptions WHERE mandate_proof_hash = ? OR subscription_id = ? LIMIT 1",
             (clean, clean),
         )
         row = cur.fetchone()
         if row and row["contractor_email"]:
-            return row["contractor_email"].strip().lower(), None
+            return row["contractor_email"].strip().lower(), None, row.get("created_at")
 
         # 2. Check authorized_mandates table
         cur.execute(
-            "SELECT contractor_email FROM authorized_mandates WHERE proof_hash = ? OR lookup_key = ? OR offer_id = ? LIMIT 1",
+            "SELECT contractor_email, registered_at FROM authorized_mandates WHERE proof_hash = ? OR lookup_key = ? OR offer_id = ? LIMIT 1",
             (clean, clean, clean),
         )
         row = cur.fetchone()
         if row and row["contractor_email"]:
-            return row["contractor_email"].strip().lower(), None
+            reg_at = str(row.get("registered_at")) if row.get("registered_at") else None
+            return row["contractor_email"].strip().lower(), None, reg_at
 
         # 3. Check direct_charges table
         cur.execute(
-            "SELECT buyer_key_id FROM direct_charges WHERE mandate_id = ? LIMIT 1",
+            "SELECT buyer_key_id, created_at FROM direct_charges WHERE mandate_id = ? LIMIT 1",
             (clean,),
         )
         row = cur.fetchone()
         if row and row["buyer_key_id"]:
-            return None, row["buyer_key_id"].strip()
+            return None, row["buyer_key_id"].strip(), row.get("created_at")
 
-        return None, None
+        return None, None, None
     finally:
         conn.close()
 
@@ -150,6 +172,12 @@ async def revoke_mandate(
     clean_reason = (reason or "Owner manual revocation").strip()
     now_iso = timestamp_iso or datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    # Rule 2: Minimum hash length enforcement (fail closed against short prefix attacks)
+    if len(clean_hash) < 16:
+        raise ValueError(
+            f"INVALID_MANDATE_HASH: Mandate proof hash '{clean_hash}' must be at least 16 characters (got {len(clean_hash)})."
+        )
+
     # -1. Idempotency check: If already revoked, return immutable tombstone
     if is_mandate_revoked(clean_hash, db_path=db_path):
         existing = get_mandate_revocation(clean_hash, db_path=db_path)
@@ -194,7 +222,7 @@ async def revoke_mandate(
         raise ValueError(msg)
 
     # 1.5 Verify mandate ownership authorization (Fail closed against unauthorized cross-tenant revocation)
-    target_email, target_kid = resolve_mandate_owner(clean_hash, db_path=db_path)
+    target_email, target_kid, target_created_at = resolve_mandate_owner(clean_hash, db_path=db_path)
     if not target_email and not target_kid:
         from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
         for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
@@ -203,6 +231,7 @@ async def revoke_mandate(
                 chk_h = (s_data.get("checkout_hash") or "").strip()
                 if clean_hash in (p_hash, chk_h, s_id):
                     target_email = (s_data.get("contractor_email") or "").strip().lower()
+                    target_created_at = s_data.get("created_at")
                     break
 
     signer_email = get_buyer_key_email(clean_kid, db_path=db_path)
@@ -211,6 +240,21 @@ async def revoke_mandate(
             raise ValueError(
                 f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' ({signer_email or 'unbound'}) is not authorized to revoke mandates belonging to '{target_email}'."
             )
+        # Check identity attestation: unverified keys cannot revoke mandates created before key enrollment (F2)
+        buyer_ident = get_buyer_identity(clean_kid, db_path=db_path) or {}
+        is_attested = bool(buyer_ident.get("identity_attested"))
+        if not is_attested:
+            key_reg = buyer_ident.get("registered_at")
+            if target_kid and target_kid != clean_kid:
+                raise ValueError(
+                    f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' is not identity-attested and cannot revoke mandates created by key '{target_kid}'."
+                )
+            key_sec = _parse_ts_to_seconds(key_reg)
+            target_sec = _parse_ts_to_seconds(target_created_at)
+            if target_sec is not None and key_sec is not None and key_sec > target_sec:
+                raise ValueError(
+                    f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' was registered after mandate creation ({key_reg} > {target_created_at}) without verified identity attestation."
+                )
     elif target_kid:
         if clean_kid != target_kid:
             target_kid_email = get_buyer_key_email(target_kid, db_path=db_path)
@@ -248,9 +292,8 @@ async def revoke_mandate(
         sub_chk = (sub.get("checkout_hash") or "").strip()
         sub_offer = (sub.get("offer_id") or "").strip()
 
-        if clean_hash in (sub_proof, sub_chk, sub_offer) or (
-            sub_proof and sub_proof.startswith(clean_hash)
-        ):
+        # Exact matching only (Rule 1 & Rule 2: never prefix match)
+        if clean_hash in (sub_proof, sub_chk, sub_offer):
             seen_sub_ids.add(real_sub_id)
             if sub.get("status") in ("ACTIVE", "APPROVAL_PENDING"):
                 try:

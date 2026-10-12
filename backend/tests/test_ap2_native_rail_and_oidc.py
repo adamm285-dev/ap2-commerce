@@ -14,6 +14,8 @@ Tests:
 """
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import time
@@ -111,7 +113,7 @@ def test_oidc_service_untrusted_issuer_refused():
 
 
 def test_oidc_service_unverified_email_refused():
-    # Craft token with email_verified = False
+    # Craft token with email_verified = False, but valid signature
     now = int(time.time())
     header = {"alg": "HS256", "typ": "JWT"}
     claims = {
@@ -123,10 +125,40 @@ def test_oidc_service_unverified_email_refused():
     }
     h_b64 = _b64url_encode(json.dumps(header).encode("utf-8"))
     c_b64 = _b64url_encode(json.dumps(claims).encode("utf-8"))
-    fake_token = f"{h_b64}.{c_b64}.fake_signature"
+    signing_input = f"{h_b64}.{c_b64}".encode("ascii")
+    mock_secret = b"mock-paypal-oidc-secret-key-32bytes"
+    sig = _b64url_encode(hmac.new(mock_secret, signing_input, hashlib.sha256).digest())
+    token = f"{h_b64}.{c_b64}.{sig}"
 
     with pytest.raises(ValueError, match="EMAIL_NOT_VERIFIED"):
-        PayPalOidcService.verify_oidc_identity_attestation(fake_token)
+        PayPalOidcService.verify_oidc_identity_attestation(token)
+
+
+def test_oidc_service_forged_signature_refused():
+    token = PayPalOidcService.generate_mock_oidc_token(
+        payer_id="PAYER-ATTACKER",
+        email="attacker@example.com",
+    )
+    tampered_token = token[:-6] + "xxxxxx"
+    with pytest.raises(ValueError, match="INVALID_SIGNATURE"):
+        PayPalOidcService.verify_oidc_identity_attestation(tampered_token)
+
+
+def test_oidc_service_alg_none_refused():
+    now = int(time.time())
+    header = {"alg": "none", "typ": "JWT"}
+    claims = {
+        "iss": "https://api.sandbox.paypal.com",
+        "sub": "PAYER-ATTACKER",
+        "email": "attacker@example.com",
+        "email_verified": True,
+        "exp": now + 3600,
+    }
+    h_b64 = _b64url_encode(json.dumps(header).encode("utf-8"))
+    c_b64 = _b64url_encode(json.dumps(claims).encode("utf-8"))
+    none_token = f"{h_b64}.{c_b64}."
+    with pytest.raises(ValueError, match="UNSUPPORTED_ALGORITHM"):
+        PayPalOidcService.verify_oidc_identity_attestation(none_token)
 
 
 def test_oidc_service_malformed_token_refused():

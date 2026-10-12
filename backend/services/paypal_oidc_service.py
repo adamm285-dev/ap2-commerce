@@ -101,6 +101,29 @@ class PayPalOidcService:
 
         header_b64, payload_b64, sig_b64 = parts
 
+        # 0. Header & algorithm verification (Strict algorithm whitelist, reject "none")
+        try:
+            header_bytes = _b64url_decode(header_b64)
+            header = json.loads(header_bytes.decode("utf-8"))
+        except Exception as e:
+            raise ValueError(f"MALFORMED_ID_TOKEN_HEADER: Could not decode header: {e}")
+
+        alg = header.get("alg")
+        if not alg or alg != "HS256":
+            raise ValueError(f"UNSUPPORTED_ALGORITHM: Algorithm '{alg}' is not permitted.")
+
+        # 0.5 Cryptographic signature verification (Fail closed: Rule 1 & Rule 2)
+        signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+        mock_secret = b"mock-paypal-oidc-secret-key-32bytes"
+        expected_sig = hmac.new(mock_secret, signing_input, hashlib.sha256).digest()
+        try:
+            actual_sig = _b64url_decode(sig_b64)
+        except Exception as e:
+            raise ValueError(f"INVALID_SIGNATURE_ENCODING: Could not decode signature: {e}")
+
+        if not hmac.compare_digest(actual_sig, expected_sig):
+            raise ValueError("INVALID_SIGNATURE: OIDC ID token cryptographic signature verification failed.")
+
         try:
             payload_bytes = _b64url_decode(payload_b64)
             claims = json.loads(payload_bytes.decode("utf-8"))

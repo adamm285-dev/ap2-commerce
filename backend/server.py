@@ -107,9 +107,11 @@ from .database import (
     record_dispatch_slot,
     register_buyer_key,
     get_buyer_key,
+    get_buyer_key_email,
     attest_buyer_identity,
     get_buyer_identity,
     list_buyer_key_records,
+    is_direct_charge_replayed,
     set_recurring_mandate_status,
     RESERVED_BUYER_KEY_IDS,
 )
@@ -1473,10 +1475,22 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
                 id_token=request.oidc_id_token,
                 expected_nonce=request.challenge,
             )
+            token_email = (attestation.get("email") or "").strip().lower()
+            if not token_email or token_email != norm_email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "status": "REJECTED",
+                        "error": "EMAIL_KEY_BINDING_MISMATCH",
+                        "reason": f"OIDC identity email '{token_email}' does not match registered contractor email '{norm_email}'.",
+                    },
+                )
             payer_id = attestation.get("payer_id")
             identity_provider = "paypal"
             identity_attested = True
             attestation_payload = attestation.get("claims")
+        except HTTPException:
+            raise
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1577,6 +1591,18 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest):
     payer_id = attestation["payer_id"]
     claims = attestation["claims"]
     email = attestation["email"]
+
+    # Email-to-Key binding verification: Fail closed if key is bound to different email
+    reg_email = get_buyer_key_email(request.kid)
+    if not reg_email or reg_email.strip().lower() != email.strip().lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "status": "REJECTED",
+                "error": "EMAIL_KEY_BINDING_MISMATCH",
+                "reason": f"OIDC identity email '{email}' does not match registered contractor email '{reg_email}' for key '{request.kid}'.",
+            },
+        )
 
     success = attest_buyer_identity(
         kid=request.kid,
@@ -2191,8 +2217,9 @@ async def process_ap2_direct_charge_endpoint(request: DirectChargeRequest):
     except ValueError as e:
         msg = str(e)
         logger.warning(f"[AP2 Gateway Endpoint] Charge processing rejected: {msg}")
-        if "UNREGISTERED_BUYER_KEY" in msg:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"status": "REJECTED", "error": "UNREGISTERED_BUYER_KEY", "reason": msg})
+        if "UNREGISTERED_BUYER_KEY" in msg or "BUYER_KEY_MISMATCH" in msg:
+            err_code = "BUYER_KEY_MISMATCH" if "BUYER_KEY_MISMATCH" in msg else "UNREGISTERED_BUYER_KEY"
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"status": "REJECTED", "error": err_code, "reason": msg})
         elif "MANDATE_REVOKED" in msg:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"status": "REJECTED", "error": "MANDATE_REVOKED", "reason": msg})
         elif "REPLAY_DETECTED" in msg:

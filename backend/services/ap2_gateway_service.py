@@ -24,16 +24,35 @@ from ..database import (
     get_buyer_identity,
     get_buyer_key,
     get_direct_charge,
+    get_open_mandate_settlement_totals,
+    is_direct_charge_replayed,
     is_mandate_revoked,
     list_direct_charges,
     record_direct_charge,
+    record_open_mandate_settlement,
 )
+from ap2.sdk.constraints import MandateContext
 from .ap2_service import (
     AP2_MERCHANT_ID,
+    compute_open_payment_mandate_hash,
     verify_ap2_chains,
 )
 
 logger = logging.getLogger("ap2_gateway_service")
+
+
+def extract_token_root_kid(token: str) -> Optional[str]:
+    """Extracts the Key ID (kid) from the root JWT header of an AP2 token chain."""
+    if not token or not isinstance(token, str):
+        return None
+    try:
+        root_part = token.strip().split("~")[0]
+        header_b64 = root_part.split(".")[0]
+        padded = header_b64 + "=" * ((4 - len(header_b64) % 4) % 4)
+        header = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        return header.get("kid")
+    except Exception:
+        return None
 
 
 class Ap2GatewayService:
@@ -67,6 +86,22 @@ class Ap2GatewayService:
             if identity and identity.get("identity_attested"):
                 payer_id = identity.get("payer_id")
 
+        # 1.1 Verify that buyer_key_id matches mandate root key ID (Defend against Key ID substitution)
+        root_kid = extract_token_root_kid(payment_mandate_jwt) or extract_token_root_kid(cart_mandate_jwt)
+        if buyer_key_id and root_kid and buyer_key_id.strip() != root_kid:
+            raise ValueError(
+                f"BUYER_KEY_MISMATCH: Provided buyer_key_id '{buyer_key_id}' does not match mandate root key ID '{root_kid}'."
+            )
+
+        effective_kid = buyer_key_id.strip() if buyer_key_id else root_kid
+        if not payer_id and effective_kid:
+            pub_hex = get_buyer_key(effective_kid, db_path=db_path)
+            if not pub_hex:
+                raise ValueError(f"UNREGISTERED_BUYER_KEY: Mandate root key ID '{effective_kid}' is not registered in the key registry.")
+            identity = get_buyer_identity(effective_kid, db_path=db_path)
+            if identity and identity.get("identity_attested"):
+                payer_id = identity.get("payer_id")
+
         # Extract checkout_jwt from cart_mandate_jwt if present
         checkout_jwt = None
         for segment in cart_mandate_jwt.replace("~~", "~").split("~"):
@@ -81,6 +116,11 @@ class Ap2GatewayService:
             except Exception:
                 pass
 
+        # 1.5 Cumulative settlement & budget context tracking (Rule 1 & Rule 6)
+        open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_jwt)
+        used_cents, used_count = get_open_mandate_settlement_totals(open_pay_hash, db_path=db_path)
+        mandate_ctx = MandateContext(total_amount=used_cents, total_uses=used_count)
+
         # 2. Cryptographic mandate verification (Verify first: Rule 1)
         res = verify_ap2_chains(
             checkout_mandate_token=cart_mandate_jwt,
@@ -88,6 +128,7 @@ class Ap2GatewayService:
             checkout_jwt=checkout_jwt,
             expected_aud=AP2_MERCHANT_ID,
             enforce_replay_defense=True,
+            mandate_context=mandate_ctx,
         )
 
         if not res.get("valid"):
@@ -95,15 +136,19 @@ class Ap2GatewayService:
             logger.warning(f"[AP2 Gateway] Direct charge rejected: {err_msg}")
             raise ValueError(f"INVALID_MANDATE: {err_msg}")
 
-        # 3. Mandate Revocation status list check
+        # 3. Mandate Revocation status list check & persistent replay defense
         order_id = res.get("order_id") or f"ord_{uuid.uuid4().hex[:12]}"
         chk_hash = res.get("checkout_hash")
-        open_pay_hash = res.get("open_payment_mandate_hash")
+        open_pay_hash = res.get("open_payment_mandate_hash") or open_pay_hash
+        merchant_receipt_jwt = res.get("payment_receipt")
+        if not merchant_receipt_jwt:
+            raise ValueError("RECEIPT_GENERATION_FAILED: No merchant payment receipt generated.")
 
         if is_mandate_revoked(chk_hash, db_path=db_path) or is_mandate_revoked(open_pay_hash, db_path=db_path) or is_mandate_revoked(order_id, db_path=db_path):
             raise ValueError("MANDATE_REVOKED: This mandate has been cryptographically revoked by the owner.")
 
-        # 4. Strict Integer Cents Arithmetic (AGENTS.md Rule 6)
+        if is_direct_charge_replayed(mandate_id=order_id, checkout_hash=chk_hash, receipt_jwt=merchant_receipt_jwt, db_path=db_path):
+            raise ValueError(f"REPLAY_DETECTED: Mandate '{order_id}' has already been captured and settled.")
         amount_cents = int(res["price_cents"])
         if amount_cents <= 0:
             raise ValueError(f"INVALID_AMOUNT: Amount must be a positive integer in minor units (got {amount_cents}).")
@@ -178,7 +223,7 @@ class Ap2GatewayService:
             charge_data={
                 "charge_id": charge_id,
                 "mandate_id": order_id,
-                "buyer_key_id": buyer_key_id or "anonymous",
+                "buyer_key_id": effective_kid or "anonymous",
                 "amount_cents": amount_cents,
                 "currency": "USD",
                 "payee_id": AP2_MERCHANT_ID,
@@ -190,6 +235,14 @@ class Ap2GatewayService:
                 "qbo_payload": qbo_payload,
                 "metadata": metadata or {},
             },
+            db_path=db_path,
+        )
+
+        # 8. Record open mandate settlement for cumulative budget tracking (Rule 1 & Rule 6)
+        record_open_mandate_settlement(
+            mandate_hash=open_pay_hash,
+            subscription_id=charge_id,
+            amount_cents=amount_cents,
             db_path=db_path,
         )
 
@@ -205,7 +258,7 @@ class Ap2GatewayService:
             "currency": "USD",
             "amount_formatted": amount_formatted,
             "mandate_id": order_id,
-            "buyer_key_id": buyer_key_id or "anonymous",
+            "buyer_key_id": effective_kid or "anonymous",
             "payer_id": payer_id,
             "payee_id": AP2_MERCHANT_ID,
             "paypal_capture_id": paypal_capture_id,

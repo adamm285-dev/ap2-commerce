@@ -1387,6 +1387,32 @@ def list_direct_charges(limit: int = 50, db_path: Optional[Path] = None) -> List
         conn.close()
 
 
+def is_direct_charge_replayed(
+    mandate_id: Optional[str] = None,
+    receipt_jwt: Optional[str] = None,
+    checkout_hash: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Checks whether a direct charge has already been captured for the given mandate identifiers."""
+    candidates = [str(x).strip() for x in (mandate_id, checkout_hash) if x and isinstance(x, str) and str(x).strip()]
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        if candidates:
+            placeholders = ",".join("?" for _ in candidates)
+            query = f"SELECT 1 FROM direct_charges WHERE mandate_id IN ({placeholders}) LIMIT 1"
+            cur.execute(query, candidates)
+            if cur.fetchone() is not None:
+                return True
+        if receipt_jwt and isinstance(receipt_jwt, str) and receipt_jwt.strip():
+            cur.execute("SELECT 1 FROM direct_charges WHERE merchant_receipt_jwt = ? LIMIT 1", (receipt_jwt.strip(),))
+            if cur.fetchone() is not None:
+                return True
+        return False
+    finally:
+        conn.close()
+
+
 # --- Two-Sided Marketplace & Node Operator Operations ---
 
 def register_node_operator(

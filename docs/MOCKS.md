@@ -124,3 +124,9 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Allows offline unit tests and mock demos to authenticate known buyer agents without interactive challenge enrollment.
 - **To make it real:** Require all buyer agents to complete the challenge-response registration flow (`/api/agent/keys/challenge` and `/api/agent/keys/register`) before their keys are trusted.
 
+### M-023: Log in with PayPal OpenID Connect (OIDC) identity attestation is simulated in mock mode
+- **Where:** `backend/services/paypal_oidc_service.py::PayPalOidcService.generate_mock_oidc_token`
+- **What it fakes:** OpenID Connect (OIDC) ID token generation and signature verification for Log in with PayPal identity attestation.
+- **Why:** Tests and offline evaluation cannot make live network calls to `https://api.sandbox.paypal.com/v1/oauth2/token` or fetch PayPal JWKS certs (project rule 9).
+- **To make it real:** Exchange authorization code with PayPal OAuth2 token endpoint using `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`, and verify the JWT signature against PayPal's public JWKS endpoint (`https://api-m.paypal.com/v1/oauth2/certs`).
+

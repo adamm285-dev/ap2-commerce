@@ -207,6 +207,15 @@ class BuyerWallet:
     def _agent_key(self) -> JWK:
         return _load_key(self.dir / AGENT_KEY_FILE, "buyer agent key", private=True)
 
+    def get_keystore(self):
+        """Returns the hardware enclave keystore wrapping the buyer agent's signing key."""
+        from .keystore import SoftwareEnclaveKeystore, PasskeyAttestationKeystore
+        key = self._agent_key()
+        keystore_type = os.environ.get("AP2_KEYSTORE_TYPE", "software").lower()
+        if keystore_type == "passkey":
+            return PasskeyAttestationKeystore(key=key)
+        return SoftwareEnclaveKeystore(key)
+
     def _load_limits(self) -> _OwnerLimits:
         """Loads owner limits and verifies signature, expiry, agent binding and required constraints."""
         raw = _read_json(self.dir / OWNER_LIMITS_FILE, "owner spending limits")

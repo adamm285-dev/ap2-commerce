@@ -42,7 +42,14 @@ from .models import (
     BuyerKeyRegistrationRequest,
     BuyerKeyRegistrationResponse,
     BuyerKeyRegistryResponse,
+    IdentityAttestationRequest,
+    IdentityAttestationResponse,
+    DirectChargeRequest,
+    DirectChargeResponse,
+    DirectChargeListResponse,
 )
+from .services.paypal_oidc_service import PayPalOidcService
+from .services.ap2_gateway_service import Ap2GatewayService
 from .services.mandate_evaluator import evaluate_spending_mandate, ledger
 from .services.paypal_service import paypal_service
 from .services.plan_catalog import PLANS, QUOTA_UNIT, quota_label
@@ -100,6 +107,8 @@ from .database import (
     record_dispatch_slot,
     register_buyer_key,
     get_buyer_key,
+    attest_buyer_identity,
+    get_buyer_identity,
     list_buyer_key_records,
     set_recurring_mandate_status,
     RESERVED_BUYER_KEY_IDS,
@@ -1453,6 +1462,27 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
             detail={"status": "REJECTED", "error": "INVALID_ENTITY", "reason": "Valid US contractor business entity required (minimum 3 characters)."},
         )
 
+    # 3.5 Optional PayPal OpenID Connect identity attestation
+    payer_id = None
+    identity_provider = None
+    identity_attested = False
+    attestation_payload = None
+    if request.oidc_id_token:
+        try:
+            attestation = PayPalOidcService.verify_oidc_identity_attestation(
+                id_token=request.oidc_id_token,
+                expected_nonce=request.challenge,
+            )
+            payer_id = attestation.get("payer_id")
+            identity_provider = "paypal"
+            identity_attested = True
+            attestation_payload = attestation.get("claims")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"status": "REJECTED", "error": "INVALID_IDENTITY_ATTESTATION", "reason": str(e)},
+            )
+
     # 4. Register key in SQLite WAL persistence (Strict collision check: 409 Conflict)
     try:
         register_buyer_key(
@@ -1460,6 +1490,10 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
             public_key_hex=stored_pub_key,
             contractor_email=norm_email,
             business_name=request.business_entity,
+            payer_id=payer_id,
+            identity_provider=identity_provider,
+            identity_attested=identity_attested,
+            attestation_payload=attestation_payload,
             allow_overwrite=False,
         )
     except ValueError as e:
@@ -1490,6 +1524,9 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
         registeredAt=now_iso,
         verified=True,
         message=f"Autonomous buyer key '{request.kid}' verified and registered in AP2 Autonomous Node network.",
+        identity_attested=identity_attested,
+        payer_id=payer_id,
+        identity_provider=identity_provider,
     )
 
 
@@ -1508,6 +1545,90 @@ async def list_registered_buyer_keys_endpoint(request: Request):
         status="active",
         count=len(records),
         keys=records,
+    )
+
+
+@app.post(
+    "/api/agent/identity/attest",
+    response_model=IdentityAttestationResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Identity Attestation"],
+)
+async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest):
+    """
+    Attests the verified real-world PayPal identity of an existing registered buyer key.
+    Enforces PayPal OIDC ID token signature and claims verification.
+    """
+    existing_key = get_buyer_key(request.kid)
+    if not existing_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"status": "REJECTED", "error": "KEY_NOT_FOUND", "reason": f"Buyer key '{request.kid}' is not registered."},
+        )
+
+    try:
+        attestation = PayPalOidcService.verify_oidc_identity_attestation(request.oidc_id_token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "INVALID_IDENTITY_ATTESTATION", "reason": str(e)},
+        )
+
+    payer_id = attestation["payer_id"]
+    claims = attestation["claims"]
+    email = attestation["email"]
+
+    success = attest_buyer_identity(
+        kid=request.kid,
+        payer_id=payer_id,
+        identity_provider="paypal",
+        attestation_payload=claims,
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"status": "REJECTED", "error": "ATTESTATION_STORAGE_FAILED", "reason": "Could not update buyer key attestation."},
+        )
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return IdentityAttestationResponse(
+        status="ATTESTED",
+        kid=request.kid,
+        payerId=payer_id,
+        identityProvider="paypal",
+        identityAttested=True,
+        email=email,
+        attestationTimestamp=now_iso,
+        claims=claims,
+    )
+
+
+@app.get(
+    "/api/agent/identity/attestation/{kid}",
+    response_model=IdentityAttestationResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Identity Attestation"],
+)
+async def get_buyer_identity_endpoint(kid: str):
+    """Retrieves verified identity attestation details for a registered buyer key."""
+    identity = get_buyer_identity(kid)
+    if not identity or not identity.get("identity_attested"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"status": "REJECTED", "error": "NOT_ATTESTED", "reason": f"No identity attestation found for key '{kid}'."},
+        )
+
+    claims = identity.get("attestation_payload") or {}
+    email = claims.get("email") or identity.get("contractor_email") or "verified@paypal.com"
+    return IdentityAttestationResponse(
+        status="ATTESTED",
+        kid=kid,
+        payerId=identity.get("payer_id") or "PAYER-UNKNOWN",
+        identityProvider=identity.get("identity_provider") or "paypal",
+        identityAttested=True,
+        email=email,
+        attestationTimestamp=identity.get("registered_at") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        claims=claims,
     )
 
 
@@ -2043,6 +2164,75 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
     )
     res = await agent.execute_autonomous_procurement()
     return res
+
+
+# --- Native AP2 Gateway Direct Rail Endpoints (Milestone S3-NATIVE) ---
+
+@app.post(
+    "/v1/ap2/gateway/charges",
+    response_model=DirectChargeResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["AP2 Native Direct Rail"],
+)
+async def process_ap2_direct_charge_endpoint(request: DirectChargeRequest):
+    """
+    Processes a direct machine-to-machine checkout charge over the native AP2 rail.
+    Cryptographically verifies AP2 ES256 SD-JWT mandate chains, enforces budget caps,
+    settles against vaulted PayPal payment sources, and exports authentic QBO v3 Purchase records.
+    """
+    try:
+        return Ap2GatewayService.process_direct_charge(
+            cart_mandate_jwt=request.cart_mandate_jwt,
+            payment_mandate_jwt=request.payment_mandate_jwt,
+            buyer_key_id=request.buyer_key_id,
+            payment_source_id=request.payment_source_id,
+            metadata=request.metadata,
+        )
+    except ValueError as e:
+        msg = str(e)
+        logger.warning(f"[AP2 Gateway Endpoint] Charge processing rejected: {msg}")
+        if "UNREGISTERED_BUYER_KEY" in msg:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"status": "REJECTED", "error": "UNREGISTERED_BUYER_KEY", "reason": msg})
+        elif "MANDATE_REVOKED" in msg:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"status": "REJECTED", "error": "MANDATE_REVOKED", "reason": msg})
+        elif "REPLAY_DETECTED" in msg:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"status": "REJECTED", "error": "REPLAY_DETECTED", "reason": msg})
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"status": "REJECTED", "error": "INVALID_MANDATE", "reason": msg})
+    except Exception as e:
+        logger.error(f"[AP2 Gateway Endpoint] Unexpected error during charge execution: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"status": "ERROR", "error": "GATEWAY_ERROR", "reason": str(e)})
+
+
+@app.get(
+    "/v1/ap2/gateway/charges/{charge_id}",
+    response_model=DirectChargeResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["AP2 Native Direct Rail"],
+)
+async def get_ap2_direct_charge_endpoint(charge_id: str):
+    """Retrieves a direct AP2 charge record by ID."""
+    charge = Ap2GatewayService.get_charge(charge_id)
+    if not charge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"status": "NOT_FOUND", "error": "CHARGE_NOT_FOUND", "reason": f"Direct charge '{charge_id}' does not exist."},
+        )
+    cents = charge.get("amount_cents", 0)
+    charge["amount_formatted"] = f"${cents // 100}.{cents % 100:02d}"
+    return charge
+
+
+@app.get(
+    "/v1/ap2/gateway/charges",
+    response_model=DirectChargeListResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["AP2 Native Direct Rail"],
+)
+async def list_ap2_direct_charges_endpoint(limit: int = 50):
+    """Lists recent direct AP2 charges."""
+    charges = Ap2GatewayService.list_charges(limit=limit)
+    return DirectChargeListResponse(count=len(charges), charges=charges)
 
 
 if __name__ == "__main__":

@@ -201,8 +201,33 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 public_key_hex TEXT NOT NULL,
                 contractor_email TEXT,
                 business_name TEXT,
-                registered_at TEXT NOT NULL
+                registered_at TEXT NOT NULL,
+                payer_id TEXT,
+                identity_provider TEXT,
+                identity_attested INTEGER DEFAULT 0,
+                attestation_payload TEXT
             );
+
+            -- Native AP2 Gateway Direct Rail Charges (Milestone S3-NATIVE / SPEC-001 v1.9.0)
+            CREATE TABLE IF NOT EXISTS direct_charges (
+                charge_id TEXT PRIMARY KEY,
+                mandate_id TEXT NOT NULL,
+                buyer_key_id TEXT NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                payee_id TEXT NOT NULL,
+                payment_source_id TEXT NOT NULL,
+                paypal_capture_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                merchant_receipt_jwt TEXT NOT NULL,
+                qbo_purchase_id TEXT,
+                qbo_payload TEXT,
+                metadata_json TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_direct_charges_mandate ON direct_charges(mandate_id);
+            CREATE INDEX IF NOT EXISTS idx_direct_charges_buyer_key ON direct_charges(buyer_key_id);
+            CREATE INDEX IF NOT EXISTS idx_direct_charges_created ON direct_charges(created_at);
 
             CREATE TABLE IF NOT EXISTS open_mandate_settlements (
                 mandate_hash TEXT NOT NULL,
@@ -328,6 +353,18 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN project_scope TO workload_scope")
             if "deposit_payment_id" in slot_cols and "payment_id" not in slot_cols:
                 cur.execute("ALTER TABLE dispatch_slots RENAME COLUMN deposit_payment_id TO payment_id")
+
+            # Safe schema migration: add identity attestation columns to buyer_keys if missing
+            cur.execute("PRAGMA table_info(buyer_keys)")
+            buyer_cols = [row["name"] for row in cur.fetchall()]
+            if "payer_id" not in buyer_cols:
+                cur.execute("ALTER TABLE buyer_keys ADD COLUMN payer_id TEXT")
+            if "identity_provider" not in buyer_cols:
+                cur.execute("ALTER TABLE buyer_keys ADD COLUMN identity_provider TEXT")
+            if "identity_attested" not in buyer_cols:
+                cur.execute("ALTER TABLE buyer_keys ADD COLUMN identity_attested INTEGER DEFAULT 0")
+            if "attestation_payload" not in buyer_cols:
+                cur.execute("ALTER TABLE buyer_keys ADD COLUMN attestation_payload TEXT")
 
             # Seed default buyer keys if table is empty in mock/demo mode
             cur.execute("SELECT COUNT(*) as count FROM buyer_keys")
@@ -793,6 +830,10 @@ def register_buyer_key(
     public_key_hex: str,
     contractor_email: Optional[str] = None,
     business_name: Optional[str] = None,
+    payer_id: Optional[str] = None,
+    identity_provider: Optional[str] = None,
+    identity_attested: bool = False,
+    attestation_payload: Optional[Dict[str, Any]] = None,
     allow_overwrite: bool = False,
     db_path: Optional[Path] = None,
 ) -> None:
@@ -801,6 +842,7 @@ def register_buyer_key(
         return
     cleaned_key = public_key_hex.strip() if public_key_hex.strip().startswith("{") else public_key_hex.strip().lower()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    attestation_str = json.dumps(attestation_payload) if attestation_payload else None
     conn = get_connection(db_path)
     try:
         with conn:
@@ -814,19 +856,105 @@ def register_buyer_key(
                     """
                     UPDATE buyer_keys
                     SET public_key_hex = ?, contractor_email = COALESCE(?, contractor_email),
-                        business_name = COALESCE(?, business_name), registered_at = ?
+                        business_name = COALESCE(?, business_name), registered_at = ?,
+                        payer_id = COALESCE(?, payer_id),
+                        identity_provider = COALESCE(?, identity_provider),
+                        identity_attested = CASE WHEN ? THEN 1 ELSE identity_attested END,
+                        attestation_payload = COALESCE(?, attestation_payload)
                     WHERE kid = ?
                     """,
-                    (cleaned_key, contractor_email, business_name, now_iso, kid.strip()),
+                    (
+                        cleaned_key,
+                        contractor_email,
+                        business_name,
+                        now_iso,
+                        payer_id,
+                        identity_provider,
+                        1 if identity_attested else 0,
+                        attestation_str,
+                        kid.strip(),
+                    ),
                 )
             else:
                 cur.execute(
                     """
-                    INSERT INTO buyer_keys (kid, public_key_hex, contractor_email, business_name, registered_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO buyer_keys (
+                        kid, public_key_hex, contractor_email, business_name, registered_at,
+                        payer_id, identity_provider, identity_attested, attestation_payload
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (kid.strip(), cleaned_key, contractor_email, business_name, now_iso),
+                    (
+                        kid.strip(),
+                        cleaned_key,
+                        contractor_email,
+                        business_name,
+                        now_iso,
+                        payer_id,
+                        identity_provider,
+                        1 if identity_attested else 0,
+                        attestation_str,
+                    ),
                 )
+    finally:
+        conn.close()
+
+
+def attest_buyer_identity(
+    kid: str,
+    payer_id: str,
+    identity_provider: str = "paypal",
+    attestation_payload: Optional[Dict[str, Any]] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Attests the identity of an existing registered buyer key with verified PayPal OIDC claims."""
+    if not kid or not payer_id:
+        return False
+    payload_str = json.dumps(attestation_payload) if attestation_payload else None
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE buyer_keys
+                SET payer_id = ?, identity_provider = ?, identity_attested = 1, attestation_payload = ?
+                WHERE kid = ?
+                """,
+                (payer_id.strip(), identity_provider.strip(), payload_str, kid.strip()),
+            )
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_buyer_identity(kid: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Returns identity attestation details for a registered buyer key, or None."""
+    if not kid:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT kid, public_key_hex, contractor_email, business_name, payer_id, 
+                   identity_provider, identity_attested, attestation_payload, registered_at
+            FROM buyer_keys
+            WHERE kid = ?
+            """,
+            (kid.strip(),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["identity_attested"] = bool(d.get("identity_attested"))
+        if d.get("attestation_payload"):
+            try:
+                d["attestation_payload"] = json.loads(d["attestation_payload"])
+            except Exception:
+                pass
+        return d
     finally:
         conn.close()
 
@@ -1129,6 +1257,132 @@ def list_revoked_mandates(limit: int = 100, db_path: Optional[Path] = None) -> L
         cur = conn.cursor()
         cur.execute("SELECT * FROM revoked_mandates ORDER BY revoked_at DESC LIMIT ?", (max(1, int(limit)),))
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# --- Native AP2 Gateway Direct Rail Charge Operations (Milestone S3-NATIVE) ---
+
+def record_direct_charge(
+    charge_data: Dict[str, Any],
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Records a settled native AP2 direct rail charge in SQLite."""
+    charge_id = charge_data.get("charge_id") or f"chg_{uuid.uuid4().hex[:12]}"
+    mandate_id = charge_data["mandate_id"]
+    buyer_key_id = charge_data["buyer_key_id"]
+    amount_cents = int(charge_data["amount_cents"])
+    currency = charge_data.get("currency", "USD")
+    payee_id = charge_data["payee_id"]
+    payment_source_id = charge_data["payment_source_id"]
+    paypal_capture_id = charge_data["paypal_capture_id"]
+    status = charge_data.get("status", "CAPTURED")
+    merchant_receipt_jwt = charge_data["merchant_receipt_jwt"]
+    qbo_purchase_id = charge_data.get("qbo_purchase_id")
+    qbo_payload = charge_data.get("qbo_payload")
+    qbo_json = json.dumps(qbo_payload) if qbo_payload else None
+    metadata = charge_data.get("metadata") or {}
+    meta_json = json.dumps(metadata) if metadata else None
+    now_iso = charge_data.get("created_at") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO direct_charges (
+                    charge_id, mandate_id, buyer_key_id, amount_cents, currency,
+                    payee_id, payment_source_id, paypal_capture_id, status,
+                    merchant_receipt_jwt, qbo_purchase_id, qbo_payload, metadata_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    charge_id,
+                    mandate_id,
+                    buyer_key_id,
+                    amount_cents,
+                    currency,
+                    payee_id,
+                    payment_source_id,
+                    paypal_capture_id,
+                    status,
+                    merchant_receipt_jwt,
+                    qbo_purchase_id,
+                    qbo_json,
+                    meta_json,
+                    now_iso,
+                ),
+            )
+        return get_direct_charge(charge_id, db_path=db_path) or {
+            "charge_id": charge_id,
+            "mandate_id": mandate_id,
+            "buyer_key_id": buyer_key_id,
+            "amount_cents": amount_cents,
+            "currency": currency,
+            "payee_id": payee_id,
+            "payment_source_id": payment_source_id,
+            "paypal_capture_id": paypal_capture_id,
+            "status": status,
+            "merchant_receipt_jwt": merchant_receipt_jwt,
+            "qbo_purchase_id": qbo_purchase_id,
+            "qbo_payload": qbo_payload,
+            "metadata": metadata,
+            "created_at": now_iso,
+        }
+    finally:
+        conn.close()
+
+
+def get_direct_charge(charge_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Retrieves a direct charge record by its ID."""
+    if not charge_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM direct_charges WHERE charge_id = ?", (charge_id.strip(),))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("qbo_payload"):
+            try:
+                d["qbo_payload"] = json.loads(d["qbo_payload"])
+            except Exception:
+                pass
+        if d.get("metadata_json"):
+            try:
+                d["metadata"] = json.loads(d.pop("metadata_json"))
+            except Exception:
+                d["metadata"] = {}
+        return d
+    finally:
+        conn.close()
+
+
+def list_direct_charges(limit: int = 50, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Lists recent direct charges in descending chronological order."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM direct_charges ORDER BY created_at DESC LIMIT ?", (max(1, int(limit)),))
+        rows = cur.fetchall()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            if d.get("qbo_payload"):
+                try:
+                    d["qbo_payload"] = json.loads(d["qbo_payload"])
+                except Exception:
+                    pass
+            if d.get("metadata_json"):
+                try:
+                    d["metadata"] = json.loads(d.pop("metadata_json"))
+                except Exception:
+                    d["metadata"] = {}
+            out.append(d)
+        return out
     finally:
         conn.close()
 
@@ -1453,9 +1707,14 @@ def list_buyer_key_records(db_path: Optional[Path] = None) -> List[Dict[str, Any
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT kid, public_key_hex, contractor_email, business_name, registered_at FROM buyer_keys ORDER BY registered_at DESC"
+            "SELECT kid, public_key_hex, contractor_email, business_name, payer_id, identity_provider, identity_attested, registered_at FROM buyer_keys ORDER BY registered_at DESC"
         )
-        return [dict(r) for r in cur.fetchall()]
+        out = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["identity_attested"] = bool(d.get("identity_attested"))
+            out.append(d)
+        return out
     finally:
         conn.close()
 
@@ -1703,6 +1962,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM revoked_mandates")
             conn.execute("DELETE FROM payout_items")
             conn.execute("DELETE FROM payout_batches")
+            conn.execute("DELETE FROM direct_charges")
             op_placeholders = ",".join("?" for _ in DEFAULT_NODE_OPERATOR_IDS)
             conn.execute(f"DELETE FROM node_operators WHERE operator_id NOT IN ({op_placeholders})", list(DEFAULT_NODE_OPERATOR_IDS))
             if getattr(settings, "mock_external_apis", False):

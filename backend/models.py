@@ -262,6 +262,7 @@ class BuyerKeyRegistrationRequest(BaseModel):
     challenge_signature: str = Field(alias="challengeSignature", min_length=32, max_length=1024, description="Signature over challenge nonce (hex or base64url)")
     monthly_budget_cap: Optional[float] = Field(default=None, alias="monthlyBudgetCap", description="Monthly spending cap in USD")
     allowed_tiers: Optional[List[str]] = Field(default=["ap2-batch", "ap2-gateway"], alias="allowedTiers", description="Permitted subscription tiers")
+    oidc_id_token: Optional[str] = Field(default=None, alias="oidcIdToken", description="Optional OpenID Connect ID token from Log in with PayPal to attest payer identity")
 
 
 class BuyerKeyRegistrationResponse(BaseModel):
@@ -275,6 +276,9 @@ class BuyerKeyRegistrationResponse(BaseModel):
     registered_at: str = Field(alias="registeredAt", description="ISO registration timestamp")
     verified: bool = Field(description="Whether cryptographic challenge-response signature was verified")
     message: str = Field(description="Human-readable onboarding status message")
+    identity_attested: bool = Field(default=False, alias="identityAttested", description="Whether identity was attested via PayPal OIDC")
+    payer_id: Optional[str] = Field(default=None, alias="payerId", description="Verified PayPal Payer ID if attested")
+    identity_provider: Optional[str] = Field(default=None, alias="identityProvider", description="Identity provider (e.g. paypal)")
 
 
 class BuyerKeyRecord(BaseModel):
@@ -285,6 +289,9 @@ class BuyerKeyRecord(BaseModel):
     contractor_email: Optional[str] = Field(default=None, alias="contractorEmail")
     business_name: Optional[str] = Field(default=None, alias="businessName")
     registered_at: str = Field(alias="registeredAt")
+    payer_id: Optional[str] = Field(default=None, alias="payerId")
+    identity_provider: Optional[str] = Field(default=None, alias="identityProvider")
+    identity_attested: bool = Field(default=False, alias="identityAttested")
 
 
 class BuyerKeyRegistryResponse(BaseModel):
@@ -293,4 +300,64 @@ class BuyerKeyRegistryResponse(BaseModel):
     status: str = "active"
     count: int
     keys: List[BuyerKeyRecord]
+
+
+# --- Identity Attestation Models (SPEC-001 v1.9.0 / Milestone S3-NATIVE) ---
+
+class IdentityAttestationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    kid: str = Field(min_length=3, max_length=64, description="Registered buyer key ID to attest")
+    oidc_id_token: str = Field(alias="oidcIdToken", min_length=10, description="PayPal OpenID Connect ID token")
+
+
+class IdentityAttestationResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = Field(description="Attestation status (ATTESTED / REJECTED)")
+    kid: str = Field(description="Buyer key ID")
+    payer_id: str = Field(alias="payerId", description="Verified PayPal Payer ID (sub)")
+    identity_provider: str = Field(default="paypal", alias="identityProvider", description="Identity provider")
+    identity_attested: bool = Field(default=True, alias="identityAttested")
+    email: str = Field(description="Verified email address bound to PayPal identity")
+    attestation_timestamp: str = Field(alias="attestationTimestamp", description="ISO timestamp of attestation")
+    claims: Dict[str, Any] = Field(default_factory=dict, description="Verified OIDC claims")
+
+
+# --- Native AP2 Gateway Direct Rail Charge Models (Milestone S3-NATIVE) ---
+
+class DirectChargeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    cart_mandate_jwt: str = Field(alias="cartMandateJwt", description="AP2 v0.2 Cart Mandate chain (ES256 SD-JWT)")
+    payment_mandate_jwt: str = Field(alias="paymentMandateJwt", description="AP2 v0.2 Payment Mandate chain (ES256 SD-JWT)")
+    buyer_key_id: Optional[str] = Field(default=None, alias="buyerKeyId", description="Registered buyer key ID (kid)")
+    payment_source_id: Optional[str] = Field(default="vault_paypal_token_default", alias="paymentSourceId", description="Vaulted PayPal payment source")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional application metadata")
+
+
+class DirectChargeResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    charge_id: str = Field(alias="chargeId", description="Unique gateway direct charge ID")
+    status: str = Field(description="Payment settlement status (e.g. CAPTURED)")
+    amount_cents: int = Field(alias="amountCents", description="Settled charge amount in integer minor units (Rule 6)")
+    currency: str = Field(default="USD", description="Currency code")
+    amount_formatted: str = Field(alias="amountFormatted", description="Formatted dollar string ($XX.YY)")
+    mandate_id: str = Field(alias="mandateId", description="Bound AP2 checkout mandate / order ID")
+    buyer_key_id: str = Field(alias="buyerKeyId", description="Registered buyer key ID")
+    payer_id: Optional[str] = Field(default=None, alias="payerId", description="Attested PayPal Payer ID if bound")
+    payee_id: str = Field(alias="payeeId", description="AP2 merchant ID")
+    paypal_capture_id: str = Field(alias="paypalCaptureId", description="PayPal transaction capture ID")
+    merchant_receipt_jwt: str = Field(alias="merchantReceiptJwt", description="Merchant-signed ES256 payment receipt JWT")
+    qbo_purchase_id: Optional[str] = Field(default=None, alias="qboPurchaseId", description="QuickBooks Online v3 Purchase ID")
+    qbo_payload: Optional[Dict[str, Any]] = Field(default=None, alias="qboPayload", description="Authentic QBO v3 Purchase payload")
+    created_at: str = Field(alias="createdAt", description="ISO creation timestamp")
+
+
+class DirectChargeListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    count: int
+    charges: List[DirectChargeResponse]
 

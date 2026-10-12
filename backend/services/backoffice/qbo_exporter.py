@@ -10,6 +10,14 @@ import uuid
 from datetime import datetime, timezone
 
 
+def _sanitize_qbo_str(val: Any, max_len: int = 128) -> str:
+    """Sanitizes text against CRLF injection and control characters in QBO memos."""
+    if val is None:
+        return ""
+    clean = str(val).replace("\r", " ").replace("\n", " ").strip()
+    return clean[:max_len]
+
+
 class QboExporter:
     """Generates authentic QuickBooks Online API v3 Purchase and Vendor JSON payloads."""
 
@@ -310,13 +318,19 @@ class QboExporter:
         Maps the disbursement to GL Account 5000 (Cost of Goods Sold: Compute & Datacenter Infrastructure).
         """
         date_str = txn_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        doc_number = f"BILL-{payout_item_id[-6:] if len(payout_item_id) >= 6 else uuid.uuid4().hex[:6].upper()}"
+        safe_name = _sanitize_qbo_str(operator_name, 100)
+        safe_email = _sanitize_qbo_str(operator_email, 100)
+        safe_batch = _sanitize_qbo_str(payout_batch_id, 64)
+        safe_item = _sanitize_qbo_str(payout_item_id, 64)
+        safe_sub = _sanitize_qbo_str(subscription_id, 64)
+        safe_node = _sanitize_qbo_str(node_id or "Cluster Node", 64)
+        doc_number = f"BILL-{safe_item[-6:] if len(safe_item) >= 6 else uuid.uuid4().hex[:6].upper()}"
 
         private_memo = (
             f"AP2 Autonomous Commerce Protocol — Operator Compute Disbursement.\n"
-            f"Batch: {payout_batch_id} | Item: {payout_item_id}\n"
-            f"Subscription: {subscription_id} | Node: {node_id or 'Cluster Node'}\n"
-            f"Operator: {operator_name} <{operator_email}>"
+            f"Batch: {safe_batch} | Item: {safe_item}\n"
+            f"Subscription: {safe_sub} | Node: {safe_node}\n"
+            f"Operator: {safe_name} <{safe_email}>"
         )
 
         return {
@@ -330,7 +344,7 @@ class QboExporter:
                 },
                 "VendorRef": {
                     "value": "VEND-OP-01",
-                    "name": f"{operator_name} ({operator_email})",
+                    "name": f"{safe_name} ({safe_email})",
                 },
                 "PrivateNote": private_memo,
                 "Line": [
@@ -339,7 +353,7 @@ class QboExporter:
                         "LineNum": 1,
                         "Amount": float(f"{net_payout_dollars:.2f}"),
                         "DetailType": "AccountBasedExpenseLineDetail",
-                        "Description": f"Compute Node Infrastructure Operation ({node_id or 'Cluster'}) - PayPal Payout Ref: {payout_item_id}",
+                        "Description": f"Compute Node Infrastructure Operation ({safe_node}) - PayPal Payout Ref: {safe_item}",
                         "AccountBasedExpenseLineDetail": {
                             "AccountRef": {
                                 "value": "5000",

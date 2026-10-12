@@ -150,6 +150,21 @@ async def revoke_mandate(
     clean_reason = (reason or "Owner manual revocation").strip()
     now_iso = timestamp_iso or datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    # -1. Idempotency check: If already revoked, return immutable tombstone
+    if is_mandate_revoked(clean_hash, db_path=db_path):
+        existing = get_mandate_revocation(clean_hash, db_path=db_path)
+        logger.info(f"[REVOCATION] Mandate {clean_hash} was already cryptographically revoked; preserving original tombstone.")
+        return {
+            "status": "ALREADY_REVOKED",
+            "mandate_proof_hash": clean_hash,
+            "revoked_by_kid": existing.get("revoked_by_kid") if existing else clean_kid,
+            "revocation_id": existing.get("revocation_id") if existing else "rev_existing",
+            "revoked_at": existing.get("revoked_at") if existing else now_iso,
+            "reason": existing.get("reason") if existing else clean_reason,
+            "stopped_subscriptions": [],
+            "idempotent": True,
+        }
+
     # 0. Validate timestamp freshness if provided (max 300s skew)
     if timestamp_iso:
         try:

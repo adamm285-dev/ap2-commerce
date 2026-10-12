@@ -748,6 +748,12 @@ class PayPalService:
             logger.warning(f"[PayPal Webhook MOCK] Forged or invalid transmission signature rejected: {sig_clean[:32]}")
             return {"verification_status": "FAILURE", "mock_mode": True, "error": "INVALID_SIGNATURE"}
 
+        if cert_url:
+            clean_cert = str(cert_url).strip().lower()
+            if not (clean_cert.startswith("https://") and (".paypal.com/" in clean_cert or ".paypalobjects.com/" in clean_cert)):
+                logger.warning(f"[SECURITY] Untrusted paypal-cert-url rejected: {cert_url}")
+                return {"verification_status": "FAILURE", "error": "UNTRUSTED_CERT_URL"}
+
         token = await self.get_access_token()
         if not token:
             logger.error("[PayPal Webhook] Live token acquisition failed.")

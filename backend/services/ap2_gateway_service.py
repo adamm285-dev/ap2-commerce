@@ -75,6 +75,24 @@ class Ap2GatewayService:
         if not cart_mandate_jwt or not payment_mandate_jwt:
             raise ValueError("MISSING_MANDATES: Both cart_mandate_jwt and payment_mandate_jwt are required.")
 
+        # 0. Validate payment_source_id and metadata input hygiene
+        if payment_source_id is not None:
+            if not isinstance(payment_source_id, str) or len(payment_source_id.strip()) < 3 or len(payment_source_id) > 128:
+                raise ValueError("INVALID_PAYMENT_SOURCE: Payment source ID must be a string between 3 and 128 characters.")
+            clean_source = payment_source_id.strip()
+            if any(c in clean_source for c in ["\r", "\n", "\0", " "]):
+                raise ValueError("INVALID_PAYMENT_SOURCE: Payment source ID contains invalid control or whitespace characters.")
+
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise ValueError("INVALID_METADATA: Metadata must be a dictionary object.")
+            try:
+                meta_json = json.dumps(metadata)
+                if len(meta_json) > 65536:
+                    raise ValueError("METADATA_TOO_LARGE: Metadata payload exceeds maximum allowed size of 64KB.")
+            except (TypeError, OverflowError) as e:
+                raise ValueError(f"INVALID_METADATA: Metadata is not JSON serializable: {e}")
+
         # 1. Verify Buyer Key trust if specified
         payer_id = None
         if buyer_key_id:

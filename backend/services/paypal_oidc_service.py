@@ -135,13 +135,31 @@ class PayPalOidcService:
         if not issuer or issuer not in VALID_PAYPAL_ISSUERS:
             raise ValueError(f"INVALID_ISSUER: Token issuer '{issuer}' is not an authorized PayPal OIDC provider.")
 
-        # 2. Expiration verification
+        # 2. Expiration, issued-at, and not-before verification
         now = time.time()
         exp = claims.get("exp")
         if exp is None or not isinstance(exp, (int, float)):
             raise ValueError("MISSING_EXPIRATION: Token missing valid 'exp' claim.")
         if exp < now:
             raise ValueError("EXPIRED_TOKEN: Identity attestation token has expired.")
+
+        iat = claims.get("iat")
+        if iat is not None:
+            if not isinstance(iat, (int, float)):
+                raise ValueError("INVALID_IAT: 'iat' claim must be a numeric timestamp.")
+            if iat > now + 300:
+                raise ValueError("FUTURE_TOKEN: Token 'iat' timestamp is in the future beyond allowed clock skew.")
+            if exp <= iat:
+                raise ValueError("INVALID_TOKEN_LIFESPAN: Token expiration 'exp' must be strictly after 'iat'.")
+            if exp - iat > 86400 * 30:
+                raise ValueError("EXCESSIVE_TOKEN_LIFESPAN: Token lifespan exceeds maximum allowed limit of 30 days.")
+
+        nbf = claims.get("nbf")
+        if nbf is not None:
+            if not isinstance(nbf, (int, float)):
+                raise ValueError("INVALID_NBF: 'nbf' claim must be a numeric timestamp.")
+            if nbf > now + 300:
+                raise ValueError("TOKEN_NOT_YET_VALID: Token 'nbf' timestamp is in the future.")
 
         # 3. Payer ID (subject) validation
         sub = claims.get("sub")

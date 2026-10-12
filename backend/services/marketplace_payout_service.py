@@ -8,6 +8,7 @@ via PayPal Payouts REST API (POST /v1/payments/payouts), paired with QuickBooks 
 Bill Payment exports.
 """
 
+import re
 import uuid
 import json
 import logging
@@ -117,7 +118,15 @@ class MarketplacePayoutService:
         submits batch to PayPal Payouts REST API, logs in SQLite, and exports QBO v3 Bills.
         """
         now_utc = datetime.datetime.now(datetime.timezone.utc)
-        cycle = cycle_id or now_utc.strftime("%Y-%m")
+        if cycle_id:
+            clean_cycle = str(cycle_id).strip()
+            if not re.match(r"^[a-zA-Z0-9_-]{4,32}$", clean_cycle):
+                raise ValueError(
+                    f"INVALID_CYCLE_ID: Billing cycle identifier '{cycle_id}' is invalid. Must be 4-32 alphanumeric characters, hyphens, or underscores."
+                )
+            cycle = clean_cycle
+        else:
+            cycle = now_utc.strftime("%Y-%m")
         batch_sender_id = sender_batch_id or f"payout_batch_{cycle}_{uuid.uuid4().hex[:8]}"
 
         # Gather active subscriptions

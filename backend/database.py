@@ -1194,6 +1194,10 @@ def record_mandate_revocation(
     revocation_id = f"rev_{uuid.uuid4().hex[:12]}"
     now_iso = revoked_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    existing = get_mandate_revocation(clean_hash, db_path=db_path)
+    if existing:
+        return existing
+
     conn = get_connection(db_path)
     try:
         with conn:
@@ -1201,12 +1205,7 @@ def record_mandate_revocation(
                 """
                 INSERT INTO revoked_mandates (revocation_id, mandate_proof_hash, revoked_by_kid, revoked_at, reason, signature_hex)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(mandate_proof_hash) DO UPDATE SET
-                    revocation_id = excluded.revocation_id,
-                    revoked_by_kid = excluded.revoked_by_kid,
-                    revoked_at = excluded.revoked_at,
-                    reason = excluded.reason,
-                    signature_hex = excluded.signature_hex
+                ON CONFLICT(mandate_proof_hash) DO NOTHING
                 """,
                 (revocation_id, clean_hash, revoked_by_kid.strip(), now_iso, reason.strip(), signature_hex.strip()),
             )

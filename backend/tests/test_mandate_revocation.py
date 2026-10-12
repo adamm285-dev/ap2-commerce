@@ -26,7 +26,9 @@ from backend.database import (
     is_mandate_revoked,
     list_revoked_mandates,
     register_buyer_key,
+    save_subscription,
 )
+from backend.services.paypal_oidc_service import PayPalOidcService
 from backend.server import app
 from backend.services.ap2_keys import get_merchant_public_jwk
 from backend.services.ap2_service import (
@@ -82,8 +84,13 @@ async def _setup_active_subscription(tmp_path, cap=60.0):
     owner = _generate_es256_key("rev-owner")
     email = f"rev-owner-{uuid.uuid4().hex[:8]}@example.com"
 
-    # Enforce challenge enrollment
+    # Enforce challenge enrollment with identity attestation
     challenge = client.get("/api/agent/keys/challenge").json()["challenge"]
+    oidc_token = PayPalOidcService.generate_mock_oidc_token(
+        payer_id=f"PAYER-{uuid.uuid4().hex[:8].upper()}",
+        email=email,
+        nonce=challenge,
+    )
     enrolled = client.post("/api/agent/keys/register", json={
         "kid": owner.kid,
         "publicKeyJwk": owner.export_public(as_dict=True),
@@ -91,6 +98,7 @@ async def _setup_active_subscription(tmp_path, cap=60.0):
         "businessEntity": "Revocation Testing LLC",
         "challenge": challenge,
         "challengeSignature": sign_es256_challenge(challenge, owner),
+        "oidcIdToken": oidc_token,
     })
     assert enrolled.status_code == 201, enrolled.text
 
@@ -321,6 +329,14 @@ def test_mandate_revocation_endpoints():
     register_buyer_key(kid, pub_hex, contractor_email="api-rev@example.com", allow_overwrite=True)
 
     m_hash = f"hash-{uuid.uuid4().hex}"
+    save_subscription({
+        "subscription_id": f"sub-{m_hash[:16]}",
+        "contractor_email": "api-rev@example.com",
+        "mandate_proof_hash": m_hash,
+        "status": "ACTIVE",
+        "tier_id": "ap2-gateway",
+        "raw_details_json": json.dumps({"owner_kid": kid}),
+    })
     ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     reason = "API Revocation Test"
     msg = canonical_revocation_message(m_hash, ts, reason)

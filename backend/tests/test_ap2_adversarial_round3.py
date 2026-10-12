@@ -51,6 +51,11 @@ def _generate_es256_key(kid_prefix="adv3-owner"):
 
 def _enroll_buyer_key(key: JWK, email: str, entity: str = "Round 3 Security LLC"):
     challenge = client.get("/api/agent/keys/challenge").json()["challenge"]
+    oidc_token = PayPalOidcService.generate_mock_oidc_token(
+        payer_id=f"PAYER-{uuid.uuid4().hex[:8].upper()}",
+        email=email,
+        nonce=challenge,
+    )
     res = client.post("/api/agent/keys/register", json={
         "kid": key.kid,
         "publicKeyJwk": key.export_public(as_dict=True),
@@ -58,6 +63,7 @@ def _enroll_buyer_key(key: JWK, email: str, entity: str = "Round 3 Security LLC"
         "businessEntity": entity,
         "challenge": challenge,
         "challengeSignature": sign_es256_challenge(challenge, key),
+        "oidcIdToken": oidc_token,
     })
     assert res.status_code == 201, res.text
     return res.json()

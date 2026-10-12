@@ -89,13 +89,18 @@ async def test_rt4_prefix_revocation_cannot_cancel_other_tenants():
     attacker = _key("rt4-attacker")
     _enroll(attacker, f"attacker-{uuid.uuid4().hex[:6]}@evil.com")
 
-    # The prefix matches no row exactly, so resolve_mandate_owner finds no owner and
-    # the authorization check is skipped; startswith() then matches every victim sub.
+    # Short prefix must be rejected
     try:
         res = await _signed_revoke(attacker, shared)
     except ValueError:
-        return  # secure: rejected
-    assert not set(victim_subs) & set(res.get("cancelled_subscriptions", []))
+        pass
+    else:
+        assert not set(victim_subs) & set(res.get("cancelled_subscriptions", []))
+
+    # 16+ char random hash with no registered owner must fail closed (F1: MANDATE_NOT_FOUND)
+    random_hash = f"unowned_{uuid.uuid4().hex}"
+    with pytest.raises(ValueError, match="MANDATE_NOT_FOUND"):
+        await _signed_revoke(attacker, random_hash)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,8 +114,14 @@ async def test_rt4_unverified_email_claim_cannot_revoke_victim_mandate():
     sub_id = _victim_sub(victim_email, proof)
 
     impostor = _key("rt4-impostor")
-    _enroll(impostor, victim_email)  # no OIDC, no email verification
+    _enroll(impostor, victim_email)  # no OIDC, unverified email claim
 
+    # Impostor attempts to attest without key possession (F5 chain into F2)
+    forged_oidc = PayPalOidcService.generate_mock_oidc_token(payer_id=f"PAYER-{uuid.uuid4().hex[:8].upper()}", email=victim_email)
+    attest_res = client.post("/api/agent/identity/attest", json={"kid": impostor.kid, "oidc_id_token": forged_oidc})
+    assert attest_res.status_code in (401, 403)
+
+    # Impostor attempts to revoke victim's mandate
     try:
         res = await _signed_revoke(impostor, proof)
     except ValueError:
@@ -141,7 +152,8 @@ async def test_rt4_concurrent_payout_batches_pay_once(monkeypatch):
         return await real(*args, **kwargs)
 
     monkeypatch.setattr(paypal_service, "create_payout_batch", slow_batch)
-    cycle = f"rt4c{uuid.uuid4().hex[:8]}"
+    month = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+    cycle = f"{month}-{uuid.uuid4().hex[:8]}"
 
     await asyncio.gather(
         marketplace_payout_service.execute_fleet_payout_batch(cycle_id=cycle, subscription_ids=[sub_id]),
@@ -162,9 +174,19 @@ async def test_rt4_relabelled_cycle_does_not_repay():
     })
     month = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
     first = await marketplace_payout_service.execute_fleet_payout_batch(cycle_id=month, subscription_ids=[sub_id])
-    second = await marketplace_payout_service.execute_fleet_payout_batch(cycle_id=f"{month}-again", subscription_ids=[sub_id])
     assert first["item_count"] == 1
+
+    # 1. Relabelled cycle with suffix (e.g. 2026-10-again) normalizes to month and skips settled subscription
+    second = await marketplace_payout_service.execute_fleet_payout_batch(cycle_id=f"{month}-again", subscription_ids=[sub_id])
     assert second["item_count"] == 0
+
+    # 2. Cycle without month prefix (e.g. relabel01) is strictly rejected
+    with pytest.raises(ValueError, match="INVALID_CYCLE_ID"):
+        await marketplace_payout_service.execute_fleet_payout_batch(cycle_id="relabel01", subscription_ids=[sub_id])
+
+    # 3. Future cycle (e.g. 2099-12) is strictly rejected
+    with pytest.raises(ValueError, match="FUTURE_CYCLE_ID"):
+        await marketplace_payout_service.execute_fleet_payout_batch(cycle_id="2099-12", subscription_ids=[sub_id])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -195,14 +217,18 @@ def _forge_oidc(claims: dict) -> str:
 
 
 def test_rt4_identity_attest_requires_key_possession():
-    victim = _key("rt4-attest-victim")
+    # Use random key name and random payer ID to guarantee no string-matching games
+    rand_prefix = f"victim-{uuid.uuid4().hex[:8]}"
+    victim = _key(rand_prefix)
     victim_email = f"victim-{uuid.uuid4().hex[:6]}@enterprise.com"
     _enroll(victim, victim_email)
 
-    forged = PayPalOidcService.generate_mock_oidc_token(payer_id="ATTACKER-PAYER", email=victim_email)
+    rand_payer = f"EVIL-PAYER-{uuid.uuid4().hex[:8].upper()}"
+    forged = PayPalOidcService.generate_mock_oidc_token(payer_id=rand_payer, email=victim_email)
     res = client.post("/api/agent/identity/attest", json={"kid": victim.kid, "oidc_id_token": forged})
     identity = get_buyer_identity(victim.kid) or {}
-    assert res.status_code >= 400 and identity.get("payer_id") != "ATTACKER-PAYER"
+    assert res.status_code in (401, 403)
+    assert identity.get("payer_id") != rand_payer
 
 
 def test_rt4_oidc_rejects_non_finite_exp():

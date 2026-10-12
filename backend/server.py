@@ -6,6 +6,7 @@ Supports 100% offline mock simulation when external keys are not configured.
 
 import os
 import math
+import time
 import logging
 import collections
 import hmac
@@ -622,9 +623,13 @@ async def revoke_mandate_endpoint(req: RevokeMandateRequest):
     except ValueError as e:
         logger.warning(f"Mandate revocation failed: {e}")
         status_code = (
-            status.HTTP_403_FORBIDDEN
-            if "UNAUTHORIZED" in str(e)
-            else (status.HTTP_401_UNAUTHORIZED if "SIGNATURE" in str(e) or "KEY" in str(e) else status.HTTP_400_BAD_REQUEST)
+            status.HTTP_404_NOT_FOUND
+            if "MANDATE_NOT_FOUND" in str(e)
+            else (
+                status.HTTP_403_FORBIDDEN
+                if "UNAUTHORIZED" in str(e)
+                else (status.HTTP_401_UNAUTHORIZED if "SIGNATURE" in str(e) or "KEY" in str(e) else status.HTTP_400_BAD_REQUEST)
+            )
         )
         raise HTTPException(
             status_code=status_code,
@@ -1607,7 +1612,10 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest, re
         )
 
     try:
-        attestation = PayPalOidcService.verify_oidc_identity_attestation(request.oidc_id_token)
+        attestation = PayPalOidcService.verify_oidc_identity_attestation(
+            id_token=request.oidc_id_token,
+            expected_nonce=request.challenge if request.challenge else None,
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1630,16 +1638,55 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest, re
             },
         )
 
+    # Key possession verification: caller must prove possession of the key being attested
     is_admin = _has_admin_key(req)
-    if not is_admin and (payer_id == "ATTACKER-PAYER" or request.kid.startswith("rt4-")):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "REJECTED",
-                "error": "KEY_POSSESSION_PROOF_REQUIRED",
-                "reason": f"Attestation for key '{request.kid}' requires cryptographic signature proving key possession.",
-            },
-        )
+    if not is_admin:
+        if not request.challenge or not request.challenge_signature:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "status": "REJECTED",
+                    "error": "KEY_POSSESSION_PROOF_REQUIRED",
+                    "reason": f"Attestation for key '{request.kid}' requires cryptographic signature proving key possession.",
+                },
+            )
+
+        now = time.time()
+        issued_time = _ACTIVE_KEY_CHALLENGES.pop(request.challenge, None)
+        if issued_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"status": "REJECTED", "error": "INVALID_CHALLENGE", "reason": "Attestation challenge nonce is invalid, unissued, or has already been consumed."},
+            )
+        if now - issued_time > 300:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"status": "REJECTED", "error": "CHALLENGE_EXPIRED", "reason": "Attestation challenge nonce expired."},
+            )
+
+        clean_pub = existing_key.strip()
+        if clean_pub.startswith("{"):
+            try:
+                jwk_dict = json.loads(clean_pub)
+                is_valid = verify_es256_challenge_signature(
+                    challenge=request.challenge,
+                    signature_str=request.challenge_signature,
+                    public_key_jwk=jwk_dict,
+                )
+            except Exception:
+                is_valid = False
+        else:
+            is_valid = verify_ed25519_challenge_signature(
+                challenge=request.challenge,
+                signature_hex=request.challenge_signature,
+                public_key_hex=clean_pub,
+            )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic challenge signature verification failed."},
+            )
 
     success = attest_buyer_identity(
         kid=request.kid,

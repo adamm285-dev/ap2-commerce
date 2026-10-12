@@ -31,6 +31,7 @@ from backend.services.marketplace_payout_service import (
     calculate_split_amounts_cents,
 )
 from backend.services.paypal_service import paypal_service
+from backend.services.paypal_oidc_service import PayPalOidcService
 from backend.database import (
     register_node_operator,
     get_node_operator,
@@ -48,6 +49,11 @@ def _generate_es256_key(kid_prefix="adv-owner"):
 
 def _enroll_buyer_key(key: JWK, email: str, entity: str = "Adversarial Test LLC"):
     challenge = client.get("/api/agent/keys/challenge").json()["challenge"]
+    oidc_token = PayPalOidcService.generate_mock_oidc_token(
+        payer_id=f"PAYER-{uuid.uuid4().hex[:8].upper()}",
+        email=email,
+        nonce=challenge,
+    )
     res = client.post("/api/agent/keys/register", json={
         "kid": key.kid,
         "publicKeyJwk": key.export_public(as_dict=True),
@@ -55,6 +61,7 @@ def _enroll_buyer_key(key: JWK, email: str, entity: str = "Adversarial Test LLC"
         "businessEntity": entity,
         "challenge": challenge,
         "challengeSignature": sign_es256_challenge(challenge, key),
+        "oidcIdToken": oidc_token,
     })
     assert res.status_code == 201, res.text
     return res.json()
@@ -288,7 +295,8 @@ async def test_adversarial_batch_payout_double_disbursement_bypass():
     Passing subscription_ids must NOT bypass cycle-level deduplication.
     A subscription already disbursed in the current billing cycle must be skipped.
     """
-    cycle_id = f"2026-cycle-{uuid.uuid4().hex[:6]}"
+    month = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
+    cycle_id = f"{month}-cycle-{uuid.uuid4().hex[:6]}"
     sub_id = f"I-SUB-PAYOUT-{uuid.uuid4().hex[:8].upper()}"
 
     save_subscription({

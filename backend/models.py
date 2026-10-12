@@ -309,6 +309,8 @@ class IdentityAttestationRequest(BaseModel):
 
     kid: str = Field(min_length=3, max_length=64, description="Registered buyer key ID to attest")
     oidc_id_token: str = Field(alias="oidcIdToken", min_length=10, description="PayPal OpenID Connect ID token")
+    challenge: Optional[str] = Field(default=None, description="Server-issued challenge nonce for key possession proof")
+    challenge_signature: Optional[str] = Field(default=None, alias="challengeSignature", description="Cryptographic signature over challenge nonce signed by the buyer key")
 
 
 class IdentityAttestationResponse(BaseModel):

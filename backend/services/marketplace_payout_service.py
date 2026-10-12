@@ -28,6 +28,7 @@ from ..database import (
     list_payout_batches,
     list_payout_items,
     list_subscriptions,
+    get_subscription,
     get_fleet_ledger,
 )
 from .paypal_service import paypal_service
@@ -133,15 +134,23 @@ class MarketplacePayoutService:
         submits batch to PayPal Payouts REST API, logs in SQLite, and exports QBO v3 Bills.
         """
         now_utc = datetime.datetime.now(datetime.timezone.utc)
+        current_month = now_utc.strftime("%Y-%m")
         if cycle_id:
             clean_cycle = str(cycle_id).strip()
-            if not re.match(r"^[a-zA-Z0-9_-]{4,32}$", clean_cycle):
+            month_match = re.match(r"^(\d{4})-(0[1-9]|1[0-2])(-.+)?$", clean_cycle)
+            if not month_match:
                 raise ValueError(
-                    f"INVALID_CYCLE_ID: Billing cycle identifier '{cycle_id}' is invalid. Must be 4-32 alphanumeric characters, hyphens, or underscores."
+                    f"INVALID_CYCLE_ID: Billing cycle identifier '{cycle_id}' is invalid. Must specify a valid calendar month (YYYY-MM)."
+                )
+            billing_month = f"{month_match.group(1)}-{month_match.group(2)}"
+            if billing_month > current_month:
+                raise ValueError(
+                    f"FUTURE_CYCLE_ID: Billing cycle '{billing_month}' is in the future. Maximum permitted cycle is '{current_month}'."
                 )
             cycle = clean_cycle
         else:
-            cycle = now_utc.strftime("%Y-%m")
+            cycle = current_month
+            billing_month = current_month
         batch_sender_id = sender_batch_id or f"payout_batch_{cycle}_{uuid.uuid4().hex[:8]}"
 
         lock = cls._get_payout_lock()
@@ -180,9 +189,6 @@ class MarketplacePayoutService:
             existing_items = list_payout_items(db_path=db_path)
             disbursed_sub_ids_this_cycle: Set[str] = set()
 
-            month_match = re.match(r"^(\d{4}-\d{2})", cycle)
-            billing_month = month_match.group(1) if month_match else None
-
             for item in existing_items:
                 sub_id = item.get("subscription_id")
                 if not sub_id:
@@ -190,10 +196,10 @@ class MarketplacePayoutService:
                 item_id = str(item.get("item_id") or "")
                 created_at = str(item.get("created_at") or "")
 
-                if item_id.startswith(f"item_{cycle}_"):
-                    disbursed_sub_ids_this_cycle.add(sub_id)
-                elif billing_month and (
-                    item_id.startswith(f"item_{billing_month}") or created_at.startswith(billing_month)
+                if (
+                    item_id.startswith(f"item_{billing_month}_")
+                    or item_id.startswith(f"item_{cycle}_")
+                    or (created_at and created_at.startswith(billing_month))
                 ):
                     disbursed_sub_ids_this_cycle.add(sub_id)
 
@@ -211,6 +217,17 @@ class MarketplacePayoutService:
                 if sub_id in disbursed_sub_ids_this_cycle:
                     logger.info(f"[Marketplace Payouts] Skipping already disbursed subscription {sub_id} for cycle {cycle}")
                     continue
+
+                # Inception check: subscription cannot be paid for cycles prior to its creation
+                sub_created_at = sub.get("created_at")
+                if not sub_created_at:
+                    db_sub = get_subscription(sub_id, db_path=db_path)
+                    sub_created_at = db_sub.get("created_at") if db_sub else None
+                if sub_created_at:
+                    sub_month = str(sub_created_at)[:7]
+                    if re.match(r"^\d{4}-\d{2}$", sub_month) and billing_month < sub_month:
+                        logger.info(f"[Marketplace Payouts] Skipping subscription {sub_id}: created in {sub_month}, cannot pay for prior cycle {billing_month}")
+                        continue
 
                 monthly_rate = float(sub.get("agreed_monthly_rate", 0.0))
                 if monthly_rate <= 0.0:
@@ -233,7 +250,7 @@ class MarketplacePayoutService:
                 split_bps = operator.get("split_bps", DEFAULT_OPERATOR_SPLIT_BPS)
                 net_operator_cents, platform_fee_cents = calculate_split_amounts_cents(gross_cents, split_bps)
 
-                item_uid = f"item_{cycle}_{sub_id.replace('-', '_')}"
+                item_uid = f"item_{billing_month}_{sub_id.replace('-', '_')}"
                 net_dollars_str = integer_cents_to_dollars_string(net_operator_cents)
 
                 paypal_item = {

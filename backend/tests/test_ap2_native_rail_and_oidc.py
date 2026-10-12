@@ -283,9 +283,12 @@ def test_post_registration_identity_attest(client):
 
     # Now attest identity via POST /api/agent/identity/attest
     payer_id = f"PAYER-{uuid.uuid4().hex[:10].upper()}"
+    attest_chal = client.get("/api/agent/keys/challenge").json()["challenge"]
+    attest_sig = priv_key.sign(attest_chal.encode("utf-8")).hex()
     oidc_token = PayPalOidcService.generate_mock_oidc_token(
         payer_id=payer_id,
         email="contractor-post@example.com",
+        nonce=attest_chal,
     )
 
     attest_resp = client.post(
@@ -293,6 +296,8 @@ def test_post_registration_identity_attest(client):
         json={
             "kid": kid,
             "oidcIdToken": oidc_token,
+            "challenge": attest_chal,
+            "challengeSignature": attest_sig,
         },
     )
     assert attest_resp.status_code == 200

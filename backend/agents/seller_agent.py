@@ -1063,15 +1063,15 @@ class SellerAgent:
                 mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
         mandate_proof_hash = mandate_proof_hash or checkout_hash
 
-        from ..services.ap2_service import _RECEIPT_STORE
+        from ..services.ap2_service import clear_stored_receipt
 
         def _reject_purchase(desc: str, err_code: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             ref = checkout_hash or mandate_proof_hash or offer_id or "unknown_ref"
             pay_ref = closed_pay_tx_id or ref
             if checkout_hash:
-                _RECEIPT_STORE.pop(checkout_hash, None)
+                clear_stored_receipt(checkout_hash)
             if closed_pay_tx_id:
-                _RECEIPT_STORE.pop(closed_pay_tx_id, None)
+                clear_stored_receipt(closed_pay_tx_id)
             err_receipt = create_checkout_receipt_jwt(
                 order_id=offer_id or "unknown_order",
                 closed_mandate_reference=ref,
@@ -1119,9 +1119,6 @@ class SellerAgent:
         verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
         verified_pay_receipt = ap2_verify_res.get("payment_receipt")
 
-        # Mandates issued without an email are locked to their first redeemer
-        if mandate_proof_hash and contractor_email:
-            bind_mandate_email(mandate_proof_hash, contractor_email)
         auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
 
         buyer_id = auth.get("buyer_agent_id", "unknown")
@@ -1167,6 +1164,10 @@ class SellerAgent:
                     "active_subscription_id": old_sub_id,
                 },
             )
+
+        # Mandates issued without an email are locked to their first redeemer only after all budget checks pass
+        if mandate_proof_hash and contractor_email:
+            bind_mandate_email(mandate_proof_hash, contractor_email)
 
         # 3. Invoke PayPal Gateway
         subscriber_name = (
@@ -1623,6 +1624,12 @@ class SellerAgent:
             if not sub:
                 from ..database import get_subscription
                 sub = get_subscription(target_sub_id)
+            if not sub and target_sub_id != "I-AUTONOMOUS-8902":
+                return {
+                    "status": "REJECTED",
+                    "error": "SUBSCRIPTION_NOT_FOUND",
+                    "reason": f"Cannot dispatch back-office automation: Subscription '{target_sub_id}' was not found.",
+                }
 
         sub_name = (
             subscriber_name

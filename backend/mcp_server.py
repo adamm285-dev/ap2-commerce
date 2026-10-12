@@ -286,56 +286,21 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
             elif tool_name == "dispatch_zapier_mcp":
                 sub_id = arguments.get("subscription_id") or arguments.get("paypal_subscription_id")
-                sub = None
-                if sub_id:
-                    from .database import get_subscription
-                    from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
-                    sub = _COMPLETED_SUBSCRIPTIONS.get(sub_id) or get_subscription(sub_id)
-
-                email = (
-                    arguments.get("buyer_email")
-                    or arguments.get("contractor_email")
-                    or (sub.get("buyer_email") or sub.get("contractor_email") if sub else None)
-                    or "buyer-agent@example.com"
-                )
-                endpoint = (
-                    arguments.get("node_endpoint")
-                    or arguments.get("allocated_did")
-                    or (sub.get("node_endpoint") or sub.get("allocated_endpoint") or sub.get("endpoint") or sub.get("assigned_did") if sub else None)
-                    or "mcp+https://gateway-01.example.com/agents/gateway"
-                )
-                vertical = arguments.get("service_vertical") or arguments.get("trade_vertical") or "Autonomous Compute"
-                sub_name = (
-                    arguments.get("subscriber_name")
-                    or arguments.get("contractor_name")
-                    or (sub.get("subscriber_name") or sub.get("contractor_name") if sub else None)
-                    or "Autonomous Buyer Agent"
-                )
-                entity = arguments.get("business_entity") or "Autonomous Node Network"
-
-                default_fee = sub.get("agreed_monthly_rate", 79.99) if sub else 79.99
-                fee = _num(arguments, "monthly_subscription_fee", default_fee)
-                if fee is None:
-                    fee = default_fee
-
-                proof_hash = (
-                    arguments.get("mandate_proof_hash")
-                    or (sub.get("mandate_proof_hash") or sub.get("traceable_proof") if sub else None)
-                )
-
                 # MOCK(M-012): missing dispatch arguments default to demo values
                 resolved_sub_id = sub_id or "I-AUTONOMOUS-8902"
+                fee = _num(arguments, "monthly_subscription_fee")
 
                 result = await seller_agent.dispatch_zapier_mcp(
                     workflow_type=arguments.get("workflow_type", "a2a_onboarding"),
-                    subscriber_name=sub_name,
-                    business_entity=entity,
-                    node_endpoint=endpoint,
-                    service_vertical=vertical,
+                    subscriber_name=arguments.get("subscriber_name") or arguments.get("contractor_name"),
+                    business_entity=arguments.get("business_entity"),
+                    node_endpoint=arguments.get("node_endpoint") or arguments.get("allocated_did"),
+                    service_vertical=arguments.get("service_vertical") or arguments.get("trade_vertical"),
                     monthly_subscription_fee=fee,
                     paypal_subscription_id=resolved_sub_id,
-                    buyer_email=email,
-                    mandate_proof_hash=proof_hash,
+                    subscription_id=resolved_sub_id,
+                    buyer_email=arguments.get("buyer_email") or arguments.get("contractor_email"),
+                    mandate_proof_hash=arguments.get("mandate_proof_hash"),
                     webhook_url=arguments.get("webhook_url") if settings.mock_external_apis else None,
                 )
 

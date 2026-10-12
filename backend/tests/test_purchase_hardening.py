@@ -805,3 +805,194 @@ def test_provision_node_and_dispatch_zapier_uses_subscription_record():
     assert proof_hash in mcp_purchase["PrivateNote"]
 
 
+def test_dispatch_zapier_mcp_rejects_unknown_subscription_id():
+    """
+    Finding 3 hardening: Calling dispatch_zapier_mcp with an unknown subscription_id
+    must reject with SUBSCRIPTION_NOT_FOUND rather than falling back to $79.99 gateway.
+    """
+    from backend.mcp_server import _handle_mcp_request_internal
+
+    # 1. Direct call on seller_agent
+    res = _run(seller_agent.dispatch_zapier_mcp(
+        subscription_id="I-NONEXISTENT-SUB-1234",
+    ))
+    assert res.get("status") == "REJECTED"
+    assert res.get("error") == "SUBSCRIPTION_NOT_FOUND"
+
+    # 2. Over MCP JSON-RPC
+    mcp_call = {
+        "jsonrpc": "2.0",
+        "id": 998,
+        "method": "tools/call",
+        "params": {
+            "name": "dispatch_zapier_mcp",
+            "arguments": {
+                "subscription_id": "I-NONEXISTENT-SUB-5678",
+            },
+        },
+    }
+    mcp_resp = _run(_handle_mcp_request_internal(mcp_call))
+    result_data = json.loads(mcp_resp["result"]["content"][0]["text"])
+    assert result_data.get("status") == "REJECTED"
+    assert result_data.get("error") == "SUBSCRIPTION_NOT_FOUND"
+
+
+def test_bind_mandate_email_does_not_run_on_budget_exhaustion():
+    """
+    Item 5: If a purchase is rejected for BUDGET_EXHAUSTED, bind_mandate_email
+    must not have executed, leaving no side effect on the mandate.
+    """
+    from backend.database import get_mandate, save_mandate
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+
+    email_unbound = f"unbound-{uuid.uuid4().hex[:6]}@example.com"
+    owner_key = _gen_key("owner-unbound")
+    agent_key = _gen_key("agent-unbound")
+
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email_unbound,
+    )
+    from backend.services.mandate_evaluator import ledger
+    # Owner cap is $60.0, but $25.0 was already spent -> $35.0 remaining, less than $49.99 rate
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email_unbound,
+        monthly_budget_cap=60.0,
+        agent_key=agent_key,
+        user_key=owner_key,
+    )
+    rec = create_merchant_checkout("ap2-batch", 49.99, email_unbound)
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=rec["checkout_jwt"], checkout_hash=rec["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=rec["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-unbound"),
+        )],
+        aud=AP2_MERCHANT_ID,
+        nonce=rec["nonce"],
+    )
+
+    offer_id = f"off_unbound_{uuid.uuid4().hex[:8]}"
+    save_mandate(offer_id, {
+        "offer_id": offer_id,
+        "mandate_proof_hash": rec["checkout_hash"],
+        "tier_id": "ap2-batch",
+        "amount": 49.99,
+        "authoritative_budget_cap": 60.0,
+        "contractor_email": None,
+    })
+
+    # Record $25 prior spend so available budget is only $35
+    ledger.record_spend(25.0, {"contractor_email": email_unbound, "agent_id": "buyer-agent-01"})
+
+    # Purchase attempt fails on budget
+    res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=49.99,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email_unbound,
+        contractor_email=email_unbound,
+        offer_id=offer_id,
+        nonce=rec["nonce"],
+    ))
+    assert res.get("status") == "REJECTED"
+    assert res.get("error") == "BUDGET_EXHAUSTED"
+
+    # Verify authorized_mandates record did not get bound to email_unbound
+    auth_mandate = get_mandate(offer_id)
+    assert auth_mandate.get("contractor_email") is None
+
+
+def test_wallet_void_rejected_checkout_releases_budget(tmp_path):
+    """
+    Finding 2: The wallet provides void_rejected_checkout to release reserved budget
+    and purchase slots when presented with a valid merchant-signed Error receipt.
+    """
+    from backend.wallet.wallet import BuyerWallet, init_agent_key
+    from backend.services.ap2_keys import get_merchant_public_jwk
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+    from backend.wallet import mcp_server as wallet_mcp
+
+    wdir = tmp_path / "test_wallet_release"
+    agent_pub = init_agent_key(wdir)
+    owner = _gen_key("owner-wallet")
+    email = f"wallet-release-{uuid.uuid4().hex[:8]}@example.com"
+    register_buyer_key(
+        kid=owner.kid,
+        public_key_hex=owner.export_public(),
+        contractor_email=email,
+    )
+    (wdir / "merchant_public.jwk").write_text(json.dumps(get_merchant_public_jwk()), encoding="utf-8")
+    (wdir / "owner_public.jwk").write_text(owner.export_public(), encoding="utf-8")
+
+    limits = create_trusted_surface_open_mandates(
+        buyer_email=email,
+        monthly_budget_cap=60.0,
+        yearly_budget_ceiling=60.0,
+        agent_key=JWK(**agent_pub),
+        user_key=owner,
+        validity_seconds=3600,
+    )
+    (wdir / "owner_limits.json").write_text(json.dumps({
+        "buyer_email": email,
+        "open_checkout_mandate_token": limits["open_checkout_mandate_token"],
+        "open_payment_mandate_token": limits["open_payment_mandate_token"],
+    }), encoding="utf-8")
+
+    wallet = BuyerWallet(wdir)
+
+    # 1. Sign a checkout for $49.99
+    rec = create_merchant_checkout("ap2-batch", 49.99, email)
+    signed = wallet.sign_checkout(rec["checkout_jwt"])
+    assert signed["status"] == "SIGNED"
+    chk_hash = signed["checkout_hash"]
+
+    # Budget is now 6000 - 4999 = 1001 cents remaining, 1 purchase signed
+    limits_after_sign = wallet.describe_limits()
+    assert limits_after_sign["signed_so_far_cents"] == 4999
+    assert limits_after_sign["remaining_budget_cents"] == 1001
+    assert limits_after_sign["purchases_signed"] == 1
+
+    # 2. Seller rejects (e.g. rate tampering) and issues an Error receipt
+    tamper_res = _run(seller_agent.purchase_subscription(
+        tier_id="ap2-batch",
+        agreed_monthly_rate=48.99,  # Tamper rate
+        checkout_mandate_chain=signed["checkout_mandate_chain"],
+        payment_mandate_chain=signed["payment_mandate_chain"],
+        checkout_jwt=rec["checkout_jwt"],
+        buyer_email=email,
+        nonce=rec["nonce"],
+    ))
+    assert tamper_res["status"] == "REJECTED"
+    err_receipt = tamper_res["checkout_receipt"]
+
+    # 3. Release budget using the error receipt on BuyerWallet
+    release_data = wallet.void_rejected_checkout(err_receipt)
+    assert release_data["status"] == "RELEASED"
+    assert release_data["released_checkout_hash"] == chk_hash
+    assert release_data["released_amount_cents"] == 4999
+    assert release_data["remaining_budget_cents"] == 6000
+    assert release_data["purchases_signed"] == 0
+
+    # 4. Limits in wallet are fully restored
+    limits_restored = wallet.describe_limits()
+    assert limits_restored["signed_so_far_cents"] == 0
+    assert limits_restored["remaining_budget_cents"] == 6000
+    assert limits_restored["purchases_signed"] == 0
+
+

@@ -22,18 +22,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..database import (
-    bind_vault_payment_source,
     get_buyer_identity,
     get_buyer_key,
     get_direct_charge,
     get_open_mandate_settlement_totals,
-    get_vault_payment_source,
     is_direct_charge_replayed,
     is_mandate_revoked,
     list_direct_charges,
     record_direct_charge,
     record_open_mandate_settlement,
-    update_vault_payment_source_payer,
 )
 from ap2.sdk.constraints import MandateContext
 from .ap2_service import (
@@ -45,54 +42,6 @@ from .ap2_service import (
 logger = logging.getLogger("ap2_gateway_service")
 
 _DIRECT_CHARGE_LOCK = threading.Lock()
-
-
-def _verify_and_bind_payment_source(
-    payment_source_id: str,
-    buyer_key_id: Optional[str],
-    payer_id: Optional[str] = None,
-    db_path: Optional[Path] = None,
-) -> None:
-    """
-    Verifies that payment_source_id is authorized for the caller.
-    If the payment source has never been seen, binds it to the caller's buyer_key_id and payer_id.
-    If already bound, enforces that the caller matches the bound buyer_key_id or payer_id.
-    Fails closed if the caller is unauthenticated or bound to a different tenant.
-    """
-    clean_source = payment_source_id.strip()
-    if clean_source == "vault_paypal_token_default":
-        return
-
-    binding = get_vault_payment_source(clean_source, db_path=db_path)
-    if binding is None:
-        if not buyer_key_id:
-            raise ValueError(
-                f"UNAUTHORIZED_PAYMENT_SOURCE: Cannot use unverified payment source '{clean_source}' without an authenticated buyer key."
-            )
-        bind_vault_payment_source(
-            payment_source_id=clean_source,
-            buyer_key_id=buyer_key_id,
-            payer_id=payer_id,
-            db_path=db_path,
-        )
-        return
-
-    bound_kid = binding.get("buyer_key_id")
-    bound_payer = binding.get("payer_id")
-
-    # Authorized if matching authenticated payer_id
-    if payer_id and bound_payer and payer_id.strip() == bound_payer.strip():
-        return
-
-    # Authorized if matching authenticated buyer_key_id
-    if buyer_key_id and bound_kid and buyer_key_id.strip() == bound_kid.strip():
-        if not bound_payer and payer_id:
-            update_vault_payment_source_payer(clean_source, payer_id.strip(), db_path=db_path)
-        return
-
-    raise ValueError(
-        f"UNAUTHORIZED_PAYMENT_SOURCE: Payment source '{clean_source}' is bound to a different payer."
-    )
 
 
 def extract_token_root_kid(token: str) -> Optional[str]:
@@ -226,8 +175,34 @@ class Ap2GatewayService:
 
         tier_id = res.get("tier_id", "ap2-gateway")
 
-        # 5. Settlement against vaulted PayPal payment source
-        source_id = payment_source_id or "vault_paypal_token_default"
+        # 4. Extract verified payment instrument from closed payment mandate
+        closed_pay = res.get("closed_payment_mandate")
+        payment_instrument = getattr(closed_pay, "payment_instrument", None) if closed_pay else None
+        if payment_instrument is None and isinstance(closed_pay, dict):
+            payment_instrument = closed_pay.get("payment_instrument")
+
+        if payment_instrument is None:
+            raise ValueError("MISSING_PAYMENT_INSTRUMENT: Closed payment mandate does not specify a payment_instrument.")
+
+        instrument_id = getattr(payment_instrument, "id", None)
+        if instrument_id is None and isinstance(payment_instrument, dict):
+            instrument_id = payment_instrument.get("id")
+
+        if not instrument_id or not isinstance(instrument_id, str) or not instrument_id.strip():
+            raise ValueError("MISSING_PAYMENT_INSTRUMENT: Payment instrument in closed mandate does not contain an id.")
+
+        signed_instrument_id = instrument_id.strip()
+
+        # 5. Authorize payment source: caller-supplied ID must match signed mandate instrument
+        if payment_source_id is not None:
+            clean_source = payment_source_id.strip()
+            if clean_source != signed_instrument_id:
+                raise ValueError(
+                    f"UNAUTHORIZED_PAYMENT_SOURCE: Provided payment_source_id '{clean_source}' "
+                    f"differs from signed mandate payment instrument '{signed_instrument_id}'."
+                )
+
+        source_id = signed_instrument_id
 
         with _DIRECT_CHARGE_LOCK:
             if is_mandate_revoked(chk_hash, db_path=db_path) or is_mandate_revoked(open_pay_hash, db_path=db_path) or is_mandate_revoked(order_id, db_path=db_path):
@@ -235,14 +210,6 @@ class Ap2GatewayService:
 
             if is_direct_charge_replayed(mandate_id=order_id, checkout_hash=chk_hash, receipt_jwt=merchant_receipt_jwt, db_path=db_path):
                 raise ValueError(f"REPLAY_DETECTED: Mandate '{order_id}' has already been captured and settled.")
-
-            # Rule 2 / Tenant isolation: verify payment source authorization before capturing
-            _verify_and_bind_payment_source(
-                payment_source_id=source_id,
-                buyer_key_id=effective_kid,
-                payer_id=payer_id,
-                db_path=db_path,
-            )
 
             charge_id = f"chg_{uuid.uuid4().hex[:12]}"
             paypal_capture_id = f"CAP-{uuid.uuid4().hex[:12].upper()}"

@@ -33,6 +33,7 @@ from backend.database import save_subscription, get_buyer_identity, get_subscrip
 from backend.config import settings
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 from backend.tests.ap2_test_utils import build_test_ap2_chains
+from backend.services.ap2_gateway_service import Ap2GatewayService
 
 client = TestClient(app)
 
@@ -627,45 +628,135 @@ def test_rt4_direct_charge_unique_mandate_constraint_and_concurrency():
     assert resp2.json()["detail"]["error"] == "REPLAY_DETECTED"
 
 
-def test_rt4_payment_source_tenant_isolation_and_binding():
+def test_rt4_payment_source_authorization_and_mandate_instrument_binding():
     """
-    Payment source tokens must be strictly bound to the authenticated caller's buyer key / payer ID.
-    Cross-tenant reuse of vaulted payment sources must fail closed with 403 UNAUTHORIZED_PAYMENT_SOURCE.
+    Direct rail payment sources are cryptographically authorized by the verified AP2 payment mandate.
+    (a) An attacker with a different registered key cannot charge using the victim mandate's instrument id via their own mandate.
+    (b) A caller-supplied payment_source_id that differs from the signed instrument is rejected with 403 UNAUTHORIZED_PAYMENT_SOURCE.
+    (c) An honest charge records the signed instrument id as payment_source_id.
     """
-    # 1. Tenant A charges with a vaulted payment source
-    chains_a = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=200.0)
-    vault_source = f"vault_token_{uuid.uuid4().hex[:12]}"
-    req_a = {
-        "cartMandateJwt": chains_a["checkout_mandate_chain"],
-        "paymentMandateJwt": chains_a["payment_mandate_chain"],
-        "buyerKeyId": chains_a["owner_key"].kid,
-        "paymentSourceId": vault_source,
-    }
-    resp_a = client.post("/v1/ap2/gateway/charges", json=req_a)
-    assert resp_a.status_code == 201
-    assert resp_a.json()["status"] == "CAPTURED"
+    victim_vault_id = f"vault_victim_{uuid.uuid4().hex[:12]}"
+    attacker_vault_id = f"vault_attacker_{uuid.uuid4().hex[:12]}"
+    honest_vault_id = f"vault_honest_{uuid.uuid4().hex[:12]}"
 
-    # 2. Attacker / Tenant B attempts to use Tenant A's vaulted payment source
-    chains_b = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=200.0)
-    req_b = {
-        "cartMandateJwt": chains_b["checkout_mandate_chain"],
-        "paymentMandateJwt": chains_b["payment_mandate_chain"],
-        "buyerKeyId": chains_b["owner_key"].kid,
-        "paymentSourceId": vault_source,
-    }
-    resp_b = client.post("/v1/ap2/gateway/charges", json=req_b)
-    assert resp_b.status_code == 403
-    assert resp_b.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+    # Victim builds authentic mandate with victim_vault_id
+    victim_chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        vault_id=victim_vault_id,
+    )
 
-    # 3. Unauthenticated / anonymous caller cannot use bound payment source
-    req_anon = {
-        "cartMandateJwt": chains_b["checkout_mandate_chain"],
-        "paymentMandateJwt": chains_b["payment_mandate_chain"],
-        "buyerKeyId": "unregistered-key-id",
-        "paymentSourceId": vault_source,
-    }
-    resp_anon = client.post("/v1/ap2/gateway/charges", json=req_anon)
-    assert resp_anon.status_code in (401, 403)
+    # (c) Honest charge: records signed instrument ID as payment_source_id
+    honest_chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        vault_id=honest_vault_id,
+    )
+    resp_honest = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": honest_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": honest_chains["payment_mandate_chain"],
+            "buyerKeyId": honest_chains["owner_key"].kid,
+            "paymentSourceId": honest_vault_id,
+        },
+    )
+    assert resp_honest.status_code == 201
+    honest_data = resp_honest.json()
+    assert honest_data["status"] == "CAPTURED"
+    charge_record = Ap2GatewayService.get_charge(honest_data["chargeId"])
+    assert charge_record is not None
+    assert charge_record["payment_source_id"] == honest_vault_id
+
+    # Honest charge omitting paymentSourceId also resolves and records signed instrument ID
+    honest_vault_id_2 = f"vault_honest_2_{uuid.uuid4().hex[:12]}"
+    honest_chains_2 = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        vault_id=honest_vault_id_2,
+    )
+    resp_honest_2 = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": honest_chains_2["checkout_mandate_chain"],
+            "paymentMandateJwt": honest_chains_2["payment_mandate_chain"],
+            "buyerKeyId": honest_chains_2["owner_key"].kid,
+        },
+    )
+    assert resp_honest_2.status_code == 201
+    honest_data_2 = resp_honest_2.json()
+    charge_record_2 = Ap2GatewayService.get_charge(honest_data_2["chargeId"])
+    assert charge_record_2 is not None
+    assert charge_record_2["payment_source_id"] == honest_vault_id_2
+
+    # (a) Attacker with a different registered key attempts to charge victim's instrument ID via attacker's mandate
+    attacker_chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        vault_id=attacker_vault_id,
+    )
+    resp_attack_a = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": attacker_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": attacker_chains["payment_mandate_chain"],
+            "buyerKeyId": attacker_chains["owner_key"].kid,
+            "paymentSourceId": victim_vault_id,  # Trying to charge victim's vault token
+        },
+    )
+    assert resp_attack_a.status_code == 403
+    assert resp_attack_a.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+
+    # (b) Caller-supplied payment_source_id that differs from the signed instrument is rejected (403)
+    tampered_source = f"vault_tampered_{uuid.uuid4().hex[:12]}"
+    resp_mismatch_b = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": victim_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": victim_chains["payment_mandate_chain"],
+            "buyerKeyId": victim_chains["owner_key"].kid,
+            "paymentSourceId": tampered_source,
+        },
+    )
+    assert resp_mismatch_b.status_code == 403
+    assert resp_mismatch_b.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+
+
+def test_rt4_direct_charge_missing_payment_instrument_rejected(monkeypatch):
+    """
+    If a closed payment mandate does not contain a valid payment_instrument,
+    the gateway must fail closed and reject with 400 MISSING_PAYMENT_INSTRUMENT.
+    """
+    import backend.services.ap2_gateway_service as gw_module
+
+    chains = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99)
+    real_verify = gw_module.verify_ap2_chains
+
+    def fake_verify(*args, **kwargs):
+        res = real_verify(*args, **kwargs)
+        if res.get("valid"):
+            closed = res["closed_payment_mandate"]
+            closed_dict = closed.model_dump()
+            closed_dict["payment_instrument"] = None
+            res["closed_payment_mandate"] = closed_dict
+        return res
+
+    monkeypatch.setattr(gw_module, "verify_ap2_chains", fake_verify)
+
+    resp = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": chains["checkout_mandate_chain"],
+            "paymentMandateJwt": chains["payment_mandate_chain"],
+            "buyerKeyId": chains["owner_key"].kid,
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "MISSING_PAYMENT_INSTRUMENT"
 
 
 def test_rt4_bryntum_dispatch_scheduler_template_escaping():

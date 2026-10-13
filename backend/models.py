@@ -334,7 +334,7 @@ class DirectChargeRequest(BaseModel):
     cart_mandate_jwt: str = Field(alias="cartMandateJwt", description="AP2 v0.2 Cart Mandate chain (ES256 SD-JWT)")
     payment_mandate_jwt: str = Field(alias="paymentMandateJwt", description="AP2 v0.2 Payment Mandate chain (ES256 SD-JWT)")
     buyer_key_id: Optional[str] = Field(default=None, alias="buyerKeyId", description="Registered buyer key ID (kid)")
-    payment_source_id: Optional[str] = Field(default="vault_paypal_token_default", alias="paymentSourceId", description="Vaulted PayPal payment source")
+    payment_source_id: Optional[str] = Field(default=None, alias="paymentSourceId", description="Vaulted PayPal payment source")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional application metadata")
 
 

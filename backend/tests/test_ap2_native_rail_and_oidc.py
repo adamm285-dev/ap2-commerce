@@ -399,7 +399,7 @@ def test_buyer_wallet_keystore_integration(tmp_path):
 
 def test_direct_ap2_gateway_charge_success(client):
     # 1. Build authentic AP2 mandate chains ($79.99 gateway tier)
-    chains = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=100.0)
+    chains = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=100.0, vault_id="vault_paypal_buyer_mit")
 
     # 2. Execute direct machine-to-machine charge
     charge_req = {

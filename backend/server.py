@@ -2316,6 +2316,8 @@ async def process_ap2_direct_charge_endpoint(request: DirectChargeRequest):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"status": "REJECTED", "error": err_code, "reason": msg})
         elif "UNAUTHORIZED_PAYMENT_SOURCE" in msg:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"status": "REJECTED", "error": "UNAUTHORIZED_PAYMENT_SOURCE", "reason": msg})
+        elif "MISSING_PAYMENT_INSTRUMENT" in msg:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"status": "REJECTED", "error": "MISSING_PAYMENT_INSTRUMENT", "reason": msg})
         elif "MANDATE_REVOKED" in msg:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"status": "REJECTED", "error": "MANDATE_REVOKED", "reason": msg})
         elif "REPLAY_DETECTED" in msg:

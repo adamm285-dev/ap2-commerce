@@ -639,7 +639,11 @@ def verify_ap2_chains(
             }
 
         # Step 3: Verify Payment Mandate chain
+        verified_payment_root_kid: Optional[str] = None
         def payment_root_provider(t: common.ParsedToken) -> JWK:
+            nonlocal verified_payment_root_kid
+            header = t.header if hasattr(t, "header") else getattr(t, "jwt_header", {})
+            verified_payment_root_kid = header.get("kid")
             return resolve_root_public_key(t, override_key=user_public_key, buyer_email=buyer_email)
 
         try:
@@ -922,6 +926,7 @@ def verify_ap2_chains(
             "open_payment_mandate": payment_chain.open_mandate,
             "closed_payment_mandate": closed_pay,
             "open_payment_mandate_hash": open_pay_hash,
+            "payment_root_kid": verified_payment_root_kid,
         }
 
     except Exception as e:

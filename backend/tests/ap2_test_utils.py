@@ -42,6 +42,28 @@ from backend.services.ap2_service import (
 )
 
 
+def setup_test_vault(client: Any, owner_key: JWK) -> str:
+    """Sets up an authentic vaulted payment source token for owner_key via POST /v1/ap2/vault/payment-sources."""
+    from backend.services.crypto_mandate import sign_es256_challenge
+
+    challenge_resp = client.get("/api/agent/keys/challenge")
+    assert challenge_resp.status_code == 200, challenge_resp.text
+    challenge = challenge_resp.json()["challenge"]
+
+    sig = sign_es256_challenge(challenge, owner_key)
+
+    setup_resp = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": owner_key.kid,
+            "challenge": challenge,
+            "challengeSignature": sig,
+        },
+    )
+    assert setup_resp.status_code == 201, setup_resp.text
+    return setup_resp.json()["vaultId"]
+
+
 def build_test_ap2_chains(
     tier_id: str = "ap2-batch",
     monthly_price: float = 49.99,

@@ -26,6 +26,7 @@ from ..database import (
     get_buyer_key,
     get_direct_charge,
     get_open_mandate_settlement_totals,
+    get_vault_payment_source,
     is_direct_charge_replayed,
     is_mandate_revoked,
     list_direct_charges,
@@ -202,6 +203,28 @@ class Ap2GatewayService:
                     f"differs from signed mandate payment instrument '{signed_instrument_id}'."
                 )
 
+        # 6. Verify that the signed instrument is registered to the verified mandate root owner key
+        verified_pay_root_kid = res.get("payment_root_kid") or extract_token_root_kid(payment_mandate_jwt)
+        if not verified_pay_root_kid:
+            raise ValueError("UNAUTHORIZED_PAYMENT_SOURCE: Cannot determine root key ID of verified payment mandate.")
+
+        # Ensure the verified root kid is registered in the key registry
+        if not get_buyer_key(verified_pay_root_kid, db_path=db_path):
+            raise ValueError(f"UNAUTHORIZED_PAYMENT_SOURCE: Mandate root key '{verified_pay_root_kid}' is not registered.")
+
+        vault_record = get_vault_payment_source(signed_instrument_id, db_path=db_path)
+        if not vault_record:
+            raise ValueError(
+                f"UNAUTHORIZED_PAYMENT_SOURCE: Payment source '{signed_instrument_id}' is not registered."
+            )
+
+        vault_owner_kid = vault_record.get("owner_kid")
+        if not vault_owner_kid or vault_owner_kid.strip() != verified_pay_root_kid.strip():
+            raise ValueError(
+                f"UNAUTHORIZED_PAYMENT_SOURCE: Payment source '{signed_instrument_id}' is registered to owner "
+                f"'{vault_owner_kid}', but payment mandate was verified with root key '{verified_pay_root_kid}'."
+            )
+
         source_id = signed_instrument_id
 
         with _DIRECT_CHARGE_LOCK:
@@ -308,6 +331,7 @@ class Ap2GatewayService:
             "buyer_key_id": effective_kid or "anonymous",
             "payer_id": payer_id,
             "payee_id": AP2_MERCHANT_ID,
+            "payment_source_id": source_id,
             "paypal_capture_id": paypal_capture_id,
             "merchant_receipt_jwt": merchant_receipt_jwt,
             "qbo_purchase_id": qbo_purchase_id,

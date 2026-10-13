@@ -136,4 +136,11 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Avoids privilege escalation in mock mode where any registered key could forge an attestation for a victim's email and cancel their mandates.
 - **To make it real:** In live mode with verified RS256 OIDC tokens from PayPal's identity provider, an attested identity matching the verified subscription owner could optionally be granted organizational revocation authority alongside the signing key and admin.
 
+### M-025: Vault payment sources are generated and stored without PayPal Vault API calls
+- **Where:** `backend/server.py::setup_vault_payment_source_endpoint`
+- **What it fakes:** Generation and server-side storage of unguessable payment source vault tokens (`vault_...`) bound to the owner's registered key without live PayPal Vault API calls.
+- **Why:** Offline testing and demo execution without live PayPal sandbox credentials (project rule 9).
+- **To make it real:** Call PayPal's `/v3/vault/payment-tokens` API with customer setup token and buyer approval, storing authentic PayPal vault tokens.
+
+
 

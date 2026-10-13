@@ -40,7 +40,7 @@ from backend.database import (
     get_buyer_identity,
     record_mandate_revocation,
 )
-from backend.tests.ap2_test_utils import build_test_ap2_chains
+from backend.tests.ap2_test_utils import build_test_ap2_chains, setup_test_vault
 from ap2.sdk.mandate import MandateClient
 from ap2.sdk.generated.checkout_mandate import CheckoutMandate
 from ap2.sdk.generated.payment_mandate import PaymentMandate
@@ -289,6 +289,7 @@ def test_adversarial_open_mandate_cumulative_budget_exhaustion(client):
         agent_key=agent_key,
         user_key=owner_key,
     )
+    vault_id = setup_test_vault(client, owner_key)
 
     mc = MandateClient()
 
@@ -320,7 +321,7 @@ def test_adversarial_open_mandate_cumulative_budget_exhaustion(client):
                 transaction_id=chk_rec_1["checkout_hash"],
                 payment_amount=Amount(amount=6000, currency="USD"),
                 payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
-                payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-first-charge"),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id=vault_id),
             )
         ],
         aud=AP2_MERCHANT_ID,
@@ -366,7 +367,7 @@ def test_adversarial_open_mandate_cumulative_budget_exhaustion(client):
                 transaction_id=chk_rec_2["checkout_hash"],
                 payment_amount=Amount(amount=5000, currency="USD"),
                 payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
-                payment_instrument=PaymentInstrument(type="paypal_vault", id="vault-second-charge"),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id=vault_id),
             )
         ],
         aud=AP2_MERCHANT_ID,
@@ -395,7 +396,24 @@ def test_adversarial_persistent_direct_charge_replay(client):
     Submitting an identical direct charge after wiping in-memory caches (simulating server restart)
     must be caught by persistent SQLite replay check and rejected with 409 Conflict.
     """
-    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99)
+    u = uuid.uuid4().hex[:8]
+    email = f"buyer-replay-{u}@example.com"
+    owner_key = JWK.generate(kty="EC", crv="P-256", kid=f"owner-{u}")
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+        business_name="Replay Test Enterprise",
+    )
+    vault_id = setup_test_vault(client, owner_key)
+
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        owner_key=owner_key,
+        vault_id=vault_id,
+    )
     req_body = {
         "cartMandateJwt": chains["checkout_mandate_chain"],
         "paymentMandateJwt": chains["payment_mandate_chain"],
@@ -422,7 +440,24 @@ def test_adversarial_revoked_mandate_direct_charge_refusal(client):
     """
     If owner has cryptographically revoked a mandate, direct charges must be refused with 409 Conflict.
     """
-    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99)
+    u = uuid.uuid4().hex[:8]
+    email = f"buyer-revoked-{u}@example.com"
+    owner_key = JWK.generate(kty="EC", crv="P-256", kid=f"owner-{u}")
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=email,
+        business_name="Revocation Test Enterprise",
+    )
+    vault_id = setup_test_vault(client, owner_key)
+
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=email,
+        owner_key=owner_key,
+        vault_id=vault_id,
+    )
 
     # Owner revokes checkout mandate hash
     record_mandate_revocation(

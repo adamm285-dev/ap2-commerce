@@ -22,6 +22,7 @@ import time
 import uuid
 import pytest
 from fastapi.testclient import TestClient
+from jwcrypto.jwk import JWK
 
 from backend.server import app
 from backend.services.paypal_oidc_service import (
@@ -40,8 +41,9 @@ from backend.database import (
     get_buyer_identity,
     get_buyer_key,
     record_mandate_revocation,
+    register_buyer_key,
 )
-from backend.tests.ap2_test_utils import build_test_ap2_chains
+from backend.tests.ap2_test_utils import build_test_ap2_chains, setup_test_vault
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
@@ -398,15 +400,32 @@ def test_buyer_wallet_keystore_integration(tmp_path):
 # ═════════════════════════════════════════════════════════════════════════════
 
 def test_direct_ap2_gateway_charge_success(client):
+    u = uuid.uuid4().hex[:8]
+    owner_key = JWK.generate(kty="EC", crv="P-256", kid=f"owner-{u}")
+    register_buyer_key(
+        kid=owner_key.kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=f"buyer-{u}@example.com",
+        business_name="Test Enterprise LLC",
+    )
+    vault_id = setup_test_vault(client, owner_key)
+
     # 1. Build authentic AP2 mandate chains ($79.99 gateway tier)
-    chains = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=100.0, vault_id="vault_paypal_buyer_mit")
+    chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=100.0,
+        buyer_email=f"buyer-{u}@example.com",
+        owner_key=owner_key,
+        vault_id=vault_id,
+    )
 
     # 2. Execute direct machine-to-machine charge
     charge_req = {
         "cartMandateJwt": chains["checkout_mandate_chain"],
         "paymentMandateJwt": chains["payment_mandate_chain"],
         "buyerKeyId": chains["owner_key"].kid,
-        "paymentSourceId": "vault_paypal_buyer_mit",
+        "paymentSourceId": vault_id,
         "metadata": {"workload": "Autonomous AP2 Direct Rail Ingestion"},
     }
 
@@ -420,6 +439,7 @@ def test_direct_ap2_gateway_charge_success(client):
     assert data["amountFormatted"] == "$79.99"
     assert data["currency"] == "USD"
     assert data["buyerKeyId"] == chains["owner_key"].kid
+    assert data["paymentSourceId"] == vault_id
     assert data["paypalCaptureId"].startswith("CAP-")
 
     # Verify merchant receipt JWT

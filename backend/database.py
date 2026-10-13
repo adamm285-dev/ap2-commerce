@@ -230,6 +230,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_direct_charges_buyer_key ON direct_charges(buyer_key_id);
             CREATE INDEX IF NOT EXISTS idx_direct_charges_created ON direct_charges(created_at);
 
+            CREATE TABLE IF NOT EXISTS vault_payment_sources (
+                vault_id TEXT PRIMARY KEY,
+                owner_kid TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_vault_payment_sources_owner ON vault_payment_sources(owner_kid);
+
             CREATE TABLE IF NOT EXISTS open_mandate_settlements (
                 mandate_hash TEXT NOT NULL,
                 subscription_id TEXT NOT NULL,
@@ -1415,6 +1422,58 @@ def is_direct_charge_replayed(
         conn.close()
 
 
+def register_vault_payment_source(
+    vault_id: str,
+    owner_kid: str,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Registers an authenticated vault payment source for an owner key."""
+    if not vault_id or not owner_kid:
+        raise ValueError("vault_id and owner_kid are required.")
+    clean_vault = vault_id.strip()
+    clean_kid = owner_kid.strip()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO vault_payment_sources (vault_id, owner_kid, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(vault_id) DO UPDATE SET
+                    owner_kid = excluded.owner_kid
+                """,
+                (clean_vault, clean_kid, now_iso),
+            )
+        return {
+            "vault_id": clean_vault,
+            "owner_kid": clean_kid,
+            "created_at": now_iso,
+        }
+    finally:
+        conn.close()
+
+
+def get_vault_payment_source(
+    vault_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Retrieves a registered vault payment source by vault_id."""
+    if not vault_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT vault_id, owner_kid, created_at FROM vault_payment_sources WHERE vault_id = ?",
+            (vault_id.strip(),),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 # --- Two-Sided Marketplace & Node Operator Operations ---
 
 def register_node_operator(
@@ -1996,6 +2055,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM payout_items")
             conn.execute("DELETE FROM payout_batches")
             conn.execute("DELETE FROM direct_charges")
+            conn.execute("DELETE FROM vault_payment_sources")
             op_placeholders = ",".join("?" for _ in DEFAULT_NODE_OPERATOR_IDS)
             conn.execute(f"DELETE FROM node_operators WHERE operator_id NOT IN ({op_placeholders})", list(DEFAULT_NODE_OPERATOR_IDS))
             if getattr(settings, "mock_external_apis", False):

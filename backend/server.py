@@ -45,6 +45,8 @@ from .models import (
     BuyerKeyRegistryResponse,
     IdentityAttestationRequest,
     IdentityAttestationResponse,
+    VaultSetupRequest,
+    VaultSetupResponse,
     DirectChargeRequest,
     DirectChargeResponse,
     DirectChargeListResponse,
@@ -113,6 +115,7 @@ from .database import (
     get_buyer_identity,
     list_buyer_key_records,
     is_direct_charge_replayed,
+    register_vault_payment_source,
     set_recurring_mandate_status,
     RESERVED_BUYER_KEY_IDS,
 )
@@ -2287,6 +2290,81 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
 
 
 # --- Native AP2 Gateway Direct Rail Endpoints (Milestone S3-NATIVE) ---
+
+@app.post(
+    "/v1/ap2/vault/payment-sources",
+    response_model=VaultSetupResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["AP2 Native Direct Rail"],
+)
+async def setup_vault_payment_source_endpoint(request: VaultSetupRequest):
+    """
+    Sets up an authenticated vaulted payment source token bound to a registered owner key.
+    Requires a valid, single-use server challenge nonce and cryptographic signature by the owner key.
+    The server generates and returns an unguessable vault ID.
+    """
+    import time
+    # MOCK(M-025): Server generates and stores mock vaulted payment source tokens without live PayPal API calls
+
+    # 1. Validate challenge issuance and freshness (strictly single-use)
+    now = time.time()
+    issued_time = _ACTIVE_KEY_CHALLENGES.pop(request.challenge, None)
+    if issued_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "INVALID_CHALLENGE", "reason": "Vault setup challenge nonce is invalid, unissued, or has already been consumed."},
+        )
+    if now - issued_time > 300:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "CHALLENGE_EXPIRED", "reason": "Vault setup challenge nonce has expired."},
+        )
+
+    # 2. Verify owner key is registered in key registry
+    stored_pub_key = get_buyer_key(request.owner_kid)
+    if not stored_pub_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"status": "REJECTED", "error": "UNREGISTERED_OWNER_KEY", "reason": f"Owner key ID '{request.owner_kid}' is not registered in the key registry."},
+        )
+
+    # 3. Cryptographic challenge-response verification (ES256 P-256 or Ed25519)
+    clean_pub = stored_pub_key.strip()
+    is_valid = False
+    if clean_pub.startswith("{"):
+        try:
+            jwk_dict = json.loads(clean_pub)
+            is_valid = verify_es256_challenge_signature(
+                challenge=request.challenge,
+                signature_str=request.challenge_signature,
+                public_key_jwk=jwk_dict,
+            )
+        except Exception:
+            is_valid = False
+    else:
+        is_valid = verify_ed25519_challenge_signature(
+            challenge=request.challenge,
+            signature_hex=request.challenge_signature,
+            public_key_hex=clean_pub,
+        )
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"status": "REJECTED", "error": "INVALID_CHALLENGE_SIGNATURE", "reason": "Cryptographic signature verification over challenge nonce failed."},
+        )
+
+    # 4. Generate unguessable vault ID and store in SQLite
+    vault_id = f"vault_{secrets.token_hex(16)}"
+    rec = register_vault_payment_source(vault_id=vault_id, owner_kid=request.owner_kid)
+
+    logger.info(f"[AP2 Vault] Registered payment source '{vault_id}' for owner key '{request.owner_kid}'")
+    return VaultSetupResponse(
+        vault_id=rec["vault_id"],
+        owner_kid=rec["owner_kid"],
+        created_at=rec["created_at"],
+    )
+
 
 @app.post(
     "/v1/ap2/gateway/charges",

@@ -328,6 +328,22 @@ class IdentityAttestationResponse(BaseModel):
 
 # --- Native AP2 Gateway Direct Rail Charge Models (Milestone S3-NATIVE) ---
 
+class VaultSetupRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    owner_kid: str = Field(alias="ownerKid", description="Registered owner key ID (kid)")
+    challenge: str = Field(description="Challenge nonce issued by GET /api/agent/keys/challenge")
+    challenge_signature: str = Field(alias="challengeSignature", description="Cryptographic signature over challenge nonce signed by owner key")
+
+
+class VaultSetupResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    vault_id: str = Field(alias="vaultId", description="Generated vaulted payment source ID")
+    owner_kid: str = Field(alias="ownerKid", description="Registered owner key ID")
+    created_at: str = Field(alias="createdAt", description="Creation timestamp ISO8601")
+
+
 class DirectChargeRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -351,6 +367,7 @@ class DirectChargeResponse(BaseModel):
     payer_id: Optional[str] = Field(default=None, alias="payerId", description="Attested PayPal Payer ID if bound")
     payee_id: str = Field(alias="payeeId", description="AP2 merchant ID")
     paypal_capture_id: str = Field(alias="paypalCaptureId", description="PayPal transaction capture ID")
+    payment_source_id: Optional[str] = Field(default=None, alias="paymentSourceId", description="Settled payment source ID")
     merchant_receipt_jwt: str = Field(alias="merchantReceiptJwt", description="Merchant-signed ES256 payment receipt JWT")
     qbo_purchase_id: Optional[str] = Field(default=None, alias="qboPurchaseId", description="QuickBooks Online v3 Purchase ID")
     qbo_payload: Optional[Dict[str, Any]] = Field(default=None, alias="qboPayload", description="Authentic QBO v3 Purchase payload")

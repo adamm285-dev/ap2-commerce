@@ -32,7 +32,7 @@ from backend.services.paypal_oidc_service import PayPalOidcService
 from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge
 from backend.config import settings
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
-from backend.tests.ap2_test_utils import build_test_ap2_chains
+from backend.tests.ap2_test_utils import build_test_ap2_chains, setup_test_vault
 from backend.services.ap2_gateway_service import Ap2GatewayService
 
 client = TestClient(app)
@@ -615,7 +615,19 @@ def test_rt4_direct_charge_unique_mandate_constraint_and_concurrency():
         })
 
     # 3. HTTP Gateway endpoint rejects replayed charge with 409 REPLAY_DETECTED
-    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99)
+    u_replay = uuid.uuid4().hex[:8]
+    replay_email = f"buyer-replay-{u_replay}@example.com"
+    owner_replay = _key("replay")
+    _enroll(owner_replay, replay_email)
+    vault_replay = setup_test_vault(client, owner_replay)
+
+    chains = build_test_ap2_chains(
+        tier_id="ap2-batch",
+        monthly_price=49.99,
+        buyer_email=replay_email,
+        owner_key=owner_replay,
+        vault_id=vault_replay,
+    )
     req = {
         "cartMandateJwt": chains["checkout_mandate_chain"],
         "paymentMandateJwt": chains["payment_mandate_chain"],
@@ -631,27 +643,38 @@ def test_rt4_direct_charge_unique_mandate_constraint_and_concurrency():
 def test_rt4_payment_source_authorization_and_mandate_instrument_binding():
     """
     Direct rail payment sources are cryptographically authorized by the verified AP2 payment mandate.
-    (a) An attacker with a different registered key cannot charge using the victim mandate's instrument id via their own mandate.
-    (b) A caller-supplied payment_source_id that differs from the signed instrument is rejected with 403 UNAUTHORIZED_PAYMENT_SOURCE.
-    (c) An honest charge records the signed instrument id as payment_source_id.
+    (a) An attacker with a different registered key naming the victim's registered vault id in their own mandate is rejected with 403 UNAUTHORIZED_PAYMENT_SOURCE.
+    (b) An unregistered vault id in a mandate is rejected with 403 UNAUTHORIZED_PAYMENT_SOURCE.
+    (c) The owner's mandate naming its own registered vault succeeds with 201 CAPTURED, and records the signed instrument id as payment_source_id.
     """
-    victim_vault_id = f"vault_victim_{uuid.uuid4().hex[:12]}"
-    attacker_vault_id = f"vault_attacker_{uuid.uuid4().hex[:12]}"
-    honest_vault_id = f"vault_honest_{uuid.uuid4().hex[:12]}"
+    # 1. Setup Victim owner key and register victim vault via setup_test_vault
+    u_vic = uuid.uuid4().hex[:8]
+    vic_email = f"victim-{u_vic}@example.com"
+    victim_key = _key("victim")
+    _enroll(victim_key, vic_email)
+    victim_vault_id = setup_test_vault(client, victim_key)
 
-    # Victim builds authentic mandate with victim_vault_id
-    victim_chains = build_test_ap2_chains(
-        tier_id="ap2-gateway",
-        monthly_price=79.99,
-        budget_cap=200.0,
-        vault_id=victim_vault_id,
-    )
+    # 2. Setup Honest owner key and register honest vault via setup_test_vault
+    u_hon = uuid.uuid4().hex[:8]
+    hon_email = f"honest-{u_hon}@example.com"
+    honest_key = _key("honest")
+    _enroll(honest_key, hon_email)
+    honest_vault_id = setup_test_vault(client, honest_key)
 
-    # (c) Honest charge: records signed instrument ID as payment_source_id
+    # 3. Setup Attacker owner key and register attacker vault via setup_test_vault
+    u_att = uuid.uuid4().hex[:8]
+    att_email = f"attacker-{u_att}@example.com"
+    attacker_key = _key("attacker")
+    _enroll(attacker_key, att_email)
+    attacker_vault_id = setup_test_vault(client, attacker_key)
+
+    # (c) The owner's mandate naming its own registered vault -> 201 CAPTURED
     honest_chains = build_test_ap2_chains(
         tier_id="ap2-gateway",
         monthly_price=79.99,
         budget_cap=200.0,
+        buyer_email=hon_email,
+        owner_key=honest_key,
         vault_id=honest_vault_id,
     )
     resp_honest = client.post(
@@ -659,23 +682,31 @@ def test_rt4_payment_source_authorization_and_mandate_instrument_binding():
         json={
             "cartMandateJwt": honest_chains["checkout_mandate_chain"],
             "paymentMandateJwt": honest_chains["payment_mandate_chain"],
-            "buyerKeyId": honest_chains["owner_key"].kid,
+            "buyerKeyId": honest_key.kid,
             "paymentSourceId": honest_vault_id,
         },
     )
     assert resp_honest.status_code == 201
     honest_data = resp_honest.json()
     assert honest_data["status"] == "CAPTURED"
+    assert honest_data["paymentSourceId"] == honest_vault_id
     charge_record = Ap2GatewayService.get_charge(honest_data["chargeId"])
     assert charge_record is not None
     assert charge_record["payment_source_id"] == honest_vault_id
 
     # Honest charge omitting paymentSourceId also resolves and records signed instrument ID
-    honest_vault_id_2 = f"vault_honest_2_{uuid.uuid4().hex[:12]}"
+    u_hon2 = uuid.uuid4().hex[:8]
+    hon2_email = f"honest2-{u_hon2}@example.com"
+    honest_key_2 = _key("honest2")
+    _enroll(honest_key_2, hon2_email)
+    honest_vault_id_2 = setup_test_vault(client, honest_key_2)
+
     honest_chains_2 = build_test_ap2_chains(
         tier_id="ap2-gateway",
         monthly_price=79.99,
         budget_cap=200.0,
+        buyer_email=hon2_email,
+        owner_key=honest_key_2,
         vault_id=honest_vault_id_2,
     )
     resp_honest_2 = client.post(
@@ -683,42 +714,95 @@ def test_rt4_payment_source_authorization_and_mandate_instrument_binding():
         json={
             "cartMandateJwt": honest_chains_2["checkout_mandate_chain"],
             "paymentMandateJwt": honest_chains_2["payment_mandate_chain"],
-            "buyerKeyId": honest_chains_2["owner_key"].kid,
+            "buyerKeyId": honest_key_2.kid,
         },
     )
     assert resp_honest_2.status_code == 201
     honest_data_2 = resp_honest_2.json()
+    assert honest_data_2["paymentSourceId"] == honest_vault_id_2
     charge_record_2 = Ap2GatewayService.get_charge(honest_data_2["chargeId"])
     assert charge_record_2 is not None
     assert charge_record_2["payment_source_id"] == honest_vault_id_2
 
-    # (a) Attacker with a different registered key attempts to charge victim's instrument ID via attacker's mandate
-    attacker_chains = build_test_ap2_chains(
+    # (a) Attacker with a different registered key attempts to charge victim's instrument ID via attacker's OWN mandate
+    attacker_steals_victim_chains = build_test_ap2_chains(
         tier_id="ap2-gateway",
         monthly_price=79.99,
         budget_cap=200.0,
-        vault_id=attacker_vault_id,
+        buyer_email=att_email,
+        owner_key=attacker_key,
+        vault_id=victim_vault_id,  # Attacker names victim's registered vault token in attacker's own signed mandate!
     )
     resp_attack_a = client.post(
         "/v1/ap2/gateway/charges",
         json={
-            "cartMandateJwt": attacker_chains["checkout_mandate_chain"],
-            "paymentMandateJwt": attacker_chains["payment_mandate_chain"],
-            "buyerKeyId": attacker_chains["owner_key"].kid,
-            "paymentSourceId": victim_vault_id,  # Trying to charge victim's vault token
+            "cartMandateJwt": attacker_steals_victim_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": attacker_steals_victim_chains["payment_mandate_chain"],
+            "buyerKeyId": attacker_key.kid,
+            "paymentSourceId": victim_vault_id,
         },
     )
     assert resp_attack_a.status_code == 403
     assert resp_attack_a.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
 
-    # (b) Caller-supplied payment_source_id that differs from the signed instrument is rejected (403)
+    # Attacker's own mandate naming victim's vault, omitting caller paymentSourceId -> still 403
+    attacker_steals_victim_chains_2 = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        buyer_email=att_email,
+        owner_key=attacker_key,
+        vault_id=victim_vault_id,
+    )
+    resp_attack_a_omit = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": attacker_steals_victim_chains_2["checkout_mandate_chain"],
+            "paymentMandateJwt": attacker_steals_victim_chains_2["payment_mandate_chain"],
+            "buyerKeyId": attacker_key.kid,
+        },
+    )
+    assert resp_attack_a_omit.status_code == 403
+    assert resp_attack_a_omit.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+
+    # (b) Unregistered vault id in mandate -> 403 UNAUTHORIZED_PAYMENT_SOURCE
+    unregistered_vault_id = f"vault_unreg_{uuid.uuid4().hex[:12]}"
+    unreg_chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        buyer_email=hon_email,
+        owner_key=honest_key,
+        vault_id=unregistered_vault_id,
+    )
+    resp_unreg = client.post(
+        "/v1/ap2/gateway/charges",
+        json={
+            "cartMandateJwt": unreg_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": unreg_chains["payment_mandate_chain"],
+            "buyerKeyId": honest_key.kid,
+            "paymentSourceId": unregistered_vault_id,
+        },
+    )
+    assert resp_unreg.status_code == 403
+    assert resp_unreg.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+
+    # Caller-supplied payment_source_id that differs from the signed instrument is rejected (403)
+    mismatch_chains = build_test_ap2_chains(
+        tier_id="ap2-gateway",
+        monthly_price=79.99,
+        budget_cap=200.0,
+        buyer_email=hon_email,
+        owner_key=honest_key,
+        vault_id=honest_vault_id,
+    )
     tampered_source = f"vault_tampered_{uuid.uuid4().hex[:12]}"
     resp_mismatch_b = client.post(
         "/v1/ap2/gateway/charges",
         json={
-            "cartMandateJwt": victim_chains["checkout_mandate_chain"],
-            "paymentMandateJwt": victim_chains["payment_mandate_chain"],
-            "buyerKeyId": victim_chains["owner_key"].kid,
+            "cartMandateJwt": mismatch_chains["checkout_mandate_chain"],
+            "paymentMandateJwt": mismatch_chains["payment_mandate_chain"],
+            "buyerKeyId": honest_key.kid,
             "paymentSourceId": tampered_source,
         },
     )
@@ -757,6 +841,100 @@ def test_rt4_direct_charge_missing_payment_instrument_rejected(monkeypatch):
     )
     assert resp.status_code == 400
     assert resp.json()["detail"]["error"] == "MISSING_PAYMENT_INSTRUMENT"
+
+
+def test_rt4_vault_setup_endpoint_security():
+    """
+    (d) Setup endpoint /v1/ap2/vault/payment-sources rejects:
+        - Bad / unissued challenge nonce (400 INVALID_CHALLENGE)
+        - Reused challenge nonce (400 INVALID_CHALLENGE)
+        - Key caller cannot sign for / signature from wrong key (401 INVALID_CHALLENGE_SIGNATURE)
+        - Unregistered owner key ID (401 UNREGISTERED_OWNER_KEY)
+    """
+    u = uuid.uuid4().hex[:8]
+    legit_key = _key("legit")
+    _enroll(legit_key, f"legit-{u}@example.com")
+
+    impostor_key = _key("impostor")
+    _enroll(impostor_key, f"impostor-{u}@example.com")
+
+    # 1. Bad / unissued challenge nonce -> 400 INVALID_CHALLENGE
+    res_bad = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": legit_key.kid,
+            "challenge": f"unissued-challenge-{uuid.uuid4().hex}",
+            "challengeSignature": sign_es256_challenge("fake", legit_key),
+        },
+    )
+    assert res_bad.status_code == 400
+    assert res_bad.json()["detail"]["error"] == "INVALID_CHALLENGE"
+
+    # 2. Reused challenge nonce -> first succeeds (201), second fails (400 INVALID_CHALLENGE)
+    ch_res = client.get("/api/agent/keys/challenge")
+    assert ch_res.status_code == 200
+    challenge = ch_res.json()["challenge"]
+    sig = sign_es256_challenge(challenge, legit_key)
+
+    res_ok = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": legit_key.kid,
+            "challenge": challenge,
+            "challengeSignature": sig,
+        },
+    )
+    assert res_ok.status_code == 201
+    vault_id = res_ok.json()["vaultId"]
+    assert vault_id.startswith("vault_")
+    assert res_ok.json()["ownerKid"] == legit_key.kid
+
+    # Replay of the exact same challenge
+    res_replay = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": legit_key.kid,
+            "challenge": challenge,
+            "challengeSignature": sig,
+        },
+    )
+    assert res_replay.status_code == 400
+    assert res_replay.json()["detail"]["error"] == "INVALID_CHALLENGE"
+
+    # 3. Key caller cannot sign for (wrong key signature): impostor signs challenge with impostor_key but claims legit_key
+    ch_res2 = client.get("/api/agent/keys/challenge")
+    assert ch_res2.status_code == 200
+    challenge2 = ch_res2.json()["challenge"]
+    wrong_sig = sign_es256_challenge(challenge2, impostor_key)
+
+    res_wrong_key = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": legit_key.kid,
+            "challenge": challenge2,
+            "challengeSignature": wrong_sig,
+        },
+    )
+    assert res_wrong_key.status_code == 401
+    assert res_wrong_key.json()["detail"]["error"] == "INVALID_CHALLENGE_SIGNATURE"
+
+    # 4. Unregistered owner key ID
+    ch_res3 = client.get("/api/agent/keys/challenge")
+    assert ch_res3.status_code == 200
+    challenge3 = ch_res3.json()["challenge"]
+    unregistered_key = _key("unreg")
+    sig3 = sign_es256_challenge(challenge3, unregistered_key)
+
+    res_unreg = client.post(
+        "/v1/ap2/vault/payment-sources",
+        json={
+            "ownerKid": unregistered_key.kid,
+            "challenge": challenge3,
+            "challengeSignature": sig3,
+        },
+    )
+    assert res_unreg.status_code == 401
+    assert res_unreg.json()["detail"]["error"] == "UNREGISTERED_OWNER_KEY"
 
 
 def test_rt4_bryntum_dispatch_scheduler_template_escaping():

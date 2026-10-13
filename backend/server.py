@@ -604,13 +604,14 @@ class RevokeMandateRequest(BaseModel):
 
 @app.post("/api/mandates/revoke", tags=["Mandate Revocation"])
 @app.post("/api/agent/mandates/revoke", tags=["Mandate Revocation"])
-async def revoke_mandate_endpoint(req: RevokeMandateRequest):
+async def revoke_mandate_endpoint(req: RevokeMandateRequest, request: Request):
     """
     Cryptographically revokes an AP2 Open Mandate.
     Requires owner signature verifying against registered buyer keys.
     Immediately stops any active PayPal subscriptions bound to this mandate.
     """
     from .services.mandate_revocation_service import revoke_mandate
+    is_admin = _has_admin_key(request)
     try:
         res = await revoke_mandate(
             mandate_proof_hash=req.mandateProofHash,
@@ -618,6 +619,7 @@ async def revoke_mandate_endpoint(req: RevokeMandateRequest):
             reason=req.reason,
             signature=req.signature,
             timestamp_iso=req.timestampIso,
+            is_admin=is_admin,
         )
         return res
     except ValueError as e:
@@ -1523,9 +1525,10 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
         except HTTPException:
             raise
         except ValueError as e:
+            err_code = "LIVE_OIDC_NOT_CONFIGURED" if "LIVE_OIDC_NOT_CONFIGURED" in str(e) else "INVALID_IDENTITY_ATTESTATION"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"status": "REJECTED", "error": "INVALID_IDENTITY_ATTESTATION", "reason": str(e)},
+                detail={"status": "REJECTED", "error": err_code, "reason": str(e)},
             )
 
     # 4. Register key in SQLite WAL persistence (Strict collision check: 409 Conflict)
@@ -1617,9 +1620,10 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest, re
             expected_nonce=request.challenge if request.challenge else None,
         )
     except ValueError as e:
+        err_code = "LIVE_OIDC_NOT_CONFIGURED" if "LIVE_OIDC_NOT_CONFIGURED" in str(e) else "INVALID_IDENTITY_ATTESTATION"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"status": "REJECTED", "error": "INVALID_IDENTITY_ATTESTATION", "reason": str(e)},
+            detail={"status": "REJECTED", "error": err_code, "reason": str(e)},
         )
 
     payer_id = attestation["payer_id"]

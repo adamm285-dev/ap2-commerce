@@ -93,6 +93,7 @@ async def test_adversarial_cross_tenant_mandate_revocation_attack(tmp_path):
         "subscription_id": sub_id,
         "contractor_email": victim_email,
         "mandate_proof_hash": mandate_hash,
+        "owner_kid": victim_key.kid,
         "status": "ACTIVE",
     })
 

@@ -130,3 +130,10 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Tests and offline evaluation cannot make live network calls to `https://api.sandbox.paypal.com/v1/oauth2/token` or fetch PayPal JWKS certs (project rule 9).
 - **To make it real:** Exchange authorization code with PayPal OAuth2 token endpoint using `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`, and verify the JWT signature against PayPal's public JWKS endpoint (`https://api-m.paypal.com/v1/oauth2/certs`).
 
+### M-024: OIDC identity attestation is self-assertable in mock mode and grants no revocation authority
+- **Where:** `backend/services/mandate_revocation_service.py::revoke_mandate`
+- **What it fakes:** Decouples OIDC identity attestation from mandate revocation authority. In mock mode, OIDC tokens are signed with a hardcoded HS256 secret and lack identity verification against PayPal JWKS, so attestation proves only key possession and self-asserted email. Revocation authority belongs strictly to the key that signed the mandate or an administrator.
+- **Why:** Avoids privilege escalation in mock mode where any registered key could forge an attestation for a victim's email and cancel their mandates.
+- **To make it real:** In live mode with verified RS256 OIDC tokens from PayPal's identity provider, an attested identity matching the verified subscription owner could optionally be granted organizational revocation authority alongside the signing key and admin.
+
+

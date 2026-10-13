@@ -19,6 +19,8 @@ import math
 import time
 from typing import Any, Dict, Optional
 
+from ..config import settings
+
 logger = logging.getLogger("paypal_oidc_service")
 
 # Canonical PayPal OpenID Connect token issuers
@@ -114,12 +116,10 @@ class PayPalOidcService:
             raise ValueError(f"UNSUPPORTED_ALGORITHM: Algorithm '{alg}' is not permitted.")
 
         # Fail closed outside mock mode: HS256 mock secret is strictly prohibited in live mode (Rule 9)
-        import os
-        is_mock = os.getenv("MOCK_EXTERNAL_APIS", "false").lower() in ("true", "1")
-        if not is_mock:
+        if not settings.mock_external_apis:
             raise ValueError(
                 "LIVE_OIDC_NOT_CONFIGURED: Production RS256 verification against PayPal JWKS keys is not yet configured. "
-                "HS256 mock tokens are strictly forbidden when MOCK_EXTERNAL_APIS=false."
+                "HS256 mock tokens are strictly forbidden when settings.mock_external_apis is false."
             )
 
         # 0.5 Cryptographic signature verification (Fail closed: Rule 1 & Rule 2)

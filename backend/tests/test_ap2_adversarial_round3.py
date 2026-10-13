@@ -89,6 +89,7 @@ async def test_adversarial_mandate_revocation_tombstone_immutability():
         "subscription_id": f"I-TOMB-{uuid.uuid4().hex[:8].upper()}",
         "contractor_email": owner_email,
         "mandate_proof_hash": mandate_hash,
+        "owner_kid": owner_key.kid,
         "status": "ACTIVE",
     })
 

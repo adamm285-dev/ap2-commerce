@@ -69,11 +69,12 @@ def resolve_mandate_owner(
         cur = conn.cursor()
         # 1. Check subscriptions table
         cur.execute(
-            "SELECT contractor_email, raw_details_json, created_at FROM subscriptions WHERE mandate_proof_hash = ? OR subscription_id = ? LIMIT 1",
-            (clean, clean),
+            "SELECT subscription_id, contractor_email, raw_details_json, created_at FROM subscriptions WHERE mandate_proof_hash = ? OR subscription_id = ? OR offer_id = ? LIMIT 1",
+            (clean, clean, clean),
         )
         row = cur.fetchone()
-        if row and row["contractor_email"]:
+        if row:
+            contractor_email = (row["contractor_email"] or "").strip().lower() or None
             owner_kid = None
             if row.get("raw_details_json"):
                 try:
@@ -88,10 +89,40 @@ def resolve_mandate_owner(
                             except Exception:
                                 pass
                         if not owner_kid and isinstance(rd.get("ap2_intent_mandate"), dict):
-                            owner_kid = rd["ap2_intent_mandate"].get("kid")
+                            mkid = rd["ap2_intent_mandate"].get("kid")
+                            if mkid and "seller" not in mkid:
+                                owner_kid = mkid
                 except Exception:
                     pass
-            return row["contractor_email"].strip().lower(), owner_kid, row.get("created_at")
+            if owner_kid and "seller" in owner_kid:
+                owner_kid = None
+            if not owner_kid and row.get("subscription_id"):
+                cur.execute(
+                    "SELECT open_payment_mandate_token FROM recurring_mandates WHERE subscription_id = ? LIMIT 1",
+                    (row["subscription_id"],),
+                )
+                rec_row = cur.fetchone()
+                if rec_row and rec_row.get("open_payment_mandate_token"):
+                    try:
+                        import base64
+                        raw_token = rec_row["open_payment_mandate_token"].strip()
+                        if "~~" in raw_token:
+                            raw_token = raw_token.split("~~")[0]
+                        if raw_token.endswith("~"):
+                            raw_token = raw_token[:-1]
+                        parts = raw_token.split(".")
+                        if len(parts) >= 2:
+                            header_b64 = parts[0]
+                            rem = len(header_b64) % 4
+                            if rem:
+                                header_b64 += "=" * (4 - rem)
+                            hdr = json.loads(base64.urlsafe_b64decode(header_b64).decode("utf-8"))
+                            hkid = hdr.get("kid")
+                            if hkid and "seller" not in hkid:
+                                owner_kid = hkid
+                    except Exception:
+                        pass
+            return contractor_email, owner_kid, row.get("created_at")
 
         # 1.5 Check recurring_mandates table (stores verified owner-signed open payment mandate)
         cur.execute(
@@ -99,7 +130,8 @@ def resolve_mandate_owner(
             (clean, clean),
         )
         row = cur.fetchone()
-        if row and row["buyer_email"]:
+        if row:
+            buyer_email = (row["buyer_email"] or "").strip().lower() or None
             owner_kid = None
             if row.get("open_payment_mandate_token"):
                 try:
@@ -116,10 +148,12 @@ def resolve_mandate_owner(
                         if rem:
                             header_b64 += "=" * (4 - rem)
                         hdr = json.loads(base64.urlsafe_b64decode(header_b64).decode("utf-8"))
-                        owner_kid = hdr.get("kid")
+                        hkid = hdr.get("kid")
+                        if hkid and "seller" not in hkid:
+                            owner_kid = hkid
                 except Exception:
                     pass
-            return row["buyer_email"].strip().lower(), owner_kid, row.get("created_at")
+            return buyer_email, owner_kid, row.get("created_at")
 
         # 2. Check authorized_mandates table
         cur.execute(
@@ -127,7 +161,8 @@ def resolve_mandate_owner(
             (clean, clean, clean),
         )
         row = cur.fetchone()
-        if row and row["contractor_email"]:
+        if row:
+            contractor_email = (row["contractor_email"] or "").strip().lower() or None
             owner_kid = None
             if row.get("details_json"):
                 try:
@@ -135,11 +170,15 @@ def resolve_mandate_owner(
                     if isinstance(dj, dict):
                         owner_kid = dj.get("owner_kid") or dj.get("kid")
                         if not owner_kid and isinstance(dj.get("ap2_mandate"), dict):
-                            owner_kid = dj["ap2_mandate"].get("kid")
+                            mkid = dj["ap2_mandate"].get("kid")
+                            if mkid and "seller" not in mkid:
+                                owner_kid = mkid
                 except Exception:
                     pass
+            if owner_kid and "seller" in owner_kid:
+                owner_kid = None
             reg_at = str(row.get("registered_at")) if row.get("registered_at") else None
-            return row["contractor_email"].strip().lower(), owner_kid, reg_at
+            return contractor_email, owner_kid, reg_at
 
         # 3. Check direct_charges table
         cur.execute(
@@ -213,6 +252,7 @@ async def revoke_mandate(
     signature: str,
     timestamp_iso: Optional[str] = None,
     db_path: Optional[Path] = None,
+    is_admin: bool = False,
 ) -> Dict[str, Any]:
     """
     Cryptographically revokes an AP2 Open Mandate.
@@ -284,16 +324,21 @@ async def revoke_mandate(
             if isinstance(s_data, dict):
                 p_hash = (s_data.get("mandate_proof_hash") or "").strip()
                 chk_h = (s_data.get("checkout_hash") or "").strip()
+                off_id = (s_data.get("offer_id") or "").strip()
                 sub_id_str = str(s_data.get("subscription_id") or s_id).strip()
-                if clean_hash in (p_hash, chk_h, s_id, sub_id_str):
-                    target_email = (s_data.get("contractor_email") or "").strip().lower()
+                if clean_hash in (p_hash, chk_h, off_id, s_id, sub_id_str):
+                    target_email = (s_data.get("contractor_email") or "").strip().lower() or None
                     target_created_at = s_data.get("created_at")
-                    target_kid = s_data.get("owner_kid") or s_data.get("kid")
+                    target_kid = s_data.get("owner_kid") or s_data.get("kid") or s_data.get("buyer_key_id")
+                    if target_kid and "seller" in target_kid:
+                        target_kid = None
                     if not target_kid and isinstance(s_data.get("ap2_intent_mandate"), dict):
-                        target_kid = s_data["ap2_intent_mandate"].get("kid")
+                        mkid = s_data["ap2_intent_mandate"].get("kid")
+                        if mkid and "seller" not in mkid:
+                            target_kid = mkid
                     if not target_kid and sub_id_str:
                         _, sub_kid, _ = resolve_mandate_owner(sub_id_str, db_path=db_path)
-                        if sub_kid:
+                        if sub_kid and "seller" not in sub_kid:
                             target_kid = sub_kid
                     break
 
@@ -303,25 +348,13 @@ async def revoke_mandate(
             f"MANDATE_NOT_FOUND: No registered mandate or subscription found matching hash '{clean_hash}'."
         )
 
-    signer_email = get_buyer_key_email(clean_kid, db_path=db_path)
-    if target_email:
-        if not signer_email or signer_email.strip().lower() != target_email:
-            raise ValueError(
-                f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' ({signer_email or 'unbound'}) is not authorized to revoke mandates belonging to '{target_email}'."
-            )
-        # Check identity attestation: unverified keys cannot revoke mandates by self-asserted email alone.
-        # If the key is not the proven creator key (target_kid), it MUST be identity-attested (F2).
+    # Authorization: Revocation is authorized ONLY when signed by the mandate's signing key, or with admin key (Option a)
+    # MOCK(M-024): in mock mode OIDC identity attestation is self-assertable and grants no authorization; revocation authority comes only from the mandate's signing key or admin
+    if not is_admin:
         if not target_kid or clean_kid != target_kid:
-            buyer_ident = get_buyer_identity(clean_kid, db_path=db_path) or {}
-            is_attested = bool(buyer_ident.get("identity_attested"))
-            if not is_attested:
-                raise ValueError(
-                    f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' is not identity-attested. Self-asserted email cannot authorize mandate revocation."
-                )
-    elif target_kid:
-        if clean_kid != target_kid:
             raise ValueError(
-                f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' is not authorized to revoke mandates issued by '{target_kid}'."
+                f"UNAUTHORIZED_REVOCATION: Key ID '{clean_kid}' is not authorized to revoke mandate '{clean_hash}'. "
+                f"Revocation authority belongs exclusively to the mandate's signing key ({target_kid or 'none recorded; requires admin'})."
             )
 
     # 2. Record revocation in persistent status list

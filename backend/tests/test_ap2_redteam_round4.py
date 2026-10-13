@@ -28,7 +28,9 @@ from backend.services.mandate_revocation_service import (
 from backend.services.marketplace_payout_service import marketplace_payout_service
 from backend.services.paypal_service import paypal_service
 from backend.services.paypal_oidc_service import PayPalOidcService
-from backend.database import save_subscription, get_buyer_identity
+from backend.database import save_subscription, get_buyer_identity, get_subscription
+from backend.config import settings
+from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 
 client = TestClient(app)
 
@@ -241,3 +243,253 @@ def test_rt4_oidc_rejects_non_finite_exp():
     })
     with pytest.raises(ValueError):
         PayPalOidcService.verify_oidc_identity_attestation(token)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# F2 & Live OIDC Verification Gates
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_rt4_self_attested_impostor_cannot_revoke():
+    """
+    Gap 1 (F2): In mock mode, impostor enrolls with victim's email, self-attests with a forged
+    mock OIDC token (proving key possession + HS256 mock secret), and attempts to revoke victim's
+    mandate. Must fail closed with UNAUTHORIZED_REVOCATION (HTTP 403), leaving victim ACTIVE.
+    """
+    victim_email = f"victim-{uuid.uuid4().hex[:8]}@enterprise.com"
+    mandate_hash = f"mandate_proof_{uuid.uuid4().hex}"
+    victim_key = _key("victim-orig")
+    sub_id = f"I-VIC-{uuid.uuid4().hex[:8].upper()}"
+    sub = {
+        "subscription_id": sub_id,
+        "contractor_email": victim_email,
+        "mandate_proof_hash": mandate_hash,
+        "owner_kid": victim_key.kid,
+        "status": "ACTIVE",
+    }
+    save_subscription(dict(sub))
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = sub
+
+    # Impostor enrolls key with victim email (no OIDC yet)
+    impostor = _key("impostor")
+    _enroll(impostor, victim_email)
+
+    # Impostor self-attests with key possession & forged mock OIDC token
+    challenge = client.get("/api/agent/keys/challenge").json()["challenge"]
+    chal_sig = sign_es256_challenge(challenge, impostor)
+    payer_id = f"PAYER-{uuid.uuid4().hex[:8].upper()}"
+    oidc_token = PayPalOidcService.generate_mock_oidc_token(payer_id=payer_id, email=victim_email, nonce=challenge)
+    attest_resp = client.post(
+        "/api/agent/identity/attest",
+        json={
+            "kid": impostor.kid,
+            "oidc_id_token": oidc_token,
+            "challenge": challenge,
+            "challenge_signature": chal_sig,
+        },
+    )
+    assert attest_resp.status_code == 200
+    ident = get_buyer_identity(impostor.kid) or {}
+    assert ident.get("identity_attested") is True
+
+    # Impostor attempts to revoke victim's mandate via REST API -> must fail 403
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    msg = canonical_revocation_message(mandate_hash, now_iso, "Impostor revocation attempt")
+    impostor_sig = sign_es256_challenge(msg, impostor)
+
+    rev_resp = client.post(
+        "/api/mandates/revoke",
+        json={
+            "mandate_proof_hash": mandate_hash,
+            "kid": impostor.kid,
+            "reason": "Impostor revocation attempt",
+            "signature": impostor_sig,
+            "timestamp_iso": now_iso,
+        },
+    )
+    assert rev_resp.status_code == 403
+    detail = rev_resp.json()["detail"]
+    assert detail["error"] == "REVOCATION_FAILED"
+    assert "UNAUTHORIZED_REVOCATION" in detail["reason"]
+
+    # Also test direct service call fails closed
+    with pytest.raises(ValueError, match="UNAUTHORIZED_REVOCATION"):
+        await revoke_mandate(
+            mandate_proof_hash=mandate_hash,
+            kid=impostor.kid,
+            reason="Impostor revocation attempt",
+            signature=impostor_sig,
+            timestamp_iso=now_iso,
+        )
+
+    # Victim subscription must remain ACTIVE
+    cur_sub = get_subscription(sub_id)
+    assert cur_sub["status"] == "ACTIVE"
+    assert _COMPLETED_SUBSCRIPTIONS[sub_id]["status"] == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_rt4_signing_key_can_revoke_own_mandate():
+    """Legitimate owner key that signed the mandate can revoke it directly."""
+    k1 = _key("owner-k1")
+    k1_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
+    _enroll(k1, k1_email)
+
+    sub_id = f"I-K1-{uuid.uuid4().hex[:8].upper()}"
+    mandate_hash = f"mandate_proof_k1_{uuid.uuid4().hex}"
+    sub = {
+        "subscription_id": sub_id,
+        "contractor_email": k1_email,
+        "mandate_proof_hash": mandate_hash,
+        "owner_kid": k1.kid,
+        "status": "ACTIVE",
+    }
+    save_subscription(dict(sub))
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = sub
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    msg = canonical_revocation_message(mandate_hash, now_iso, "Owner revocation")
+    sig = sign_es256_challenge(msg, k1)
+
+    rev_resp = client.post(
+        "/api/mandates/revoke",
+        json={
+            "mandate_proof_hash": mandate_hash,
+            "kid": k1.kid,
+            "reason": "Owner revocation",
+            "signature": sig,
+            "timestamp_iso": now_iso,
+        },
+    )
+    assert rev_resp.status_code == 200
+    data = rev_resp.json()
+    assert data["status"] == "REVOKED"
+    assert sub_id in data["cancelled_subscriptions"]
+
+    cur_sub = get_subscription(sub_id)
+    assert cur_sub["status"] == "CANCELLED"
+    assert _COMPLETED_SUBSCRIPTIONS[sub_id]["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_rt4_admin_can_revoke(monkeypatch):
+    """
+    Mandates with no recorded signing key (legacy seeded subscriptions) fail closed
+    against non-admin callers (403), but succeed when signed with an admin key (200).
+    """
+    legacy_email = f"legacy-{uuid.uuid4().hex[:8]}@example.com"
+    sub_id = f"I-LEGACY-{uuid.uuid4().hex[:8].upper()}"
+    mandate_hash = f"mandate_proof_legacy_{uuid.uuid4().hex}"
+    sub = {
+        "subscription_id": sub_id,
+        "contractor_email": legacy_email,
+        "mandate_proof_hash": mandate_hash,
+        "status": "ACTIVE",
+    }
+    save_subscription(dict(sub))
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = sub
+
+    caller_key = _key("caller-key")
+    _enroll(caller_key, legacy_email)
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    msg = canonical_revocation_message(mandate_hash, now_iso, "Admin emergency revoke")
+    sig = sign_es256_challenge(msg, caller_key)
+
+    # 1. Non-admin request must be rejected (403 UNAUTHORIZED_REVOCATION)
+    non_admin_resp = client.post(
+        "/api/mandates/revoke",
+        json={
+            "mandate_proof_hash": mandate_hash,
+            "kid": caller_key.kid,
+            "reason": "Admin emergency revoke",
+            "signature": sig,
+            "timestamp_iso": now_iso,
+        },
+    )
+    assert non_admin_resp.status_code == 403
+    assert "UNAUTHORIZED_REVOCATION" in non_admin_resp.json()["detail"]["reason"]
+    assert get_subscription(sub_id)["status"] == "ACTIVE"
+
+    # 2. Admin request with valid ADMIN_API_KEY must succeed (200)
+    admin_secret = f"admin-key-{uuid.uuid4().hex}"
+    monkeypatch.setattr(settings, "admin_api_key", admin_secret)
+
+    admin_resp = client.post(
+        "/api/mandates/revoke",
+        headers={"X-Admin-Key": admin_secret},
+        json={
+            "mandate_proof_hash": mandate_hash,
+            "kid": caller_key.kid,
+            "reason": "Admin emergency revoke",
+            "signature": sig,
+            "timestamp_iso": now_iso,
+        },
+    )
+    assert admin_resp.status_code == 200
+    data = admin_resp.json()
+    assert data["status"] == "REVOKED"
+    assert sub_id in data["cancelled_subscriptions"]
+
+    cur_sub = get_subscription(sub_id)
+    assert cur_sub["status"] == "CANCELLED"
+    assert _COMPLETED_SUBSCRIPTIONS[sub_id]["status"] == "CANCELLED"
+
+
+def test_rt4_live_mode_rejects_mock_oidc(monkeypatch):
+    """
+    Gap 2: When settings.mock_external_apis is False, HS256 mock tokens must be rejected
+    with LIVE_OIDC_NOT_CONFIGURED (HTTP 400, never 500), even if env MOCK_EXTERNAL_APIS is 'true'.
+    """
+    monkeypatch.setattr(settings, "mock_external_apis", False)
+    monkeypatch.setenv("MOCK_EXTERNAL_APIS", "true")
+
+    key = _key("live-guard")
+    email = f"live-guard-{uuid.uuid4().hex[:8]}@example.com"
+    _enroll(key, email)
+
+    challenge = client.get("/api/agent/keys/challenge").json()["challenge"]
+    chal_sig = sign_es256_challenge(challenge, key)
+    token = PayPalOidcService.generate_mock_oidc_token(payer_id="PAYER-LIVE", email=email, nonce=challenge)
+
+    # 1. POST /api/agent/identity/attest
+    attest_resp = client.post(
+        "/api/agent/identity/attest",
+        json={
+            "kid": key.kid,
+            "oidc_id_token": token,
+            "challenge": challenge,
+            "challenge_signature": chal_sig,
+        },
+    )
+    assert attest_resp.status_code == 400
+    detail = attest_resp.json()["detail"]
+    assert detail["error"] == "LIVE_OIDC_NOT_CONFIGURED"
+    assert "LIVE_OIDC_NOT_CONFIGURED" in detail["reason"]
+
+    ident = get_buyer_identity(key.kid) or {}
+    assert not ident.get("identity_attested")
+
+    # 2. POST /api/agent/keys/register with oidcIdToken in live mode
+    reg_key = _key("live-reg")
+    reg_chal = client.get("/api/agent/keys/challenge").json()["challenge"]
+    reg_sig = sign_es256_challenge(reg_chal, reg_key)
+    reg_token = PayPalOidcService.generate_mock_oidc_token(payer_id="PAYER-LIVE-REG", email=email, nonce=reg_chal)
+
+    reg_resp = client.post(
+        "/api/agent/keys/register",
+        json={
+            "kid": reg_key.kid,
+            "publicKeyJwk": reg_key.export_public(as_dict=True),
+            "contractorEmail": email,
+            "businessEntity": "Live Mode Corp",
+            "challenge": reg_chal,
+            "challengeSignature": reg_sig,
+            "oidcIdToken": reg_token,
+        },
+    )
+    assert reg_resp.status_code == 400
+    reg_detail = reg_resp.json()["detail"]
+    assert reg_detail["error"] == "LIVE_OIDC_NOT_CONFIGURED"
+    assert "LIVE_OIDC_NOT_CONFIGURED" in reg_detail["reason"]
+

@@ -368,9 +368,10 @@ class DirectChargeResponse(BaseModel):
     payee_id: str = Field(alias="payeeId", description="AP2 merchant ID")
     paypal_capture_id: str = Field(alias="paypalCaptureId", description="PayPal transaction capture ID")
     payment_source_id: Optional[str] = Field(default=None, alias="paymentSourceId", description="Settled payment source ID")
-    merchant_receipt_jwt: str = Field(alias="merchantReceiptJwt", description="Merchant-signed ES256 payment receipt JWT")
+    merchant_receipt_jwt: Optional[str] = Field(default=None, alias="merchantReceiptJwt", description="Merchant-signed ES256 payment receipt JWT")
     qbo_purchase_id: Optional[str] = Field(default=None, alias="qboPurchaseId", description="QuickBooks Online v3 Purchase ID")
     qbo_payload: Optional[Dict[str, Any]] = Field(default=None, alias="qboPayload", description="Authentic QBO v3 Purchase payload")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional application metadata")
     created_at: str = Field(alias="createdAt", description="ISO creation timestamp")
 
 

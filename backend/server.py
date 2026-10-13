@@ -118,6 +118,8 @@ from .database import (
     register_vault_payment_source,
     set_recurring_mandate_status,
     RESERVED_BUYER_KEY_IDS,
+    _mask_email,
+    _mask_identifier,
 )
 
 _PROCESSED_WEBHOOK_IDS = ProcessedWebhooksProxy()
@@ -135,6 +137,20 @@ def _has_admin_key(request: Request) -> bool:
     raw = request.headers.get("Authorization") or request.headers.get("X-Admin-Key") or ""
     token = raw[7:].strip() if raw.startswith("Bearer ") else raw.strip()
     return bool(token) and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _mask_direct_charge(charge: Dict[str, Any], is_admin: bool) -> Dict[str, Any]:
+    """Masks PII/payment identifiers and omits sensitive receipts/payloads for non-admin callers."""
+    c = dict(charge)
+    if not is_admin:
+        c["buyer_key_id"] = _mask_identifier(c.get("buyer_key_id"))
+        c["payment_source_id"] = _mask_identifier(c.get("payment_source_id"))
+        if c.get("payer_id"):
+            c["payer_id"] = _mask_identifier(c.get("payer_id"))
+        c["merchant_receipt_jwt"] = None
+        c["qbo_payload"] = None
+        c["metadata"] = None
+    return c
 
 app = FastAPI(
     title="AP2 Autonomous Agent Commerce & Compute API",
@@ -586,11 +602,13 @@ async def get_receipt_endpoint(reference: str, jwt: Optional[str] = None):
 
 @app.get("/api/checkout/{order_id}", tags=["AP2 Mandates & Receipts"])
 @app.get("/api/agent/checkout/{order_id}", tags=["AP2 Mandates & Receipts"])
-async def get_checkout_endpoint(order_id: str):
+async def get_checkout_endpoint(order_id: str, request: Request):
     """Retrieves an issued merchant Checkout JWT by order_id or checkout_hash."""
     record = get_issued_checkout(order_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"Checkout '{order_id}' not found.")
+    if not _has_admin_key(request):
+        record = {**record, "contractor_email": None}
     return record
 
 
@@ -722,20 +740,27 @@ async def register_operator_endpoint(req: RegisterOperatorRequest, request: Requ
 
 
 @app.get("/api/marketplace/operators", tags=["Marketplace Payouts"])
-async def list_operators_endpoint():
+async def list_operators_endpoint(request: Request):
     """Lists all registered compute node operators and their capacity assignments."""
     from .services.marketplace_payout_service import marketplace_payout_service
     operators = marketplace_payout_service.list_operators()
+    if not _has_admin_key(request):
+        operators = [
+            {**op, "email": _mask_email(op.get("email"))}
+            for op in operators
+        ]
     return {"status": "SUCCESS", "count": len(operators), "operators": operators}
 
 
 @app.get("/api/marketplace/operators/{operator_id}", tags=["Marketplace Payouts"])
-async def get_operator_endpoint(operator_id: str):
+async def get_operator_endpoint(operator_id: str, request: Request):
     """Retrieves details of a registered compute node operator."""
     from .services.marketplace_payout_service import marketplace_payout_service
     op = marketplace_payout_service.get_operator(operator_id)
     if not op:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Operator '{operator_id}' not found.")
+    if not _has_admin_key(request):
+        op = {**op, "email": _mask_email(op.get("email"))}
     return {"status": "SUCCESS", "operator": op}
 
 
@@ -774,20 +799,32 @@ async def list_payout_batches_endpoint(limit: int = Query(default=50, ge=1, le=5
 
 
 @app.get("/api/marketplace/payouts/batches/{batch_id}", tags=["Marketplace Payouts"])
-async def get_payout_batch_endpoint(batch_id: str):
+async def get_payout_batch_endpoint(batch_id: str, request: Request):
     """Retrieves a specific payout batch and its itemized disbursements."""
     from .database import get_payout_batch
     batch = get_payout_batch(batch_id)
     if not batch:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Payout batch '{batch_id}' not found.")
+    if not _has_admin_key(request):
+        items = batch.get("items") or []
+        masked_items = [
+            {**it, "receiver_email": _mask_email(it.get("receiver_email"))}
+            for it in items
+        ]
+        batch = {**batch, "items": masked_items}
     return {"status": "SUCCESS", "batch": batch}
 
 
 @app.get("/api/marketplace/payouts/ledger", tags=["Marketplace Payouts"])
-async def get_operator_settlement_ledger_endpoint(operator_id: Optional[str] = Query(default=None)):
+async def get_operator_settlement_ledger_endpoint(request: Request, operator_id: Optional[str] = Query(default=None)):
     """Returns the itemized operator settlement ledger across all compute node workloads."""
     from .services.marketplace_payout_service import marketplace_payout_service
     ledger_entries = marketplace_payout_service.get_operator_settlement_ledger(operator_id=operator_id)
+    if not _has_admin_key(request):
+        ledger_entries = [
+            {**entry, "operator_email": _mask_email(entry.get("operator_email"))}
+            for entry in ledger_entries
+        ]
     return {"status": "SUCCESS", "count": len(ledger_entries), "ledger": ledger_entries}
 
 
@@ -1283,7 +1320,7 @@ async def get_fleet_ledger_endpoint(request: Request, profile: str = Query("defa
     (the `unmasked` query flag is accepted for compatibility but grants nothing on its own).
     When profile='ap2', returns the AP2 autonomous agent seller deck dataset (Demo data).
     """
-    is_admin = os.getenv("TESTING") == "1" or _has_admin_key(request)
+    is_admin = _has_admin_key(request)
     txns = get_fleet_ledger(mask_pii=not is_admin, profile=profile)
     notice = (
         "Rows represent simulated live fleet telemetry demonstrating 24/7 AP2 Autonomous Commerce operations across enterprise agent nodes (Demo data)."
@@ -1726,7 +1763,7 @@ async def attest_buyer_identity_endpoint(request: IdentityAttestationRequest, re
     status_code=status.HTTP_200_OK,
     tags=["Identity Attestation"],
 )
-async def get_buyer_identity_endpoint(kid: str):
+async def get_buyer_identity_endpoint(kid: str, request: Request):
     """Retrieves verified identity attestation details for a registered buyer key."""
     identity = get_buyer_identity(kid)
     if not identity or not identity.get("identity_attested"):
@@ -1735,12 +1772,19 @@ async def get_buyer_identity_endpoint(kid: str):
             detail={"status": "REJECTED", "error": "NOT_ATTESTED", "reason": f"No identity attestation found for key '{kid}'."},
         )
 
-    claims = identity.get("attestation_payload") or {}
+    claims = dict(identity.get("attestation_payload") or {})
     email = claims.get("email") or identity.get("contractor_email") or "verified@paypal.com"
+    payer_id = identity.get("payer_id") or "PAYER-UNKNOWN"
+
+    if not _has_admin_key(request):
+        email = _mask_email(email)
+        payer_id = _mask_identifier(payer_id) or "PAYER-UNKNOWN"
+        claims = {k: v for k, v in claims.items() if k in ("iss", "email_verified")}
+
     return IdentityAttestationResponse(
         status="ATTESTED",
         kid=kid,
-        payerId=identity.get("payer_id") or "PAYER-UNKNOWN",
+        payerId=payer_id,
         identityProvider=identity.get("identity_provider") or "paypal",
         identityAttested=True,
         email=email,
@@ -2413,7 +2457,7 @@ async def process_ap2_direct_charge_endpoint(request: DirectChargeRequest):
     status_code=status.HTTP_200_OK,
     tags=["AP2 Native Direct Rail"],
 )
-async def get_ap2_direct_charge_endpoint(charge_id: str):
+async def get_ap2_direct_charge_endpoint(charge_id: str, request: Request):
     """Retrieves a direct AP2 charge record by ID."""
     charge = Ap2GatewayService.get_charge(charge_id)
     if not charge:
@@ -2423,7 +2467,7 @@ async def get_ap2_direct_charge_endpoint(charge_id: str):
         )
     cents = charge.get("amount_cents", 0)
     charge["amount_formatted"] = f"${cents // 100}.{cents % 100:02d}"
-    return charge
+    return _mask_direct_charge(charge, is_admin=_has_admin_key(request))
 
 
 @app.get(
@@ -2432,10 +2476,12 @@ async def get_ap2_direct_charge_endpoint(charge_id: str):
     status_code=status.HTTP_200_OK,
     tags=["AP2 Native Direct Rail"],
 )
-async def list_ap2_direct_charges_endpoint(limit: int = Query(default=50, ge=1, le=500)):
+async def list_ap2_direct_charges_endpoint(request: Request, limit: int = Query(default=50, ge=1, le=500)):
     """Lists recent direct AP2 charges."""
     charges = Ap2GatewayService.list_charges(limit=limit)
-    return DirectChargeListResponse(count=len(charges), charges=charges)
+    is_admin = _has_admin_key(request)
+    masked_charges = [_mask_direct_charge(c, is_admin=is_admin) for c in charges]
+    return DirectChargeListResponse(count=len(masked_charges), charges=masked_charges)
 
 
 if __name__ == "__main__":

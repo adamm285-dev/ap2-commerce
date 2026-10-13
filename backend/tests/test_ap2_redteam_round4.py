@@ -29,11 +29,12 @@ from backend.services.mandate_revocation_service import (
 from backend.services.marketplace_payout_service import marketplace_payout_service
 from backend.services.paypal_service import paypal_service
 from backend.services.paypal_oidc_service import PayPalOidcService
-from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge
+from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge, get_connection
 from backend.config import settings
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 from backend.tests.ap2_test_utils import build_test_ap2_chains, setup_test_vault
 from backend.services.ap2_gateway_service import Ap2GatewayService
+from backend.services.ap2_service import create_merchant_checkout
 
 client = TestClient(app)
 
@@ -962,5 +963,290 @@ def test_rt4_bryntum_dispatch_scheduler_template_escaping():
     assert "${safeRawName}" in content
     assert "${safeRawDepositStatus}" in content
     assert "${safeIconCls}" in content
+
+
+# =============================================================================
+# Round 4 Privacy & PII Protection Tests (Unauthenticated Leaks Defense)
+# =============================================================================
+
+def test_rt4_pii_masking_identity_attestation():
+    """
+    GET /api/agent/identity/attestation/{kid} must never leak raw email or payerId
+    to non-admins. Non-admins receive masked email, masked payerId, and claims reduced
+    to {iss, email_verified}. Admins receive full unmasked data.
+    """
+    key = _key("owner-pii")
+    raw_email = f"victim-{uuid.uuid4().hex[:8]}@privacy-domain-{uuid.uuid4().hex[:4]}.com"
+    raw_payer = f"PAYER-{uuid.uuid4().hex[:10].upper()}"
+    _enroll(key, raw_email)
+
+    ch = client.get("/api/agent/keys/challenge").json()["challenge"]
+    sig = sign_es256_challenge(ch, key)
+    oidc_token = PayPalOidcService.generate_mock_oidc_token(
+        payer_id=raw_payer,
+        email=raw_email,
+        nonce=ch,
+    )
+    attest_res = client.post("/api/agent/identity/attest", json={
+        "kid": key.kid,
+        "oidcIdToken": oidc_token,
+        "challenge": ch,
+        "challengeSignature": sig,
+    })
+    assert attest_res.status_code == 200
+
+    # 1. Non-admin request
+    resp_pub = client.get(f"/api/agent/identity/attestation/{key.kid}")
+    assert resp_pub.status_code == 200
+    assert raw_email not in resp_pub.text
+    assert raw_payer not in resp_pub.text
+
+    pub_data = resp_pub.json()
+    assert pub_data["email"] != raw_email
+    assert pub_data["payerId"] != raw_payer
+    assert set(pub_data["claims"].keys()).issubset({"iss", "email_verified"})
+
+    # 2. Admin request
+    resp_adm = client.get(
+        f"/api/agent/identity/attestation/{key.kid}",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    assert resp_adm.status_code == 200
+    assert raw_email in resp_adm.text
+    assert raw_payer in resp_adm.text
+
+    adm_data = resp_adm.json()
+    assert adm_data["email"] == raw_email
+    assert adm_data["payerId"] == raw_payer
+    assert adm_data["claims"].get("sub") == raw_payer
+    assert adm_data["claims"].get("email") == raw_email
+
+
+def test_rt4_pii_masking_direct_charges():
+    """
+    GET /v1/ap2/gateway/charges and /v1/ap2/gateway/charges/{charge_id} must mask
+    payment_source_id and buyer_key_id, and omit metadata, qbo_payload, and
+    merchant_receipt_jwt for non-admins. Admins receive all fields in full.
+    """
+    raw_vault = f"vault_{uuid.uuid4().hex}"
+    raw_buyer_kid = f"buyer-key-{uuid.uuid4().hex[:8]}"
+    charge_id = f"chg_{uuid.uuid4().hex[:12]}"
+    secret_receipt = f"eyJhbGciOiJFUzI1NiJ9.receipt-secret-{uuid.uuid4().hex}"
+    secret_meta = f"secret-meta-{uuid.uuid4().hex}"
+
+    record_direct_charge({
+        "charge_id": charge_id,
+        "mandate_id": f"mandate-{uuid.uuid4().hex[:8]}",
+        "buyer_key_id": raw_buyer_kid,
+        "amount_cents": 7999,
+        "currency": "USD",
+        "payee_id": "merchant_ap2_default",
+        "payment_source_id": raw_vault,
+        "paypal_capture_id": f"CAP-{uuid.uuid4().hex[:8]}",
+        "status": "CAPTURED",
+        "merchant_receipt_jwt": secret_receipt,
+        "qbo_purchase_id": "999",
+        "qbo_payload": {"Purchase": {"Id": "999", "Sensitive": "Confidential"}},
+        "metadata": {"confidential_tag": secret_meta},
+    })
+
+    # 1. Non-admin single charge
+    resp_pub = client.get(f"/v1/ap2/gateway/charges/{charge_id}")
+    assert resp_pub.status_code == 200
+    assert raw_vault not in resp_pub.text
+    assert raw_buyer_kid not in resp_pub.text
+    assert secret_receipt not in resp_pub.text
+    assert secret_meta not in resp_pub.text
+
+    data_pub = resp_pub.json()
+    assert data_pub["paymentSourceId"] != raw_vault
+    assert data_pub["buyerKeyId"] != raw_buyer_kid
+    assert data_pub.get("merchantReceiptJwt") is None
+    assert data_pub.get("qboPayload") is None
+    assert data_pub.get("metadata") is None
+
+    # 2. Non-admin list charges
+    resp_list_pub = client.get("/v1/ap2/gateway/charges?limit=10")
+    assert resp_list_pub.status_code == 200
+    assert raw_vault not in resp_list_pub.text
+    assert raw_buyer_kid not in resp_list_pub.text
+    assert secret_receipt not in resp_list_pub.text
+
+    # 3. Admin single charge
+    resp_adm = client.get(
+        f"/v1/ap2/gateway/charges/{charge_id}",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    assert resp_adm.status_code == 200
+    assert raw_vault in resp_adm.text
+    assert raw_buyer_kid in resp_adm.text
+    assert secret_receipt in resp_adm.text
+    assert secret_meta in resp_adm.text
+
+    data_adm = resp_adm.json()
+    assert data_adm["paymentSourceId"] == raw_vault
+    assert data_adm["buyerKeyId"] == raw_buyer_kid
+    assert data_adm["merchantReceiptJwt"] == secret_receipt
+    assert data_adm["metadata"]["confidential_tag"] == secret_meta
+
+    # 4. Admin list charges
+    resp_list_adm = client.get(
+        "/v1/ap2/gateway/charges?limit=10",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    assert resp_list_adm.status_code == 200
+    assert raw_vault in resp_list_adm.text
+    assert raw_buyer_kid in resp_list_adm.text
+
+
+def test_rt4_pii_masking_checkout_endpoint():
+    """
+    GET /api/checkout/{order_id} must never return contractor_email to non-admins.
+    The checkout JWT itself is returned, but contractor_email is null/omitted.
+    Admins receive the unmasked contractor_email.
+    """
+    raw_email = f"buyer-{uuid.uuid4().hex[:8]}@checkout-test-{uuid.uuid4().hex[:4]}.com"
+    chk = create_merchant_checkout("ap2-batch", 49.99, raw_email)
+    order_id = chk["order_id"]
+
+    # 1. Non-admin request
+    resp_pub = client.get(f"/api/checkout/{order_id}")
+    assert resp_pub.status_code == 200
+    assert raw_email not in resp_pub.text
+    pub_data = resp_pub.json()
+    assert pub_data["contractor_email"] is None
+    assert pub_data["checkout_jwt"] is not None
+
+    # 2. Admin request
+    resp_adm = client.get(
+        f"/api/checkout/{order_id}",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    assert resp_adm.status_code == 200
+    assert raw_email in resp_adm.text
+    adm_data = resp_adm.json()
+    assert adm_data["contractor_email"] == raw_email
+
+
+def test_rt4_pii_masking_marketplace_operators_and_payouts():
+    """
+    GET /api/marketplace/operators, /operators/{id}, /payouts/ledger, /payouts/batches/{id}:
+    Non-admins get operator and receiver emails masked.
+    Admins get them unmasked in full.
+    """
+    raw_op_email = f"op-{uuid.uuid4().hex[:8]}@datacenter-{uuid.uuid4().hex[:4]}.io"
+    raw_receiver_email = f"payout-{uuid.uuid4().hex[:8]}@recipient-{uuid.uuid4().hex[:4]}.net"
+    op_id = f"op_{uuid.uuid4().hex[:8]}"
+
+    reg_res = client.post("/api/marketplace/operators/register", json={
+        "operator_id": op_id,
+        "name": "Confidential Compute Node",
+        "email": raw_op_email,
+        "payout_method": "PAYPAL",
+        "payout_email": raw_op_email,
+        "split_percentage_bps": 8500,
+    })
+    assert reg_res.status_code == 201
+
+    # Seed a batch and payout item with raw_receiver_email
+    batch_id = f"batch_{uuid.uuid4().hex[:8]}"
+    item_id = f"item_{uuid.uuid4().hex[:8]}"
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO payout_batches (batch_id, sender_batch_id, batch_status, total_gross_cents, total_payout_cents, total_platform_fee_cents, currency, item_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (batch_id, f"sb-{uuid.uuid4().hex[:6]}", "SUCCESS", 5000, 4250, 750, "USD", 1, "2026-10-13T00:00:00Z", "2026-10-13T00:00:00Z"),
+            )
+            conn.execute(
+                """
+                INSERT INTO payout_items (item_id, batch_id, operator_id, subscription_id, receiver_email, gross_amount_cents, platform_fee_cents, net_payout_cents, currency, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (item_id, batch_id, op_id, f"sub-{uuid.uuid4().hex[:6]}", raw_receiver_email, 5000, 750, 4250, "USD", "SUCCESS", "2026-10-13T00:00:00Z"),
+            )
+    finally:
+        conn.close()
+
+    # 1. Operators list: non-admin vs admin
+    resp_ops_pub = client.get("/api/marketplace/operators")
+    assert resp_ops_pub.status_code == 200
+    assert raw_op_email not in resp_ops_pub.text
+
+    resp_ops_adm = client.get("/api/marketplace/operators", headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+    assert resp_ops_adm.status_code == 200
+    assert raw_op_email in resp_ops_adm.text
+
+    # 2. Operator detail: non-admin vs admin
+    resp_op_pub = client.get(f"/api/marketplace/operators/{op_id}")
+    assert resp_op_pub.status_code == 200
+    assert raw_op_email not in resp_op_pub.text
+    assert resp_op_pub.json()["operator"]["email"] != raw_op_email
+
+    resp_op_adm = client.get(f"/api/marketplace/operators/{op_id}", headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+    assert resp_op_adm.status_code == 200
+    assert raw_op_email in resp_op_adm.text
+    assert resp_op_adm.json()["operator"]["email"] == raw_op_email
+
+    # 3. Payout batch detail: non-admin vs admin
+    resp_batch_pub = client.get(f"/api/marketplace/payouts/batches/{batch_id}")
+    assert resp_batch_pub.status_code == 200
+    assert raw_receiver_email not in resp_batch_pub.text
+
+    resp_batch_adm = client.get(f"/api/marketplace/payouts/batches/{batch_id}", headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+    assert resp_batch_adm.status_code == 200
+    assert raw_receiver_email in resp_batch_adm.text
+
+    # 4. Payout ledger: non-admin vs admin
+    resp_ledg_pub = client.get(f"/api/marketplace/payouts/ledger?operator_id={op_id}")
+    assert resp_ledg_pub.status_code == 200
+    assert raw_receiver_email not in resp_ledg_pub.text
+
+    resp_ledg_adm = client.get(f"/api/marketplace/payouts/ledger?operator_id={op_id}", headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+    assert resp_ledg_adm.status_code == 200
+    assert raw_receiver_email in resp_ledg_adm.text
+
+
+def test_rt4_mandates_revocations_contains_no_emails():
+    """
+    GET /api/mandates/revocations is a public status list and must contain no emails.
+    """
+    resp = client.get("/api/mandates/revocations")
+    assert resp.status_code == 200
+    revs = resp.json().get("revocations", [])
+    for r in revs:
+        # Check all string values in revocation entry for email '@'
+        for k, v in r.items():
+            if isinstance(v, str):
+                assert "@" not in v, f"Found '@' in revocation field {k}: {v}"
+
+
+def test_rt4_fleet_ledger_pii_masking_without_testing_gate():
+    """
+    GET /api/fleet/ledger must mask paypal_sub_id and operator_email for non-admins,
+    even when TESTING env var is set. Only callers with valid admin authorization
+    receive unmasked values.
+    """
+    resp_pub = client.get("/api/fleet/ledger")
+    assert resp_pub.status_code == 200
+    txns_pub = resp_pub.json()["transactions"]
+    for t in txns_pub:
+        if t["status"] in ("ACTIVE", "ACTIVE_STREAMING"):
+            assert "***" in t["paypal_sub_id"], f"Expected masked paypal_sub_id, got {t['paypal_sub_id']}"
+        assert "***@" in t["operator_email"], f"Expected masked operator_email, got {t['operator_email']}"
+
+    resp_adm = client.get(
+        "/api/fleet/ledger",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    assert resp_adm.status_code == 200
+    txns_adm = resp_adm.json()["transactions"]
+    active_adm = [t for t in txns_adm if t["status"] in ("ACTIVE", "ACTIVE_STREAMING")]
+    assert any("***" not in t["paypal_sub_id"] for t in active_adm)
+    assert any("***@" not in t["operator_email"] for t in active_adm)
+
 
 

@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from jwcrypto.jwk import JWK
 
 from backend.server import app
+from backend.config import settings
 from backend.services.paypal_oidc_service import (
     PayPalOidcService,
     _b64url_encode,
@@ -309,8 +310,11 @@ def test_post_registration_identity_attest(client):
     assert attest_data["payerId"] == payer_id
     assert attest_data["identityAttested"] is True
 
-    # Retrieve attestation via GET endpoint
-    get_resp = client.get(f"/api/agent/identity/attestation/{kid}")
+    # Retrieve attestation via GET endpoint (admin gets unmasked details)
+    get_resp = client.get(
+        f"/api/agent/identity/attestation/{kid}",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
     assert get_resp.status_code == 200
     get_data = get_resp.json()
     assert get_data["payerId"] == payer_id

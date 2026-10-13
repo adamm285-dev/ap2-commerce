@@ -2478,12 +2478,27 @@ def _mask_name(name: Optional[str]) -> str:
     return " ".join([f"{p[0]}***" for p in parts if p])
 
 
+def _mask_email(email: Optional[str]) -> Optional[str]:
+    """Masks an email for responses that any non-admin client can request."""
+    if not email or "@" not in email:
+        return email
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}"
+
+
+def _mask_identifier(val: Optional[str]) -> Optional[str]:
+    """Masks sensitive identifiers (vault tokens, buyer key IDs, payer IDs, sub IDs)."""
+    if not val or val in ("AWAITING_PAYPAL_TOKEN", "NONE"):
+        return val
+    if len(val) > 10:
+        return f"{val[:6]}***{val[-4:]}"
+    return f"{val[:3]}***"
+
+
 def _mask_sub_id(sub_id: Optional[str]) -> str:
     if not sub_id or sub_id in ("AWAITING_PAYPAL_TOKEN", "NONE"):
         return sub_id or "AWAITING_PAYPAL_TOKEN"
-    if len(sub_id) > 10:
-        return f"{sub_id[:6]}***{sub_id[-4:]}"
-    return f"{sub_id[:3]}***"
+    return _mask_identifier(sub_id) or "AWAITING_PAYPAL_TOKEN"
 
 
 def get_fleet_ledger(
@@ -2579,7 +2594,7 @@ def get_fleet_ledger(
             "status": status,
             "data_source": "Demo data",
             "operator_name": op_name,
-            "operator_email": op_email,
+            "operator_email": _mask_email(op_email) if mask_pii else op_email,
             "operator_split_bps": 8500,
             "operator_monthly_net": round(net_cents / 100, 2),
             "platform_margin_fee": round(margin_cents / 100, 2),

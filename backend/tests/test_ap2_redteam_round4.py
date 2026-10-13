@@ -16,6 +16,7 @@ import json
 import uuid
 
 import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
 from jwcrypto.jwk import JWK
 
@@ -28,9 +29,10 @@ from backend.services.mandate_revocation_service import (
 from backend.services.marketplace_payout_service import marketplace_payout_service
 from backend.services.paypal_service import paypal_service
 from backend.services.paypal_oidc_service import PayPalOidcService
-from backend.database import save_subscription, get_buyer_identity, get_subscription
+from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge
 from backend.config import settings
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+from backend.tests.ap2_test_utils import build_test_ap2_chains
 
 client = TestClient(app)
 
@@ -569,4 +571,127 @@ def test_rt4_live_mode_rejects_mock_oidc(monkeypatch):
     reg_detail = reg_resp.json()["detail"]
     assert reg_detail["error"] == "LIVE_OIDC_NOT_CONFIGURED"
     assert "LIVE_OIDC_NOT_CONFIGURED" in reg_detail["reason"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Latent Security Hardening Tests: Concurrency, Payment Source Binding, XSS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_rt4_direct_charge_unique_mandate_constraint_and_concurrency():
+    """
+    Direct charges must enforce an absolute UNIQUE constraint on mandate_id at the SQLite level,
+    and concurrent / repeated capture requests must fail closed with 409 REPLAY_DETECTED.
+    """
+    mandate_id = f"ord_uniq_{uuid.uuid4().hex[:10]}"
+    # 1. First insert succeeds
+    rec1 = record_direct_charge({
+        "charge_id": f"chg_{uuid.uuid4().hex[:10]}",
+        "mandate_id": mandate_id,
+        "buyer_key_id": "test-buyer",
+        "amount_cents": 4999,
+        "currency": "USD",
+        "payee_id": "payee_1",
+        "payment_source_id": "vault_paypal_token_default",
+        "paypal_capture_id": f"CAP-{uuid.uuid4().hex[:8].upper()}",
+        "status": "CAPTURED",
+        "merchant_receipt_jwt": f"jwt_{uuid.uuid4().hex[:8]}",
+    })
+    assert rec1["mandate_id"] == mandate_id
+
+    # 2. Duplicate insert with identical mandate_id fails with REPLAY_DETECTED
+    with pytest.raises(ValueError, match="REPLAY_DETECTED"):
+        record_direct_charge({
+            "charge_id": f"chg_{uuid.uuid4().hex[:10]}",
+            "mandate_id": mandate_id,
+            "buyer_key_id": "test-buyer-2",
+            "amount_cents": 4999,
+            "currency": "USD",
+            "payee_id": "payee_1",
+            "payment_source_id": "vault_paypal_token_default",
+            "paypal_capture_id": f"CAP-{uuid.uuid4().hex[:8].upper()}",
+            "status": "CAPTURED",
+            "merchant_receipt_jwt": f"jwt_{uuid.uuid4().hex[:8]}",
+        })
+
+    # 3. HTTP Gateway endpoint rejects replayed charge with 409 REPLAY_DETECTED
+    chains = build_test_ap2_chains(tier_id="ap2-batch", monthly_price=49.99)
+    req = {
+        "cartMandateJwt": chains["checkout_mandate_chain"],
+        "paymentMandateJwt": chains["payment_mandate_chain"],
+    }
+    resp1 = client.post("/v1/ap2/gateway/charges", json=req)
+    assert resp1.status_code == 201
+
+    resp2 = client.post("/v1/ap2/gateway/charges", json=req)
+    assert resp2.status_code == 409
+    assert resp2.json()["detail"]["error"] == "REPLAY_DETECTED"
+
+
+def test_rt4_payment_source_tenant_isolation_and_binding():
+    """
+    Payment source tokens must be strictly bound to the authenticated caller's buyer key / payer ID.
+    Cross-tenant reuse of vaulted payment sources must fail closed with 403 UNAUTHORIZED_PAYMENT_SOURCE.
+    """
+    # 1. Tenant A charges with a vaulted payment source
+    chains_a = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=200.0)
+    vault_source = f"vault_token_{uuid.uuid4().hex[:12]}"
+    req_a = {
+        "cartMandateJwt": chains_a["checkout_mandate_chain"],
+        "paymentMandateJwt": chains_a["payment_mandate_chain"],
+        "buyerKeyId": chains_a["owner_key"].kid,
+        "paymentSourceId": vault_source,
+    }
+    resp_a = client.post("/v1/ap2/gateway/charges", json=req_a)
+    assert resp_a.status_code == 201
+    assert resp_a.json()["status"] == "CAPTURED"
+
+    # 2. Attacker / Tenant B attempts to use Tenant A's vaulted payment source
+    chains_b = build_test_ap2_chains(tier_id="ap2-gateway", monthly_price=79.99, budget_cap=200.0)
+    req_b = {
+        "cartMandateJwt": chains_b["checkout_mandate_chain"],
+        "paymentMandateJwt": chains_b["payment_mandate_chain"],
+        "buyerKeyId": chains_b["owner_key"].kid,
+        "paymentSourceId": vault_source,
+    }
+    resp_b = client.post("/v1/ap2/gateway/charges", json=req_b)
+    assert resp_b.status_code == 403
+    assert resp_b.json()["detail"]["error"] == "UNAUTHORIZED_PAYMENT_SOURCE"
+
+    # 3. Unauthenticated / anonymous caller cannot use bound payment source
+    req_anon = {
+        "cartMandateJwt": chains_b["checkout_mandate_chain"],
+        "paymentMandateJwt": chains_b["payment_mandate_chain"],
+        "buyerKeyId": "unregistered-key-id",
+        "paymentSourceId": vault_source,
+    }
+    resp_anon = client.post("/v1/ap2/gateway/charges", json=req_anon)
+    assert resp_anon.status_code in (401, 403)
+
+
+def test_rt4_bryntum_dispatch_scheduler_template_escaping():
+    """
+    Verifies that BryntumDispatchScheduler.tsx defines escapeHtml and sanitizes
+    all dynamic record and event properties in raw HTML templates.
+    """
+    scheduler_file = Path("src/components/BryntumDispatchScheduler.tsx")
+    assert scheduler_file.is_file()
+    content = scheduler_file.read_text(encoding="utf-8")
+
+    # escapeHtml helper must be declared
+    assert "function escapeHtml" in content
+
+    # Resource renderer must sanitize dynamic fields
+    assert "${safeTitle}" in content
+    assert "${safeTrade}" in content
+    assert "${safeDid}" in content
+    assert "${safeThroughput}" in content
+    assert "${safeHealth}" in content
+
+    # Event renderer must sanitize dynamic fields
+    assert "${safeTitle}" in content
+    assert "${safeBadge}" in content
+    assert "${safeRawName}" in content
+    assert "${safeRawDepositStatus}" in content
+    assert "${safeIconCls}" in content
+
 

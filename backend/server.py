@@ -2314,6 +2314,8 @@ async def process_ap2_direct_charge_endpoint(request: DirectChargeRequest):
         if "UNREGISTERED_BUYER_KEY" in msg or "BUYER_KEY_MISMATCH" in msg:
             err_code = "BUYER_KEY_MISMATCH" if "BUYER_KEY_MISMATCH" in msg else "UNREGISTERED_BUYER_KEY"
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"status": "REJECTED", "error": err_code, "reason": msg})
+        elif "UNAUTHORIZED_PAYMENT_SOURCE" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"status": "REJECTED", "error": "UNAUTHORIZED_PAYMENT_SOURCE", "reason": msg})
         elif "MANDATE_REVOKED" in msg:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"status": "REJECTED", "error": "MANDATE_REVOKED", "reason": msg})
         elif "REPLAY_DETECTED" in msg:

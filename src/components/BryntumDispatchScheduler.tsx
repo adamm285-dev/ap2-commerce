@@ -58,6 +58,16 @@ import {
   lockTerritorySlot,
 } from '../services/paypalAgentService';
 
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Parsing & Enrichment Helpers for AP2 Autonomous Workload Fulfillment
 function getBuyerAgent(name: string): string {
   if (name.includes('101') || name.includes('Synthesis')) return 'agent:acme-ops';
@@ -1204,11 +1214,17 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             const suffix = record.trade || parts[1]?.trim() || '';
             const conciseTitle = `${prefix}: ${suffix}`;
 
+            const safeTitle = escapeHtml(conciseTitle);
+            const safeTrade = escapeHtml(record.trade || '');
+            const safeDid = escapeHtml(record.did ? record.did.replace('.ap2.net', '') : '');
+            const safeThroughput = escapeHtml(record.throughput ? record.throughput.split('•')[0].trim() : '450 tasks/mo');
+            const safeHealth = escapeHtml(record.health || '100%');
+
             return `
               <div style="line-height:1.3;padding:4px 0;width:100%;overflow:hidden;">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
                   <span style="font-weight:700;color:#f8fafc;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                    ${conciseTitle}
+                    ${safeTitle}
                   </span>
                   <span style="font-size:8px;padding:1px 4px;border-radius:3px;font-weight:800;background:${isAssigned ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'};color:${isAssigned ? '#34d399' : '#fbbf24'};border:1px solid ${isAssigned ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'};flex-shrink:0;">
                     ${isAssigned ? 'ACTIVE' : 'PENDING'}
@@ -1216,14 +1232,14 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 </div>
                 <div style="display:flex;align-items:center;gap:4px;margin-top:2px;font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                   <span style="display:inline-block;width:5px;height:5px;border-radius:50%;background-color:${dotColor};flex-shrink:0;"></span>
-                  <span>${record.trade}</span>
+                  <span>${safeTrade}</span>
                   <span style="color:#475569;">&bull;</span>
-                  <span style="font-family:ui-monospace, monospace;color:#cbd5e1;font-size:9px;">${record.did ? record.did.replace('.ap2.net', '') : ''}</span>
+                  <span style="font-family:ui-monospace, monospace;color:#cbd5e1;font-size:9px;">${safeDid}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;margin-top:2px;font-size:9px;">
-                  <span style="color:#38bdf8;font-weight:600;">⚡ ${record.throughput ? record.throughput.split('•')[0].trim() : '450 tasks/mo'}</span>
+                  <span style="color:#38bdf8;font-weight:600;">⚡ ${safeThroughput}</span>
                   <span style="color:#475569;">&bull;</span>
-                  <span style="color:#34d399;font-weight:600;">${record.health || '100%'}</span>
+                  <span style="color:#34d399;font-weight:600;">${safeHealth}</span>
                 </div>
               </div>
             `;
@@ -1247,17 +1263,23 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         const shortTitle = getShortWorkloadTitle(eventRecord.name || '');
         const shortBadge = getShortBadge(eventRecord.depositStatus || '');
 
+        const safeTitle = escapeHtml(shortTitle);
+        const safeBadge = escapeHtml(shortBadge);
+        const safeRawName = escapeHtml(eventRecord.name || '');
+        const safeRawDepositStatus = escapeHtml(eventRecord.depositStatus || '');
+        const safeIconCls = escapeHtml(eventRecord.iconCls || '');
+
         return `
-          <div title="${eventRecord.name} • ${eventRecord.depositStatus}" style="display:flex;flex-direction:column;justify-content:center;width:100%;height:100%;padding:4px 8px;box-sizing:border-box;overflow:hidden;border-radius:6px;gap:3px;cursor:pointer;">
+          <div title="${safeRawName} • ${safeRawDepositStatus}" style="display:flex;flex-direction:column;justify-content:center;width:100%;height:100%;padding:4px 8px;box-sizing:border-box;overflow:hidden;border-radius:6px;gap:3px;cursor:pointer;">
             <div style="display:flex;align-items:center;gap:6px;width:100%;overflow:hidden;">
-              <i class="${eventRecord.iconCls}" style="font-size:10px;color:${badgeColor};flex-shrink:0;"></i>
+              <i class="${safeIconCls}" style="font-size:10px;color:${badgeColor};flex-shrink:0;"></i>
               <span style="font-size:11px;font-weight:800;color:#ffffff;text-shadow:0 1px 2px rgba(0,0,0,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-0.01em;">
-                ${shortTitle}
+                ${safeTitle}
               </span>
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:4px;">
               <span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background-color:${badgeBg};color:${badgeColor};border:1px solid ${badgeBorder};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:75%;box-shadow:0 1px 3px rgba(0,0,0,0.4);">
-                ${shortBadge}
+                ${safeBadge}
               </span>
               <span style="font-size:9px;font-weight:700;color:#e2e8f0;font-family:ui-monospace, monospace;flex-shrink:0;background:#090e17;padding:1px 5px;border-radius:3px;border:1px solid #1e293b;">
                 75m

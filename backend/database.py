@@ -211,7 +211,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
             -- Native AP2 Gateway Direct Rail Charges (Milestone S3-NATIVE / SPEC-001 v1.9.0)
             CREATE TABLE IF NOT EXISTS direct_charges (
                 charge_id TEXT PRIMARY KEY,
-                mandate_id TEXT NOT NULL,
+                mandate_id TEXT NOT NULL UNIQUE,
                 buyer_key_id TEXT NOT NULL,
                 amount_cents INTEGER NOT NULL,
                 currency TEXT NOT NULL DEFAULT 'USD',
@@ -225,9 +225,19 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 metadata_json TEXT,
                 created_at TEXT NOT NULL
             );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_direct_charges_mandate_unique ON direct_charges(mandate_id);
             CREATE INDEX IF NOT EXISTS idx_direct_charges_mandate ON direct_charges(mandate_id);
             CREATE INDEX IF NOT EXISTS idx_direct_charges_buyer_key ON direct_charges(buyer_key_id);
             CREATE INDEX IF NOT EXISTS idx_direct_charges_created ON direct_charges(created_at);
+
+            CREATE TABLE IF NOT EXISTS vault_payment_sources (
+                payment_source_id TEXT PRIMARY KEY,
+                buyer_key_id TEXT NOT NULL,
+                payer_id TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_vault_payment_sources_buyer_key ON vault_payment_sources(buyer_key_id);
+            CREATE INDEX IF NOT EXISTS idx_vault_payment_sources_payer ON vault_payment_sources(payer_id);
 
             CREATE TABLE IF NOT EXISTS open_mandate_settlements (
                 mandate_hash TEXT NOT NULL,
@@ -1329,6 +1339,8 @@ def record_direct_charge(
             "metadata": metadata,
             "created_at": now_iso,
         }
+    except sqlite3.IntegrityError as e:
+        raise ValueError(f"REPLAY_DETECTED: Mandate '{mandate_id}' has already been captured and settled.") from e
     finally:
         conn.close()
 
@@ -1408,6 +1420,82 @@ def is_direct_charge_replayed(
             if cur.fetchone() is not None:
                 return True
         return False
+    finally:
+        conn.close()
+
+
+def bind_vault_payment_source(
+    payment_source_id: str,
+    buyer_key_id: str,
+    payer_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Binds a vaulted payment source token to a registered buyer key and optional payer ID."""
+    if not payment_source_id or not buyer_key_id:
+        raise ValueError("payment_source_id and buyer_key_id are required to bind payment source.")
+    clean_source = payment_source_id.strip()
+    clean_kid = buyer_key_id.strip()
+    clean_payer = payer_id.strip() if payer_id and isinstance(payer_id, str) else None
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO vault_payment_sources (payment_source_id, buyer_key_id, payer_id, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(payment_source_id) DO UPDATE SET
+                    payer_id = COALESCE(excluded.payer_id, vault_payment_sources.payer_id)
+                """,
+                (clean_source, clean_kid, clean_payer, now_iso),
+            )
+        return {
+            "payment_source_id": clean_source,
+            "buyer_key_id": clean_kid,
+            "payer_id": clean_payer,
+            "created_at": now_iso,
+        }
+    finally:
+        conn.close()
+
+
+def get_vault_payment_source(
+    payment_source_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Retrieves vault payment source binding by ID."""
+    if not payment_source_id:
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT payment_source_id, buyer_key_id, payer_id, created_at FROM vault_payment_sources WHERE payment_source_id = ?",
+            (payment_source_id.strip(),),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_vault_payment_source_payer(
+    payment_source_id: str,
+    payer_id: str,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Updates the payer_id for an existing vault payment source binding."""
+    if not payment_source_id or not payer_id:
+        return False
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute(
+                "UPDATE vault_payment_sources SET payer_id = ? WHERE payment_source_id = ?",
+                (payer_id.strip(), payment_source_id.strip()),
+            )
+            return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -1993,6 +2081,7 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM payout_items")
             conn.execute("DELETE FROM payout_batches")
             conn.execute("DELETE FROM direct_charges")
+            conn.execute("DELETE FROM vault_payment_sources")
             op_placeholders = ",".join("?" for _ in DEFAULT_NODE_OPERATOR_IDS)
             conn.execute(f"DELETE FROM node_operators WHERE operator_id NOT IN ({op_placeholders})", list(DEFAULT_NODE_OPERATOR_IDS))
             if getattr(settings, "mock_external_apis", False):

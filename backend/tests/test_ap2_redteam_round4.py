@@ -260,11 +260,24 @@ async def test_rt4_self_attested_impostor_cannot_revoke():
     mandate_hash = f"mandate_proof_{uuid.uuid4().hex}"
     victim_key = _key("victim-orig")
     sub_id = f"I-VIC-{uuid.uuid4().hex[:8].upper()}"
+
+    # Store verified root token in recurring_mandates (authentic production purchase path)
+    from backend.database import save_recurring_mandate
+    v_hdr = base64.urlsafe_b64encode(json.dumps({"alg": "ES256", "kid": victim_key.kid, "typ": "JWT"}).encode()).rstrip(b"=").decode()
+    v_pay = base64.urlsafe_b64encode(json.dumps({"iss": victim_email, "sub": victim_email}).encode()).rstrip(b"=").decode()
+    v_token = f"{v_hdr}.{v_pay}.mock_sig"
+    save_recurring_mandate(
+        subscription_id=sub_id,
+        mandate_hash=mandate_hash,
+        open_payment_mandate_token=v_token,
+        buyer_email=victim_email,
+        agreed_amount_cents=4999,
+        currency="USD",
+    )
     sub = {
         "subscription_id": sub_id,
         "contractor_email": victim_email,
         "mandate_proof_hash": mandate_hash,
-        "owner_kid": victim_key.kid,
         "status": "ACTIVE",
     }
     save_subscription(dict(sub))
@@ -330,18 +343,38 @@ async def test_rt4_self_attested_impostor_cannot_revoke():
 
 @pytest.mark.asyncio
 async def test_rt4_signing_key_can_revoke_own_mandate():
-    """Legitimate owner key that signed the mandate can revoke it directly."""
+    """
+    Legitimate owner key that signed the mandate can revoke it directly.
+    Verified via authentic recurring_mandates root token rather than hand-injected owner_kid.
+    Also verifies that a buyer key containing 'seller' in its ID (e.g. bookseller-key) is NOT
+    falsely treated as a seller key.
+    """
+    from backend.database import save_recurring_mandate
+
+    # 1. Standard owner key
     k1 = _key("owner-k1")
     k1_email = f"owner-{uuid.uuid4().hex[:8]}@example.com"
     _enroll(k1, k1_email)
 
     sub_id = f"I-K1-{uuid.uuid4().hex[:8].upper()}"
     mandate_hash = f"mandate_proof_k1_{uuid.uuid4().hex}"
+
+    hdr_b64 = base64.urlsafe_b64encode(json.dumps({"alg": "ES256", "kid": k1.kid, "typ": "JWT"}).encode()).rstrip(b"=").decode()
+    pay_b64 = base64.urlsafe_b64encode(json.dumps({"iss": k1_email, "sub": k1_email}).encode()).rstrip(b"=").decode()
+    mock_token = f"{hdr_b64}.{pay_b64}.mock_sig"
+
+    save_recurring_mandate(
+        subscription_id=sub_id,
+        mandate_hash=mandate_hash,
+        open_payment_mandate_token=mock_token,
+        buyer_email=k1_email,
+        agreed_amount_cents=4999,
+        currency="USD",
+    )
     sub = {
         "subscription_id": sub_id,
         "contractor_email": k1_email,
         "mandate_proof_hash": mandate_hash,
-        "owner_kid": k1.kid,
         "status": "ACTIVE",
     }
     save_subscription(dict(sub))
@@ -369,6 +402,50 @@ async def test_rt4_signing_key_can_revoke_own_mandate():
     cur_sub = get_subscription(sub_id)
     assert cur_sub["status"] == "CANCELLED"
     assert _COMPLETED_SUBSCRIPTIONS[sub_id]["status"] == "CANCELLED"
+
+    # 2. Buyer key with "seller" in its name (e.g. bookseller-agent) is NOT rejected
+    bookseller_key = _key("bookseller-agent")
+    bookseller_email = f"bookseller-{uuid.uuid4().hex[:8]}@example.com"
+    _enroll(bookseller_key, bookseller_email)
+
+    bs_sub_id = f"I-BOOK-{uuid.uuid4().hex[:8].upper()}"
+    bs_mandate_hash = f"mandate_proof_bs_{uuid.uuid4().hex}"
+    bs_hdr = base64.urlsafe_b64encode(json.dumps({"alg": "ES256", "kid": bookseller_key.kid, "typ": "JWT"}).encode()).rstrip(b"=").decode()
+    bs_token = f"{bs_hdr}.{pay_b64}.mock_sig"
+
+    save_recurring_mandate(
+        subscription_id=bs_sub_id,
+        mandate_hash=bs_mandate_hash,
+        open_payment_mandate_token=bs_token,
+        buyer_email=bookseller_email,
+        agreed_amount_cents=4999,
+        currency="USD",
+    )
+    bs_sub = {
+        "subscription_id": bs_sub_id,
+        "contractor_email": bookseller_email,
+        "mandate_proof_hash": bs_mandate_hash,
+        "status": "ACTIVE",
+    }
+    save_subscription(dict(bs_sub))
+    _COMPLETED_SUBSCRIPTIONS[bs_sub_id] = bs_sub
+
+    bs_msg = canonical_revocation_message(bs_mandate_hash, now_iso, "Bookseller legitimate revocation")
+    bs_sig = sign_es256_challenge(bs_msg, bookseller_key)
+
+    bs_rev_resp = client.post(
+        "/api/mandates/revoke",
+        json={
+            "mandate_proof_hash": bs_mandate_hash,
+            "kid": bookseller_key.kid,
+            "reason": "Bookseller legitimate revocation",
+            "signature": bs_sig,
+            "timestamp_iso": now_iso,
+        },
+    )
+    assert bs_rev_resp.status_code == 200
+    assert bs_sub_id in bs_rev_resp.json()["cancelled_subscriptions"]
+    assert get_subscription(bs_sub_id)["status"] == "CANCELLED"
 
 
 @pytest.mark.asyncio

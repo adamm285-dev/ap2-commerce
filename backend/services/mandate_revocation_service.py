@@ -11,6 +11,8 @@ Enforces:
 
 from __future__ import annotations
 
+from ..config import settings
+
 import datetime
 import json
 import logging
@@ -56,11 +58,34 @@ def _parse_ts_to_seconds(ts_val: Any) -> Optional[float]:
     return None
 
 
+
+
+def _is_seller_or_merchant_key(kid: Optional[str]) -> bool:
+    """True if `kid` belongs to the seller node, platform merchant, or default seller key."""
+    if not kid or not isinstance(kid, str):
+        return False
+    from .crypto_mandate import DEFAULT_SELLER_KID
+    from .ap2_keys import get_merchant_key
+    try:
+        merchant_kid = get_merchant_key().kid
+    except Exception:
+        merchant_kid = None
+    configured_merchant_id = getattr(settings, "ap2_merchant_key_id", None) or "ap2-merchant-key-1"
+    known_seller_kids = {
+        DEFAULT_SELLER_KID,
+        "ap2-seller-node",
+        "ap2-seller-ed25519-v1",
+        merchant_kid,
+        configured_merchant_id,
+    }
+    return kid in known_seller_kids
+
 def resolve_mandate_owner(
     mandate_hash: str, db_path: Optional[Path] = None
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Resolves the contractor email, buyer_key_id, and creation timestamp bound to a mandate proof hash.
+    Prioritizes verified cryptographic root tokens in recurring_mandates over unverified raw_details_json.
     Returns (contractor_email, buyer_key_id, created_at).
     """
     clean = mandate_hash.strip()
@@ -76,27 +101,9 @@ def resolve_mandate_owner(
         if row:
             contractor_email = (row["contractor_email"] or "").strip().lower() or None
             owner_kid = None
-            if row.get("raw_details_json"):
-                try:
-                    rd = json.loads(row["raw_details_json"])
-                    if isinstance(rd, dict):
-                        owner_kid = rd.get("owner_kid") or rd.get("kid") or rd.get("buyer_key_id")
-                        if not owner_kid and "raw_details_json" in rd:
-                            try:
-                                nested = json.loads(rd["raw_details_json"]) if isinstance(rd["raw_details_json"], str) else rd["raw_details_json"]
-                                if isinstance(nested, dict):
-                                    owner_kid = nested.get("owner_kid") or nested.get("kid") or nested.get("buyer_key_id")
-                            except Exception:
-                                pass
-                        if not owner_kid and isinstance(rd.get("ap2_intent_mandate"), dict):
-                            mkid = rd["ap2_intent_mandate"].get("kid")
-                            if mkid and "seller" not in mkid:
-                                owner_kid = mkid
-                except Exception:
-                    pass
-            if owner_kid and "seller" in owner_kid:
-                owner_kid = None
-            if not owner_kid and row.get("subscription_id"):
+
+            # Prioritize verified owner-signed root token from recurring_mandates
+            if row.get("subscription_id"):
                 cur.execute(
                     "SELECT open_payment_mandate_token FROM recurring_mandates WHERE subscription_id = ? LIMIT 1",
                     (row["subscription_id"],),
@@ -118,10 +125,33 @@ def resolve_mandate_owner(
                                 header_b64 += "=" * (4 - rem)
                             hdr = json.loads(base64.urlsafe_b64decode(header_b64).decode("utf-8"))
                             hkid = hdr.get("kid")
-                            if hkid and "seller" not in hkid:
+                            if hkid and not _is_seller_or_merchant_key(hkid):
                                 owner_kid = hkid
                     except Exception:
                         pass
+
+            # Fall back to unverified stored details only if no signed recurring token was found
+            if not owner_kid and row.get("raw_details_json"):
+                try:
+                    rd = json.loads(row["raw_details_json"])
+                    if isinstance(rd, dict):
+                        owner_kid = rd.get("owner_kid") or rd.get("kid") or rd.get("buyer_key_id")
+                        if not owner_kid and "raw_details_json" in rd:
+                            try:
+                                nested = json.loads(rd["raw_details_json"]) if isinstance(rd["raw_details_json"], str) else rd["raw_details_json"]
+                                if isinstance(nested, dict):
+                                    owner_kid = nested.get("owner_kid") or nested.get("kid") or nested.get("buyer_key_id")
+                            except Exception:
+                                pass
+                        if not owner_kid and isinstance(rd.get("ap2_intent_mandate"), dict):
+                            mkid = rd["ap2_intent_mandate"].get("kid")
+                            if mkid and not _is_seller_or_merchant_key(mkid):
+                                owner_kid = mkid
+                except Exception:
+                    pass
+            if owner_kid and _is_seller_or_merchant_key(owner_kid):
+                owner_kid = None
+
             return contractor_email, owner_kid, row.get("created_at")
 
         # 1.5 Check recurring_mandates table (stores verified owner-signed open payment mandate)
@@ -149,7 +179,7 @@ def resolve_mandate_owner(
                             header_b64 += "=" * (4 - rem)
                         hdr = json.loads(base64.urlsafe_b64decode(header_b64).decode("utf-8"))
                         hkid = hdr.get("kid")
-                        if hkid and "seller" not in hkid:
+                        if hkid and not _is_seller_or_merchant_key(hkid):
                             owner_kid = hkid
                 except Exception:
                     pass
@@ -171,11 +201,11 @@ def resolve_mandate_owner(
                         owner_kid = dj.get("owner_kid") or dj.get("kid")
                         if not owner_kid and isinstance(dj.get("ap2_mandate"), dict):
                             mkid = dj["ap2_mandate"].get("kid")
-                            if mkid and "seller" not in mkid:
+                            if mkid and not _is_seller_or_merchant_key(mkid):
                                 owner_kid = mkid
                 except Exception:
                     pass
-            if owner_kid and "seller" in owner_kid:
+            if owner_kid and _is_seller_or_merchant_key(owner_kid):
                 owner_kid = None
             reg_at = str(row.get("registered_at")) if row.get("registered_at") else None
             return contractor_email, owner_kid, reg_at
@@ -329,17 +359,19 @@ async def revoke_mandate(
                 if clean_hash in (p_hash, chk_h, off_id, s_id, sub_id_str):
                     target_email = (s_data.get("contractor_email") or "").strip().lower() or None
                     target_created_at = s_data.get("created_at")
-                    target_kid = s_data.get("owner_kid") or s_data.get("kid") or s_data.get("buyer_key_id")
-                    if target_kid and "seller" in target_kid:
-                        target_kid = None
+                    target_kid = None
+                    if sub_id_str:
+                        _, sub_kid, _ = resolve_mandate_owner(sub_id_str, db_path=db_path)
+                        if sub_kid and not _is_seller_or_merchant_key(sub_kid):
+                            target_kid = sub_kid
+                    if not target_kid:
+                        target_kid = s_data.get("owner_kid") or s_data.get("kid") or s_data.get("buyer_key_id")
+                        if target_kid and _is_seller_or_merchant_key(target_kid):
+                            target_kid = None
                     if not target_kid and isinstance(s_data.get("ap2_intent_mandate"), dict):
                         mkid = s_data["ap2_intent_mandate"].get("kid")
-                        if mkid and "seller" not in mkid:
+                        if mkid and not _is_seller_or_merchant_key(mkid):
                             target_kid = mkid
-                    if not target_kid and sub_id_str:
-                        _, sub_kid, _ = resolve_mandate_owner(sub_id_str, db_path=db_path)
-                        if sub_kid and "seller" not in sub_kid:
-                            target_kid = sub_kid
                     break
 
     # Fail closed: If no mandate or subscription exists matching clean_hash, refuse (F1)

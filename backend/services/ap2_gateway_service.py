@@ -204,7 +204,7 @@ class Ap2GatewayService:
                 )
 
         # 6. Verify that the signed instrument is registered to the verified mandate root owner key
-        verified_pay_root_kid = res.get("payment_root_kid") or extract_token_root_kid(payment_mandate_jwt)
+        verified_pay_root_kid = res.get("payment_root_kid")
         if not verified_pay_root_kid:
             raise ValueError("UNAUTHORIZED_PAYMENT_SOURCE: Cannot determine root key ID of verified payment mandate.")
 

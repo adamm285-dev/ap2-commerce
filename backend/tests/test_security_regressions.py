@@ -528,7 +528,6 @@ def _pending_reply(**overrides):
     return reply
 
 
-@KNOWN_ISSUE("The copilot's approve path records a subscription with no AP2 mandates and no PayPal call, even after the mandate check rejects.")
 @pytest.mark.parametrize("budget", [5.00, 49.98, 100.00])
 def test_copilot_never_records_a_subscription_without_receipts(mode, no_network, budget):
     before = set(_COMPLETED_SUBSCRIPTIONS)

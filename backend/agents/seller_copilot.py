@@ -80,19 +80,59 @@ class SellerCopilot:
         # Priority 1: Approval / Execution
         if any(w in msg for w in ["approve", "setup", "activate", "execute", "go ahead", "do it"]) or msg in ["yes", "yep", "yeah", "ok", "okay"]:
             exec_result = await self.execute_autonomous_a2a_cycle()
-            did = exec_result.get("assigned_did", "mcp+https://gateway-01.example.com/mcp")
-            qbo = exec_result.get("zapier_sync", {}).get("qbo_draft_invoice_id", "QBO-EXP-9921")
-            sub_price = 79.99
-            if exec_result.get("protocol_trace") and len(exec_result["protocol_trace"]) > 0:
-                sub_price = exec_result["protocol_trace"][0].get("authorized_amount", 79.99)
+            exec_status = exec_result.get("status")
+            if exec_status == "REJECTED":
+                reason = exec_result.get("reason") or "Spending mandate check rejected the request."
+                reply = (
+                    f"❌ **Spending Mandate Rejected**\n\n"
+                    f"The autonomous purchase could not proceed because the mandate evaluation rejected it:\n"
+                    f"• **Reason**: {reason}\n\n"
+                    f"No subscription was recorded, no compute node was provisioned, and no back-office sync was dispatched."
+                )
+                return {
+                    "reply": reply,
+                    "phase": "REJECTED",
+                    "telemetry": telemetry,
+                    "suggested_actions": [
+                        "Review spending mandate",
+                        "What's my monthly budget cap?",
+                        "Check pending workload queue",
+                    ],
+                    "execution_result": exec_result,
+                }
+
+            if exec_status != "SUCCESS":
+                reason = exec_result.get("reason") or "Purchases go through the buyer wallet flow."
+                reply = (
+                    f"🔒 **Buyer Wallet Required**\n\n"
+                    f"Mandate policy evaluation succeeded, but the server cannot sign owner limits or execute purchases outside mock mode.\n"
+                    f"• **Detail**: {reason}\n\n"
+                    f"Please complete the purchase through the buyer wallet flow."
+                )
+                return {
+                    "reply": reply,
+                    "phase": "WALLET_REQUIRED",
+                    "telemetry": telemetry,
+                    "suggested_actions": [
+                        "Review spending mandate",
+                        "Check pending workload queue",
+                    ],
+                    "execution_result": exec_result,
+                }
+
+            did = exec_result.get("assigned_did") or "not available (missing)"
+            qbo = (exec_result.get("zapier_sync") or {}).get("qbo_draft_invoice_id") or "not available (missing)"
+            sub_id = exec_result.get("subscription_id") or "not available (missing)"
+            sub_price = exec_result.get("monthly_amount")
+            price_str = f"${sub_price:.2f}/mo" if isinstance(sub_price, (int, float)) else "missing amount"
 
             reply = (
                 f"🎉 **Autonomous A2A Setup Complete!**\n\n"
-                f"I negotiated the agreement with the AP2 Seller Node and executed your recurring **${sub_price:.2f}/mo PayPal subscription**.\n\n"
+                f"I negotiated the agreement with the AP2 Seller Node and executed your recurring **{price_str} PayPal subscription** (`{sub_id}`).\n\n"
                 f"• **Dedicated Compute Endpoint**: `{did}` (Bound to {self.business_entity})\n"
-                f"• **RFC 8032 Security**: 100% Ed25519 Cryptographic Dual Mandates\n"
+                f"• **AP2 v0.2 Security**: Verified ES256 Checkout & Payment Mandate Chains\n"
                 f"• **ERP Automation**: Provisioned and active on cluster schedule\n"
-                f"• **QuickBooks Online**: Monthly software subscription expense recorded ({qbo})\n\n"
+                f"• **QuickBooks Online**: Monthly software subscription expense recorded (`{qbo}`)\n\n"
                 f"You're completely live! Workload tasks will now be automatically routed and executed under your spending mandate."
             )
             return {
@@ -154,12 +194,16 @@ class SellerCopilot:
 
         # Priority 3: Audit Trail & M2M Protocol Inspection
         if any(w in msg for w in ["audit", "inspect", "protocol", "trail", "trace", "proof", "hmac", "m2m", "evidence"]):
+            from ..api.m2m_audit import get_latest_artifacts
+            latest = get_latest_artifacts() or {}
+            latest_sub = latest.get("paypal_subscription_id") or "not available (no run recorded)"
+            latest_qbo = (latest.get("quickbooks") or {}).get("purchase_id") or "not available (no run recorded)"
             reply = (
-                f"🛡️ **A2A Protocol Cryptographic Audit Trail Verified:**\n\n"
-                f"• **Step 1: Mandate Evaluation (RFC 8032)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog. Sealed via Ed25519 dual-key signatures and HMAC-SHA256 integrity.\n"
-                f"• **Step 2: PayPal Subscriptions Rails**: Authenticated recurring billing agreement (`I-AUTONOMOUS-8902`) with PayPal Vault merchant-initiated tokenization for zero off-session human intervention.\n"
+                f"🛡️ **A2A Protocol Cryptographic Audit Trail:**\n\n"
+                f"• **Step 1: Mandate Evaluation (RFC 8032 / ES256)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog.\n"
+                f"• **Step 2: PayPal Subscriptions Rails**: Recurring billing agreement (`{latest_sub}`).\n"
                 f"• **Step 3: MCP Endpoint Binding**: Dedicated mcp+https compute endpoint provisioned with MCP over HTTPS (JSON-RPC 2.0).\n"
-                f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to QuickBooks Online API v3 expense in Account 6300 (`QBO-EXP-9921`).\n\n"
+                f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to QuickBooks Online API v3 expense in Account 6300 (`{latest_qbo}`).\n\n"
                 f"You can review the live JSON-RPC 2.0 frames in the right panel or click **Back-Office Payloads** in the top bar for raw artifacts."
             )
             return {
@@ -245,11 +289,14 @@ class SellerCopilot:
 
         # Priority 7: Back-Office Payloads Inquiry
         if any(w in msg for w in ["payload", "back-office", "erp", "qbo", "quickbooks"]):
+            from ..api.m2m_audit import get_latest_artifacts
+            latest = get_latest_artifacts() or {}
+            latest_qbo = (latest.get("quickbooks") or {}).get("purchase_id") or "not available (no run recorded)"
             reply = (
                 f"📄 **Back-Office Artifact Inspector:**\n\n"
                 f"Every autonomous transaction generates authentic downline settlement payloads:\n"
-                f"• **QuickBooks Online API v3**: Purchase expense memo (`QBO-EXP-9921`) categorized to Account 6300 (Software & SaaS)\n"
-                f"• **Ed25519 Cryptographic Proof**: Dual mandate authorization validating exact parameters\n\n"
+                f"• **QuickBooks Online API v3**: Purchase expense memo (`{latest_qbo}`) categorized to Account 6300 (Software & SaaS)\n"
+                f"• **Cryptographic Proof**: Dual mandate authorization validating exact parameters\n\n"
                 f"Click **Back-Office Payloads** in the top bar to inspect the raw JSON structures."
             )
             return {
@@ -302,14 +349,17 @@ class SellerCopilot:
             "proposal": None,
         }
 
+    # MOCK(M-026): executes a mock-mode AP2 purchase server-side when the copilot approves
     async def execute_autonomous_a2a_cycle(self) -> Dict[str, Any]:
         """
-        Executes the genuine machine-to-machine exchange through the MCP Server:
-        1. Mandate evaluation & Ed25519 signature
-        2. PayPal subscription token authorization
+        Executes the machine-to-machine exchange through the MCP Server:
+        1. Mandate evaluation (and counter-offer check if applicable)
+        2. In mock mode only: AP2 v0.2 purchase via execute_mock_deck_purchase
         3. Dedicated compute node endpoint provisioning
         4. Downline Zapier sync into QBO
         """
+        from ..config import settings
+
         protocol_trace: List[Dict[str, Any]] = []
 
         # Step 1: Programmatic Spending Mandate Verification
@@ -331,7 +381,7 @@ class SellerCopilot:
         }
         mandate_resp = await process_mcp_request(mandate_req)
         mandate_data = json.loads(mandate_resp["result"]["content"][0]["text"])
-        approved = mandate_data.get("approved", False)
+        approved = bool(mandate_data.get("approved", False))
         monthly_price = 79.99
         tier_title = "Dedicated AI Service Gateway"
 
@@ -358,11 +408,21 @@ class SellerCopilot:
                 }
                 c_resp = await process_mcp_request(counter_req)
                 mandate_data = json.loads(c_resp["result"]["content"][0]["text"])
-                approved = mandate_data.get("approved", False)
-                monthly_price = counter_amount
-                tier_title = f"{counter_tier} (Negotiated)"
+                approved = bool(mandate_data.get("approved", False))
+                if approved:
+                    monthly_price = counter_amount
+                    tier_title = f"{counter_tier} (Negotiated)"
 
-        proof_hash = mandate_data.get("mandateProofHash") or mandate_data.get("mandate_proof_hash", "PROOF-MOCK")
+        raw_proof = mandate_data.get("mandateProofHash") or mandate_data.get("mandate_proof_hash")
+        proof_hash = raw_proof if raw_proof else None
+        reason = mandate_data.get("reason")
+        authorized_amt = float(mandate_data.get("authorizedAmount") or mandate_data.get("authorized_amount") or (monthly_price if approved else 0.0))
+        remaining_budget = mandate_data.get("monthlyCapRemaining")
+        if remaining_budget is None:
+            remaining_budget = mandate_data.get("monthly_cap_remaining")
+        if remaining_budget is None:
+            remaining_budget = round(self.budget_cap - authorized_amt, 2) if approved else self.budget_cap
+
         protocol_trace.append({
             "step": 1,
             "timestamp": t1,
@@ -371,64 +431,79 @@ class SellerCopilot:
             "decision": "APPROVED" if approved else "REJECTED",
             "proof_hash": proof_hash,
             "budget_cap": self.budget_cap,
-            "authorized_amount": monthly_price,
-            "remaining_budget": self.budget_cap - monthly_price,
+            "authorized_amount": authorized_amt,
+            "remaining_budget": remaining_budget,
             "tier_title": tier_title,
+            "reason": reason,
         })
 
-        # Step 2: PayPal Delegated Subscription Token
+        if not approved:
+            return {
+                "status": "REJECTED",
+                "reason": reason or "Spending mandate check rejected the request.",
+                "protocol_trace": protocol_trace,
+            }
+
+        if not getattr(settings, "mock_external_apis", False):
+            return {
+                "status": "WALLET_REQUIRED",
+                "reason": "Outside mock mode, the copilot does not execute purchases; purchases go through the buyer wallet flow.",
+                "protocol_trace": protocol_trace,
+            }
+
+        tier_target = "ap2-gateway" if monthly_price == 79.99 else ("ap2-batch" if monthly_price == 49.99 else "ap2-cluster")
+
+        # Step 2 & 3: Execute AP2 v0.2 purchase and node provisioning via shared mock deck purchase flow
         t2 = datetime.now(timezone.utc).isoformat()
-        sub_id = f"I-AUTONOMOUS-{uuid.uuid4().hex[:8].upper()}"
-        from .seller_agent import _COMPLETED_SUBSCRIPTIONS
-        _COMPLETED_SUBSCRIPTIONS[sub_id] = {
-            "status": "ACTIVE",
-            "subscription_id": sub_id,
-            "contractor_email": self.contractor_email,
-            "contractor_name": self.contractor_name,
-            "business_entity": self.business_entity,
-            "agreed_monthly_rate": monthly_price,
-            "tier_id": "ap2-gateway" if monthly_price == 79.99 else ("ap2-batch" if monthly_price == 49.99 else "ap2-cluster"),
-            "mandate_proof_hash": proof_hash,
-        }
+        from ..server import execute_mock_deck_purchase
+        deck_res = await execute_mock_deck_purchase(
+            tier_id=tier_target,
+            agreed_monthly_rate=monthly_price,
+            buyer_email=self.contractor_email,
+            contractor_name=self.contractor_name,
+            business_entity=self.business_entity,
+            monthly_budget_cap=self.budget_cap,
+        )
+        if deck_res.get("status") != "ACTIVE":
+            detail = deck_res.get("detail") or {}
+            rej_reason = detail.get("reason") or detail.get("message") or "AP2 purchase rejected."
+            return {
+                "status": "REJECTED",
+                "reason": rej_reason,
+                "protocol_trace": protocol_trace,
+            }
+
+        purchase_res = deck_res.get("purchaseResult") or {}
+        prov_res = deck_res.get("provisionResult") or {}
+        sub_id = purchase_res.get("subscription_id") or deck_res.get("subscriptionId")
+        plan_id = purchase_res.get("plan_id")
+        verified_proof = purchase_res.get("mandate_proof_hash") or proof_hash
+        protocol_trace[0]["proof_hash"] = verified_proof
+
         protocol_trace.append({
             "step": 2,
             "timestamp": t2,
             "protocol": "PayPal Subscriptions v1",
             "action": "AUTHORIZE_BILLING_AGREEMENT",
             "subscription_id": sub_id,
-            "plan_id": "P-AP2-SERVICE-GATEWAY",
-            "monthly_amount": monthly_price,
+            "plan_id": plan_id,
+            "monthly_amount": purchase_res.get("agreed_monthly_rate", monthly_price),
             "payer_entity": self.business_entity,
+            "checkout_receipt": purchase_res.get("checkout_receipt"),
+            "payment_receipt": purchase_res.get("payment_receipt"),
         })
 
-        # Step 3: Compute Node Endpoint Provisioning
         t3 = datetime.now(timezone.utc).isoformat()
-        tier_target = "ap2-gateway" if monthly_price == 79.99 else ("ap2-batch" if monthly_price == 49.99 else "ap2-cluster")
-        prov_req = {
-            "jsonrpc": "2.0",
-            "id": 102,
-            "method": "tools/call",
-            "params": {
-                "name": "provision_compute_node",
-                "arguments": {
-                    "subscription_id": sub_id,
-                    "contractor_email": self.contractor_email,
-                    "tier_id": tier_target,
-                },
-            },
-        }
-        prov_resp = await process_mcp_request(prov_req)
-        prov_data = json.loads(prov_resp["result"]["content"][0]["text"])
-        assigned_did = prov_data.get("mcp_endpoint") or prov_data.get("assigned_did") or "mcp+https://gateway-01.example.com/mcp"
+        assigned_did = prov_res.get("assigned_did") or prov_res.get("endpoint") or deck_res.get("assignedDid")
         protocol_trace.append({
             "step": 3,
             "timestamp": t3,
             "protocol": "MCP JSON-RPC 2.0",
             "method": "tools/call:provision_compute_node",
             "assigned_did": assigned_did,
-            "carrier": "MCP over HTTPS (JSON-RPC 2.0)",
-            "routing_state": "ACTIVE_COMPUTE_NODE",
-            "attestation_status": "100% ED25519 SIGNED MANDATE",
+            "carrier": prov_res.get("carrier"),
+            "routing_state": prov_res.get("routing_state"),
+            "node_id": prov_res.get("node_id"),
         })
 
         # Step 4: Downline Zapier MCP Dispatch (QBO)
@@ -448,7 +523,7 @@ class SellerCopilot:
                     "monthly_subscription_fee": monthly_price,
                     "paypal_subscription_id": sub_id,
                     "contractor_email": self.contractor_email,
-                    "mandate_proof_hash": proof_hash,
+                    "mandate_proof_hash": verified_proof,
                 },
             },
         }
@@ -462,14 +537,17 @@ class SellerCopilot:
             "qbo_expense_id": zap_data.get("qbo_draft_invoice_id") or zap_data.get("qboDraftInvoiceId"),
             "gcal_event_id": zap_data.get("google_calendar_event_id") or zap_data.get("googleCalendarEventId"),
             "qbo_export": zap_data.get("qbo_payload") or zap_data.get("qboPayload"),
-            "status": "COMPLETED",
+            "status": zap_data.get("status"),
         })
 
         return {
             "status": "SUCCESS",
             "subscription_id": sub_id,
             "assigned_did": assigned_did,
-            "mandate_proof": proof_hash,
+            "mandate_proof": verified_proof,
+            "monthly_amount": purchase_res.get("agreed_monthly_rate", monthly_price),
+            "checkout_receipt": purchase_res.get("checkout_receipt"),
+            "payment_receipt": purchase_res.get("payment_receipt"),
             "protocol_trace": protocol_trace,
             "zapier_sync": zap_data,
         }

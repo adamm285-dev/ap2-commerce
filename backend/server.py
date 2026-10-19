@@ -920,7 +920,7 @@ async def copilot_chat_endpoint(req: CopilotChatRequest):
         contractor_name=req.contractorName or "Demo Autonomous Buyer",
         business_entity=req.businessEntity or "Demo Buyer Corp",
         trade_vertical=req.tradeVertical or "Autonomous Compute & Worker Nodes",
-        budget_cap=req.budgetCap or 100.00,
+        budget_cap=req.budgetCap if req.budgetCap is not None else 100.00,
         simulate_exhaustion=req.simulateExhaustion or False,
     )
     res = await copilot.handle_message(req.message)
@@ -1093,19 +1093,29 @@ class DeckPurchaseRequest(BaseModel):
 
 
 # MOCK(M-007): server plays owner, agent and seller in one request
-@app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
-async def deck_purchase_endpoint(req: DeckPurchaseRequest):
+async def execute_mock_deck_purchase(
+    tier_id: str,
+    agreed_monthly_rate: float,
+    buyer_email: str = "agent-alpha@example.com",
+    contractor_name: str = "AutonomousBuyerAgent-Alpha-Batch",
+    business_entity: str = "Acme Compute Co",
+    monthly_budget_cap: float = 100.0,
+    checkout_jwt: Optional[str] = None,
+    checkout_hash: Optional[str] = None,
+    nonce: Optional[str] = None,
+    offer_id: Optional[str] = None,
+    open_checkout_mandate_token: Optional[str] = None,
+    open_payment_mandate_token: Optional[str] = None,
+    paypal_subscription_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Executes an AP2 v0.2 purchase and provisioning flow for the UI deck simulator.
-    Uses owner-signed limits (mock Trusted Surface) and closes mandates via the
-    buyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.
-    Only available when MOCK_EXTERNAL_APIS=true (AGENTS.md rule 5).
+    Shared mock-mode AP2 v0.2 purchase and provisioning helper.
+    Mints owner-signed limits (mock Trusted Surface), negotiates checkout terms,
+    closes mandates via the buyer agent key, presents AP2 v0.2 chains to
+    seller_agent.purchase_subscription, and provisions the compute node.
     """
     if not getattr(settings, "mock_external_apis", True):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Deck purchase simulation is only available when MOCK_EXTERNAL_APIS=true.",
-        )
+        raise ValueError("Mock deck purchase is only available when MOCK_EXTERNAL_APIS=true.")
 
     from ap2.sdk.mandate import MandateClient
     from ap2.sdk.generated.checkout_mandate import CheckoutMandate
@@ -1116,22 +1126,22 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     from .services.ap2_keys import get_demo_agent_key, get_demo_user_key
     from .services.ap2_service import AP2_MERCHANT_ID, AP2_MERCHANT_NAME
 
-    tier = req.tier_id.strip().lower()
-    buyer_email = req.buyer_email.strip().lower()
-    if "@" not in buyer_email:
-        buyer_email = f"{buyer_email}@example.com" if buyer_email else "agent-alpha@example.com"
+    tier = tier_id.strip().lower()
+    email = buyer_email.strip().lower()
+    if "@" not in email:
+        email = f"{email}@example.com" if email else "agent-alpha@example.com"
 
     # 1. Obtain or verify open mandate tokens from Trusted Surface
-    open_chk = req.open_checkout_mandate_token
-    open_pay = req.open_payment_mandate_token
+    open_chk = open_checkout_mandate_token
+    open_pay = open_payment_mandate_token
     agent_key = get_demo_agent_key()
     owner_key = get_demo_user_key()
 
     if not open_chk or not open_pay:
         limits = create_trusted_surface_open_mandates(
-            buyer_email=buyer_email,
-            monthly_budget_cap=req.monthly_budget_cap,
-            yearly_budget_ceiling=req.monthly_budget_cap * 12,
+            buyer_email=email,
+            monthly_budget_cap=monthly_budget_cap,
+            yearly_budget_ceiling=monthly_budget_cap * 12,
             allowed_tiers=["ap2-batch", "ap2-gateway", "ap2-cluster"],
             agent_key=agent_key,
             user_key=owner_key,
@@ -1140,20 +1150,15 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         open_pay = limits["open_payment_mandate_token"]
 
     # 2. Obtain or negotiate checkout terms from merchant
-    checkout_jwt = req.checkout_jwt
-    checkout_hash = req.checkout_hash
-    nonce = req.nonce
-    offer_id = req.offer_id
-
     if not checkout_jwt or not checkout_hash or not nonce:
         nego = await seller_agent.negotiate_tier_terms(
             tier_id=tier,
-            monthly_budget_cap=req.monthly_budget_cap,
-            buyer_agent_id=req.contractor_name,
-            contractor_email=buyer_email,
+            monthly_budget_cap=monthly_budget_cap,
+            buyer_agent_id=contractor_name,
+            contractor_email=email,
         )
         if nego.get("status") == "REJECTED":
-            raise HTTPException(status_code=400, detail=nego)
+            return {"status": "REJECTED", "detail": nego}
         checkout_jwt = nego.get("checkout_jwt")
         checkout_hash = nego.get("checkout_hash")
         nonce = nego.get("nonce")
@@ -1175,8 +1180,8 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         nonce=nonce,
     )
 
-    cents = int(round(req.agreed_monthly_rate * 100))
-    paypal_sub = req.paypal_subscription_id or f"I-AUTONOMOUS-{uuid.uuid4().hex[:6].upper()}"
+    cents = int(round(agreed_monthly_rate * 100))
+    paypal_sub = paypal_subscription_id or f"I-AUTONOMOUS-{uuid.uuid4().hex[:6].upper()}"
     pay_chain = mc.present(
         holder_key=agent_key,
         mandate_token=open_pay,
@@ -1196,10 +1201,10 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     # 4. Settle purchase with dual chains
     purchase_res = await seller_agent.purchase_subscription(
         tier_id=tier,
-        agreed_monthly_rate=req.agreed_monthly_rate,
-        buyer_email=buyer_email,
-        contractor_name=req.contractor_name,
-        business_entity=req.business_entity,
+        agreed_monthly_rate=agreed_monthly_rate,
+        buyer_email=email,
+        contractor_name=contractor_name,
+        business_entity=business_entity,
         paypal_subscription_id=paypal_sub,
         checkout_mandate_chain=chk_chain,
         payment_mandate_chain=pay_chain,
@@ -1208,22 +1213,22 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     )
 
     if purchase_res.get("status") != "ACTIVE":
-        raise HTTPException(status_code=400, detail=purchase_res)
+        return {"status": purchase_res.get("status", "REJECTED"), "detail": purchase_res}
 
     # 5. Provision compute node
     sub_id = purchase_res["subscription_id"]
     prov_res = await seller_agent.provision_compute_node(
         subscription_id=sub_id,
-        buyer_email=buyer_email,
+        buyer_email=email,
         node_type="gateway" if "gateway" in tier else "batch" if "batch" in tier else "cluster",
-        contractor_email=buyer_email,
+        contractor_email=email,
     )
 
     return {
         "status": "ACTIVE",
         "subscriptionId": sub_id,
         "assignedDid": prov_res.get("assigned_did") or prov_res.get("endpoint"),
-        "carrier": prov_res.get("carrier") or "AP2 Autonomous Node Registry",
+        "carrier": prov_res.get("carrier"),
         "routingState": "ACTIVE_STREAMING",
         "receipt": purchase_res.get("payment_receipt") or purchase_res.get("checkout_receipt"),
         "checkoutReceipt": purchase_res.get("checkout_receipt"),
@@ -1232,11 +1237,49 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         "nodeType": prov_res.get("node_type"),
         "workloadTasksPerMonth": prov_res.get("workload_tasks_per_month"),
         "tierId": tier,
-        "monthlyAmount": req.agreed_monthly_rate,
+        "monthlyAmount": agreed_monthly_rate,
         "paypalSubscriptionId": paypal_sub,
-        "contractorName": req.contractor_name,
-        "businessEntity": req.business_entity,
+        "contractorName": contractor_name,
+        "businessEntity": business_entity,
+        "purchaseResult": purchase_res,
+        "provisionResult": prov_res,
     }
+
+
+# MOCK(M-007): server plays owner, agent and seller in one request
+@app.post("/api/agent/deck-purchase", tags=["Agent Purchase"])
+async def deck_purchase_endpoint(req: DeckPurchaseRequest):
+    """
+    Executes an AP2 v0.2 purchase and provisioning flow for the UI deck simulator.
+    Uses owner-signed limits (mock Trusted Surface) and closes mandates via the
+    buyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.
+    Only available when MOCK_EXTERNAL_APIS=true (AGENTS.md rule 5).
+    """
+    if not getattr(settings, "mock_external_apis", True):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck purchase simulation is only available when MOCK_EXTERNAL_APIS=true.",
+        )
+
+    res = await execute_mock_deck_purchase(
+        tier_id=req.tier_id,
+        agreed_monthly_rate=req.agreed_monthly_rate,
+        buyer_email=req.buyer_email,
+        contractor_name=req.contractor_name,
+        business_entity=req.business_entity,
+        monthly_budget_cap=req.monthly_budget_cap,
+        checkout_jwt=req.checkout_jwt,
+        checkout_hash=req.checkout_hash,
+        nonce=req.nonce,
+        offer_id=req.offer_id,
+        open_checkout_mandate_token=req.open_checkout_mandate_token,
+        open_payment_mandate_token=req.open_payment_mandate_token,
+        paypal_subscription_id=req.paypal_subscription_id,
+    )
+    if res.get("status") != "ACTIVE":
+        raise HTTPException(status_code=400, detail=res.get("detail", res))
+
+    return {k: v for k, v in res.items() if k not in ("purchaseResult", "provisionResult")}
 
 
 _RECENT_SLOT_LOCKS: "collections.deque[float]" = collections.deque()

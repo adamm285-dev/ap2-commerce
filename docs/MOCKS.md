@@ -47,7 +47,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** The owner signs in the browser or on a phone (WebCrypto or passkey); the server only verifies. Live mode already returns 404 here.
 
 ### M-007: Deck purchase runs the whole purchase server-side (mock mode only)
-- **Where:** `backend/server.py::deck_purchase_endpoint`
+- **Where:** `backend/server.py::execute_mock_deck_purchase`, `backend/server.py::deck_purchase_endpoint`
 - **What it fakes:** All three parties at once. The server signs owner limits, negotiates, and closes the mandates as the agent, using the M-005 demo keys.
 - **Why:** One-click purchase in the portal demo.
 - **To make it real:** The owner, agent and seller sign in separate places, as in the Claude Desktop flow (`backend/wallet/`).
@@ -141,6 +141,12 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **What it fakes:** Generation and server-side storage of unguessable payment source vault tokens (`vault_...`) bound to the owner's registered key without live PayPal Vault API calls.
 - **Why:** Offline testing and demo execution without live PayPal sandbox credentials (project rule 9).
 - **To make it real:** Call PayPal's `/v3/vault/payment-tokens` API with customer setup token and buyer approval, storing authentic PayPal vault tokens.
+
+### M-026: Copilot approval executes a server-side mock purchase (mock mode only)
+- **Where:** `backend/agents/seller_copilot.py::SellerCopilot.execute_autonomous_a2a_cycle`
+- **What it fakes:** When a user approves a proposal in the copilot chat and `MOCK_EXTERNAL_APIS=true`, the copilot calls `execute_mock_deck_purchase` (M-007) to mint owner limits, close AP2 v0.2 mandates with demo keys, settle the purchase, and provision a node in one server-side step. Outside mock mode, the copilot refuses to buy and directs the user to the buyer wallet flow.
+- **Why:** Lets the copilot chat demo complete an end-to-end AP2 v0.2 transaction offline in mock mode.
+- **To make it real:** Have the copilot return the merchant's Checkout JWT for the buyer wallet (`backend/wallet/`) to sign and submit via `purchase_subscription`.
 
 
 

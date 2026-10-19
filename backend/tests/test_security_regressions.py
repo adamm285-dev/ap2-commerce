@@ -19,6 +19,7 @@ import io
 import json
 import uuid
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from jwcrypto.jwk import JWK
@@ -33,7 +34,7 @@ from ap2.sdk.mandate import MandateClient
 
 from backend.agents import llm_buyer_agent
 from backend.agents.llm_buyer_agent import BaseModelRunner, LLMBuyerAgent
-from backend.agents.seller_agent import seller_agent
+from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS, seller_agent
 from backend.config import ROOT_DIR, get_db_path, settings
 from backend.database import register_buyer_key
 from backend.server import app
@@ -46,6 +47,7 @@ from backend.services.ap2_service import (
 )
 from backend.services.crypto_mandate import sign_es256_challenge
 from backend.services.mandate_evaluator import ledger
+from backend.services.paypal_service import paypal_service
 from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
 
 client = TestClient(app)
@@ -443,3 +445,154 @@ def test_buyer_agent_completes_without_access_to_owner_signing(monkeypatch):
 def test_tests_never_use_the_dev_database():
     dev_db = (ROOT_DIR / "backend" / "data" / "a2a_commerce.db").resolve()
     assert get_db_path().resolve() != dev_db
+
+
+# ── 7. No faked results (review 2026-10-16) ──────────────────────────────
+
+_PAYPAL_CREATED = {
+    "id": "I-REGRESSION0001",
+    "status": "APPROVAL_PENDING",
+    "create_time": "2026-10-16T12:00:00Z",
+    "links": [
+        {"href": "https://www.sandbox.paypal.com/webapps/billing/subscriptions?ba_token=BA-REGRESSION", "rel": "approve", "method": "GET"},
+        {"href": "https://api-m.sandbox.paypal.com/v1/billing/subscriptions/I-REGRESSION0001", "rel": "self", "method": "GET"},
+    ],
+}
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """Fails any outbound HTTP call. The in-process TestClient still works."""
+    original = httpx.Client.send
+
+    def guarded(self, request, *args, **kwargs):
+        if request.url.host == "testserver":
+            return original(self, request, *args, **kwargs)
+        raise RuntimeError(f"network call attempted: {request.url}")
+
+    async def blocked(self, request, *args, **kwargs):
+        raise RuntimeError(f"network call attempted: {request.url}")
+
+    monkeypatch.setattr(httpx.Client, "send", guarded)
+    monkeypatch.setattr(httpx.AsyncClient, "send", blocked)
+
+
+@pytest.fixture
+def fake_paypal_api(monkeypatch):
+    """Live-mode PayPal service with only the HTTP layer replaced. Returns the requests it was sent."""
+    sent = []
+
+    async def token(*args, **kwargs):
+        return "regression-token"
+
+    async def respond(self, request, *args, **kwargs):
+        sent.append(request)
+        return httpx.Response(201, json=_PAYPAL_CREATED, request=request)
+
+    monkeypatch.setattr(paypal_service, "mock_mode", False)
+    monkeypatch.setattr(paypal_service, "client_id", "")  # skip the Agent Toolkit branch, use direct REST
+    monkeypatch.setattr(paypal_service, "get_access_token", token)
+    monkeypatch.setattr(httpx.AsyncClient, "send", respond)
+    return sent
+
+
+@pytest.fixture
+def paypal_replies(monkeypatch, no_network):
+    """Replaces the PayPal subscription call with a live-shaped reply. Set ["reply"] before buying."""
+    holder = {}
+
+    async def create_subscription(**kwargs):
+        return dict(holder["reply"])
+
+    monkeypatch.setattr(paypal_service, "mock_mode", False)
+    monkeypatch.setattr(paypal_service, "create_subscription", create_subscription)
+    return holder
+
+
+def _create_live_subscription(email):
+    return _run(paypal_service.create_subscription(
+        tier_id="ap2-batch", agreed_monthly_rate=49.99, contractor_email=email,
+        contractor_name="Regression Buyer", offer_id="offer-regression", mandate_proof_hash="f" * 64,
+    ))
+
+
+def _pending_reply(**overrides):
+    reply = {
+        "subscription_id": f"I-REG{uuid.uuid4().hex[:10].upper()}",
+        "status": "APPROVAL_PENDING",
+        "approval_url": "https://www.sandbox.paypal.com/webapps/billing/subscriptions?ba_token=BA-REGRESSION",
+        "hateoas_links": [],
+        "mock_mode": False,
+    }
+    reply.update(overrides)
+    return reply
+
+
+@KNOWN_ISSUE("The copilot's approve path records a subscription with no AP2 mandates and no PayPal call, even after the mandate check rejects.")
+@pytest.mark.parametrize("budget", [5.00, 49.98, 100.00])
+def test_copilot_never_records_a_subscription_without_receipts(mode, no_network, budget):
+    before = set(_COMPLETED_SUBSCRIPTIONS)
+    res = client.post("/api/seller-copilot/chat", json={"message": "yes", "budget_cap": budget})
+    assert res.status_code == 200
+    body = res.json()
+
+    unbacked = [
+        sid for sid in set(_COMPLETED_SUBSCRIPTIONS) - before
+        if not (_COMPLETED_SUBSCRIPTIONS[sid].get("checkout_receipt") and _COMPLETED_SUBSCRIPTIONS[sid].get("payment_receipt"))
+    ]
+    assert unbacked == [], f"subscriptions recorded without AP2 receipts: {unbacked}"
+
+    result = body.get("execution_result") or {}
+    trace = result.get("protocol_trace") or []
+    rejected_at = next((i for i, step in enumerate(trace) if step.get("decision") == "REJECTED"), None)
+    if rejected_at is not None:
+        assert trace[rejected_at + 1:] == [], "steps ran after the mandate check rejected"
+        assert result.get("status") != "SUCCESS"
+
+
+def test_live_subscription_request_goes_to_paypal_billing_api(fake_paypal_api):
+    email = _email("live-req")
+    res = _create_live_subscription(email)
+    assert len(fake_paypal_api) == 1
+    req = fake_paypal_api[0]
+    body = json.loads(req.content)
+    assert req.method == "POST"
+    assert req.url.path == "/v1/billing/subscriptions"
+    assert req.headers["Authorization"] == "Bearer regression-token"
+    assert body["plan_id"] == res["plan_id"]
+    assert body["subscriber"]["email_address"] == email
+    assert res["subscription_id"] == _PAYPAL_CREATED["id"]
+    assert res["status"] == "APPROVAL_PENDING"
+
+
+@KNOWN_ISSUE("The live PayPal branches invent payer, vault, payment-token and request IDs that PayPal never returned.")
+def test_live_subscription_does_not_invent_paypal_fields(fake_paypal_api):
+    res = _create_live_subscription(_email("live-fields"))
+    # PayPal returns no payer until the buyer approves, and subscriptions return no vault or payment token.
+    assert res.get("payer_id") is None
+    assert res.get("vault_id") is None
+    assert res.get("payment_token") is None
+    assert res.get("paypal_request_id") == fake_paypal_api[0].headers.get("PayPal-Request-Id")
+
+
+@KNOWN_ISSUE("purchase_subscription fills in payer, vault, payment-token and request IDs that PayPal didn't return.")
+def test_purchase_keeps_missing_paypal_fields_empty(paypal_replies):
+    paypal_replies["reply"] = _pending_reply()
+    email, agent = _email("fields"), _key("agent")
+    limits = _limits(email, _enrolled_owner(email), agent, 100, tiers=["ap2-batch"])
+    res = _buy(limits, agent, "ap2-batch", 49.99, email)
+    assert res.get("status") == "APPROVAL_PENDING"
+    for field in ("payer_id", "vault_id", "payment_token", "paypal_request_id"):
+        assert res.get(field) is None, f"{field} was invented: {res.get(field)!r}"
+
+
+@KNOWN_ISSUE("A PayPal reply with no status is recorded as ACTIVE.")
+def test_purchase_without_paypal_status_is_not_activated(paypal_replies):
+    reply = _pending_reply()
+    del reply["status"]
+    paypal_replies["reply"] = reply
+    email, agent = _email("nostatus"), _key("agent")
+    limits = _limits(email, _enrolled_owner(email), agent, 100, tiers=["ap2-batch"])
+    res = _buy(limits, agent, "ap2-batch", 49.99, email)
+    assert res.get("status") != "ACTIVE"
+    assert (_COMPLETED_SUBSCRIPTIONS.get(reply["subscription_id"]) or {}).get("status") != "ACTIVE"

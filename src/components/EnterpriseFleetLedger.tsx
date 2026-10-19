@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
   CreditCard,
@@ -29,6 +29,7 @@ import {
   AllCommunityModule as AllGridCommunityModule,
   themeQuartz,
   type ColDef,
+  type GetRowIdParams,
   type ICellRendererParams,
 } from 'ag-grid-community';
 import { AgCharts } from 'ag-charts-react';
@@ -761,6 +762,30 @@ export function EnterpriseFleetLedger({
     });
   }, [transactions, searchTerm, selectedStatus, selectedTrade]);
 
+  const defaultColDef = useMemo<ColDef<A2aTransaction>>(
+    () => ({
+      sortable: true,
+      filter: true,
+      floatingFilter: true,
+      resizable: true,
+    }),
+    []
+  );
+
+  const getRowId = useCallback((params: GetRowIdParams<A2aTransaction>) => params.data.id, []);
+
+  // Provenance breakdown: initial 14 seeded rows (M-009 / M-018) vs session-created or activated contracts
+  const isSeededBaselineRow = useCallback((t: A2aTransaction) => {
+    if (t.id === 'TXN-AP2-9021' && t.status === 'ACTIVE_STREAMING') return false;
+    return /^TXN-AP2-90(0[89]|1[0-9]|2[01])$/.test(t.id);
+  }, []);
+
+  const seededRowCount = useMemo(
+    () => transactions.filter((t) => isSeededBaselineRow(t)).length,
+    [transactions, isSeededBaselineRow]
+  );
+  const liveSessionRowCount = Math.max(0, transactions.length - seededRowCount);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#080d1a', color: '#f8fafc', overflowY: 'auto', padding: '12px 16px', gap: '12px' }}>
       {/* 1. EXPANDED 4 KPI METRIC CARDS (Hidden when collapsed) */}
@@ -1143,7 +1168,7 @@ export function EnterpriseFleetLedger({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
                       gap: '8px',
                       fontSize: '11px',
                     }}
@@ -1185,7 +1210,7 @@ export function EnterpriseFleetLedger({
             </div>
 
             {/* 2. DUAL VISUAL COMMAND DECK: COMMERCE BY CAPABILITY & TIER MIX */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '16px' }}>
               {/* Chart 1: Autonomous AP2 Commerce Volume by Capability ($ ARR) */}
               <div
                 style={{
@@ -1213,7 +1238,7 @@ export function EnterpriseFleetLedger({
                   <AgCharts options={tradeChartOptions} style={{ height: '100%', width: '100%' }} />
                 </div>
 
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', fontSize: '11px', color: '#64748b' }}>
                   <span>
                     Top Capability:{' '}
                     <strong>
@@ -1253,7 +1278,7 @@ export function EnterpriseFleetLedger({
                   <AgCharts options={tierChartOptions} style={{ height: '100%', width: '100%' }} />
                 </div>
 
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', fontSize: '11px', color: '#64748b' }}>
                   <span>Top Capability: <strong>{topCapability ? `${topCapability.name} (${topCapability.agentCount} Nodes)` : 'None Active'}</strong></span>
                   <span>Billing Rail: <strong>PayPal Subscriptions API &bull; 100% Autopilot</strong></span>
                 </div>
@@ -1279,11 +1304,11 @@ export function EnterpriseFleetLedger({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  flexWrap: 'nowrap',
+                  flexWrap: 'wrap',
                   gap: '10px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: '1 1 520px', minWidth: 0 }}>
                   <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     <Layers size={16} color="#38bdf8" /> Autonomous AP2 Settlement Ledger
                   </span>
@@ -1360,6 +1385,28 @@ export function EnterpriseFleetLedger({
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                   <button
+                    onClick={() => setShowTamperModal(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      height: '28px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.14)',
+                      color: '#fca5a5',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                    title="Open Adversarial Attack & Anti-Tamper Sandbox (M-014)"
+                  >
+                    <ShieldAlert size={13} /> Anti-Tamper (M-014)
+                  </button>
+                  <button
                     onClick={handleRefresh}
                     style={{
                       display: 'flex',
@@ -1406,7 +1453,7 @@ export function EnterpriseFleetLedger({
                 </div>
               </div>
 
-              {/* Single Demo data banner */}
+              {/* Data Provenance Banner */}
               <div
                 style={{
                   padding: '6px 16px',
@@ -1414,29 +1461,50 @@ export function EnterpriseFleetLedger({
                   borderBottom: '1px solid #1e293b',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
                   gap: '8px',
                   fontSize: '11px',
                   color: '#94a3b8',
                 }}
               >
-                <span
-                  style={{
-                    fontSize: '9px',
-                    fontWeight: 700,
-                    backgroundColor: 'rgba(148, 163, 184, 0.15)',
-                    color: '#94a3b8',
-                    border: '1px solid rgba(148, 163, 184, 0.3)',
-                    padding: '1px 6px',
-                    borderRadius: '4px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  Demo data
-                </span>
-                <span>
-                  Sample autonomous agent subscriptions for AP2 protocol demonstration &bull; All cryptographic proofs &amp; ERP syncs viewable in Inspect drawer
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {seededRowCount} Seeded (M-009)
+                  </span>
+                  {liveSessionRowCount > 0 && (
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      +{liveSessionRowCount} Session Activated
+                    </span>
+                  )}
+                  <span>
+                    Seeded fleet baseline (M-009 / M-018) plus live session subscriptions &bull; Click any row to inspect AP2 v0.2 mandate &amp; ERP sync dossier
+                  </span>
+                </div>
               </div>
 
               {/* AG Grid High-Density Data Table Container */}
@@ -1446,6 +1514,8 @@ export function EnterpriseFleetLedger({
                   theme={agGridDarkTheme}
                   rowData={filteredTransactions}
                   columnDefs={colDefs}
+                  defaultColDef={defaultColDef}
+                  getRowId={getRowId}
                   domLayout="autoHeight"
                   pagination={true}
                   paginationPageSize={10}
@@ -1457,12 +1527,6 @@ export function EnterpriseFleetLedger({
                     if (event.data) {
                       setSelectedTxn(event.data);
                     }
-                  }}
-                  defaultColDef={{
-                    sortable: true,
-                    filter: true,
-                    floatingFilter: true,
-                    resizable: true,
                   }}
                 />
               </div>
@@ -1776,15 +1840,15 @@ export function EnterpriseFleetLedger({
                             </span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                            <span style={{ color: '#94a3b8' }}>Vault Token</span>
-                            <span style={{ fontFamily: 'monospace', color: '#34d399', fontSize: '11px' }}>
-                              ba_vault_auto_mit_active
+                            <span style={{ color: '#94a3b8' }}>Data Provenance</span>
+                            <span style={{ fontFamily: 'monospace', color: isSeededBaselineRow(selectedTxn) ? '#94a3b8' : '#34d399', fontSize: '11px' }}>
+                              {isSeededBaselineRow(selectedTxn) ? 'Seeded Demo Fixture (M-009)' : 'Live Session Activation'}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Cryptographic Ed25519 Mandate Signature */}
+                      {/* Cryptographic AP2 v0.2 Mandate Provenance */}
                       <div
                         style={{
                           backgroundColor: '#0f172a',
@@ -1793,11 +1857,28 @@ export function EnterpriseFleetLedger({
                           padding: '14px 16px',
                         }}
                       >
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
-                          Cryptographic Mandate Proof
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            AP2 v0.2 Mandate Provenance
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: isSeededBaselineRow(selectedTxn) ? 'rgba(148, 163, 184, 0.12)' : 'rgba(16, 185, 129, 0.15)',
+                              color: isSeededBaselineRow(selectedTxn) ? '#94a3b8' : '#34d399',
+                              border: isSeededBaselineRow(selectedTxn) ? '1px solid rgba(148, 163, 184, 0.3)' : '1px solid rgba(16, 185, 129, 0.35)',
+                            }}
+                          >
+                            {isSeededBaselineRow(selectedTxn) ? 'SEEDED FIXTURE (M-009)' : 'ES256 SD-JWT VERIFIED'}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
-                          Ed25519 Deterministic Signature (Buyer Spending Mandate + Nonce Attestation):
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px', lineHeight: 1.4 }}>
+                          {isSeededBaselineRow(selectedTxn)
+                            ? 'Pre-seeded baseline record from backend/seed.py (M-009). Use the AP2 Simulator to execute a live ES256 SD-JWT mandate verification.'
+                            : 'Activated during this session via two-step AP2 v0.2 SD-JWT (ES256 / P-256) Open + Closed Mandate chain and SHA-256 checkout_hash binding.'}
                         </div>
                         <div
                           style={{
@@ -1806,15 +1887,35 @@ export function EnterpriseFleetLedger({
                             borderRadius: '6px',
                             fontFamily: 'monospace',
                             fontSize: '10px',
-                            color: '#a78bfa',
+                            color: isSeededBaselineRow(selectedTxn) ? '#94a3b8' : '#a78bfa',
                             wordBreak: 'break-all',
                             border: '1px solid #1e293b',
                           }}
                         >
-                          ed25519:sig:9a7f4b82c1e4d0f6a2b8e5c3d7a9b1f4e6c8a0d2b4f6e8a0c2e4f6a8b0d2e4f6
+                          {isSeededBaselineRow(selectedTxn)
+                            ? `fixture:${selectedTxn.id}:seeded-m009-baseline`
+                            : `ap2-v0.2:sd-jwt:es256:${selectedTxn.id}:${selectedTxn.paypal_sub_id}`}
                         </div>
-                        <div style={{ marginTop: '8px', fontSize: '10px', color: '#64748b' }}>
-                          Verified by AP2 Anti-Tamper Runtime &bull; SHA-256 Digest Anchored
+                        <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{ fontSize: '10px', color: '#64748b' }}>
+                            Verify First &bull; Fail Closed Runtime
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowTamperModal(true)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '5px',
+                              border: '1px solid rgba(239, 68, 68, 0.35)',
+                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                              color: '#fca5a5',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Test Anti-Tamper (M-014)
+                          </button>
                         </div>
                       </div>
 

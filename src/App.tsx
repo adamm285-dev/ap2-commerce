@@ -119,12 +119,21 @@ export function App() {
   const [isPendingDepositLocked, setIsPendingDepositLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTrustedSurfaceOpen, setIsTrustedSurfaceOpen] = useState(false);
-  const [_trustedSurfaceTokens, setTrustedSurfaceTokens] = useState<any | null>(null);
+  const [trustedSurfaceTokens, setTrustedSurfaceTokens] = useState<{
+    openCheckoutToken: string;
+    openPaymentToken: string;
+    constraints: any;
+  } | null>(null);
   const [isNegotiating, setIsNegotiating] = useState(false);
   const [negotiationResult, setNegotiationResult] = useState<AgentNegotiationResponse | null>(null);
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [paypalError, setPaypalError] = useState<string | null>(null);
+  const [purchaseErrorMeta, setPurchaseErrorMeta] = useState<{
+    httpStatus?: number;
+    code?: string;
+    reason?: string;
+  } | null>(null);
 
   // Form state for AP2 Buyer Agent simulation
   const [contractorName, setContractorName] = useState('agent:acme-procure');
@@ -286,23 +295,29 @@ export function App() {
   const handleStartNegotiation = useCallback(async () => {
     setIsNegotiating(true);
     setProvisioningResult(null);
+    setPaypalError(null);
+    setPurchaseErrorMeta(null);
 
     const req: AgentNegotiationRequest = {
       contractorName,
       businessEntity,
       tradeVertical,
       maxMonthlyBudget,
+      openCheckoutMandateToken: trustedSurfaceTokens?.openCheckoutToken,
+      openPaymentMandateToken: trustedSurfaceTokens?.openPaymentToken,
     };
 
     const res = await evaluateAgentNegotiation(req);
     setNegotiationResult(res);
     setIsNegotiating(false);
-  }, [contractorName, businessEntity, tradeVertical, maxMonthlyBudget]);
+  }, [contractorName, businessEntity, tradeVertical, maxMonthlyBudget, trustedSurfaceTokens]);
 
   // Complete Subscription & Provision Line: Mutates existing transaction in place (Orange -> Green)
   const handleSubscriptionApproved = useCallback(
     async (subId?: string) => {
       setIsProvisioning(true);
+      setPaypalError(null);
+      setPurchaseErrorMeta(null);
       try {
         const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
         
@@ -377,8 +392,20 @@ export function App() {
 
         // Also lock AP2 pending workload slot in Bryntum Dispatch
         setIsPendingDepositLocked(true);
-      } catch (err) {
-        setPaypalError(err instanceof Error ? err.message : String(err));
+      } catch (err: any) {
+        const rawDetail = err?.rawResponse?.detail;
+        const code = typeof rawDetail === 'object' ? rawDetail?.code || rawDetail?.error : undefined;
+        const reason = typeof rawDetail === 'object'
+          ? rawDetail?.reason || rawDetail?.message
+          : typeof rawDetail === 'string'
+          ? rawDetail
+          : undefined;
+        setPurchaseErrorMeta({
+          httpStatus: err?.httpStatus,
+          code,
+          reason,
+        });
+        setPaypalError(reason || (err instanceof Error ? err.message : String(err)));
       } finally {
         setIsProvisioning(false);
       }
@@ -407,8 +434,8 @@ export function App() {
             alignItems: 'center',
             justifyContent: 'space-between',
             width: '100%',
-            gap: '16px',
-            flexWrap: 'nowrap',
+            gap: '12px 16px',
+            flexWrap: 'wrap',
           }}
         >
           {/* Left Column: Brand & Command Center Sub-Header */}
@@ -417,8 +444,8 @@ export function App() {
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              minWidth: 0,
-              flexShrink: 1,
+              minWidth: '280px',
+              flex: '1 1 320px',
             }}
           >
             {/* Brand Section */}
@@ -427,11 +454,28 @@ export function App() {
                 <Ap2Logo size={32} />
               </div>
               <div className="brand-titles" style={{ minWidth: 0 }}>
-                <h1 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  AP2 Seller Operations Deck
-                </h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h1 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    AP2 Seller Operations Deck
+                  </h1>
+                  <span
+                    title="MOCK_EXTERNAL_APIS=true: Seeded fleet baseline (M-009) + server-side demo keys (M-005..M-007). See docs/MOCKS.md for full mock ledger."
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Mock Mode &bull; Seeded Fleet (M-009)
+                  </span>
+                </div>
                 <p className="brand-subtitle" style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0 0', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Autonomous Agent Payments Protocol (AP2) Commerce &bull; Turnkey MCP Merchant Node &bull; PayPal Subscriptions
+                  Autonomous Agent Payments Protocol (AP2 v0.2 ES256) &bull; Turnkey MCP Merchant Node &bull; PayPal Subscriptions
                 </p>
               </div>
             </div>
@@ -448,7 +492,7 @@ export function App() {
             }}
           >
             {/* The Merged Button Set + Side Actions */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
               {/* Unified Merged Button Box: Rows are merged into a single cohesive set */}
               <div
                 style={{
@@ -458,7 +502,9 @@ export function App() {
                   borderRadius: '8px',
                   border: '1px solid #334155',
                   padding: '3px',
+                  minWidth: '340px',
                   width: '370px',
+                  maxWidth: '100%',
                   boxSizing: 'border-box',
                 }}
               >
@@ -789,19 +835,28 @@ export function App() {
                   alignItems: 'flex-start',
                 }}
               >
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button
                     className="btn-trusted-surface"
                     onClick={() => setIsTrustedSurfaceOpen(true)}
+                    title={
+                      trustedSurfaceTokens
+                        ? `Human-signed Open Mandates active ($${Number(trustedSurfaceTokens.constraints?.monthly_budget_cap ?? maxMonthlyBudget).toFixed(2)}/mo cap)`
+                        : 'Open AP2 Trusted Surface to sign human spending limits (mandate.checkout.open.1 & mandate.payment.open.1)'
+                    }
                     style={{
                       height: '36px',
                       padding: '0 14px',
                       fontSize: '12px',
                       boxSizing: 'border-box',
                       whiteSpace: 'nowrap',
+                      border: trustedSurfaceTokens ? '1px solid #34d399' : undefined,
                     }}
                   >
-                    <ShieldCheck size={14} /> Set My Limits (Trusted Surface)
+                    <ShieldCheck size={14} />{' '}
+                    {trustedSurfaceTokens
+                      ? `✓ Limits Signed ($${Number(trustedSurfaceTokens.constraints?.monthly_budget_cap ?? maxMonthlyBudget).toFixed(0)}/mo)`
+                      : 'Set My Limits (Trusted Surface)'}
                   </button>
                   <button
                     className="btn-simulate"
@@ -1132,8 +1187,8 @@ export function App() {
 
       {/* Modal: AP2 Agentic Commerce Negotiation & Subscription Simulator */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-card">
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>
                 <Sliders size={18} /> AP2 Buyer Agent Procurement Simulator
@@ -1144,16 +1199,90 @@ export function App() {
             </div>
 
             <div className="modal-body">
-              <p style={{ fontSize: '13px', color: '#94a3b8' }}>
+              <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
                 Simulate how an external <strong>Autonomous Buyer Agent</strong> discovers seller node capabilities,
                 verifies cryptographic spending mandate caps, negotiates with the AP2 Seller MCP Server, and executes a
                 recurring PayPal subscription once the seller verifies the AP2 mandate chain (ES256).
               </p>
 
+              {/* Trusted Surface Open Mandate Provenance Banner */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: trustedSurfaceTokens
+                    ? 'rgba(16, 185, 129, 0.1)'
+                    : 'rgba(245, 158, 11, 0.1)',
+                  border: trustedSurfaceTokens
+                    ? '1px solid rgba(16, 185, 129, 0.35)'
+                    : '1px solid rgba(245, 158, 11, 0.35)',
+                  fontSize: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: trustedSurfaceTokens ? '#6ee7b7' : '#fcd34d' }}>
+                  <ShieldCheck size={16} style={{ flexShrink: 0 }} />
+                  <div>
+                    {trustedSurfaceTokens ? (
+                      <>
+                        <strong>Trusted Surface Open Mandates Active:</strong> Cap{' '}
+                        <code>${Number(trustedSurfaceTokens.constraints?.monthly_budget_cap ?? maxMonthlyBudget).toFixed(2)}/mo</code>{' '}
+                        &bull; Tiers: <code>{(trustedSurfaceTokens.constraints?.allowed_tiers || []).join(', ') || 'none'}</code>
+                      </>
+                    ) : (
+                      <>
+                        <strong>Open Mandate Mode (M-006 Demo Fallback):</strong> No Trusted Surface limits signed in this session; negotiation auto-signs demo Open Mandates.
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    onClick={() => setIsTrustedSurfaceOpen(true)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '5px',
+                      border: '1px solid #14b8a6',
+                      backgroundColor: 'rgba(13, 148, 136, 0.2)',
+                      color: '#5eead4',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {trustedSurfaceTokens ? 'Edit Limits' : 'Sign Limits First'}
+                  </button>
+                  {trustedSurfaceTokens && (
+                    <button
+                      onClick={() => {
+                        setTrustedSurfaceTokens(null);
+                        setNegotiationResult(null);
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '5px',
+                        border: '1px solid #334155',
+                        backgroundColor: '#1e293b',
+                        color: '#94a3b8',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                   gap: '12px',
                   backgroundColor: '#0f172a',
                   padding: '14px',
@@ -1176,6 +1305,7 @@ export function App() {
                       border: '1px solid #334155',
                       color: '#fff',
                       fontSize: '13px',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
@@ -1195,6 +1325,7 @@ export function App() {
                       border: '1px solid #334155',
                       color: '#fff',
                       fontSize: '13px',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
@@ -1213,6 +1344,7 @@ export function App() {
                       border: '1px solid #334155',
                       color: '#fff',
                       fontSize: '13px',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <option value="Dedicated AI Service Gateway">Dedicated AI Service Gateway ($79.99/mo)</option>
@@ -1238,6 +1370,7 @@ export function App() {
                       border: '1px solid #334155',
                       color: '#fff',
                       fontSize: '13px',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
@@ -1256,6 +1389,7 @@ export function App() {
                       border: '1px solid #334155',
                       color: '#fff',
                       fontSize: '13px',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <option value="US-East Cluster (Ashburn, VA)">US-East Cluster (Ashburn, VA)</option>
@@ -1267,7 +1401,7 @@ export function App() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                 <button
                   className="btn-simulate"
                   style={{
@@ -1300,6 +1434,7 @@ export function App() {
                     setNegotiationResult(null);
                     setProvisioningResult(null);
                     setPaypalError(null);
+                    setPurchaseErrorMeta(null);
                     setIsPendingDepositLocked(false);
                     setTransactions((prev) => {
                       const idx = prev.findIndex((t) => t.contractor_name === contractorName);
@@ -1338,7 +1473,7 @@ export function App() {
 
               {negotiationResult && (
                 <div className="negotiation-panel">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                     <span style={{ fontSize: '11px', color: '#94a3b8' }}>Protocol Verification:</span>
                     <span style={{
                       fontSize: '10px',
@@ -1348,10 +1483,16 @@ export function App() {
                       backgroundColor: negotiationResult.isLiveBackend ? '#065f46' : '#854d0e',
                       color: negotiationResult.isLiveBackend ? '#34d399' : '#fde047',
                     }}>
-                      {negotiationResult.isLiveBackend ? `● FastAPI Backend Connected (${typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'})` : '○ Local Simulation Mode'}
+                      {negotiationResult.isLiveBackend ? `● FastAPI Backend Connected (${typeof window !== 'undefined' && window.location.port ? `Port ${window.location.port}` : 'Live'})` : '○ Backend Unreachable (Fail-Closed)'}
                     </span>
                   </div>
-                  <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements & cryptographic budget ceiling...</div>
+                  <div className="negotiation-line">[BuyerAgent]: Ingesting task requirements &amp; cryptographic budget ceiling...</div>
+                  <div className="negotiation-line">
+                    [AP2 Open Mandate Source]:{' '}
+                    {negotiationResult.openMandateSource === 'trusted_surface'
+                      ? 'Human-Signed via Trusted Surface (mandate.checkout.open.1 + mandate.payment.open.1)'
+                      : 'Server Auto-Signed Demo Fallback (M-006)'}
+                  </div>
                   <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller MCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
                   <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.requestedPlanName || negotiationResult.agreedPlanName} @ ${(negotiationResult.requestedMonthlyRate ?? negotiationResult.monthlyFee).toFixed(2)}/mo</div>
                   {negotiationResult.isCounterOffer && (
@@ -1364,7 +1505,7 @@ export function App() {
                   </div>
                   {negotiationResult.mandateToken && (
                     <div className="negotiation-line success" style={{ wordBreak: 'break-all', fontSize: '11px' }}>
-                      [Ed25519 Mandate Signature]: {negotiationResult.mandateToken}
+                      [AP2 v0.2 Checkout Hash &amp; ES256 Mandate]: {negotiationResult.mandateToken}
                     </div>
                   )}
                   {negotiationResult.mandateSatisfied && (
@@ -1392,7 +1533,7 @@ export function App() {
                 <div
                   className="paypal-interactive-wrapper"
                   style={{
-                    marginTop: '16px',
+                    marginTop: '8px',
                     border: '1px solid #0284c7',
                     backgroundColor: 'rgba(2, 132, 199, 0.08)',
                     borderRadius: '8px',
@@ -1413,11 +1554,11 @@ export function App() {
                       STEP 2
                     </span>
                     <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
-                      Authorize Settlement &amp; Provision Worker Node (Sandbox)
+                      Authorize Settlement &amp; Provision Worker Node (M-007 Deck Purchase)
                     </h4>
                   </div>
                   <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 12px 0' }}>
-                    Authorizes ${negotiationResult.monthlyFee.toFixed(2)}/month recurring service contract ({negotiationResult.agreedPlanName}). Upon authorization, the Seller Node binds execution capacity to <strong>{businessEntity}</strong> in the sandbox harness.
+                    Authorizes ${negotiationResult.monthlyFee.toFixed(2)}/month recurring service contract ({negotiationResult.agreedPlanName}). Upon authorization, the Seller Node verifies the ES256 mandate chain, acquires the per-buyer purchase lease, and binds execution capacity to <strong>{businessEntity}</strong>.
                   </p>
 
                   {/* Primary Instant Simulated Approval Button */}
@@ -1445,16 +1586,16 @@ export function App() {
                     }}
                   >
                     {isProvisioning ? (
-                      'Allocating Worker Node & Binding Attestation...'
+                      'Verifying ES256 Mandate Chain & Allocating Worker Node...'
                     ) : (
                       <>
-                        <ShieldCheck size={16} /> Authorize ${negotiationResult.monthlyFee.toFixed(2)}/mo (Simulate approval — no PayPal call)
+                        <ShieldCheck size={16} /> Authorize ${negotiationResult.monthlyFee.toFixed(2)}/mo (Simulate approval — M-007 mock mode)
                       </>
                     )}
                   </button>
 
                   {PAYPAL_CONFIG.clientId !== 'test' && (
-                    <div style={{ marginTop: '10px' }}>
+                    <div style={{ marginTop: '10px', width: '100%' }}>
                       <div style={{ textAlign: 'center', fontSize: '10px', color: '#64748b', marginBottom: '8px' }}>
                         &mdash; OR USE OFFICIAL PAYPAL SANDBOX BUTTON &mdash;
                       </div>
@@ -1491,8 +1632,39 @@ export function App() {
                   )}
 
                   {paypalError && (
-                    <div style={{ fontSize: '11px', color: '#f87171', marginTop: '6px', textAlign: 'center' }}>
-                      {paypalError}
+                    <div
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        marginTop: '8px',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        backgroundColor:
+                          purchaseErrorMeta?.httpStatus === 409
+                            ? 'rgba(245, 158, 11, 0.14)'
+                            : 'rgba(239, 68, 68, 0.14)',
+                        border:
+                          purchaseErrorMeta?.httpStatus === 409
+                            ? '1px solid rgba(245, 158, 11, 0.45)'
+                            : '1px solid rgba(239, 68, 68, 0.45)',
+                        color: purchaseErrorMeta?.httpStatus === 409 ? '#fde68a' : '#fca5a5',
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>
+                          {purchaseErrorMeta?.httpStatus === 409
+                            ? '⚡ Concurrent Purchase Lease Conflict (HTTP 409)'
+                            : `Purchase / Mandate Verification Refused${purchaseErrorMeta?.httpStatus ? ` (HTTP ${purchaseErrorMeta.httpStatus})` : ''}`}
+                        </span>
+                        {purchaseErrorMeta?.code && (
+                          <code style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                            {purchaseErrorMeta.code}
+                          </code>
+                        )}
+                      </div>
+                      <div>{paypalError}</div>
                     </div>
                   )}
                 </div>
@@ -1557,6 +1729,10 @@ export function App() {
         initialBudgetCap={maxMonthlyBudget}
         onMandatesSigned={(tokens) => {
           setTrustedSurfaceTokens(tokens);
+          if (typeof tokens?.constraints?.monthly_budget_cap === 'number') {
+            setMaxMonthlyBudget(tokens.constraints.monthly_budget_cap);
+          }
+          setNegotiationResult(null);
           console.log('[TrustedSurface] Open mandates signed:', tokens);
         }}
       />

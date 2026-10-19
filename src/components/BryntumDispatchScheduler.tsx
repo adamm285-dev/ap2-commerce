@@ -1784,7 +1784,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             >
               <Cpu size={14} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                 Autonomous Enclave &amp; Workloads
               </span>
@@ -1802,10 +1802,25 @@ This document certifies an authentic autonomous agent-to-agent workload executio
               >
                 FAST-MCP
               </span>
+              <span
+                title="Schedule initialized from seeded baseline events (M-009). 'Sim Workload Task' and 'Sim Sub' buttons mutate local component state (M-019)."
+                style={{
+                  fontSize: '10px',
+                  backgroundColor: 'rgba(148, 163, 184, 0.12)',
+                  color: '#cbd5e1',
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                  padding: '1px 7px',
+                  borderRadius: '9999px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Seeded Schedule (M-009) &bull; Sim Controls (M-019)
+              </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, flexWrap: 'wrap' }}>
             {/* API Verification Badge (Concise & Clean) */}
             <span
               title={apiStatus}
@@ -1896,7 +1911,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(195px, 1fr))',
               gap: '10px',
               paddingTop: '4px',
             }}
@@ -1965,17 +1980,17 @@ This document certifies an authentic autonomous agent-to-agent workload executio
         )}
       </div>
 
-      {/* Filter Pills & Interactive Action Toolbar (Strict 2-Tier Aligned 3x2 Grid) */}
+      {/* Filter Pills & Interactive Action Toolbar (Responsive 2-Tier Aligned Grid) */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '16px',
+          gap: '12px',
           padding: '10px 20px',
           backgroundColor: '#0d1527',
           borderBottom: '1px solid #1e293b',
-          flexWrap: 'nowrap',
+          flexWrap: 'wrap',
           overflowX: 'auto',
         }}
       >
@@ -2416,7 +2431,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
             overflowY: 'auto',
             padding: '16px 20px',
             display: 'grid',
-            gridTemplateColumns: 'minmax(340px, 420px) 1fr',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
             gap: '16px',
             backgroundColor: '#090e17',
           }}
@@ -3129,7 +3144,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
                 <span style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600 }}>{selectedAppointment.resourceEntity}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Ed25519 Key</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Mandate / Fixture Provenance</span>
                 <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#cbd5e1' }}>{selectedAppointment.clientFingerprint || selectedAppointment.customerPhone}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>

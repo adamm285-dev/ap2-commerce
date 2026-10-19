@@ -13,6 +13,8 @@ export interface AgentNegotiationRequest {
   capability?: string;
   maxMonthlyBudget: number;
   workloadValueEstimate?: number;
+  openCheckoutMandateToken?: string;
+  openPaymentMandateToken?: string;
   // Backward compatibility fields
   contractorName?: string;
   businessEntity?: string;
@@ -41,6 +43,7 @@ export interface AgentNegotiationResponse {
   offerId?: string;
   openCheckoutMandateToken?: string;
   openPaymentMandateToken?: string;
+  openMandateSource?: 'trusted_surface' | 'auto_demo';
 }
 
 export interface DeckPurchaseOptions {
@@ -150,28 +153,33 @@ export async function evaluateAgentNegotiation(
   const requestedPlanName = selectedTier.planName;
   const buyerAgentId = `BuyerAgent-${agentName.replace(/\s+/g, '')}-${capabilityName.replace(/\s+/g, '')}`;
 
-  let openCheckoutToken: string | undefined;
-  let openPaymentToken: string | undefined;
+  let openCheckoutToken: string | undefined = request.openCheckoutMandateToken;
+  let openPaymentToken: string | undefined = request.openPaymentMandateToken;
+  let openMandateSource: 'trusted_surface' | 'auto_demo' | undefined =
+    openCheckoutToken && openPaymentToken ? 'trusted_surface' : undefined;
 
-  try {
-    const limitsRes = await fetch('/api/trusted-surface/sign-limits', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        buyerEmail: 'agent-alpha@example.com',
-        monthlyBudgetCap: request.maxMonthlyBudget,
-        // MOCK(M-006): portal asks the server to sign owner limits with humanConfirmed hardcoded to true
-        humanConfirmed: true,
-        allowedTiers: ['ap2-batch', 'ap2-gateway', 'ap2-cluster'],
-      }),
-    });
-    if (limitsRes.ok) {
-      const limitsData = await limitsRes.json();
-      openCheckoutToken = limitsData.open_checkout_mandate_token;
-      openPaymentToken = limitsData.open_payment_mandate_token;
+  if (!openCheckoutToken || !openPaymentToken) {
+    try {
+      const limitsRes = await fetch('/api/trusted-surface/sign-limits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          buyerEmail: 'agent-alpha@example.com',
+          monthlyBudgetCap: request.maxMonthlyBudget,
+          // MOCK(M-006): portal asks the server to sign owner limits with humanConfirmed hardcoded to true
+          humanConfirmed: true,
+          allowedTiers: ['ap2-batch', 'ap2-gateway', 'ap2-cluster'],
+        }),
+      });
+      if (limitsRes.ok) {
+        const limitsData = await limitsRes.json();
+        openCheckoutToken = limitsData.open_checkout_mandate_token;
+        openPaymentToken = limitsData.open_payment_mandate_token;
+        openMandateSource = 'auto_demo';
+      }
+    } catch (err) {
+      console.warn('[AP2 Trusted Surface] Could not pre-sign limits on backend:', err);
     }
-  } catch (err) {
-    console.warn('[AP2 Trusted Surface] Could not pre-sign limits on backend:', err);
   }
 
   let failureReason = 'network error';
@@ -247,6 +255,7 @@ export async function evaluateAgentNegotiation(
         offerId: data.offer_id || data.offerId,
         openCheckoutMandateToken: openCheckoutToken,
         openPaymentMandateToken: openPaymentToken,
+        openMandateSource: openMandateSource,
       };
     }
   } catch (err) {

@@ -83,7 +83,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Make these arguments required and reject calls that omit them.
 
 ### M-014: The anti-tamper playground uses demo keys and a demo secret
-- **Where:** `backend/services/crypto_mandate.py::DEMO_TAMPER_SECRET`, `backend/services/crypto_mandate.py::_DEMO_TAMPER_KEY`, `backend/server.py::verify_tamper_endpoint`, `backend/server.py::generate_proof_endpoint`, `backend/server.py::get_sample_proof`
+- **Where:** `backend/services/crypto_mandate.py::DEMO_TAMPER_SECRET`, `backend/services/crypto_mandate.py::_DEMO_TAMPER_KEY`, `backend/server.py::verify_tamper_endpoint`, `backend/server.py::generate_proof_endpoint`, `backend/server.py::get_sample_proof`, `src/components/AdversarialTamperModal.tsx::AdversarialTamperModal`
 - **What it fakes:** A tamper-detection demo on the older Ed25519/HMAC "mandate proof" format, with a hardcoded secret and a throwaway key. It's not the AP2 v0.2 purchase path, which uses ES256 SD-JWT.
 - **Why:** An interactive "change one byte and watch it fail" demo for the UI.
 - **To make it real:** Demonstrate tampering against real AP2 v0.2 chains (as `scripts/judge_audit_harness.py` check 4 does) and retire the legacy format.

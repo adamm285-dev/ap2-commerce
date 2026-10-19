@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -8,21 +8,17 @@ import {
   Lock,
   Terminal,
   RotateCcw,
-  Copy,
-  Check,
 } from 'lucide-react';
 
 export interface AttackVector {
   id: string;
   name: string;
-  category: 'PRICE_INFLATION' | 'IDENTITY_HIJACK' | 'BUDGET_CAP_BREACH';
+  category: 'PRICE_INFLATION' | 'IDENTITY_HIJACK' | 'BUDGET_CAP_BREACH' | 'UNTAMPERED_CONTROL';
   description: string;
   tamperedField: string;
-  originalValue: string;
-  tamperedValue: string;
-  signedMandateHash: string;
-  expectedErrorCode: string;
-  expectedErrorReason: string;
+  originalValue: string | number;
+  tamperedValue: string | number;
+  applyTamper: (basePayload: Record<string, any>) => Record<string, any>;
 }
 
 const ATTACK_VECTORS: AttackVector[] = [
@@ -30,37 +26,41 @@ const ATTACK_VECTORS: AttackVector[] = [
     id: 'atk-01',
     name: '1. +1¢ Price Inflation Attack (Merchant Tampering)',
     category: 'PRICE_INFLATION',
-    description: 'Buyer agent signed intent mandate for $79.99/mo. Malicious merchant or intermediary modifies the agreed price to $80.00 (+1¢ drift) in the settlement request.',
-    tamperedField: 'monthly_amount',
-    originalValue: '79.99',
-    tamperedValue: '80.00',
-    signedMandateHash: 'SHA256: e9948ede8562597cae18f296338ad7308c909f279da1640a3f62c620ecd504',
-    expectedErrorCode: '401 SIGNATURE_MISMATCH',
-    expectedErrorReason: 'AP2 v0.2 ES256 SD-JWT constraint violation: Payment amount does not match checkout total. Price alteration detected.',
+    description: 'Buyer agent signed mandate proof for $79.99/mo. Modifies agreed_price_usd to $80.00 (+1¢ drift) without re-signing.',
+    tamperedField: 'agreed_price_usd',
+    originalValue: 79.99,
+    tamperedValue: 80.00,
+    applyTamper: (base) => ({ ...base, agreed_price_usd: 80.00 }),
   },
   {
     id: 'atk-02',
     name: '2. Principal Entity Identity Hijack (Syndicate Spoof)',
     category: 'IDENTITY_HIJACK',
-    description: 'Rogue buyer attempts to submit a valid cryptographic mandate signed by Acme Compute Co, but reroutes worker node allocation to an unauthorized entity.',
-    tamperedField: 'principal_entity',
+    description: 'Modifies the signed business_name from the authorized buyer entity to an unauthorized entity.',
+    tamperedField: 'business_name',
     originalValue: 'Acme Compute Co',
     tamperedValue: 'Demo Attacker Corp',
-    signedMandateHash: 'SHA256: 77a1bc92e01f558ac2e99df8a221b7c9e1248b4010a3f62c620ecd504',
-    expectedErrorCode: '401 KEY_IDENTITY_MISMATCH',
-    expectedErrorReason: 'Buyer Key (P-256) is registered strictly to Acme Compute Co. Unauthorized entity routing blocked.',
+    applyTamper: (base) => ({ ...base, business_name: 'Demo Attacker Corp' }),
   },
   {
     id: 'atk-03',
     name: '3. Spending Cap Policy Breach (Rogue Agent Overspend)',
     category: 'BUDGET_CAP_BREACH',
-    description: 'Buyer agent with a $60.00 hard monthly budget cap attempts to purchase a $79.99 tier without an authorized counter-offer or human override mandate.',
-    tamperedField: 'monthly_budget_cap',
-    originalValue: '60.00 (Hard Cap)',
-    tamperedValue: '79.99 (Requested Spend)',
-    signedMandateHash: 'SHA256: 44f89d12a32190cc8a1b992422c199bf33aa0a3f62c620ecd504',
-    expectedErrorCode: '422 BUDGET_CAP_BREACH',
-    expectedErrorReason: 'Spending policy violated: Requested transaction amount $79.99 exceeds remaining monthly spending mandate cap of $60.00.',
+    description: 'Lowers monthly_cap_usd to $60.00 while keeping agreed_price_usd at $79.99, violating the budget cap policy check.',
+    tamperedField: 'monthly_cap_usd',
+    originalValue: 100.00,
+    tamperedValue: 60.00,
+    applyTamper: (base) => ({ ...base, monthly_cap_usd: 60.00, agreed_price_usd: 79.99 }),
+  },
+  {
+    id: 'ctrl-04',
+    name: '4. Untampered Control Payload (Valid Signature & Budget)',
+    category: 'UNTAMPERED_CONTROL',
+    description: 'Submits the exact canonical payload and signature returned by /api/crypto/sample-proof with zero modifications.',
+    tamperedField: 'agreed_price_usd',
+    originalValue: 79.99,
+    tamperedValue: 79.99,
+    applyTamper: (base) => ({ ...base }),
   },
 ];
 
@@ -69,66 +69,191 @@ export interface AdversarialTamperModalProps {
   onClose: () => void;
 }
 
+// MOCK(M-014): uses the anti-tamper demo signer and verifier endpoints (/api/crypto/sample-proof, /api/crypto/verify-tamper)
 export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperModalProps) {
   const [selectedVector, setSelectedVector] = useState<AttackVector>(ATTACK_VECTORS[0]);
+  const [sampleProof, setSampleProof] = useState<{
+    canonical_payload: Record<string, any>;
+    signature: string;
+    public_key?: string;
+    kid?: string;
+    algorithm?: string;
+  } | null>(null);
+  const [sampleError, setSampleError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [probeResult, setProbeResult] = useState<{
-    status: 'IDLE' | 'INTERCEPTED';
+    status: 'IDLE' | 'INTERCEPTED' | 'ACCEPTED' | 'ERROR';
     durationMs: number;
+    statusCode: number | null;
+    reason: string | null;
+    detail: string | null;
     logLines: string[];
-    incidentId: string;
   }>({
     status: 'IDLE',
     durationMs: 0,
+    statusCode: null,
+    reason: null,
+    detail: null,
     logLines: [],
-    incidentId: '',
   });
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  if (!isOpen) return null;
-
-  const handleCopy = (text: string, key: string) => {
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(text);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
+  const loadSampleProof = async () => {
+    setSampleError(null);
+    try {
+      const res = await fetch('/api/crypto/sample-proof?profile=ap2');
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} loading sample proof`);
+      }
+      const data = await res.json();
+      if (!data || !data.canonical_payload || !data.signature) {
+        throw new Error('Sample proof response missing canonical_payload or signature');
+      }
+      setSampleProof(data);
+      return data;
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to contact backend for sample proof';
+      setSampleError(msg);
+      setSampleProof(null);
+      return null;
     }
   };
 
-  const handleFireProbe = async () => {
+  useEffect(() => {
+    if (isOpen) {
+      loadSampleProof();
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const runVerificationProbe = async (overrideUntampered = false) => {
     setIsRunning(true);
-    setProbeResult({ status: 'IDLE', durationMs: 0, logLines: [], incidentId: '' });
+    setProbeResult({
+      status: 'IDLE',
+      durationMs: 0,
+      statusCode: null,
+      reason: null,
+      detail: null,
+      logLines: [],
+    });
 
     const startTime = performance.now();
-    await new Promise((r) => setTimeout(r, 450)); // Simulating cryptographic computation
+    try {
+      const currentSample = sampleProof || (await loadSampleProof());
+      if (!currentSample || !currentSample.canonical_payload || !currentSample.signature) {
+        const elapsed = Math.round((performance.now() - startTime) * 10) / 10;
+        const errMsg = sampleError || 'Failed to load sample proof from /api/crypto/sample-proof';
+        setProbeResult({
+          status: 'ERROR',
+          durationMs: elapsed,
+          statusCode: null,
+          reason: 'REQUEST_FAILED',
+          detail: errMsg,
+          logLines: [`Error: ${errMsg}`],
+        });
+        return;
+      }
 
-    const duration = Math.round((performance.now() - startTime) * 10) / 10;
-    const incidentId = `QUARANTINE-${Math.floor(1000 + Math.random() * 9000)}`;
+      const payloadToSend = overrideUntampered
+        ? { ...currentSample.canonical_payload }
+        : selectedVector.applyTamper(currentSample.canonical_payload);
 
-    const logs = [
-      `[T+0.0ms] Ingress payload received via /mcp/evaluate_spending_mandate`,
-      `[T+0.4ms] Normalizing canonical JSON RFC 8785: ${selectedVector.tamperedField} = "${selectedVector.tamperedValue}"`,
-      `[T+0.9ms] Querying P-256 Buyer Key Registry: Key 0x9f8a221b... (Status: ENROLLED)`,
-      `[T+1.4ms] Verifying RFC 8032 Signature against canonical byte payload...`,
-      `[T+1.8ms] ✕ CRYPTOGRAPHIC VERIFICATION FAILED: Computed hash does not match signature header`,
-      `[T+2.1ms] [POLICY INTERCEPTOR] Tamper Category: ${selectedVector.category}`,
-      `[T+2.4ms] 🛡️ [FAIL-CLOSED DEFENSE ACTIVATED] Aborting transaction. Zero PayPal API call issued.`,
-      `[T+2.7ms] Immutable Incident Recorded: ${incidentId} logged to security ledger.`,
-      `[T+2.9ms] Dispatched HTTP ${selectedVector.expectedErrorCode}: ${selectedVector.expectedErrorReason}`,
-    ];
+      const res = await fetch('/api/crypto/verify-tamper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payload: payloadToSend,
+          signature: currentSample.signature,
+        }),
+      });
+      const elapsed = Math.round((performance.now() - startTime) * 10) / 10;
 
-    setProbeResult({
-      status: 'INTERCEPTED',
-      durationMs: duration,
-      logLines: logs,
-      incidentId,
-    });
-    setIsRunning(false);
+      if (!res.ok) {
+        setProbeResult({
+          status: 'ERROR',
+          durationMs: elapsed,
+          statusCode: res.status,
+          reason: `HTTP_${res.status}`,
+          detail: `Request to /api/crypto/verify-tamper failed with HTTP ${res.status}`,
+          logLines: [`Request failed: HTTP ${res.status}`],
+        });
+        return;
+      }
+
+      const data = await res.json();
+      if (typeof data?.valid !== 'boolean') {
+        setProbeResult({
+          status: 'ERROR',
+          durationMs: elapsed,
+          statusCode: null,
+          reason: 'INVALID_RESPONSE',
+          detail: 'Backend response did not include a boolean "valid" field.',
+          logLines: ['Error: Backend response missing "valid" verdict field.'],
+        });
+        return;
+      }
+
+      const isAccepted = data.valid === true;
+      const statusCode = typeof data.status_code === 'number' ? data.status_code : null;
+      const reason = typeof data.reason === 'string' ? data.reason : null;
+      const detail = typeof data.detail === 'string' ? data.detail : null;
+      const respPayload = data.payload || payloadToSend;
+
+      const logs: string[] = [
+        `POST /api/crypto/verify-tamper (${elapsed}ms RTT)`,
+        `verdict: ${isAccepted ? 'ACCEPTED (valid=true)' : 'INTERCEPTED (valid=false)'}`,
+        `status_code: ${statusCode !== null ? statusCode : 'not available'}`,
+        `reason: ${reason || 'not available'}`,
+        `detail: ${detail || 'not available'}`,
+        `provided_signature: ${data.provided_signature || currentSample.signature}`,
+        `payload.${selectedVector.tamperedField}: ${JSON.stringify(respPayload?.[selectedVector.tamperedField])}`,
+      ];
+
+      setProbeResult({
+        status: isAccepted ? 'ACCEPTED' : 'INTERCEPTED',
+        durationMs: elapsed,
+        statusCode,
+        reason,
+        detail,
+        logLines: logs,
+      });
+    } catch (err: any) {
+      const elapsed = Math.round((performance.now() - startTime) * 10) / 10;
+      const errMsg = err?.message || 'Network error contacting /api/crypto/verify-tamper';
+      setProbeResult({
+        status: 'ERROR',
+        durationMs: elapsed,
+        statusCode: null,
+        reason: 'NETWORK_ERROR',
+        detail: errMsg,
+        logLines: [`Network / request error: ${errMsg}`],
+      });
+    } finally {
+      setIsRunning(false);
+    }
   };
+
+  const handleFireProbe = () => runVerificationProbe(false);
+  const handleVerifyUntampered = () => runVerificationProbe(true);
 
   const handleReset = () => {
-    setProbeResult({ status: 'IDLE', durationMs: 0, logLines: [], incidentId: '' });
+    setProbeResult({
+      status: 'IDLE',
+      durationMs: 0,
+      statusCode: null,
+      reason: null,
+      detail: null,
+      logLines: [],
+    });
   };
+
+  const baseFieldVal =
+    sampleProof?.canonical_payload?.[selectedVector.tamperedField] ?? selectedVector.originalValue;
+  const tamperedPreviewPayload = sampleProof?.canonical_payload
+    ? selectedVector.applyTamper(sampleProof.canonical_payload)
+    : null;
+  const previewTamperedVal =
+    tamperedPreviewPayload?.[selectedVector.tamperedField] ?? selectedVector.tamperedValue;
 
   return (
     <div
@@ -201,11 +326,11 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     fontWeight: 700,
                   }}
                 >
-                  AP2 v0.2 ES256 SD-JWT GUARANTEED
+                  LIVE /api/crypto/verify-tamper
                 </span>
               </div>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                Simulate adversarial MITM payload tampering, price inflation, and unauthorized agent spending against the AP2 cryptographic gate.
+                Sends signed or tampered mandate payloads to POST /api/crypto/verify-tamper and renders the backend verdict.
               </p>
             </div>
           </div>
@@ -231,9 +356,10 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
             <div style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Select Threat Scenario (Adversarial Probe)
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
               {ATTACK_VECTORS.map((v) => {
                 const isSelected = selectedVector.id === v.id;
+                const isControl = v.category === 'UNTAMPERED_CONTROL';
                 return (
                   <div
                     key={v.id}
@@ -244,8 +370,16 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     style={{
                       padding: '12px 14px',
                       borderRadius: '10px',
-                      backgroundColor: isSelected ? 'rgba(239, 68, 68, 0.1)' : '#111827',
-                      border: isSelected ? '1px solid #ef4444' : '1px solid #1f2937',
+                      backgroundColor: isSelected
+                        ? isControl
+                          ? 'rgba(16, 185, 129, 0.1)'
+                          : 'rgba(239, 68, 68, 0.1)'
+                        : '#111827',
+                      border: isSelected
+                        ? isControl
+                          ? '1px solid #10b981'
+                          : '1px solid #ef4444'
+                        : '1px solid #1f2937',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                       display: 'flex',
@@ -254,7 +388,7 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: isSelected ? '#fca5a5' : '#f8fafc', marginBottom: '6px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: isSelected ? (isControl ? '#6ee7b7' : '#fca5a5') : '#f8fafc', marginBottom: '6px' }}>
                         {v.name}
                       </div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.4 }}>
@@ -262,8 +396,8 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                       </div>
                     </div>
                     <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: '#64748b' }}>
-                      <span style={{ fontFamily: 'monospace' }}>Target: {v.tamperedField}</span>
-                      <span style={{ color: isSelected ? '#ef4444' : '#475569', fontWeight: 700 }}>
+                      <span style={{ fontFamily: 'monospace' }}>Field: {v.tamperedField}</span>
+                      <span style={{ color: isSelected ? (isControl ? '#10b981' : '#ef4444') : '#475569', fontWeight: 700 }}>
                         {isSelected ? '● ACTIVE' : 'SELECT'}
                       </span>
                     </div>
@@ -289,10 +423,10 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Fingerprint size={14} color="#38bdf8" /> Signed Canonical Mandate vs Injected Tamper
+                  <Fingerprint size={14} color="#38bdf8" /> Signed Canonical Mandate vs Request Payload
                 </span>
                 <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#64748b' }}>
-                  AP2 v0.2 ES256 SD-JWT
+                  {sampleProof?.algorithm || 'Ed25519'} ({sampleProof?.kid || 'demo-anti-tamper-ed25519'})
                 </span>
               </div>
 
@@ -310,21 +444,29 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                   gap: '8px',
                 }}
               >
-                <div style={{ color: '#64748b', fontSize: '10px' }}>// Buyer Agent Signed Intent (RFC 8785 Canonical JSON):</div>
+                <div style={{ color: '#64748b', fontSize: '10px' }}>// Signed Canonical Field Value:</div>
                 <div style={{ color: '#34d399', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '6px 8px', borderRadius: '4px' }}>
-                  "{selectedVector.tamperedField}": "{selectedVector.originalValue}" [VALID HASH]
+                  "{selectedVector.tamperedField}": {JSON.stringify(baseFieldVal)}
                 </div>
-                <div style={{ color: '#64748b', fontSize: '10px' }}>// Adversarial Injected Wire Modification:</div>
-                <div style={{ color: '#f87171', backgroundColor: 'rgba(239, 68, 68, 0.15)', padding: '6px 8px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                  "{selectedVector.tamperedField}": "{selectedVector.tamperedValue}" [TAMPERED]
+                <div style={{ color: '#64748b', fontSize: '10px' }}>// Submitted Payload Field Value:</div>
+                <div
+                  style={{
+                    color: selectedVector.category === 'UNTAMPERED_CONTROL' ? '#34d399' : '#f87171',
+                    backgroundColor: selectedVector.category === 'UNTAMPERED_CONTROL' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.15)',
+                    padding: '6px 8px',
+                    borderRadius: '4px',
+                    border: selectedVector.category === 'UNTAMPERED_CONTROL' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  }}
+                >
+                  "{selectedVector.tamperedField}": {JSON.stringify(previewTamperedVal)}
                 </div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
-                  Original Hash: <span style={{ color: '#38bdf8' }}>{selectedVector.signedMandateHash.slice(0, 32)}...</span>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', wordBreak: 'break-all' }}>
+                  Signature: <span style={{ color: '#38bdf8' }}>{sampleProof?.signature ? `${sampleProof.signature.slice(0, 32)}...` : (sampleError ? `Error: ${sampleError}` : 'Loading...')}</span>
                 </div>
               </div>
 
-              {/* Fire Button */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
                 <button
                   onClick={handleFireProbe}
                   disabled={isRunning}
@@ -334,28 +476,48 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    padding: '10px 16px',
+                    padding: '10px 14px',
                     borderRadius: '8px',
                     border: 'none',
                     background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                     color: '#fff',
-                    fontSize: '13px',
+                    fontSize: '12px',
                     fontWeight: 700,
                     cursor: isRunning ? 'not-allowed' : 'pointer',
                     boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
                     opacity: isRunning ? 0.7 : 1,
                   }}
                 >
-                  <Play size={15} fill="#fff" /> {isRunning ? 'Verifying Cryptographic Proof...' : 'Fire Adversarial Probe'}
+                  <Play size={14} fill="#fff" /> {isRunning ? 'Verifying...' : 'Fire Selected Probe'}
                 </button>
-                {probeResult.status === 'INTERCEPTED' && (
+                <button
+                  onClick={handleVerifyUntampered}
+                  disabled={isRunning}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: '#34d399',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: isRunning ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <ShieldCheck size={14} /> Verify Untampered
+                </button>
+                {probeResult.status !== 'IDLE' && (
                   <button
                     onClick={handleReset}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
-                      padding: '10px 14px',
+                      padding: '10px 12px',
                       borderRadius: '8px',
                       border: '1px solid #334155',
                       backgroundColor: '#1e293b',
@@ -385,7 +547,7 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Terminal size={14} color="#34d399" /> Anti-Tamper Engine Telemetry
+                  <Terminal size={14} color="#34d399" /> Backend Verification Response
                 </span>
                 {probeResult.status === 'INTERCEPTED' && (
                   <span
@@ -399,7 +561,37 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                       border: '1px solid rgba(239, 68, 68, 0.4)',
                     }}
                   >
-                    THREAT QUARANTINED ({probeResult.durationMs}ms)
+                    INTERCEPTED ({probeResult.durationMs}ms)
+                  </span>
+                )}
+                {probeResult.status === 'ACCEPTED' && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                    }}
+                  >
+                    ACCEPTED ({probeResult.durationMs}ms)
+                  </span>
+                )}
+                {probeResult.status === 'ERROR' && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                    }}
+                  >
+                    ERROR ({probeResult.durationMs}ms)
                   </span>
                 )}
               </div>
@@ -425,18 +617,19 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                 {probeResult.status === 'IDLE' ? (
                   <div style={{ color: '#475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '8px' }}>
                     <Lock size={24} color="#334155" />
-                    <span>Select an attack vector and click "Fire Adversarial Probe" to inspect live RFC 8032 defense.</span>
+                    <span>Select a scenario and click "Fire Selected Probe" or "Verify Untampered" to call /api/crypto/verify-tamper.</span>
                   </div>
                 ) : (
                   probeResult.logLines.map((line, idx) => {
-                    const isError = line.includes('FAILED') || line.includes('FAIL-CLOSED') || line.includes('Dispatched HTTP');
-                    const isPassed = line.includes('ENROLLED') || line.includes('Recorded:');
+                    const isError = probeResult.status === 'INTERCEPTED' || probeResult.status === 'ERROR';
+                    const isPassed = probeResult.status === 'ACCEPTED';
                     return (
                       <div
                         key={idx}
                         style={{
                           color: isError ? '#f87171' : isPassed ? '#34d399' : '#cbd5e1',
-                          fontWeight: isError ? 600 : 400,
+                          fontWeight: idx === 1 ? 700 : 400,
+                          wordBreak: 'break-all',
                         }}
                       >
                         {line}
@@ -446,12 +639,22 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                 )}
               </div>
 
-              {/* Incident Footer */}
-              {probeResult.status === 'INTERCEPTED' && (
+              {/* Verdict Summary Footer */}
+              {probeResult.status !== 'IDLE' && (
                 <div
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    backgroundColor:
+                      probeResult.status === 'ACCEPTED'
+                        ? 'rgba(16, 185, 129, 0.1)'
+                        : probeResult.status === 'ERROR'
+                        ? 'rgba(245, 158, 11, 0.1)'
+                        : 'rgba(239, 68, 68, 0.1)',
+                    border:
+                      probeResult.status === 'ACCEPTED'
+                        ? '1px solid rgba(16, 185, 129, 0.25)'
+                        : probeResult.status === 'ERROR'
+                        ? '1px solid rgba(245, 158, 11, 0.25)'
+                        : '1px solid rgba(239, 68, 68, 0.25)',
                     borderRadius: '8px',
                     padding: '8px 12px',
                     display: 'flex',
@@ -460,52 +663,23 @@ export function AdversarialTamperModal({ isOpen, onClose }: AdversarialTamperMod
                     fontSize: '11px',
                   }}
                 >
-                  <span style={{ color: '#fca5a5', fontWeight: 600 }}>
-                    Incident ID: <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{probeResult.incidentId}</strong>
-                  </span>
-                  <button
-                    onClick={() => handleCopy(probeResult.incidentId, 'incident')}
-                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px' }}
+                  <span
+                    style={{
+                      color:
+                        probeResult.status === 'ACCEPTED'
+                          ? '#6ee7b7'
+                          : probeResult.status === 'ERROR'
+                          ? '#fcd34d'
+                          : '#fca5a5',
+                      fontWeight: 600,
+                    }}
                   >
-                    {copiedKey === 'incident' ? <Check size={12} color="#34d399" /> : <Copy size={12} />} Copy ID
-                  </button>
+                    Verdict: <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{probeResult.status}</strong>
+                    {probeResult.statusCode !== null ? ` (HTTP ${probeResult.statusCode})` : ''}
+                    {probeResult.reason ? ` — ${probeResult.reason}` : ''}
+                  </span>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Historical Quarantine Log */}
-          <div
-            style={{
-              backgroundColor: '#0c1322',
-              border: '1px solid #1e293b',
-              borderRadius: '12px',
-              padding: '14px 18px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ShieldCheck size={14} color="#10b981" /> Pre-Seeded Security Ledger (3 Quarantined Incidents &bull; Demo Fixture)
-              </span>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Audit Test Suite &bull; Zero Leaks &bull; Zero False Positives</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11px' }}>
-              <div style={{ padding: '8px 10px', backgroundColor: '#090e1a', borderRadius: '6px', border: '1px solid #1f2937' }}>
-                <div style={{ color: '#f87171', fontWeight: 700 }}>INCIDENT-9912 (Price +1¢)</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>2026-10-07 21:14 UTC</div>
-                <div style={{ color: '#64748b', fontSize: '10px' }}>Status: REJECTED (Signature Mismatch)</div>
-              </div>
-              <div style={{ padding: '8px 10px', backgroundColor: '#090e1a', borderRadius: '6px', border: '1px solid #1f2937' }}>
-                <div style={{ color: '#f87171', fontWeight: 700 }}>INCIDENT-9913 (Spoofed Entity)</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>2026-10-07 18:42 UTC</div>
-                <div style={{ color: '#64748b', fontSize: '10px' }}>Status: REJECTED (Key Mismatch)</div>
-              </div>
-              <div style={{ padding: '8px 10px', backgroundColor: '#090e1a', borderRadius: '6px', border: '1px solid #1f2937' }}>
-                <div style={{ color: '#fbbf24', fontWeight: 700 }}>INCIDENT-9914 (Cap Overspend)</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>2026-10-07 14:05 UTC</div>
-                <div style={{ color: '#64748b', fontSize: '10px' }}>Status: REJECTED (Budget Cap Breach)</div>
-              </div>
             </div>
           </div>
         </div>

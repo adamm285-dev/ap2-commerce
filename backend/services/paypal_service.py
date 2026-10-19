@@ -477,54 +477,6 @@ class PayPalService:
         given_name = name_parts[0]
         surname = name_parts[1] if len(name_parts) > 1 else "Contractor"
 
-        # First try official PayPal Agent Toolkit subscription handler
-        client = self.get_toolkit_client()
-        if client and paypal_sub_handlers:
-            try:
-                params = {
-                    "plan_id": target_plan_id,
-                    "subscriber": {
-                        "name": {"given_name": given_name, "surname": surname},
-                        "email_address": contractor_email,
-                    },
-                    "custom_id": f"a2a_{offer_id or (mandate_proof_hash[:16] if mandate_proof_hash else 'sub')}",
-                    "application_context": {
-                        "brand_name": brand_name,
-                        "locale": "en-US",
-                        "shipping_preference": "GET_FROM_FILE",
-                        "user_action": "SUBSCRIBE_NOW",
-                        "return_url": "http://localhost:5173/subscription-success",
-                        "cancel_url": "http://localhost:5173/subscription-cancelled",
-                    },
-                }
-                raw = paypal_sub_handlers.create_subscription(client, params)
-                data = json.loads(raw) if isinstance(raw, str) else raw
-                sub_id = data.get("id")
-                links = data.get("links", [])
-                approval_url = None
-                for link in links:
-                    if link.get("rel") == "approve":
-                        approval_url = link.get("href")
-                        break
-                live_status = data.get("status")
-                raw_payer_id = (data.get("subscriber") or {}).get("payer_id") if isinstance(data.get("subscriber"), dict) else None
-                return {
-                    "subscription_id": sub_id,
-                    "status": live_status,
-                    "approval_url": approval_url,
-                    "plan_id": target_plan_id,
-                    "payer_id": raw_payer_id or None,
-                    "vault_id": None,
-                    "payment_token": None,
-                    "paypal_request_id": None,
-                    "created_time": data.get("create_time"),
-                    "next_billing_time": (data.get("billing_info") or {}).get("next_billing_time") if isinstance(data.get("billing_info"), dict) else None,
-                    "hateoas_links": links,
-                    "mock_mode": False,
-                }
-            except Exception as e:
-                logger.warning(f"[PayPal Toolkit] Failed to create subscription via toolkit, falling back to direct REST: {e}")
-
         token = await self.get_access_token()
         if not token:
             raise RuntimeError("Failed to authenticate with PayPal Sandbox API.")

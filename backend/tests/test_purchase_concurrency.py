@@ -476,7 +476,6 @@ def _creation_request_ids(state):
     return ids
 
 
-@KNOWN_ISSUE("With PayPal credentials configured, subscriptions are created through the Agent Toolkit, which sends no PayPal-Request-Id.")
 def test_toolkit_configured_purchase_sends_paypal_request_id(toolkit_configured):
     email = _email("tk")
     res = _run(_buy(_signed(_limits(email, 100_000), email, "ap2-batch")))
@@ -487,7 +486,6 @@ def test_toolkit_configured_purchase_sends_paypal_request_id(toolkit_configured)
     assert res.get("paypal_request_id") == ids[0], "reported paypal_request_id is not the header that was sent"
 
 
-@KNOWN_ISSUE("When the Toolkit's POST fails after PayPal received it, the REST fallback sends a second creation request PayPal can't match to the first.")
 def test_toolkit_failure_fallback_reuses_paypal_request_id(toolkit_configured):
     toolkit_configured["toolkit_fail"] = True
     email = _email("tk-fail")

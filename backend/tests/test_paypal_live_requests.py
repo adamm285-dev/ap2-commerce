@@ -134,3 +134,26 @@ def test_live_create_payout_batch_request_shape(fake_paypal_api):
     }
     assert body["items"] == items
     assert res["batch_header"]["payout_batch_id"] == "PAYOUTBATCH-LIVE-001"
+
+
+def test_live_create_subscription_requires_paypal_request_id(fake_paypal_api):
+    """Live PayPalService.create_subscription fails closed if paypal_request_id is omitted or blank."""
+    with pytest.raises(ValueError, match="MISSING_PAYPAL_REQUEST_ID"):
+        _run(
+            paypal_service.create_subscription(
+                tier_id="ap2-batch",
+                agreed_monthly_rate=49.99,
+                contractor_email="buyer@example.com",
+            )
+        )
+    with pytest.raises(ValueError, match="MISSING_PAYPAL_REQUEST_ID"):
+        _run(
+            paypal_service.create_subscription(
+                tier_id="ap2-batch",
+                agreed_monthly_rate=49.99,
+                contractor_email="buyer@example.com",
+                paypal_request_id="   ",
+            )
+        )
+    assert len(fake_paypal_api["sent"]) == 0
+

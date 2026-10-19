@@ -399,6 +399,7 @@ class PayPalService:
         contractor_name: str = "Autonomous Buyer Agent",
         offer_id: Optional[str] = None,
         mandate_proof_hash: Optional[str] = None,
+        paypal_request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Creates a recurring subscription on PayPal.
@@ -410,6 +411,9 @@ class PayPalService:
         prof = get_seller_profile()
         target_plan_id = resolve_paypal_plan_id(tier_id, profile=prof)
         brand_name = "AP2 Autonomous Node Network"
+        clean_req_id = paypal_request_id.strip() if isinstance(paypal_request_id, str) and paypal_request_id.strip() else None
+        if not clean_req_id and isinstance(mandate_proof_hash, str) and mandate_proof_hash.strip():
+            clean_req_id = f"ap2-sub-{mandate_proof_hash.strip()[:32]}"
 
         # MOCK(M-002): subscription created as ACTIVE with no buyer approval, no PayPal call
         if self.mock_mode:
@@ -419,7 +423,6 @@ class PayPalService:
             payer_id = f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-AP2-BUYER"
             vault_id = f"vault_tok_{sub_id.lower().replace('-', '_')}"
             payment_token = f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
-            paypal_req_id = f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
             utc_now = datetime.datetime.now(datetime.timezone.utc)
             created_time = utc_now.isoformat()
             next_billing = (utc_now + datetime.timedelta(days=30)).isoformat()
@@ -434,7 +437,7 @@ class PayPalService:
                 "payer_id": payer_id,
                 "vault_id": vault_id,
                 "payment_token": payment_token,
-                "paypal_request_id": paypal_req_id,
+                "paypal_request_id": clean_req_id,
                 "created_time": created_time,
                 "next_billing_time": next_billing,
                 "plan_id": target_plan_id,
@@ -464,6 +467,11 @@ class PayPalService:
             }
             self._mock_subscriptions[sub_id] = mock_sub_record
             return mock_sub_record
+
+        if not clean_req_id:
+            raise ValueError(
+                "MISSING_PAYPAL_REQUEST_ID: paypal_request_id (or mandate_proof_hash) is required for live PayPal subscription creation."
+            )
 
         name_parts = contractor_name.split(" ", 1)
         given_name = name_parts[0]
@@ -544,6 +552,7 @@ class PayPalService:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
+                    "PayPal-Request-Id": clean_req_id,
                 },
                 json=payload,
                 timeout=10.0,
@@ -556,6 +565,7 @@ class PayPalService:
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Content-Type": "application/json",
+                        "PayPal-Request-Id": clean_req_id,
                     },
                     json=payload,
                     timeout=10.0,
@@ -572,9 +582,6 @@ class PayPalService:
 
             live_status = data.get("status")
             raw_payer_id = (data.get("subscriber") or {}).get("payer_id") if isinstance(data.get("subscriber"), dict) else None
-            resp_req_id = None
-            if hasattr(res, "headers") and res.headers is not None:
-                resp_req_id = res.headers.get("PayPal-Request-Id") or res.headers.get("paypal-request-id") or None
             return {
                 "subscription_id": sub_id,
                 "status": live_status,
@@ -583,7 +590,7 @@ class PayPalService:
                 "payer_id": raw_payer_id or None,
                 "vault_id": None,
                 "payment_token": None,
-                "paypal_request_id": resp_req_id,
+                "paypal_request_id": clean_req_id,
                 "created_time": data.get("create_time"),
                 "next_billing_time": (data.get("billing_info") or {}).get("next_billing_time") if isinstance(data.get("billing_info"), dict) else None,
                 "hateoas_links": links,

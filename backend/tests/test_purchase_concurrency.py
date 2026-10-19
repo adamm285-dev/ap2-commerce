@@ -391,7 +391,6 @@ def _request_ids(state):
     return [r.headers.get("PayPal-Request-Id") for r in state["sent"]]
 
 
-@KNOWN_ISSUE("The live subscription POST sends no PayPal-Request-Id, so PayPal cannot de-duplicate a retried purchase.")
 def test_live_purchase_sends_paypal_request_id_and_reports_it(live_paypal_http):
     email = _email("rid")
     res = _run(_buy(_signed(_limits(email, 100_000), email, "ap2-batch")))
@@ -401,7 +400,6 @@ def test_live_purchase_sends_paypal_request_id_and_reports_it(live_paypal_http):
     assert res.get("paypal_request_id") == ids[0], "reported paypal_request_id is not the header that was sent"
 
 
-@KNOWN_ISSUE("Without a PayPal-Request-Id derived from the closed mandate, a retry of one purchase is a new PayPal request.")
 def test_paypal_request_id_is_stable_per_closed_mandate(live_paypal_http):
     email = _email("rid-stable")
     limits = _limits(email, 100_000)
@@ -418,7 +416,6 @@ def test_paypal_request_id_is_stable_per_closed_mandate(live_paypal_http):
     assert other and other != first, "two different closed mandates sent the same PayPal-Request-Id"
 
 
-@KNOWN_ISSUE("The 401 token-refresh retry re-sends the subscription POST without a PayPal-Request-Id.")
 def test_paypal_request_id_survives_token_refresh_retry(live_paypal_http):
     email = _email("rid-401")
     live_paypal_http["script"] = [401, 201]

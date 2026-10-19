@@ -1214,6 +1214,11 @@ class SellerAgent:
                 or auth.get("subscriber_name")
                 or (f"Buyer Agent ({buyer_id})" if buyer_id and buyer_id != "unknown" else "Buyer Agent")
             )
+            if not checkout_hash or not str(checkout_hash).strip():
+                desc = "MISSING_CHECKOUT_HASH: Verified checkout chain is missing checkout_hash required for PayPal idempotency."
+                logger.error(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, ERR_INVALID_MANDATE)
+            paypal_request_id = f"ap2-sub-{str(checkout_hash).strip()[:32]}"
             try:
                 paypal_result = await paypal_service.create_subscription(
                     tier_id=tier_id,
@@ -1222,6 +1227,7 @@ class SellerAgent:
                     contractor_name=subscriber_name,
                     offer_id=offer_id,
                     mandate_proof_hash=mandate_proof_hash,
+                    paypal_request_id=paypal_request_id,
                 )
             except Exception as e:
                 desc = f"PAYPAL_SUBSCRIPTION_ERROR: Failed to create PayPal subscription: {e}"

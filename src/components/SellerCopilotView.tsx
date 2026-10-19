@@ -568,6 +568,8 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     return wireFrames;
   }, [wireFrames, wireFilter]);
 
+  const [traceError, setTraceError] = useState<string | null>(null);
+
   // Fetch Back-Office Payloads for Inspector Modal
   const fetchM2MPayloads = async () => {
     setInspectorLoading(true);
@@ -591,69 +593,26 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     if (fetchedData && fetchedData.status) {
       setInspectorData(fetchedData);
     } else {
-      // Fallback: check liveTrace from current chat run
+      // Fallback: check liveTrace from current chat run using only values actually present
       const step4 = liveTrace.find((s) => s.step === 4);
       const step3 = liveTrace.find((s) => s.step === 3);
       const step2 = liveTrace.find((s) => s.step === 2);
       const step1 = liveTrace.find((s) => s.step === 1);
 
       if (step4) {
+        const nodeEndpoint = step3?.assigned_did || step3?.endpoint || null;
         setInspectorData({
-          status: 'COMPLETED',
-          mandate_hash: step1?.proof_hash || 'HMAC-MANDATE-VERIFIED-01',
-          paypal_subscription_id: step2?.subscription_id || 'I-AUTONOMOUS-8902',
-          node_endpoint: step3?.assigned_did || `node-cluster-01.ap2.net:8443`,
-          endpoint: step3?.assigned_did || `node-cluster-01.ap2.net:8443`,
-          timestamp: step4.timestamp || new Date().toISOString(),
-          hmac_signature: 'sha256=' + (step1?.proof_hash || 'b6d390a1e352d9a9c5b6118d0937a0ec'),
-          quickbooks: step4.qbo_export || {
-            Purchase: {
-              PaymentType: 'CreditCard',
-              AccountRef: { value: '99', name: 'PayPal Clearing Account' },
-              EntityRef: { value: '101', name: 'Demo Merchant Co', type: 'Vendor' },
-              TxnDate: new Date().toISOString().substring(0, 10),
-              DocNumber: `AP2-SUB-8902`,
-              TotalAmt: localBudgetCap < 79.99 ? 49.99 : 79.99,
-              PrivateNote: `AP2 Autonomous Settlement.\nBuyer Agent: ${localContractorName}\nPrincipal Entity: ${localBusinessEntity}\nEndpoint: ${step3?.assigned_did || 'node-cluster-01.ap2.net:8443'}`,
-              Line: [
-                {
-                  Amount: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                  DetailType: 'AccountBasedExpenseLineDetail',
-                  Description: `AP2 Autonomous Gateway (${localTradeVertical}) — SaaS Recurring Subscription`,
-                  AccountBasedExpenseLineDetail: {
-                    AccountRef: { value: '6300', name: 'Dues & Subscriptions: Software & SaaS' },
-                    BillableStatus: 'NotBillable',
-                  },
-                },
-              ],
-            },
-          },
-          cloudevents: {
-            specversion: '1.0',
-            id: 'ce-evt-99120482',
-            source: 'https://api.ap2protocol.org/mcp/seller',
-            type: 'com.ap2.settlement.subscription.activated',
-            datacontenttype: 'application/json',
-            time: step4.timestamp || new Date().toISOString(),
-            subject: `agent_${localContractorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-            data: {
-              buyer_agent: localContractorName,
-              principal_entity: localBusinessEntity,
-              service_tier: localTradeVertical,
-              monthly_rate: localBudgetCap < 79.99 ? 49.99 : 79.99,
-              allocated_node_endpoint: step3?.assigned_did || 'node-cluster-01.ap2.net:8443',
-              paypal_subscription_id: step2?.subscription_id || 'I-AUTONOMOUS-8902',
-              ed25519_proof_hash: step1?.proof_hash || 'PROOF-MANDATE-VERIFIED',
-              enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-            },
-          },
-          webhook_meta: {
-            dispatched: true,
-            status_code: 200,
-            delivery_id: 'dlv_' + Math.random().toString(36).substring(2, 10),
-            timestamp: step4.timestamp,
-            signature: 'sha256=' + (step1?.proof_hash || 'b6d390a1e352...'),
-          },
+          status: step4.status || null,
+          mandate_hash: step1?.proof_hash || null,
+          paypal_subscription_id: step2?.subscription_id || null,
+          node_endpoint: nodeEndpoint,
+          endpoint: nodeEndpoint,
+          agreed_price: step2?.monthly_amount ?? step1?.authorized_amount ?? null,
+          timestamp: step4.timestamp || null,
+          hmac_signature: step4.hmac_signature || null,
+          quickbooks: step4.qbo_export || null,
+          cloudevents: step4.erp_export || step4.cloudevents || null,
+          webhook_meta: step4.webhook_meta || null,
         });
       } else {
         setInspectorData(null);
@@ -671,6 +630,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
   // Returns the node the backend provisioned, or null when the run failed
   const triggerTestCycle = async (): Promise<string | null> => {
     setIsTriggeringTestRun(true);
+    setTraceError(null);
     let provisionedDid: string | null = null;
     try {
       let adminKey = sessionAdminKey || (window as any).__FS_ADMIN_KEY || '';
@@ -712,74 +672,47 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
       }
       if (res.ok) {
         const runData = await res.json();
-        if (runData && (runData.provisioned_did || runData.assigned_did)) {
-          const did = runData.provisioned_did || runData.assigned_did;
-          setLastAllocatedDid(did);
-          provisionedDid = did;
-
-          const trace = runData.protocol_trace || [
-            {
-              step: 1,
-              timestamp: new Date().toISOString(),
-              protocol: 'MCP JSON-RPC 2.0',
-              method: 'tools/call:evaluate_spending_mandate',
-              decision: 'APPROVED',
-              proof_hash: runData.mandate_proof_hash || 'PROOF-MANDATE-VERIFIED',
-              budget_cap: localBudgetCap,
-              authorized_amount: runData.monthly_amount || 79.99,
-              remaining_budget: localBudgetCap - (runData.monthly_amount || 79.99),
-              tier_title: runData.selected_tier || (localBudgetCap < 79.99 ? 'High-Throughput Batch Worker ($49.99/mo)' : 'Dedicated AI Service Gateway ($79.99/mo)'),
-            },
-            {
-              step: 2,
-              timestamp: new Date().toISOString(),
-              protocol: 'PayPal Subscriptions v1',
-              action: 'AUTHORIZE_BILLING_AGREEMENT',
-              subscription_id: runData.paypal_subscription_id || runData.subscription_id || 'I-AUTONOMOUS-8902',
-              plan_id: 'P-5ML4271244454362WXNWU5NQ',
-              monthly_amount: runData.monthly_amount || 79.99,
-              payer_entity: localBusinessEntity,
-            },
-            {
-              step: 3,
-              timestamp: new Date().toISOString(),
-              protocol: 'MCP JSON-RPC 2.0',
-              method: 'tools/call:provision_worker_node',
-              assigned_did: did.includes('.') ? did : 'node-cluster-01.ap2.net:8443',
-              carrier: 'AP2 Autonomous Worker Enclave',
-              routing_state: 'ACTIVE_ENCLAVE_BOUND',
-              tcpa_status: 'AP2 CHAIN VERIFIED (ES256)',
-              lata_failover_active: simulateExhaustion,
-              allocated_area_code: 'US-East Cluster (Ashburn)',
-            },
-            {
-              step: 4,
-              timestamp: new Date().toISOString(),
-              protocol: 'MCP JSON-RPC 2.0',
-              method: 'tools/call:dispatch_zapier_mcp',
-              qbo_expense_id: runData.qbo_expense_id || 'EXP-QBO-88219',
-              cloudevents_delivery_id: runData.cloudevents_delivery_id || 'CE-EVENT-7712',
-              webhook_event_id: 'WH-EVT-9921',
-              status: 'COMPLETED',
-            },
-          ];
+        const trace = Array.isArray(runData?.protocol_trace) ? runData.protocol_trace : null;
+        if (!trace || trace.length === 0) {
+          setLiveTrace([]);
+          setActiveStep(0);
+          const errDetail = runData?.error || runData?.reason || 'Backend response did not include a protocol_trace; nothing invented is shown.';
+          setTraceError(errDetail);
+          setInspectorError(errDetail);
+        } else {
           setLiveTrace(trace);
           setActiveStep(trace.length);
-
-          if (onA2aCompleted) {
-            onA2aCompleted({
-              subscriptionId: runData.subscription_id || runData.paypal_subscription_id || 'I-AUTONOMOUS-8902',
-              allocatedDid: did.includes('.') ? did : 'node-cluster-01.ap2.net:8443',
-              carrier: 'AP2 Autonomous Worker Enclave',
-              contractorName: localContractorName,
-              businessEntity: localBusinessEntity,
-            });
+          const did = runData.provisioned_did || runData.assigned_did || null;
+          const subId = runData.subscription_id || runData.paypal_subscription_id || null;
+          if (did) {
+            setLastAllocatedDid(did);
+            provisionedDid = did;
+            if (onA2aCompleted && subId) {
+              onA2aCompleted({
+                subscriptionId: subId,
+                allocatedDid: did,
+                carrier: runData.carrier || 'MCP over HTTPS (JSON-RPC 2.0)',
+                contractorName: localContractorName,
+                businessEntity: localBusinessEntity,
+              });
+            }
           }
         }
         await fetchM2MPayloads();
+      } else {
+        setLiveTrace([]);
+        setActiveStep(0);
+        const errMsg = `Harness request failed with HTTP ${res.status}.`;
+        setTraceError(errMsg);
+        setInspectorError(errMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to trigger test cycle:', err);
+      setLiveTrace([]);
+      setActiveStep(0);
+      const errMsg = `Backend unreachable (${err?.message || 'network error'}).`;
+      setTraceError(errMsg);
+      setInspectorError(errMsg);
     } finally {
       setIsTriggeringTestRun(false);
     }
@@ -1427,7 +1360,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const bargainReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `⚡ **AP2 Autonomous Counter-Offer Bargaining Protocol**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$60.00/mo\` (Policy Breach: $79.99 > $60.00)\n• **Bargaining State**: Inbound intent mandate rejected at standard tier rate.\n\n🔄 **Autonomous Counter-Offer Generated by AP2 Seller Agent:**\n• **Offered Service**: High-Throughput Batch Worker\n• **Agreed Rate**: \`$49.99/mo\` (\`$10.01\` headroom within buyer's $60.00 mandate cap)\n• **Mandate Nonce**: \`0x${Math.random().toString(16).substring(2, 10)}\`\n• **Checkout**: The seller signs it with its ES256 merchant key (AP2 v0.2).\n\nReady for single-click execution authorization:`,
+          text: `⚡ **AP2 Autonomous Counter-Offer Bargaining Protocol**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$60.00/mo\` (Policy Breach: $79.99 > $60.00)\n• **Bargaining State**: Inbound intent mandate rejected at standard tier rate.\n\n🔄 **Autonomous Counter-Offer Generated by AP2 Seller Agent:**\n• **Offered Service**: High-Throughput Batch Worker\n• **Agreed Rate**: \`$49.99/mo\` (\`$10.01\` headroom within buyer's $60.00 mandate cap)\n• **Checkout**: The seller signs it with its ES256 merchant key (AP2 v0.2).\n\nReady for single-click execution authorization:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'PROPOSAL',
           proposal: {
@@ -1452,7 +1385,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const matchReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `✅ **AP2 Spending Mandate Verification (Direct Match)**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$100.00/mo\`\n• **Policy Verification**: \`$79.99 <= $100.00\` — **MANDATE APPROVED**\n• **Remaining Budget Headroom**: \`$20.01/mo\`\n• **Cryptographic Attestation**: Ed25519 signature verified across canonical JSON intent payload.\n• **Settlement Rail**: PayPal Vault Recurring MIT Agreement (\`P-5ML4271244454362WXNWU5NQ\`).\n\nReady to execute autonomous settlement:`,
+          text: `✅ **AP2 Spending Mandate Verification (Direct Match)**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$100.00/mo\`\n• **Policy Verification**: \`$79.99 <= $100.00\` — **MANDATE APPROVED**\n• **Remaining Budget Headroom**: \`$20.01/mo\`\n• **Cryptographic Attestation**: Ed25519 signature verified across canonical JSON intent payload.\n• **Settlement Rail**: PayPal Vault Recurring MIT Agreement.\n\nReady to execute autonomous settlement:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'PROPOSAL',
           proposal: {
@@ -1731,6 +1664,15 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
 
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
+
+      if (data.execution_result && Array.isArray(data.execution_result.protocol_trace) && data.execution_result.protocol_trace.length > 0) {
+        setLiveTrace(data.execution_result.protocol_trace);
+        setActiveStep(data.execution_result.protocol_trace.length);
+        setTraceError(null);
+        if (data.execution_result.allocated_did) {
+          setLastAllocatedDid(data.execution_result.allocated_did);
+        }
+      }
 
       const copilotMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
@@ -3463,6 +3405,21 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
           {/* TAB 1: AP2 PROTOCOL EXECUTION TRACE */}
           {activeRightTab === 'trace' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {traceError && (
+                <div
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid #ef4444',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: '#fca5a5',
+                    fontSize: '12px',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  <strong>Trace Error:</strong> {traceError}
+                </div>
+              )}
               {liveTrace.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', textAlign: 'center', gap: '12px' }}>
                   <Code2 size={42} strokeWidth={1.5} />
@@ -3484,16 +3441,25 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <Key size={14} /> 1. Programmatic Spending Mandate Verification
                       </span>
                       <span style={{ fontSize: '10px', backgroundColor: 'rgba(52, 211, 153, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        AP2 v0.2 ES256 SD-JWT
+                        {liveTrace[0]?.protocol || 'AP2 v0.2 ES256 SD-JWT'}
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
                       Protocol: <code>MCP tools/call:evaluate_spending_mandate</code><br />
-                      Policy Check: <strong>${liveTrace[0]?.authorized_amount?.toFixed(2) || '79.99'} &le; ${localBudgetCap.toFixed(2)}/mo</strong> Cap (Remaining: <strong>${(localBudgetCap - (liveTrace[0]?.authorized_amount || 79.99)).toFixed(2)}</strong>)<br />
+                      Policy Check:{' '}
+                      <strong>
+                        {liveTrace[0]?.authorized_amount != null
+                          ? `$${Number(liveTrace[0].authorized_amount).toFixed(2)} ≤ $${localBudgetCap.toFixed(2)}/mo`
+                          : 'not available'}
+                      </strong>
+                      {liveTrace[0]?.authorized_amount != null && (
+                        <> (Remaining: <strong>${(localBudgetCap - Number(liveTrace[0].authorized_amount)).toFixed(2)}</strong>)</>
+                      )}
+                      <br />
                       {liveTrace[0]?.tier_title && (
                         <div>Tier: <strong style={{ color: '#fbbf24' }}>{liveTrace[0].tier_title}</strong></div>
                       )}
-                      Cryptographic Proof: <code style={{ color: '#fbbf24', wordBreak: 'break-all' }}>{liveTrace[0]?.proof_hash}</code>
+                      Cryptographic Proof: <code style={{ color: '#fbbf24', wordBreak: 'break-all' }}>{liveTrace[0]?.proof_hash || 'not available'}</code>
                     </div>
                   </div>
 
@@ -3504,12 +3470,18 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <CreditCard size={14} /> 2. PayPal Delegated Subscription Token
                       </span>
                       <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        ACTIVE RECURRING
+                        {liveTrace[1]?.status || 'not available'}
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
-                      Subscription Agreement: <code>{liveTrace[1]?.subscription_id}</code><br />
-                      Monthly Amount: <strong>${liveTrace[1]?.monthly_amount?.toFixed(2) || '79.99'} / month</strong> &bull; Plan ID: <code>P-5ML4271244454362WXNWU5NQ</code><br />
+                      Subscription Agreement: <code>{liveTrace[1]?.subscription_id || 'not available'}</code><br />
+                      Monthly Amount:{' '}
+                      <strong>
+                        {liveTrace[1]?.monthly_amount != null
+                          ? `$${Number(liveTrace[1].monthly_amount).toFixed(2)} / month`
+                          : 'not available'}
+                      </strong>{' '}
+                      &bull; Plan ID: <code>{liveTrace[1]?.plan_id || 'not available'}</code><br />
                       Payer Legal Entity: <strong>{localBusinessEntity}</strong>
                     </div>
                   </div>
@@ -3521,12 +3493,12 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <Cpu size={14} /> 3. Dedicated Worker Node Allocation
                       </span>
                       <span style={{ fontSize: '10px', backgroundColor: 'rgba(52, 211, 153, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        CRYPTOGRAPHICALLY SECURED
+                        {liveTrace[2]?.status || 'not available'}
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
-                      Node Endpoint: <strong style={{ color: '#34d399', fontSize: '13px' }}>{liveTrace[2]?.assigned_did || 'node-cluster-01.ap2.net:8443'}</strong><br />
-                      Worker Node: {liveTrace[2]?.carrier || 'AP2 Autonomous Worker Node'} &bull; Spending Guard: <code>AP2 CHAIN VERIFIED (ES256)</code>
+                      Node Endpoint: <strong style={{ color: '#34d399', fontSize: '13px' }}>{liveTrace[2]?.assigned_did || liveTrace[2]?.endpoint || 'not available'}</strong><br />
+                      Worker Node: {liveTrace[2]?.carrier || 'not available'} &bull; Spending Guard: <code>{liveTrace[2]?.tcpa_status || liveTrace[2]?.attestation_status || 'not available'}</code>
                     </div>
                   </div>
 
@@ -3537,13 +3509,13 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <Layers size={14} /> 4. Zapier MCP &amp; Enterprise ERP Sync
                       </span>
                       <span style={{ fontSize: '10px', backgroundColor: 'rgba(52, 211, 153, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        DISPATCHED
+                        {liveTrace[3]?.status || 'not available'}
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
-                      CloudEvents Delivery ID: <code>{liveTrace[3]?.cloudevents_delivery_id || 'CE-EVENT-7712'}</code><br />
-                      QuickBooks Expense ID: <code>{liveTrace[3]?.qbo_expense_id || 'EXP-QBO-88219'}</code><br />
-                      Webhook Target: <code>hooks.zapier.com/hooks/catch/ap2_settlement</code>
+                      CloudEvents Delivery ID: <code>{liveTrace[3]?.cloudevents_delivery_id || liveTrace[3]?.erp_routing_id || 'not available'}</code><br />
+                      QuickBooks Expense ID: <code>{liveTrace[3]?.qbo_expense_id || 'not available'}</code><br />
+                      Webhook Target: <code>{liveTrace[3]?.webhook_target || 'not available'}</code>
                     </div>
                     <button
                       onClick={openInspector}
@@ -3574,7 +3546,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         Settlement Ledger Mutated Successfully
                       </div>
                       <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
-                        {localContractorName} is now live on endpoint <strong>{lastAllocatedDid || 'node-cluster-01.ap2.net:8443'}</strong>. Switch to the <strong>Settlement Ledger &amp; BI</strong> or <strong>Worker Node Scheduler</strong> tabs to see the updated row!
+                        {localContractorName} is now live on endpoint <strong>{lastAllocatedDid || 'not available'}</strong>. Switch to the <strong>Settlement Ledger &amp; BI</strong> or <strong>Worker Node Scheduler</strong> tabs to see the updated row!
                       </div>
                     </div>
                   </div>
@@ -4074,7 +4046,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                     <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '12px 16px' }}>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>Worker Node Endpoint</div>
                       <div style={{ fontSize: '16px', fontWeight: 700, color: '#34d399', letterSpacing: '0.3px' }}>
-                        {inspectorData.node_endpoint || inspectorData.endpoint || 'node-cluster-01.ap2.net:8443'}
+                        {inspectorData.node_endpoint || inspectorData.endpoint || 'not available'}
                       </div>
                       <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>AP2 Autonomous Worker Enclave &bull; Hardware Secured</div>
                     </div>
@@ -4082,17 +4054,17 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                     <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '12px 16px' }}>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>PayPal Sub ID</div>
                       <div style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.3px' }}>
-                        {inspectorData.paypal_subscription_id || 'N/A'}
+                        {inspectorData.paypal_subscription_id || 'not available'}
                       </div>
                       <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                        ${inspectorData.agreed_price ? Number(inspectorData.agreed_price).toFixed(2) : '79.99'}/mo Agreement
+                        {inspectorData.agreed_price != null ? `$${Number(inspectorData.agreed_price).toFixed(2)}/mo Agreement` : 'not available'}
                       </div>
                     </div>
 
                     <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '12px 16px' }}>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>Settlement Status</div>
                       <div style={{ fontSize: '16px', fontWeight: 700, color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <ShieldCheck size={16} /> {inspectorData.status || 'COMPLETED'}
+                        <ShieldCheck size={16} /> {inspectorData.status || 'not available'}
                       </div>
                       <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>Verified Machine-to-Machine</div>
                     </div>
@@ -4116,7 +4088,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         <strong>Cryptographic Mandate Proof (AP2 v0.2 ES256 SD-JWT):</strong>
                       </span>
                       <code style={{ fontSize: '11px', color: '#fbbf24', wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                        {inspectorData.mandate_hash || 'N/A'}
+                        {inspectorData.mandate_hash || 'not available'}
                       </code>
                     </div>
                     <button
@@ -4252,33 +4224,8 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
 
                         <button
                           onClick={() => {
-                            const ceData = inspectorData?.cloudevents || {
-                              specversion: '1.0',
-                              id: 'ce-evt-99120482',
-                              source: 'https://api.ap2protocol.org/mcp/seller',
-                              type: 'com.ap2.settlement.subscription.activated',
-                              datacontenttype: 'application/json',
-                              time: new Date().toISOString(),
-                              subject: `agent_${localContractorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-                              data: {
-                                buyer_agent: localContractorName,
-                                principal_entity: localBusinessEntity,
-                                service_tier: localTradeVertical,
-                                monthly_rate: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                                allocated_node_endpoint: inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443',
-                                paypal_subscription_id: inspectorData?.paypal_subscription_id || 'I-AUTONOMOUS-8902',
-                                ed25519_proof_hash: inspectorData?.mandate_hash || 'PROOF-MANDATE-VERIFIED',
-                                enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-                              },
-                            };
-                            const enclaveData = {
-                              enclave_node: inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443',
-                              enclave_type: 'AP2 Hardware Isolated Execution Enclave',
-                              attestation_hash: inspectorData?.mandate_hash || 'SHA256:7c9e1248...b401',
-                              allocated_port: 8443,
-                              status: 'READY_FOR_INFERENCE',
-                              spending_limit_monthly: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                            };
+                            const ceData = inspectorData?.cloudevents ?? 'not available';
+                            const enclaveData = inspectorData?.enclave ?? 'not available';
 
                             const content =
                               activeCloudEventsSubTab === 'subscription'
@@ -4323,57 +4270,13 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                       >
                         <code>
                           {activeCloudEventsSubTab === 'subscription'
-                            ? JSON.stringify(
-                                inspectorData?.cloudevents || {
-                                  specversion: '1.0',
-                                  id: 'ce-evt-99120482',
-                                  source: 'https://api.ap2protocol.org/mcp/seller',
-                                  type: 'com.ap2.settlement.subscription.activated',
-                                  datacontenttype: 'application/json',
-                                  time: new Date().toISOString(),
-                                  subject: `agent_${localContractorName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-                                  data: {
-                                    buyer_agent: localContractorName,
-                                    principal_entity: localBusinessEntity,
-                                    service_tier: localTradeVertical,
-                                    monthly_rate: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                                    allocated_node_endpoint: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                    paypal_subscription_id: inspectorData?.paypal_subscription_id || 'I-AUTONOMOUS-8902',
-                                    ed25519_proof_hash: inspectorData?.mandate_hash || 'PROOF-MANDATE-VERIFIED',
-                                    enclave_route: 'US-East Node Cluster (Ashburn, VA)',
-                                  },
-                                },
-                                null,
-                                2
-                              )
+                            ? JSON.stringify(inspectorData?.cloudevents ?? 'not available', null, 2)
                             : activeCloudEventsSubTab === 'workload'
-                            ? JSON.stringify(
-                                {
-                                  enclave_node: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                  enclave_type: 'AP2 Hardware Isolated Execution Enclave',
-                                  attestation_hash: inspectorData?.mandate_hash || 'SHA256:7c9e1248...b401',
-                                  allocated_port: 8443,
-                                  status: 'READY_FOR_INFERENCE',
-                                  spending_limit_monthly: localBudgetCap < 79.99 ? 49.99 : 79.99,
-                                },
-                                null,
-                                2
-                              )
+                            ? JSON.stringify(inspectorData?.enclave ?? 'not available', null, 2)
                             : JSON.stringify(
                                 {
-                                  cloudevents: inspectorData?.cloudevents || {
-                                    specversion: '1.0',
-                                    id: 'ce-evt-99120482',
-                                    type: 'com.ap2.settlement.subscription.activated',
-                                    data: {
-                                      buyer_agent: localContractorName,
-                                      node_endpoint: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                    },
-                                  },
-                                  enclave: {
-                                    enclave_node: (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                    status: 'READY_FOR_INFERENCE',
-                                  },
+                                  cloudevents: inspectorData?.cloudevents ?? 'not available',
+                                  enclave: inspectorData?.enclave ?? 'not available',
                                 },
                                 null,
                                 2
@@ -4396,11 +4299,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
 
                         <button
                           onClick={() => {
-                            const qboPkg = {
-                              qbo_purchase: inspectorData?.quickbooks?.payload || inspectorData?.quickbooks?.qbo_purchase || inspectorData?.quickbooks || {},
-                              vendor_reference: inspectorData?.quickbooks?.vendor_reference || inspectorData?.quickbooks?.qbo_vendor || {},
-                              account_mapping: inspectorData?.quickbooks?.account_mapping || {},
-                            };
+                            const qboPkg = inspectorData?.quickbooks ?? 'not available';
                             copyToClipboard(JSON.stringify(qboPkg, null, 2), 'qbo_payload');
                           }}
                           style={{
@@ -4438,19 +4337,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                         }}
                       >
                         <code>
-                          {JSON.stringify(
-                            {
-                              qbo_purchase: inspectorData?.quickbooks?.payload || inspectorData?.quickbooks?.qbo_purchase || inspectorData?.quickbooks || {},
-                              vendor_reference: inspectorData?.quickbooks?.vendor_reference || inspectorData?.quickbooks?.qbo_vendor || {},
-                              account_mapping: inspectorData?.quickbooks?.account_mapping || {
-                                expense_account: '6300 - Dues & Subscriptions: Software & SaaS',
-                                clearing_account: '99 - PayPal Clearing Account',
-                                monthly_amount: inspectorData?.agreed_price || 79.99,
-                              },
-                            },
-                            null,
-                            2
-                          )}
+                          {JSON.stringify(inspectorData?.quickbooks ?? 'not available', null, 2)}
                         </code>
                       </pre>
                     </div>
@@ -4468,13 +4355,12 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                           onClick={() => {
                             const fullEnvelope = {
                               headers: {
-                                'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature,
-                                'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp,
-                                'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id,
-                                'Allocated-Node-Endpoint': (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                'Execution-Mode': 'LOCAL_HIGH_FIDELITY_SIMULATION',
+                                'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature || 'not available',
+                                'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp || 'not available',
+                                'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id || 'not available',
+                                'Allocated-Node-Endpoint': inspectorData?.node_endpoint || inspectorData?.endpoint || 'not available',
                               },
-                              meta: inspectorData?.webhook_meta,
+                              meta: inspectorData?.webhook_meta ?? 'not available',
                             };
                             copyToClipboard(JSON.stringify(fullEnvelope, null, 2), 'webhook_envelope');
                           }}
@@ -4515,14 +4401,13 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                           {JSON.stringify(
                             {
                               headers: {
-                                'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature || 'sha256=...',
-                                'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp,
-                                'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id,
-                                'Allocated-Node-Endpoint': (inspectorData?.node_endpoint || inspectorData?.endpoint || 'node-cluster-01.ap2.net:8443'),
-                                'Execution-Mode': 'LOCAL_HIGH_FIDELITY_SIMULATION',
+                                'X-AP2-Signature': inspectorData?.hmac_signature || inspectorData?.webhook_meta?.signature || 'not available',
+                                'X-AP2-Timestamp': inspectorData?.timestamp || inspectorData?.webhook_meta?.timestamp || 'not available',
+                                'PayPal-Subscription-ID': inspectorData?.paypal_subscription_id || 'not available',
+                                'Allocated-Node-Endpoint': inspectorData?.node_endpoint || inspectorData?.endpoint || 'not available',
                                 'Content-Type': 'application/json',
                               },
-                              webhook_meta: inspectorData?.webhook_meta,
+                              webhook_meta: inspectorData?.webhook_meta ?? 'not available',
                             },
                             null,
                             2

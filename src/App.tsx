@@ -301,7 +301,7 @@ export function App() {
 
   // Complete Subscription & Provision Line: Mutates existing transaction in place (Orange -> Green)
   const handleSubscriptionApproved = useCallback(
-    async (subId: string) => {
+    async (subId?: string) => {
       setIsProvisioning(true);
       try {
         const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
@@ -324,7 +324,7 @@ export function App() {
         const agreedPlanName = negotiationResult?.agreedPlanName || canonicalPlanName;
 
         const result = await executeDeckAp2Purchase({
-          subscriptionId: subId,
+          subscriptionId: subId || '',
           principalEntity: businessEntity,
           contractorName: contractorName,
           capability: actualTier,
@@ -333,6 +333,7 @@ export function App() {
           negotiation: negotiationResult || undefined,
         });
         setProvisioningResult(result);
+        const resolvedSubId = result.subscriptionId || subId || 'not available';
 
         // Mutate existing record in place so the row transitions from PENDING_DEPOSIT -> ACTIVE_STREAMING
         setTransactions((prev) => {
@@ -345,7 +346,7 @@ export function App() {
               monthly_amount: agreedMonthlyAmount,
               trade_vertical: actualTier,
               service_plan: agreedPlanName,
-              paypal_sub_id: subId,
+              paypal_sub_id: resolvedSubId,
               kyc_status: 'SUBSCRIBER EMAIL MATCHED',
               allocated_did: result.allocatedDid,
               tcpa_guard: 'AP2 CHAIN VERIFIED (ES256)',
@@ -356,7 +357,7 @@ export function App() {
 
           // Fallback if not found in list: prepend new entry
           const newTxn: A2aTransaction = {
-            id: `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
+            id: result.subscriptionId ? `TXN-${result.subscriptionId}` : 'TXN-AP2-PROVISIONED',
             timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
             buyer_agent: `AutonomousBuyerAgent-${contractorName.split(' ')[0]}-${actualTier.replace(/\s+/g, '')}`,
             principal_entity: businessEntity,
@@ -364,7 +365,7 @@ export function App() {
             trade_vertical: actualTier,
             service_plan: agreedPlanName,
             monthly_amount: agreedMonthlyAmount,
-            paypal_sub_id: subId,
+            paypal_sub_id: resolvedSubId,
             kyc_status: 'SUBSCRIBER EMAIL MATCHED',
             kyc_legal_entity: businessEntity,
             allocated_did: result.allocatedDid,
@@ -382,7 +383,7 @@ export function App() {
         setIsProvisioning(false);
       }
     },
-    [contractorName, businessEntity, tradeVertical, negotiationResult]
+    [contractorName, businessEntity, tradeVertical, maxMonthlyBudget, negotiationResult]
   );
 
   return (
@@ -1098,12 +1099,10 @@ export function App() {
                     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
                     status: locked ? 'ACTIVE_STREAMING' : 'PENDING_DEPOSIT',
                     kyc_status: locked ? 'DEMO (NOT VERIFIED)' : 'PENDING_MANDATE_SIGNATURE',
-                    allocated_did: locked ? 'node-cluster-01.ap2.net' : 'node-cluster-01.ap2.net',
+                    allocated_did: locked ? (provisioningResult?.allocatedDid || 'not available') : 'AWAITING_DEPOSIT',
                     tcpa_guard: locked ? 'DEMO ACTIVATION (NOT VERIFIED)' : 'PENDING_AUTHORIZATION',
                     paypal_sub_id: locked
-                      ? updated[idx].paypal_sub_id.startsWith('I-')
-                        ? updated[idx].paypal_sub_id
-                        : 'I-BW452NX993L2'
+                      ? (provisioningResult?.subscriptionId || updated[idx].paypal_sub_id || 'not available')
                       : 'AWAITING_PAYPAL_TOKEN',
                   };
                   return updated;
@@ -1118,10 +1117,10 @@ export function App() {
           <ZapierMcpView
             contractorName={contractorName}
             businessEntity={businessEntity}
-            allocatedDid={provisioningResult?.allocatedDid || 'node-cluster-01.ap2.net:8443'}
+            allocatedDid={provisioningResult?.allocatedDid || 'not available'}
             tradeVertical={tradeVertical}
             monthlyFee={79.99}
-            paypalSubscriptionId={provisioningResult?.subscriptionId || 'I-AUTONOMOUS-8902'}
+            paypalSubscriptionId={provisioningResult?.subscriptionId || 'not available'}
             isDepositLocked={isPendingDepositLocked}
             activeScenario={mcpScenario}
             onScenarioChange={setMcpScenario}
@@ -1424,8 +1423,7 @@ export function App() {
                   {/* Primary Instant Simulated Approval Button */}
                   <button
                     onClick={() => {
-                      const simulatedSubId = `I-AUTONOMOUS-${Math.floor(100000 + Math.random() * 900000)}`;
-                      handleSubscriptionApproved(simulatedSubId);
+                      handleSubscriptionApproved();
                     }}
                     disabled={isProvisioning}
                     style={{
@@ -1476,8 +1474,11 @@ export function App() {
                               });
                             }}
                             onApprove={async (data) => {
-                              const subId = data.subscriptionID || `I-PP${Math.floor(100000 + Math.random() * 900000)}`;
-                              await handleSubscriptionApproved(subId);
+                              if (!data.subscriptionID) {
+                                setPaypalError('PayPal approval did not return a subscription ID.');
+                                return;
+                              }
+                              await handleSubscriptionApproved(data.subscriptionID);
                             }}
                             onError={(err) => {
                               console.warn('[PayPal]: Sandbox interaction warning:', err);

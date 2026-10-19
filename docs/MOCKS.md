@@ -76,10 +76,10 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Shows the payloads without QuickBooks or Zapier accounts.
 - **To make it real:** Configure a webhook target (for example a Zapier catch hook connected to QuickBooks) and return the IDs the downstream systems actually assign.
 
-### M-012: MCP tools fill missing IDs with demo values
-- **Where:** `backend/mcp_server.py::_handle_mcp_request_internal`
-- **What it fakes:** Caller input. `provision_compute_node` defaults to subscription `I-MOCK-SUB-01`; `dispatch_zapier_mcp` defaults to subscription `I-AUTONOMOUS-8902`, a $79.99 fee and placeholder names and endpoints.
-- **Why:** Lets an MCP client call the tools with almost no arguments during demos.
+### M-012: MCP tools and Zapier sync models fill missing IDs with demo values
+- **Where:** `backend/mcp_server.py::_handle_mcp_request_internal`, `backend/agents/seller_agent.py::SellerAgent.dispatch_zapier_mcp`, `backend/models.py::ZapierSyncRequest`, `backend/services/zapier_mcp_dispatcher.py::ZapierMcpDispatcher.execute_downline_sync`
+- **What it fakes:** Caller input. `provision_compute_node` defaults to subscription `I-MOCK-SUB-01`; `dispatch_zapier_mcp`, `ZapierSyncRequest`, and `execute_downline_sync` default missing subscription/transaction IDs to `I-AUTONOMOUS-8902`, missing mandate proof hash to `HMAC-MANDATE-VERIFIED-01`, a $79.99 fee, and placeholder names and endpoints.
+- **Why:** Lets an MCP client or back-office demo endpoint call the tools with almost no arguments during demos.
 - **To make it real:** Make these arguments required and reject calls that omit them.
 
 ### M-014: The anti-tamper playground uses demo keys and a demo secret
@@ -112,11 +112,11 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Lets a presenter show state changes on demand.
 - **To make it real:** Drive these views from real webhook and subscription events; keep the buttons only behind a demo flag.
 
-### M-020: Workload dispatch automation is simulated entirely in the browser
-- **Where:** `src/services/zapierMcpService.ts::executeZapierMcpWorkflow`
-- **What it fakes:** The whole "workload dispatch" back-office run: CloudEvents, QuickBooks invoice and EventBus routing are generated client-side after a 600 ms delay. No backend call is made.
-- **Why:** Gives the workload scenario in the back-office view something to show.
-- **To make it real:** Call a backend endpoint that performs (or dry-runs and says so) each step, as the onboarding scenario does.
+### M-020: Workload dispatch automation and client-side sync job IDs are simulated in the browser
+- **Where:** `src/services/zapierMcpService.ts::executeZapierMcpWorkflow`, `src/services/zapierMcpService.ts::executeZapierA2aWorkflow`
+- **What it fakes:** `executeZapierMcpWorkflow` generates the whole "workload dispatch" back-office run (CloudEvents, QuickBooks invoice and EventBus routing) client-side after a 600 ms delay with no backend call, and `executeZapierA2aWorkflow` generates a client-side `AP2-SYNC-<random>` job ID and demo fallback fields when calling `/api/mcp/zapier-sync`.
+- **Why:** Gives the workload scenario in the back-office view something to show and provides a job ID for onboarding sync calls.
+- **To make it real:** Have the backend generate and return the canonical sync job ID, and call a backend endpoint that performs (or dry-runs and says so) each workload step.
 
 ### M-022: Default buyer keys seeded without challenge-response enrollment
 - **Where:** `backend/database.py::init_db`, `backend/services/crypto_mandate.py::REGISTERED_BUYER_KEYS`

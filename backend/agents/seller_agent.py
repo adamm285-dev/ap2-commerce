@@ -1643,6 +1643,7 @@ class SellerAgent:
             },
         }
 
+    # MOCK(M-012): fills missing subscription ID and onboarding fields with demo defaults (e.g. I-AUTONOMOUS-8902)
     async def dispatch_zapier_mcp(
         self,
         workflow_type: str = "a2a_onboarding",

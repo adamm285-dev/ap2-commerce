@@ -363,7 +363,6 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
   const [formStep4Webhook, setFormStep4Webhook] = useState(nodeSettings.zapierWebhookUrl || '');
 
   const handleAddStep1Capability = () => {
-    const randomPlanSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const nextIdx = formStep1Capabilities.length + 1;
     const newTier: ServiceCapabilityItem = {
       id: `tier_custom_${Date.now()}`,
@@ -372,7 +371,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
       quota: '500 operations/mo',
       sla: '',
       enclave: 'Dedicated Worker Node',
-      paypal_plan_id: `P-${randomPlanSuffix}44454362WXN`,
+      paypal_plan_id: '',
     };
     setFormStep1Capabilities((prev) => [...prev, newTier]);
   };

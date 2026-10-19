@@ -100,7 +100,7 @@ async def test_copilot_audit_intent():
     copilot = SellerCopilot()
     resp = await copilot.handle_message("Inspect A2A Protocol Audit Trail")
     assert resp["phase"] == "AUDIT"
-    assert "rfc 8032" in resp["reply"].lower()
+    assert "es256" in resp["reply"].lower()
     assert "paypal subscriptions" in resp["reply"].lower()
     assert "mcp over https" in resp["reply"].lower()
     assert resp["action_type"] == "INSPECT_AUDIT_TRAIL"

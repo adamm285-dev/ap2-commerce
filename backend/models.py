@@ -172,6 +172,7 @@ class DispatchLockResponse(BaseModel):
 
 
 # --- Zapier MCP & Back-Office Export Models ---
+# MOCK(M-012): default demo values (including I-AUTONOMOUS-8902) for omitted ZapierSyncRequest fields
 class ZapierSyncRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

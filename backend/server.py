@@ -1181,7 +1181,7 @@ async def execute_mock_deck_purchase(
     )
 
     cents = int(round(agreed_monthly_rate * 100))
-    paypal_sub = paypal_subscription_id or f"I-AUTONOMOUS-{uuid.uuid4().hex[:6].upper()}"
+    vault_instrument_id = paypal_subscription_id or f"vault_{uuid.uuid4().hex[:8]}"
     pay_chain = mc.present(
         holder_key=agent_key,
         mandate_token=open_pay,
@@ -1191,7 +1191,7 @@ async def execute_mock_deck_purchase(
                 transaction_id=checkout_hash,
                 payment_amount=Amount(amount=cents, currency="USD"),
                 payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
-                payment_instrument=PaymentInstrument(type="paypal_vault", id=paypal_sub),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id=vault_instrument_id),
             )
         ],
         aud=AP2_MERCHANT_ID,
@@ -1205,7 +1205,7 @@ async def execute_mock_deck_purchase(
         buyer_email=email,
         contractor_name=contractor_name,
         business_entity=business_entity,
-        paypal_subscription_id=paypal_sub,
+        paypal_subscription_id=paypal_subscription_id,
         checkout_mandate_chain=chk_chain,
         payment_mandate_chain=pay_chain,
         offer_id=offer_id,
@@ -1238,7 +1238,7 @@ async def execute_mock_deck_purchase(
         "workloadTasksPerMonth": prov_res.get("workload_tasks_per_month"),
         "tierId": tier,
         "monthlyAmount": agreed_monthly_rate,
-        "paypalSubscriptionId": paypal_sub,
+        "paypalSubscriptionId": sub_id,
         "contractorName": contractor_name,
         "businessEntity": business_entity,
         "purchaseResult": purchase_res,

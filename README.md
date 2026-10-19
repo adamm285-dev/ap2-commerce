@@ -10,7 +10,7 @@
 [![AG Studio: v3.0.0](https://img.shields.io/badge/AG%20Studio-v3.0.0-blue.svg)](https://www.ag-grid.com/studio/react/)
 [![PayPal Agent Toolkit](https://img.shields.io/badge/PayPal-Agent%20Toolkit-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 677 Passed](https://img.shields.io/badge/Tests-677%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
+[![Tests: 690 Passed](https://img.shields.io/badge/Tests-690%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -52,7 +52,7 @@ python scripts/judge_audit_harness.py
 ### 2. Run the Full Automated Test Suite
 ```bash
 python -m pytest backend/tests -q -n 4
-# 677 passed, 9 skipped, 8 xfailed, 4 warnings in 43.12s (188 tests from Google's AP2 SDK + 489 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
+# 690 passed, 9 skipped, 4 warnings in 44.47s (188 tests from Google's AP2 SDK + 502 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in Google's AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
 
@@ -102,7 +102,7 @@ The roadmap items below are quoted from AP2's original roadmap (September 2025),
 - **Renewal Verification & Advance Cancellation:** In `backend/services/recurring_mandate_service.py`, every PayPal renewal webhook (`PAYMENT.SALE.COMPLETED`) is checked against the owner's stored mandate with Google's SDK: stored-mandate integrity, registry key, email binding, expiry, limits and the agreed price. PayPal reports a sale after the money moves, so after each authorized charge the server also checks whether the next charge would be allowed, and cancels the subscription in advance when the payment count, budget or term would run out. A price change or other out-of-mandate charge is caught after it happens: violations cancel the subscription, unverifiable charges suspend it, and refunds are manual. Tested in mock mode; not yet run against the PayPal sandbox.
 - **Decoupled Purchase vs Recurring Windows:** The owner's authorization gives a 24-hour window to complete the initial checkout, while the recurring payment authority lasts 372 days (12 monthly payments).
 - **Multi-Tier Counter-Offers:** When the buyer's budget cap is below the asking price ($60 cap vs the $79.99 Dedicated AI Service Gateway), the seller agent counter-offers the best tier within budget (*High-Throughput Batch Worker at $49.99/mo*) in a merchant-signed checkout. The buyer's wallet signs it only if the price fits the owner's limits.
-- **AP2 Anti-Tamper Checks:** The purchase path verifies ES256 SD-JWT mandate chains with Google's SDK. Raising the agreed price by 1¢ ($79.99 &rarr; $80.00) or changing the payee fails with `invalid_mandate`, and the seller returns two merchant-signed error receipts (checkout and payment). The separate interactive anti-tamper playground (`/api/crypto/verify-tamper`) uses an Ed25519/HMAC demo signer with demo keys (M-014) and returns `401 Signature Mismatch: Budget Policy Violated`.
+- **AP2 Anti-Tamper Checks:** The purchase path verifies ES256 SD-JWT mandate chains with Google's SDK. Raising the agreed price by 1¢ ($79.99 &rarr; $80.00) or changing the payee fails with `invalid_mandate`, and the seller returns two merchant-signed error receipts (checkout and payment). To prevent concurrent checkouts from racing a mandate's budget or creating duplicate subscriptions, verified subscription purchases acquire a SQLite `purchase_leases` row keyed by open payment mandate hash and buyer email before calling PayPal (sending a deterministic `PayPal-Request-Id` derived from `checkout_hash`) and reject overlapping in-flight purchases with `PURCHASE_IN_PROGRESS`. The separate interactive anti-tamper playground (`/api/crypto/verify-tamper`) uses an Ed25519/HMAC demo signer with demo keys (M-014) and returns `401 Signature Mismatch: Budget Policy Violated`.
 - **Self-Service Buyer Key Onboarding:** Buyer agents register Ed25519 or ES256 (P-256) public keys through a single-use challenge-response flow (`GET /api/agent/keys/challenge` & `POST /api/agent/keys/register`).
 - **Back-Office Export:** Builds QuickBooks Online v3 Purchase payloads mapped to GL account 6300 (Dues & Subscriptions: Software & SaaS) plus calendar payloads, and posts them to a configured webhook such as a Zapier catch hook. Without a webhook URL the export is a dry run (M-011).
 - **AG Studio v3.0.0 & AG Grid Community Analytics:** Fleet ledger with floating column filters, View and Edit modes, and compute analytics read from SQLite (WAL mode). The fleet it shows is seeded demo data: 14 subscriptions, 13 active, $1,219.87 MRR and $14,638.44 ARR. Those rows are labelled `Demo data` (M-009) and aren't revenue.
@@ -121,8 +121,8 @@ The 8-slide walkthrough reflects the codebase as of 2026-10-10:
 | **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
-| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 20 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
-| **08** | **Empirical Verification** | `677 passed, 9 skipped, 8 xfailed, 4 warnings in 43.12s` (188 SDK + 489 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 23 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
+| **08** | **Empirical Verification** | `690 passed, 9 skipped, 4 warnings in 44.47s` (188 SDK + 502 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
 
@@ -153,7 +153,7 @@ The 8-slide walkthrough reflects the codebase as of 2026-10-10:
 
 ## 5. What's Simulated
 
-Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (20 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
+Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (23 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
 
 ---
 

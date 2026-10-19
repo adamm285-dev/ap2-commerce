@@ -90,9 +90,9 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
   paypalClientId: 'PAYPAL_SANDBOX_CLIENT_ID_AP2_SELLER_NODE',
   paypalSecret: 'PAYPAL_SANDBOX_SECRET_KEY_HEADLESS_MIT',
   paypalMode: 'sandbox',
-  paypalTier1PlanId: 'P-5ML4271244454362WXNWU5NQ',
-  paypalTier2PlanId: 'P-1GH8273644454362WXNWU7ZZ',
-  paypalTier3PlanId: 'P-9KL9921444454362WXNWU9AA',
+  paypalTier1PlanId: 'P-AP2-BATCH-WORKER',
+  paypalTier2PlanId: 'P-AP2-SERVICE-GATEWAY',
+  paypalTier3PlanId: 'P-AP2-CLUSTER-NODE',
 
   qboClientId: 'AB1168923489123847',
   qboClientSecret: 'qbo_sec_99341298412893',
@@ -113,7 +113,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       quota: '125 operations/mo',
       sla: '',
       enclave: 'US-Central Batch RAG',
-      paypal_plan_id: 'P-5ML4271244454362WXNWU5NQ',
+      paypal_plan_id: 'P-AP2-BATCH-WORKER',
     },
     {
       id: 'tier_inference_gateway',
@@ -122,7 +122,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       quota: '450 operations/mo',
       sla: '',
       enclave: 'US-East Low-Latency Gateway',
-      paypal_plan_id: 'P-1GH8273644454362WXNWU7ZZ',
+      paypal_plan_id: 'P-AP2-SERVICE-GATEWAY',
     },
     {
       id: 'tier_enterprise_cluster',
@@ -131,7 +131,7 @@ export const DEFAULT_NODE_SETTINGS: NodeSettingsData = {
       quota: '1,200 operations/mo',
       sla: '',
       enclave: 'Multi-Region Distributed Cluster',
-      paypal_plan_id: 'P-9KL9921444454362WXNWU9AA',
+      paypal_plan_id: 'P-AP2-CLUSTER-NODE',
     },
   ],
 };
@@ -258,7 +258,6 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
 
   // Add capability tier
   const handleAddCapability = () => {
-    const randomPlanSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newTier: ServiceCapabilityItem = {
       id: `tier_custom_${Date.now()}`,
       name: 'Custom Agent Execution Cluster',
@@ -266,7 +265,7 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
       quota: '600 operations/mo',
       sla: '99.99% Availability',
       enclave: 'US-East Secure Enclave',
-      paypal_plan_id: `P-${randomPlanSuffix}44454362WXN`,
+      paypal_plan_id: '',
     };
     setSettings((prev) => ({
       ...prev,
@@ -1119,7 +1118,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
                         type="text"
                         value={planId}
                         onChange={(e) => handleUpdateCapabilityPlanId(idx, e.target.value)}
-                        placeholder="e.g. P-5ML4271244454362WXNWU5NQ"
+                        placeholder="e.g. P-AP2-BATCH-WORKER"
                         style={{
                           width: '100%',
                           marginTop: '3px',

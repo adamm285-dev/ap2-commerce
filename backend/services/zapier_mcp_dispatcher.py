@@ -36,6 +36,7 @@ class ZapierMcpDispatcher:
         target_webhook = request.webhook_url or self.webhook_export_url or ""
 
         if is_a2a:
+            # MOCK(M-012): demo fallback IDs (I-AUTONOMOUS-8902, HMAC-MANDATE-VERIFIED-01) when fields are omitted
             contractor = request.contractor_name or "Demo Autonomous Buyer"
             entity = request.business_entity or "Demo Buyer Corp"
             fee = request.monthly_subscription_fee or 79.99

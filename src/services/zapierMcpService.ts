@@ -75,6 +75,7 @@ export interface ZapierExecutionResult {
  * 1. QuickBooks Online: Prepares SaaS software purchase export package (GL 6300: Software & SaaS)
  * 2. Webhook / EventBus: Dispatches authentic HMAC-SHA256 signed webhook envelope (or dry-run export)
  */
+// MOCK(M-020): client-side AP2-SYNC-<random> job ID and demo fallback fields for onboarding sync
 export async function executeZapierA2aWorkflow(
   buyer: A2aBuyerOnboarding
 ): Promise<ZapierExecutionResult> {

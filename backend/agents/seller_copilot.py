@@ -120,19 +120,33 @@ class SellerCopilot:
                     "execution_result": exec_result,
                 }
 
-            did = exec_result.get("assigned_did") or "not available (missing)"
-            qbo = (exec_result.get("zapier_sync") or {}).get("qbo_draft_invoice_id") or "not available (missing)"
-            sub_id = exec_result.get("subscription_id") or "not available (missing)"
+            raw_did = exec_result.get("assigned_did")
+            raw_qbo = (exec_result.get("zapier_sync") or {}).get("qbo_draft_invoice_id")
+            raw_sub_id = exec_result.get("subscription_id")
+            did = raw_did or "not available (missing)"
+            qbo = raw_qbo or "not available (missing)"
+            sub_id = raw_sub_id or "not available (missing)"
             sub_price = exec_result.get("monthly_amount")
             price_str = f"${sub_price:.2f}/mo" if isinstance(sub_price, (int, float)) else "missing amount"
+
+            erp_line = (
+                "• **ERP Automation**: Provisioned and active on cluster schedule\n"
+                if raw_did
+                else "• **ERP Automation**: Not active on cluster schedule (node endpoint missing)\n"
+            )
+            qbo_line = (
+                f"• **QuickBooks Online**: Monthly software subscription expense recorded (`{qbo}`)\n\n"
+                if raw_qbo
+                else f"• **QuickBooks Online**: Expense not recorded (`{qbo}`)\n\n"
+            )
 
             reply = (
                 f"🎉 **Autonomous A2A Setup Complete!**\n\n"
                 f"I negotiated the agreement with the AP2 Seller Node and executed your recurring **{price_str} PayPal subscription** (`{sub_id}`).\n\n"
                 f"• **Dedicated Compute Endpoint**: `{did}` (Bound to {self.business_entity})\n"
                 f"• **AP2 v0.2 Security**: Verified ES256 Checkout & Payment Mandate Chains\n"
-                f"• **ERP Automation**: Provisioned and active on cluster schedule\n"
-                f"• **QuickBooks Online**: Monthly software subscription expense recorded (`{qbo}`)\n\n"
+                f"{erp_line}"
+                f"{qbo_line}"
                 f"You're completely live! Workload tasks will now be automatically routed and executed under your spending mandate."
             )
             return {
@@ -200,7 +214,7 @@ class SellerCopilot:
             latest_qbo = (latest.get("quickbooks") or {}).get("purchase_id") or "not available (no run recorded)"
             reply = (
                 f"🛡️ **A2A Protocol Cryptographic Audit Trail:**\n\n"
-                f"• **Step 1: Mandate Evaluation (RFC 8032 / ES256)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog.\n"
+                f"• **Step 1: Mandate Evaluation (ES256)**: Pre-approved spending cap (${self.budget_cap:.2f}/mo) mathematically evaluated against seller catalog.\n"
                 f"• **Step 2: PayPal Subscriptions Rails**: Recurring billing agreement (`{latest_sub}`).\n"
                 f"• **Step 3: MCP Endpoint Binding**: Dedicated mcp+https compute endpoint provisioned with MCP over HTTPS (JSON-RPC 2.0).\n"
                 f"• **Step 4: Zapier MCP Settlement**: Downline webhooks dispatched to QuickBooks Online API v3 expense in Account 6300 (`{latest_qbo}`).\n\n"
@@ -272,7 +286,7 @@ class SellerCopilot:
                 f"• **Authorized Entity**: {self.business_entity}\n"
                 f"• **Pre-Approved Monthly Cap**: **${self.budget_cap:.2f}/mo**\n"
                 f"• **Dedicated AI Service Gateway**: **$79.99/mo** (Leaves **${(self.budget_cap - 79.99):.2f}/mo** headroom)\n"
-                f"• **Enforcement**: Cryptographic Ed25519 signature verification. "
+                f"• **Enforcement**: Cryptographic ES256 signature verification. "
                 f"Any charge exceeding ${self.budget_cap:.2f} is blocked at the gateway."
             )
             return {

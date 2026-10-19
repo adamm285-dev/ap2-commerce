@@ -498,18 +498,19 @@ class PayPalService:
                     if link.get("rel") == "approve":
                         approval_url = link.get("href")
                         break
-                live_status = data.get("status", "APPROVAL_PENDING")
+                live_status = data.get("status")
+                raw_payer_id = (data.get("subscriber") or {}).get("payer_id") if isinstance(data.get("subscriber"), dict) else None
                 return {
                     "subscription_id": sub_id,
                     "status": live_status,
                     "approval_url": approval_url,
                     "plan_id": target_plan_id,
-                    "payer_id": f"PAYER-{data.get('subscriber', {}).get('payer_id', 'SANDBOX')}",
-                    "vault_id": f"vault_tok_{sub_id.lower().replace('-', '_')}",
-                    "payment_token": f"tok_{sub_id.lower().replace('-', '_')}",
-                    "paypal_request_id": f"req_{sub_id}",
+                    "payer_id": raw_payer_id or None,
+                    "vault_id": None,
+                    "payment_token": None,
+                    "paypal_request_id": None,
                     "created_time": data.get("create_time"),
-                    "next_billing_time": data.get("billing_info", {}).get("next_billing_time"),
+                    "next_billing_time": (data.get("billing_info") or {}).get("next_billing_time") if isinstance(data.get("billing_info"), dict) else None,
                     "hateoas_links": links,
                     "mock_mode": False,
                 }
@@ -519,6 +520,13 @@ class PayPalService:
         token = await self.get_access_token()
         if not token:
             raise RuntimeError("Failed to authenticate with PayPal Sandbox API.")
+
+        idempotency_seed = mandate_proof_hash or offer_id
+        paypal_request_id = (
+            f"req_{hashlib.sha256(str(idempotency_seed).encode('utf-8')).hexdigest()[:32]}"
+            if idempotency_seed
+            else None
+        )
 
         payload = {
             "plan_id": target_plan_id,
@@ -537,13 +545,19 @@ class PayPalService:
             },
         }
 
+        def _build_sub_headers(bearer_token: str) -> Dict[str, str]:
+            hdrs = {
+                "Authorization": f"Bearer {bearer_token}",
+                "Content-Type": "application/json",
+            }
+            if paypal_request_id:
+                hdrs["PayPal-Request-Id"] = paypal_request_id
+            return hdrs
+
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{self.base_url}/v1/billing/subscriptions",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
+                headers=_build_sub_headers(token),
                 json=payload,
                 timeout=10.0,
             )
@@ -552,10 +566,7 @@ class PayPalService:
                 token = await self.get_access_token(force_refresh=True)
                 res = await client.post(
                     f"{self.base_url}/v1/billing/subscriptions",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=_build_sub_headers(token),
                     json=payload,
                     timeout=10.0,
                 )
@@ -569,18 +580,19 @@ class PayPalService:
                     approval_url = link.get("href")
                     break
 
-            live_status = data.get("status", "APPROVAL_PENDING")
+            live_status = data.get("status")
+            raw_payer_id = (data.get("subscriber") or {}).get("payer_id") if isinstance(data.get("subscriber"), dict) else None
             return {
                 "subscription_id": sub_id,
                 "status": live_status,
                 "approval_url": approval_url,
                 "plan_id": target_plan_id,
-                "payer_id": f"PAYER-{data.get('subscriber', {}).get('payer_id', 'SANDBOX')}",
-                "vault_id": f"vault_tok_{sub_id.lower().replace('-', '_')}",
-                "payment_token": f"tok_{sub_id.lower().replace('-', '_')}",
-                "paypal_request_id": f"req_{sub_id}",
+                "payer_id": raw_payer_id or None,
+                "vault_id": None,
+                "payment_token": None,
+                "paypal_request_id": paypal_request_id,
                 "created_time": data.get("create_time"),
-                "next_billing_time": data.get("billing_info", {}).get("next_billing_time"),
+                "next_billing_time": (data.get("billing_info") or {}).get("next_billing_time") if isinstance(data.get("billing_info"), dict) else None,
                 "hateoas_links": links,
                 "mock_mode": False,
             }

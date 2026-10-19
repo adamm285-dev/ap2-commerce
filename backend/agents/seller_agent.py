@@ -1195,30 +1195,31 @@ class SellerAgent:
             desc = f"PAYPAL_SUBSCRIPTION_ERROR: Failed to create PayPal subscription: {e}"
             logger.error(f"[PAYPAL] {desc}", exc_info=True)
             return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
-        sub_id = paypal_result["subscription_id"]
-        sub_status = paypal_result.get("status", "ACTIVE")
+        sub_id = paypal_result.get("subscription_id") if isinstance(paypal_result, dict) else None
+        raw_status = paypal_result.get("status") if isinstance(paypal_result, dict) else None
+        sub_status = str(raw_status).strip().upper() if isinstance(raw_status, str) and raw_status.strip() else ""
+        if not sub_id or not sub_status:
+            desc = (
+                f"PAYPAL_SUBSCRIPTION_ERROR: PayPal subscription reply missing required "
+                f"{'subscription_id' if not sub_id else 'status'}."
+            )
+            logger.error(f"[PAYPAL] {desc}")
+            return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
+
+        is_mock = bool(paypal_result.get("mock_mode")) if "mock_mode" in paypal_result else getattr(paypal_service, "mock_mode", False)
         approval_url = paypal_result.get("approval_url")
-        created_time = paypal_result.get("created_time") or datetime.datetime.now(datetime.timezone.utc).isoformat()
-        next_billing = paypal_result.get("next_billing_time") or (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
+        created_time = paypal_result.get("created_time") or (
+            datetime.datetime.now(datetime.timezone.utc).isoformat() if is_mock else None
+        )
+        next_billing = paypal_result.get("next_billing_time") or (
+            (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat() if is_mock else None
+        )
         negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
-        payer_id = paypal_result.get("payer_id") or (f"PAYER-{hashlib.sha256(contractor_email.strip().lower().encode()).hexdigest()[:12].upper()}" if contractor_email else "PAYER-A2A-BUYER")
-        vault_id = paypal_result.get("vault_id") or f"vault_tok_{sub_id.lower().replace('-', '_')}"
-        payment_token = paypal_result.get("payment_token") or f"tok_{hashlib.sha256(f'{sub_id}:payment'.encode()).hexdigest()[:16]}"
-        paypal_req_id = paypal_result.get("paypal_request_id") or f"req_{hashlib.sha256(sub_id.encode()).hexdigest()[:16]}"
-        is_mock = getattr(paypal_service, "mock_mode", False)
-        default_hateoas = [
-            {
-                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}",
-                "rel": "self",
-                "method": "GET",
-            },
-            {
-                "href": f"https://api.sandbox.paypal.com/v1/billing/subscriptions/{sub_id}/cancel",
-                "rel": "cancel",
-                "method": "POST",
-            },
-        ]
-        hateoas_links = paypal_result.get("hateoas_links") or default_hateoas
+        payer_id = paypal_result.get("payer_id")
+        vault_id = paypal_result.get("vault_id")
+        payment_token = paypal_result.get("payment_token")
+        paypal_req_id = paypal_result.get("paypal_request_id")
+        hateoas_links = list(paypal_result.get("hateoas_links") or [])
         if is_mock and hateoas_links:
             for link in hateoas_links:
                 link["simulated"] = True

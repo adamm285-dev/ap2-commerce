@@ -564,7 +564,6 @@ def test_live_subscription_request_goes_to_paypal_billing_api(fake_paypal_api):
     assert res["status"] == "APPROVAL_PENDING"
 
 
-@KNOWN_ISSUE("The live PayPal branches invent payer, vault, payment-token and request IDs that PayPal never returned.")
 def test_live_subscription_does_not_invent_paypal_fields(fake_paypal_api):
     res = _create_live_subscription(_email("live-fields"))
     # PayPal returns no payer until the buyer approves, and subscriptions return no vault or payment token.
@@ -574,7 +573,6 @@ def test_live_subscription_does_not_invent_paypal_fields(fake_paypal_api):
     assert res.get("paypal_request_id") == fake_paypal_api[0].headers.get("PayPal-Request-Id")
 
 
-@KNOWN_ISSUE("purchase_subscription fills in payer, vault, payment-token and request IDs that PayPal didn't return.")
 def test_purchase_keeps_missing_paypal_fields_empty(paypal_replies):
     paypal_replies["reply"] = _pending_reply()
     email, agent = _email("fields"), _key("agent")
@@ -585,7 +583,6 @@ def test_purchase_keeps_missing_paypal_fields_empty(paypal_replies):
         assert res.get(field) is None, f"{field} was invented: {res.get(field)!r}"
 
 
-@KNOWN_ISSUE("A PayPal reply with no status is recorded as ACTIVE.")
 def test_purchase_without_paypal_status_is_not_activated(paypal_replies):
     reply = _pending_reply()
     del reply["status"]

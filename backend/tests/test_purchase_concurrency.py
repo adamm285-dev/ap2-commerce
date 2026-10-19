@@ -424,3 +424,75 @@ def test_paypal_request_id_survives_token_refresh_retry(live_paypal_http):
     assert len(ids) == 2, f"expected a 401 then one retry, saw {len(ids)} POSTs"
     assert ids[0] and ids[0] == ids[1], "the retry after a 401 sent a different PayPal-Request-Id"
     assert res.get("status") in SETTLED
+
+
+# ── 5. PayPal-Request-Id with PayPal credentials configured (Agent Toolkit available) ──
+
+
+class _ToolkitResponse:
+    def __init__(self, body, status_code=201):
+        self._body, self.status_code, self.text = body, status_code, json.dumps(body)
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        pass
+
+
+@pytest.fixture
+def toolkit_configured(live_paypal_http, monkeypatch):
+    """
+    Live mode with PayPal credentials set, so the Agent Toolkit client is available, as it is
+    in a real deployment. The Toolkit's `requests` calls are captured; nothing reaches the network.
+    Set ["toolkit_fail"] to make the Toolkit's subscription POST time out after PayPal received it.
+    """
+    import requests
+    from backend.services import paypal_service as paypal_module
+
+    assert getattr(paypal_module, "PAYPAL_TOOLKIT_AVAILABLE", False), "paypal-agent-toolkit is in requirements.txt and must be importable"
+    state = live_paypal_http
+    state["toolkit_sent"] = []
+    state["toolkit_fail"] = False
+
+    def fake_post(url, *args, **kwargs):
+        if url.endswith("/v1/oauth2/token"):
+            return _ToolkitResponse({"access_token": "conc-toolkit-token", "expires_in": 3600}, 200)
+        state["toolkit_sent"].append({"url": url, "headers": dict(kwargs.get("headers") or {})})
+        if state["toolkit_fail"]:
+            raise requests.exceptions.ReadTimeout("simulated timeout after PayPal received the request")
+        return _ToolkitResponse({**_CREATED, "id": f"I-CONC{uuid.uuid4().hex[:8].upper()}"})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(paypal_service, "client_id", f"conc-client-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setattr(paypal_service, "client_secret", f"conc-secret-{uuid.uuid4().hex[:6]}")
+    return state
+
+
+def _creation_request_ids(state):
+    """PayPal-Request-Id of every subscription-creation POST, over httpx and over the Toolkit's requests."""
+    ids = [r.headers.get("PayPal-Request-Id") for r in state["sent"]]
+    ids += [t["headers"].get("PayPal-Request-Id") for t in state["toolkit_sent"] if t["url"].endswith("/v1/billing/subscriptions")]
+    return ids
+
+
+@KNOWN_ISSUE("With PayPal credentials configured, subscriptions are created through the Agent Toolkit, which sends no PayPal-Request-Id.")
+def test_toolkit_configured_purchase_sends_paypal_request_id(toolkit_configured):
+    email = _email("tk")
+    res = _run(_buy(_signed(_limits(email, 100_000), email, "ap2-batch")))
+    ids = _creation_request_ids(toolkit_configured)
+    assert len(ids) == 1, f"expected one subscription-creation POST, saw {len(ids)}"
+    assert ids[0], "the subscription-creation POST carried no PayPal-Request-Id"
+    assert res.get("status") in SETTLED
+    assert res.get("paypal_request_id") == ids[0], "reported paypal_request_id is not the header that was sent"
+
+
+@KNOWN_ISSUE("When the Toolkit's POST fails after PayPal received it, the REST fallback sends a second creation request PayPal can't match to the first.")
+def test_toolkit_failure_fallback_reuses_paypal_request_id(toolkit_configured):
+    toolkit_configured["toolkit_fail"] = True
+    email = _email("tk-fail")
+    _run(_buy(_signed(_limits(email, 100_000), email, "ap2-batch")))
+    ids = _creation_request_ids(toolkit_configured)
+    assert ids, "no subscription-creation POST was sent"
+    assert all(ids), f"a subscription-creation POST went out without a PayPal-Request-Id: {ids}"
+    assert len(set(ids)) == 1, f"one purchase sent different PayPal-Request-Ids: {ids}"

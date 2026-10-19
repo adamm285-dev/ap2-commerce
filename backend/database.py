@@ -245,6 +245,12 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 PRIMARY KEY (mandate_hash, subscription_id)
             );
 
+            CREATE TABLE IF NOT EXISTS purchase_leases (
+                lease_key TEXT PRIMARY KEY,
+                holder TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+
             -- Owner-signed open payment mandate behind each agent-purchased subscription
             CREATE TABLE IF NOT EXISTS recurring_mandates (
                 subscription_id TEXT PRIMARY KEY,
@@ -1045,6 +1051,76 @@ def reset_open_mandate_settlements(db_path: Optional[Path] = None) -> None:
     try:
         with conn:
             conn.execute("DELETE FROM open_mandate_settlements")
+    finally:
+        conn.close()
+
+
+PURCHASE_LEASE_TTL_SECONDS: int = 120
+
+
+def acquire_purchase_lease(
+    open_mandate_hash: str,
+    buyer_email: Optional[str] = None,
+    holder: Optional[str] = None,
+    ttl_seconds: int = PURCHASE_LEASE_TTL_SECONDS,
+    db_path: Optional[Path] = None,
+) -> Optional[str]:
+    """
+    Atomically acquires a purchase lease across all rows (`mandate:<open_mandate_hash>`
+    and `buyer:<norm_email>` when buyer_email is non-empty) inside a single
+    `BEGIN IMMEDIATE` transaction. Deletes expired leases first.
+    Returns the `holder` token if all lease keys are acquired, or `None` if any is held.
+    """
+    if not open_mandate_hash or not str(open_mandate_hash).strip():
+        raise ValueError("open_mandate_hash is required to acquire a purchase lease.")
+    holder_token = (holder or "").strip() or f"lease_{uuid.uuid4().hex}"
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    now_iso = now_dt.isoformat()
+    expires_iso = (now_dt + datetime.timedelta(seconds=max(1, int(ttl_seconds)))).isoformat()
+
+    lease_keys: List[str] = [f"mandate:{open_mandate_hash.strip()}"]
+    norm_email = buyer_email.strip().lower() if buyer_email and buyer_email.strip() else None
+    if norm_email:
+        lease_keys.append(f"buyer:{norm_email}")
+
+    conn = get_connection(db_path)
+    try:
+        conn.isolation_level = None
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "DELETE FROM purchase_leases WHERE expires_at <= ?",
+                (now_iso,),
+            )
+            for lkey in lease_keys:
+                conn.execute(
+                    "INSERT INTO purchase_leases (lease_key, holder, expires_at) VALUES (?, ?, ?)",
+                    (lkey, holder_token, expires_iso),
+                )
+            conn.execute("COMMIT")
+            return holder_token
+        except sqlite3.IntegrityError:
+            conn.execute("ROLLBACK")
+            return None
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+
+
+def release_purchase_lease(holder: Optional[str], db_path: Optional[Path] = None) -> int:
+    """Releases all purchase_leases rows matching `holder`. Returns the number of rows deleted."""
+    if not holder or not str(holder).strip():
+        return 0
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute(
+                "DELETE FROM purchase_leases WHERE holder = ?",
+                (str(holder).strip(),),
+            )
+            return cur.rowcount
     finally:
         conn.close()
 

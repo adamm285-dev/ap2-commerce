@@ -273,7 +273,6 @@ def test_other_process_purchase_alone_settles():
 # ── 2. Purchases in flight together (one process) ────────────────────────
 
 
-@KNOWN_ISSUE("Budget totals are read before the PayPal await and recorded after it, so overlapping purchases all pass the owner's ceiling.")
 @pytest.mark.parametrize("others", [1, 3])
 def test_overlapping_purchases_never_exceed_owner_ceiling(paused_paypal, others):
     email = _email("ceiling")
@@ -290,7 +289,6 @@ def test_overlapping_purchases_never_exceed_owner_ceiling(paused_paypal, others)
     assert settled, "no purchase settled, although the ceiling has room for one"
 
 
-@KNOWN_ISSUE("The plan-change read happens before the PayPal await, so two overlapping purchases both end ACTIVE and neither is REPLACED.")
 def test_overlapping_purchases_leave_one_active_subscription(paused_paypal):
     email = _email("plan")
     limits = _limits(email, 100_000)
@@ -323,7 +321,6 @@ def test_overlap_rejection_is_retryable(paused_paypal):
 # ── 3. Purchases in flight together (two processes, one database) ────────
 
 
-@KNOWN_ISSUE("Replay and budget guards for in-flight purchases live in process memory, so a second process sharing the database settles the same mandate again.")
 @pytest.mark.parametrize("variant", ["same_closed_mandate", "other_checkout"])
 def test_second_process_cannot_settle_while_first_is_in_flight(paused_paypal, variant):
     email = _email("xproc")

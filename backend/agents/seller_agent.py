@@ -977,8 +977,16 @@ class SellerAgent:
         from ..services.ap2_service import (
             compute_open_payment_mandate_hash,
             compute_checkout_hash,
+            get_stored_receipt,
+            clear_stored_receipt,
         )
-        from ..database import get_open_mandate_settlement_totals
+        from ..database import (
+            get_open_mandate_settlement_totals,
+            is_mandate_revoked,
+            acquire_purchase_lease,
+            release_purchase_lease,
+            PURCHASE_LEASE_TTL_SECONDS,
+        )
         from ap2.sdk.constraints import MandateContext
 
         # Identify if this is a candidate replay of an already completed subscription
@@ -1029,6 +1037,18 @@ class SellerAgent:
                 "payment_receipt": ap2_verify_res.get("payment_receipt"),
             }
 
+        verified_tier = ap2_verify_res.get("tier_id")
+        verified_price = ap2_verify_res.get("monthly_price")
+        checkout_hash = ap2_verify_res.get("checkout_hash")
+        closed_pay_obj = ap2_verify_res.get("closed_payment_mandate")
+        closed_pay_tx_id = getattr(closed_pay_obj, "transaction_id", None) if closed_pay_obj else None
+
+        if not candidate_replay_sub:
+            for k in (offer_id, mandate_proof_hash, checkout_hash):
+                if k and k in _COMPLETED_SUBSCRIPTIONS:
+                    candidate_replay_sub = _COMPLETED_SUBSCRIPTIONS[k]
+                    break
+
         # If this is a replay of an already-settled subscription and verification succeeded:
         if candidate_replay_sub and isinstance(candidate_replay_sub, dict):
             c_status = str(candidate_replay_sub.get("status", "")).upper()
@@ -1051,20 +1071,11 @@ class SellerAgent:
                 }
             return {**candidate_replay_sub, "idempotent_replay": True}
 
-        verified_tier = ap2_verify_res.get("tier_id")
-        verified_price = ap2_verify_res.get("monthly_price")
-        checkout_hash = ap2_verify_res.get("checkout_hash")
-        closed_pay_obj = ap2_verify_res.get("closed_payment_mandate")
-        closed_pay_tx_id = getattr(closed_pay_obj, "transaction_id", None) if closed_pay_obj else None
-
         if not mandate_proof_hash and offer_id:
             auth_entry_lookup = get_authorized_mandate(offer_id)
             if auth_entry_lookup:
                 mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
         mandate_proof_hash = mandate_proof_hash or checkout_hash
-
-        from ..database import is_mandate_revoked
-        from ..services.ap2_service import clear_stored_receipt
 
         def _reject_purchase(desc: str, err_code: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             ref = checkout_hash or mandate_proof_hash or offer_id or "unknown_ref"
@@ -1099,347 +1110,369 @@ class SellerAgent:
                 ret.update(extra)
             return ret
 
-        if is_mandate_revoked(mandate_proof_hash) or (offer_id and is_mandate_revoked(offer_id)):
-            desc = "MANDATE_REVOKED: Mandate has been cryptographically revoked by owner."
-            logger.warning(f"[SECURITY] {desc}")
-            return _reject_purchase(desc, "MANDATE_REVOKED")
-
-        # Parameter integrity: if buyer provided tier_id or rate, they must match verified chain
-        if tier_id and verified_tier and tier_id != verified_tier:
-            desc = f"TIER_MISMATCH_DETECTED: Requested tier '{tier_id}' does not match mandate chain tier '{verified_tier}'."
-            logger.warning(f"[SECURITY] {desc}")
-            return _reject_purchase(desc, "TIER_MISMATCH_DETECTED")
-
-        if agreed_monthly_rate is not None and verified_price is not None and round(agreed_monthly_rate, 2) != round(verified_price, 2):
-            desc = f"RATE_TAMPERING_DETECTED: Agreed monthly rate ${agreed_monthly_rate:.2f} does not match mandate chain price ${verified_price:.2f}."
-            logger.warning(f"[SECURITY] {desc}")
-            return _reject_purchase(desc, "RATE_TAMPERING_DETECTED")
-
-        tier_id = verified_tier or tier_id
-        if not tier_id:
-            desc = "MISSING_TIER: No subscription tier specified or determined from verified checkout mandate."
-            logger.warning(f"[SECURITY] {desc}")
-            return _reject_purchase(desc, "MISSING_TIER")
-
-        agreed_monthly_rate = verified_price if verified_price is not None else agreed_monthly_rate
-        verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
-        verified_pay_receipt = ap2_verify_res.get("payment_receipt")
-
-        auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
-
-        buyer_id = auth.get("buyer_agent_id", "unknown")
         norm_email = contractor_email.strip().lower() if contractor_email else None
-
-        # Plan Change Model: Check for active existing subscription for this buyer
-        old_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) if norm_email else None
-        old_sub = _COMPLETED_SUBSCRIPTIONS.get(old_sub_id) if old_sub_id else None
-        old_rate = 0.0
-        if old_sub and isinstance(old_sub, dict) and old_sub.get("status") == "ACTIVE":
-            old_rate = old_sub.get("agreed_monthly_rate", 0.0)
-            old_sub_id = old_sub.get("subscription_id", old_sub_id)
-        else:
-            old_sub_id = None
-            old_sub = None
-
-        # Resolve authoritative monthly budget cap strictly from owner-signed chain
-        cap = ap2_verify_res.get("authoritative_budget_cap") if ap2_verify_res else None
-        if cap is None:
-            desc = "BUDGET_CAP_NOT_FOUND: Verified payment mandate chain carries no owner-signed price limit or AmountRange constraint."
-            logger.warning(f"[SECURITY] {desc}")
-            return _reject_purchase(desc, "BUDGET_CAP_NOT_FOUND")
-
-        # Purchase-time budget enforcement
-        remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
-        effective_available = round(remaining_before + old_rate, 2)
-
-        if agreed_monthly_rate > effective_available or agreed_monthly_rate > cap:
-            logger.warning(
-                f"[SECURITY] Purchase budget breach: rate ${agreed_monthly_rate:.2f}/mo exceeds "
-                f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
-            )
-            desc = (
-                f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
-                f"${effective_available:.2f} (budget cap: ${cap:.2f})."
-            )
-            return _reject_purchase(
-                desc,
-                "BUDGET_EXHAUSTED",
-                extra={
-                    "monthly_budget_cap": round(cap, 2),
-                    "monthly_cap_remaining": round(remaining_before, 2),
-                    "active_subscription_id": old_sub_id,
-                },
-            )
-
-        # Mandates issued without an email are locked to their first redeemer only after all budget checks pass
-        if mandate_proof_hash and contractor_email:
-            bind_mandate_email(mandate_proof_hash, contractor_email)
-
-        # 3. Invoke PayPal Gateway
-        subscriber_name = (
-            kwargs.get("subscriber_name")
-            or kwargs.get("contractor_name")
-            or auth.get("subscriber_name")
-            or (f"Buyer Agent ({buyer_id})" if buyer_id and buyer_id != "unknown" else "Buyer Agent")
+        open_pay_hash = ap2_verify_res.get("open_payment_mandate_hash") or open_pay_hash
+        lease_holder = acquire_purchase_lease(
+            open_mandate_hash=open_pay_hash,
+            buyer_email=norm_email,
+            ttl_seconds=PURCHASE_LEASE_TTL_SECONDS,
         )
+        if not lease_holder:
+            desc = "PURCHASE_IN_PROGRESS: Another purchase for this mandate or buyer is currently in flight; retry after it settles."
+            logger.warning(f"[CONCURRENCY] {desc}")
+            return _reject_purchase(desc, "PURCHASE_IN_PROGRESS")
+
         try:
-            paypal_result = await paypal_service.create_subscription(
-                tier_id=tier_id,
-                agreed_monthly_rate=agreed_monthly_rate,
-                contractor_email=contractor_email or "buyer-agent@example.com",
-                contractor_name=subscriber_name,
-                offer_id=offer_id,
-                mandate_proof_hash=mandate_proof_hash,
+            # Re-read the open-mandate settlement totals under the lease and compare with the pre-verification snapshot
+            post_lease_amt, post_lease_uses = get_open_mandate_settlement_totals(
+                open_pay_hash, exclude_subscription_id=exclude_sub_id
             )
-        except Exception as e:
-            desc = f"PAYPAL_SUBSCRIPTION_ERROR: Failed to create PayPal subscription: {e}"
-            logger.error(f"[PAYPAL] {desc}", exc_info=True)
-            return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
-        sub_id = paypal_result.get("subscription_id") if isinstance(paypal_result, dict) else None
-        raw_status = paypal_result.get("status") if isinstance(paypal_result, dict) else None
-        sub_status = str(raw_status).strip().upper() if isinstance(raw_status, str) and raw_status.strip() else ""
-        if not sub_id or not sub_status:
-            desc = (
-                f"PAYPAL_SUBSCRIPTION_ERROR: PayPal subscription reply missing required "
-                f"{'subscription_id' if not sub_id else 'status'}."
-            )
-            logger.error(f"[PAYPAL] {desc}")
-            return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
+            if (post_lease_amt, post_lease_uses) != (tot_amt, tot_uses):
+                desc = "PURCHASE_IN_PROGRESS: Open mandate settlement totals changed while verifying; retry against updated totals."
+                logger.warning(f"[CONCURRENCY] {desc}")
+                return _reject_purchase(desc, "PURCHASE_IN_PROGRESS")
 
-        is_mock = bool(paypal_result.get("mock_mode")) if "mock_mode" in paypal_result else getattr(paypal_service, "mock_mode", False)
-        approval_url = paypal_result.get("approval_url")
-        created_time = paypal_result.get("created_time") or (
-            datetime.datetime.now(datetime.timezone.utc).isoformat() if is_mock else None
-        )
-        next_billing = paypal_result.get("next_billing_time") or (
-            (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat() if is_mock else None
-        )
-        negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
-        payer_id = paypal_result.get("payer_id")
-        vault_id = paypal_result.get("vault_id")
-        payment_token = paypal_result.get("payment_token")
-        paypal_req_id = paypal_result.get("paypal_request_id")
-        hateoas_links = list(paypal_result.get("hateoas_links") or [])
-        if is_mock and hateoas_links:
-            for link in hateoas_links:
-                link["simulated"] = True
-        if not approval_url and hateoas_links:
-            for link in hateoas_links:
-                if link.get("rel") == "approve":
-                    approval_url = link.get("href")
-                    break
+            if is_mandate_revoked(mandate_proof_hash) or (offer_id and is_mandate_revoked(offer_id)):
+                desc = "MANDATE_REVOKED: Mandate has been cryptographically revoked by owner."
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "MANDATE_REVOKED")
 
-        # Mark old subscription as REPLACED (Plan Change Model)
-        if old_sub_id and old_sub and old_sub_id != sub_id:
-            if sub_status == "ACTIVE":
-                old_sub["status"] = "REPLACED"
-                old_sub["replaced_by"] = sub_id
-                old_sub["replaced_at"] = created_time
-                old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
+            # Parameter integrity: if buyer provided tier_id or rate, they must match verified chain
+            if tier_id and verified_tier and tier_id != verified_tier:
+                desc = f"TIER_MISMATCH_DETECTED: Requested tier '{tier_id}' does not match mandate chain tier '{verified_tier}'."
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "TIER_MISMATCH_DETECTED")
+
+            if agreed_monthly_rate is not None and verified_price is not None and round(agreed_monthly_rate, 2) != round(verified_price, 2):
+                desc = f"RATE_TAMPERING_DETECTED: Agreed monthly rate ${agreed_monthly_rate:.2f} does not match mandate chain price ${verified_price:.2f}."
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "RATE_TAMPERING_DETECTED")
+
+            tier_id = verified_tier or tier_id
+            if not tier_id:
+                desc = "MISSING_TIER: No subscription tier specified or determined from verified checkout mandate."
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "MISSING_TIER")
+
+            agreed_monthly_rate = verified_price if verified_price is not None else agreed_monthly_rate
+            verified_chk_receipt = ap2_verify_res.get("checkout_receipt")
+            verified_pay_receipt = ap2_verify_res.get("payment_receipt")
+
+            auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
+
+            buyer_id = auth.get("buyer_agent_id", "unknown")
+
+            # Plan Change Model: Check for active existing subscription for this buyer
+            old_sub_id = _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) if norm_email else None
+            old_sub = _COMPLETED_SUBSCRIPTIONS.get(old_sub_id) if old_sub_id else None
+            old_rate = 0.0
+            if old_sub and isinstance(old_sub, dict) and old_sub.get("status") == "ACTIVE":
+                old_rate = old_sub.get("agreed_monthly_rate", 0.0)
+                old_sub_id = old_sub.get("subscription_id", old_sub_id)
             else:
-                old_sub["pending_replacement"] = sub_id
-                old_sub["pending_replacement_tier"] = tier_id
-                old_sub["pending_replacement_at"] = created_time
+                old_sub_id = None
+                old_sub = None
 
-        # Reconcile buyer active pointer and ledger commitment
-        if norm_email:
-            if sub_status == "ACTIVE":
-                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
-                ledger.sync_contractor_commitment(
-                    contractor_email=norm_email,
-                    active_monthly_rate=agreed_monthly_rate,
-                    agent_id=buyer_id,
+            # Resolve authoritative monthly budget cap strictly from owner-signed chain
+            cap = ap2_verify_res.get("authoritative_budget_cap") if ap2_verify_res else None
+            if cap is None:
+                desc = "BUDGET_CAP_NOT_FOUND: Verified payment mandate chain carries no owner-signed price limit or AmountRange constraint."
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "BUDGET_CAP_NOT_FOUND")
+
+            # Purchase-time budget enforcement
+            remaining_before = ledger.get_remaining_budget(agent_id=buyer_id, cap=cap, contractor_email=contractor_email)
+            effective_available = round(remaining_before + old_rate, 2)
+
+            if agreed_monthly_rate > effective_available or agreed_monthly_rate > cap:
+                logger.warning(
+                    f"[SECURITY] Purchase budget breach: rate ${agreed_monthly_rate:.2f}/mo exceeds "
+                    f"available ${effective_available:.2f}/mo (cap: ${cap:.2f})"
                 )
-            elif old_sub_id and old_sub and old_sub.get("status") == "ACTIVE":
-                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = old_sub_id
-                ledger.sync_contractor_commitment(
-                    contractor_email=norm_email,
-                    active_monthly_rate=old_rate,
-                    agent_id=buyer_id,
+                desc = (
+                    f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
+                    f"${effective_available:.2f} (budget cap: ${cap:.2f})."
                 )
-            elif _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
-                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
-                reconcile_contractor_ledger(norm_email)
-        else:
-            if sub_status == "ACTIVE":
-                ledger.record_spend(
-                    agreed_monthly_rate,
-                    {
-                        "agent_id": buyer_id,
-                        "tier_id": tier_id,
-                        "mandate_proof_hash": mandate_proof_hash,
+                return _reject_purchase(
+                    desc,
+                    "BUDGET_EXHAUSTED",
+                    extra={
+                        "monthly_budget_cap": round(cap, 2),
+                        "monthly_cap_remaining": round(remaining_before, 2),
+                        "active_subscription_id": old_sub_id,
                     },
                 )
 
-        # Record open payment mandate settlement upon successful purchase
-        if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
-            from ..database import record_open_mandate_settlement
-            from ..services.ap2_service import compute_open_payment_mandate_hash, dollars_to_minor_units
-            open_pay_hash = ap2_verify_res.get("open_payment_mandate_hash") or compute_open_payment_mandate_hash(payment_mandate_chain)
-            amount_cents = dollars_to_minor_units(agreed_monthly_rate)
-            record_open_mandate_settlement(
-                mandate_hash=open_pay_hash,
-                subscription_id=sub_id,
-                amount_cents=amount_cents,
-            )
+            # Mandates issued without an email are locked to their first redeemer only after all budget checks pass
+            if mandate_proof_hash and contractor_email:
+                bind_mandate_email(mandate_proof_hash, contractor_email)
 
-            # Keep the owner-signed mandate so every PayPal renewal can be checked against it
-            from ..services.recurring_mandate_service import register_recurring_mandate
-            closed_pay = ap2_verify_res["closed_payment_mandate"]
-            if norm_email:
-                register_recurring_mandate(
-                    subscription_id=sub_id,
-                    payment_mandate_chain=payment_mandate_chain,
-                    mandate_hash=open_pay_hash,
-                    buyer_email=norm_email,
-                    amount_cents=closed_pay.payment_amount.amount,
-                    currency=closed_pay.payment_amount.currency,
+            # 3. Invoke PayPal Gateway
+            subscriber_name = (
+                kwargs.get("subscriber_name")
+                or kwargs.get("contractor_name")
+                or auth.get("subscriber_name")
+                or (f"Buyer Agent ({buyer_id})" if buyer_id and buyer_id != "unknown" else "Buyer Agent")
+            )
+            try:
+                paypal_result = await paypal_service.create_subscription(
+                    tier_id=tier_id,
+                    agreed_monthly_rate=agreed_monthly_rate,
+                    contractor_email=contractor_email or "buyer-agent@example.com",
+                    contractor_name=subscriber_name,
+                    offer_id=offer_id,
+                    mandate_proof_hash=mandate_proof_hash,
                 )
+            except Exception as e:
+                desc = f"PAYPAL_SUBSCRIPTION_ERROR: Failed to create PayPal subscription: {e}"
+                logger.error(f"[PAYPAL] {desc}", exc_info=True)
+                return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
+            sub_id = paypal_result.get("subscription_id") if isinstance(paypal_result, dict) else None
+            raw_status = paypal_result.get("status") if isinstance(paypal_result, dict) else None
+            sub_status = str(raw_status).strip().upper() if isinstance(raw_status, str) and raw_status.strip() else ""
+            if not sub_id or not sub_status:
+                desc = (
+                    f"PAYPAL_SUBSCRIPTION_ERROR: PayPal subscription reply missing required "
+                    f"{'subscription_id' if not sub_id else 'status'}."
+                )
+                logger.error(f"[PAYPAL] {desc}")
+                return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
+
+            is_mock = bool(paypal_result.get("mock_mode")) if "mock_mode" in paypal_result else getattr(paypal_service, "mock_mode", False)
+            approval_url = paypal_result.get("approval_url")
+            created_time = paypal_result.get("created_time") or (
+                datetime.datetime.now(datetime.timezone.utc).isoformat() if is_mock else None
+            )
+            next_billing = paypal_result.get("next_billing_time") or (
+                (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat() if is_mock else None
+            )
+            negotiation_id = auth.get("negotiation_id") or f"neg_{hashlib.sha256((mandate_proof_hash or offer_id).encode()).hexdigest()[:12]}"
+            payer_id = paypal_result.get("payer_id")
+            vault_id = paypal_result.get("vault_id")
+            payment_token = paypal_result.get("payment_token")
+            paypal_req_id = paypal_result.get("paypal_request_id")
+            hateoas_links = list(paypal_result.get("hateoas_links") or [])
+            if is_mock and hateoas_links:
+                for link in hateoas_links:
+                    link["simulated"] = True
+            if not approval_url and hateoas_links:
+                for link in hateoas_links:
+                    if link.get("rel") == "approve":
+                        approval_url = link.get("href")
+                        break
+
+            # Mark old subscription as REPLACED (Plan Change Model)
+            if old_sub_id and old_sub and old_sub_id != sub_id:
+                if sub_status == "ACTIVE":
+                    old_sub["status"] = "REPLACED"
+                    old_sub["replaced_by"] = sub_id
+                    old_sub["replaced_at"] = created_time
+                    old_sub["message"] = f"Subscription {old_sub_id} was replaced by {sub_id}."
+                else:
+                    old_sub["pending_replacement"] = sub_id
+                    old_sub["pending_replacement_tier"] = tier_id
+                    old_sub["pending_replacement_at"] = created_time
+
+            # Reconcile buyer active pointer and ledger commitment
+            if norm_email:
+                if sub_status == "ACTIVE":
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+                    ledger.sync_contractor_commitment(
+                        contractor_email=norm_email,
+                        active_monthly_rate=agreed_monthly_rate,
+                        agent_id=buyer_id,
+                    )
+                elif old_sub_id and old_sub and old_sub.get("status") == "ACTIVE":
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = old_sub_id
+                    ledger.sync_contractor_commitment(
+                        contractor_email=norm_email,
+                        active_monthly_rate=old_rate,
+                        agent_id=buyer_id,
+                    )
+                elif _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.get(norm_email) == sub_id:
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS.pop(norm_email, None)
+                    reconcile_contractor_ledger(norm_email)
             else:
-                logger.warning(f"[RECURRING] Subscription {sub_id} has no buyer email; its renewals will be suspended.")
+                if sub_status == "ACTIVE":
+                    ledger.record_spend(
+                        agreed_monthly_rate,
+                        {
+                            "agent_id": buyer_id,
+                            "tier_id": tier_id,
+                            "mandate_proof_hash": mandate_proof_hash,
+                        },
+                    )
 
-        remaining_budget = ledger.get_remaining_budget(
-            agent_id=buyer_id, cap=cap, contractor_email=contractor_email
-        )
+            # Record open payment mandate settlement upon successful purchase
+            if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
+                from ..database import record_open_mandate_settlement
+                from ..services.ap2_service import dollars_to_minor_units
+                amount_cents = dollars_to_minor_units(agreed_monthly_rate)
+                record_open_mandate_settlement(
+                    mandate_hash=open_pay_hash,
+                    subscription_id=sub_id,
+                    amount_cents=amount_cents,
+                )
 
-        ap2_mandate = auth.get("ap2_mandate")
-        if ap2_mandate is None:
-            ap2_mandate = build_ap2_intent_mandate(
-                buyer_agent_id=buyer_id,
-                amount=agreed_monthly_rate,
-                recurrence="monthly",
-                category="autonomous-node-service",
-                tier_id=tier_id,
-                contractor_email=contractor_email,
-                negotiation_id=negotiation_id,
+                # Keep the owner-signed mandate so every PayPal renewal can be checked against it
+                from ..services.recurring_mandate_service import register_recurring_mandate
+                closed_pay = ap2_verify_res["closed_payment_mandate"]
+                if norm_email:
+                    register_recurring_mandate(
+                        subscription_id=sub_id,
+                        payment_mandate_chain=payment_mandate_chain,
+                        mandate_hash=open_pay_hash,
+                        buyer_email=norm_email,
+                        amount_cents=closed_pay.payment_amount.amount,
+                        currency=closed_pay.payment_amount.currency,
+                    )
+                else:
+                    logger.warning(f"[RECURRING] Subscription {sub_id} has no buyer email; its renewals will be suspended.")
+
+            remaining_budget = ledger.get_remaining_budget(
+                agent_id=buyer_id, cap=cap, contractor_email=contractor_email
             )
 
-        billing_cycles = [
-            {
-                "sequence": 1,
-                "tenure_type": "REGULAR",
-                "frequency": {"interval_unit": "MONTH", "interval_count": 1},
-                "total_cycles": 0,
-                "pricing_scheme": {
-                    "fixed_price": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"}
-                },
-            }
-        ]
+            ap2_mandate = auth.get("ap2_mandate")
+            if ap2_mandate is None:
+                ap2_mandate = build_ap2_intent_mandate(
+                    buyer_agent_id=buyer_id,
+                    amount=agreed_monthly_rate,
+                    recurrence="monthly",
+                    category="autonomous-node-service",
+                    tier_id=tier_id,
+                    contractor_email=contractor_email,
+                    negotiation_id=negotiation_id,
+                )
 
-        if sub_status == "APPROVAL_PENDING":
-            next_action = {
-                "type": "human_approval_required",
-                "action": "approve_paypal_subscription",
-                "approval_url": approval_url,
-                "subscription_id": sub_id,
-                "message": "Human approval required: please authorize the recurring subscription in PayPal Sandbox at approval_url before provisioning.",
-            }
-            msg = f"PayPal subscription {sub_id} created with status APPROVAL_PENDING. Awaiting buyer authorization via PayPal checkout."
-            vault_status = "PENDING_APPROVAL"
-            vault_authorized = False
-            customer_present = True
-        else:
-            clean_node_type = "batch" if "batch" in (tier_id or "") else ("cluster" if "cluster" in (tier_id or "") else "gateway")
-            next_action = {
-                "type": "tool_call",
-                "tool": "provision_compute_node",
-                "parameters": {
+            billing_cycles = [
+                {
+                    "sequence": 1,
+                    "tenure_type": "REGULAR",
+                    "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+                    "total_cycles": 0,
+                    "pricing_scheme": {
+                        "fixed_price": {"value": f"{agreed_monthly_rate:.2f}", "currency_code": "USD"}
+                    },
+                }
+            ]
+
+            if sub_status == "APPROVAL_PENDING":
+                next_action = {
+                    "type": "human_approval_required",
+                    "action": "approve_paypal_subscription",
+                    "approval_url": approval_url,
                     "subscription_id": sub_id,
-                    "buyer_email": contractor_email,
-                    "node_type": clean_node_type,
-                },
+                    "message": "Human approval required: please authorize the recurring subscription in PayPal Sandbox at approval_url before provisioning.",
+                }
+                msg = f"PayPal subscription {sub_id} created with status APPROVAL_PENDING. Awaiting buyer authorization via PayPal checkout."
+                vault_status = "PENDING_APPROVAL"
+                vault_authorized = False
+                customer_present = True
+            else:
+                clean_node_type = "batch" if "batch" in (tier_id or "") else ("cluster" if "cluster" in (tier_id or "") else "gateway")
+                next_action = {
+                    "type": "tool_call",
+                    "tool": "provision_compute_node",
+                    "parameters": {
+                        "subscription_id": sub_id,
+                        "buyer_email": contractor_email,
+                        "node_type": clean_node_type,
+                    },
+                }
+                msg = f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate."
+                vault_status = "VAULT_BOUND"
+                vault_authorized = True
+                customer_present = False
+
+            # Generate traceable proof linking negotiation -> subscription -> ERP
+            mandate_id = ap2_mandate.get("mandate_id") if isinstance(ap2_mandate, dict) else None
+            cart_id = auth.get("ap2_cart_mandate", {}).get("cart_id") if isinstance(auth.get("ap2_cart_mandate"), dict) else None
+            traceable_proof = f"mandate:{mandate_id or 'none'}|cart:{cart_id or 'none'}|hash:{mandate_proof_hash or offer_id}"
+
+            plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile="ap2")
+            product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
+            business_entity = "Autonomous Compute Network"
+
+            response = {
+                "status": sub_status,
+                "subscription_id": sub_id,
+                "negotiation_id": negotiation_id,
+                "offer_id": auth.get("offer_id"),
+                "buyer_agent_id": buyer_id,
+                "plan_id": plan_id,
+                "product_id": product_id,
+                "payer_id": payer_id,
+                "vault_id": vault_id,
+                "payment_token": payment_token,
+                "payment_method": "paypal_vault_mit",
+                "tier_id": tier_id,
+                "agreed_monthly_rate": round(agreed_monthly_rate, 2),
+                "monthly_budget_cap": round(cap, 2),
+                "monthly_cap_remaining": round(remaining_budget, 2),
+                "billing_cycle": "monthly",
+                "billing_cycles": billing_cycles,
+                "currency": "USD",
+                "mandate_proof_hash": mandate_proof_hash,
+                "traceable_proof": traceable_proof,
+                "subscriber_country_code": paypal_result.get("subscriber_country_code", "US"),
+                "paypal_vault_status": vault_status,
+                "vault_billing_authorized": vault_authorized,
+                "vault_customer_present": customer_present,
+                "paypal_environment": "mock" if getattr(paypal_service, "mock_mode", False) else "sandbox",
+                "paypal_request_id": paypal_req_id,
+                "create_time": created_time,
+                "next_billing_time": next_billing,
+                "hateoas_links": hateoas_links,
+                "ap2_intent_mandate": ap2_mandate,
+                "ap2_cart_mandate": auth.get("ap2_cart_mandate"),
+                "next_action": next_action,
+                "message": msg,
+                "buyer_email": contractor_email,
+                "contractor_email": contractor_email,
+                "subscriber_name": subscriber_name,
+                "business_entity": business_entity,
             }
-            msg = f"Successfully bound PayPal subscription {sub_id} at ${agreed_monthly_rate:.2f}/mo under verified AP2 Intent Mandate."
-            vault_status = "VAULT_BOUND"
-            vault_authorized = True
-            customer_present = False
+            if not verified_chk_receipt:
+                ref = mandate_proof_hash or offer_id or f"ref_{uuid.uuid4().hex[:8]}"
+                verified_chk_receipt = create_checkout_receipt_jwt(
+                    order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Success",
+                )
+                verified_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=sub_id,
+                    closed_mandate_reference=ref,
+                    status="Success",
+                )
+            response["checkout_receipt"] = verified_chk_receipt
+            response["payment_receipt"] = verified_pay_receipt
+            plan_obj = resolve_plan(tier_id, profile="ap2")
+            if plan_obj and "workload_tasks_per_month" in plan_obj:
+                response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]
+            if approval_url:
+                response["approval_url"] = approval_url
+            if old_sub_id:
+                response["replaces_subscription_id"] = old_sub_id
 
-        # Generate traceable proof linking negotiation -> subscription -> ERP
-        mandate_id = ap2_mandate.get("mandate_id") if isinstance(ap2_mandate, dict) else None
-        cart_id = auth.get("ap2_cart_mandate", {}).get("cart_id") if isinstance(auth.get("ap2_cart_mandate"), dict) else None
-        traceable_proof = f"mandate:{mandate_id or 'none'}|cart:{cart_id or 'none'}|hash:{mandate_proof_hash or offer_id}"
-
-        plan_id = paypal_result.get("plan_id") or resolve_paypal_plan_id(tier_id, profile="ap2")
-        product_id = "PROD-AP2-AUTONOMOUS-COMPUTE"
-        business_entity = "Autonomous Compute Network"
-
-        response = {
-            "status": sub_status,
-            "subscription_id": sub_id,
-            "negotiation_id": negotiation_id,
-            "offer_id": auth.get("offer_id"),
-            "buyer_agent_id": buyer_id,
-            "plan_id": plan_id,
-            "product_id": product_id,
-            "payer_id": payer_id,
-            "vault_id": vault_id,
-            "payment_token": payment_token,
-            "payment_method": "paypal_vault_mit",
-            "tier_id": tier_id,
-            "agreed_monthly_rate": round(agreed_monthly_rate, 2),
-            "monthly_budget_cap": round(cap, 2),
-            "monthly_cap_remaining": round(remaining_budget, 2),
-            "billing_cycle": "monthly",
-            "billing_cycles": billing_cycles,
-            "currency": "USD",
-            "mandate_proof_hash": mandate_proof_hash,
-            "traceable_proof": traceable_proof,
-            "subscriber_country_code": paypal_result.get("subscriber_country_code", "US"),
-            "paypal_vault_status": vault_status,
-            "vault_billing_authorized": vault_authorized,
-            "vault_customer_present": customer_present,
-            "paypal_environment": "mock" if getattr(paypal_service, "mock_mode", False) else "sandbox",
-            "paypal_request_id": paypal_req_id,
-            "create_time": created_time,
-            "next_billing_time": next_billing,
-            "hateoas_links": hateoas_links,
-            "ap2_intent_mandate": ap2_mandate,
-            "ap2_cart_mandate": auth.get("ap2_cart_mandate"),
-            "next_action": next_action,
-            "message": msg,
-            "buyer_email": contractor_email,
-            "contractor_email": contractor_email,
-            "subscriber_name": subscriber_name,
-            "business_entity": business_entity,
-        }
-        if not verified_chk_receipt:
-            ref = mandate_proof_hash or offer_id or f"ref_{uuid.uuid4().hex[:8]}"
-            verified_chk_receipt = create_checkout_receipt_jwt(
-                order_id=offer_id or f"ord_{uuid.uuid4().hex[:8]}",
-                closed_mandate_reference=ref,
-                status="Success",
-            )
-            verified_pay_receipt = create_payment_receipt_jwt(
-                payment_id=sub_id,
-                closed_mandate_reference=ref,
-                status="Success",
-            )
-        response["checkout_receipt"] = verified_chk_receipt
-        response["payment_receipt"] = verified_pay_receipt
-        plan_obj = resolve_plan(tier_id, profile="ap2")
-        if plan_obj and "workload_tasks_per_month" in plan_obj:
-            response["workload_tasks_per_month"] = plan_obj["workload_tasks_per_month"]
-        if approval_url:
-            response["approval_url"] = approval_url
-        if old_sub_id:
-            response["replaces_subscription_id"] = old_sub_id
-
-        # Cache for strict idempotency
-        if auth and isinstance(auth, dict):
-            auth["status"] = "COMPLETED"
-            auth["subscription_id"] = sub_id
-        if mandate_proof_hash:
-            _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
-        if auth.get("offer_id"):
-            _COMPLETED_SUBSCRIPTIONS[auth["offer_id"]] = response
-        if offer_id:
-            _COMPLETED_SUBSCRIPTIONS[offer_id] = response
-        _COMPLETED_SUBSCRIPTIONS[sub_id] = response
-        if norm_email:
-            if sub_status == "ACTIVE":
-                _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
-            reconcile_contractor_ledger(norm_email)
-        return response
+            # Cache for strict idempotency
+            if auth and isinstance(auth, dict):
+                auth["status"] = "COMPLETED"
+                auth["subscription_id"] = sub_id
+            if mandate_proof_hash:
+                _COMPLETED_SUBSCRIPTIONS[mandate_proof_hash] = response
+            if auth.get("offer_id"):
+                _COMPLETED_SUBSCRIPTIONS[auth["offer_id"]] = response
+            if offer_id:
+                _COMPLETED_SUBSCRIPTIONS[offer_id] = response
+            _COMPLETED_SUBSCRIPTIONS[sub_id] = response
+            if norm_email:
+                if sub_status == "ACTIVE":
+                    _ACTIVE_CONTRACTOR_SUBSCRIPTIONS[norm_email] = sub_id
+                reconcile_contractor_ledger(norm_email)
+            return response
+        finally:
+            release_purchase_lease(lease_holder)
 
     async def get_subscription_details(self, subscription_id: str) -> Dict[str, Any]:
         """

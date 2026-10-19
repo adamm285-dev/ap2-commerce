@@ -1277,7 +1277,10 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
         paypal_subscription_id=req.paypal_subscription_id,
     )
     if res.get("status") != "ACTIVE":
-        raise HTTPException(status_code=400, detail=res.get("detail", res))
+        detail = res.get("detail", res)
+        err_code = detail.get("error") if isinstance(detail, dict) else None
+        http_status = status.HTTP_409_CONFLICT if err_code == "PURCHASE_IN_PROGRESS" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=http_status, detail=detail)
 
     return {k: v for k, v in res.items() if k not in ("purchaseResult", "provisionResult")}
 

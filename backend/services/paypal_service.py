@@ -521,13 +521,6 @@ class PayPalService:
         if not token:
             raise RuntimeError("Failed to authenticate with PayPal Sandbox API.")
 
-        idempotency_seed = mandate_proof_hash or offer_id
-        paypal_request_id = (
-            f"req_{hashlib.sha256(str(idempotency_seed).encode('utf-8')).hexdigest()[:32]}"
-            if idempotency_seed
-            else None
-        )
-
         payload = {
             "plan_id": target_plan_id,
             "subscriber": {
@@ -545,19 +538,13 @@ class PayPalService:
             },
         }
 
-        def _build_sub_headers(bearer_token: str) -> Dict[str, str]:
-            hdrs = {
-                "Authorization": f"Bearer {bearer_token}",
-                "Content-Type": "application/json",
-            }
-            if paypal_request_id:
-                hdrs["PayPal-Request-Id"] = paypal_request_id
-            return hdrs
-
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{self.base_url}/v1/billing/subscriptions",
-                headers=_build_sub_headers(token),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
                 json=payload,
                 timeout=10.0,
             )
@@ -566,7 +553,10 @@ class PayPalService:
                 token = await self.get_access_token(force_refresh=True)
                 res = await client.post(
                     f"{self.base_url}/v1/billing/subscriptions",
-                    headers=_build_sub_headers(token),
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
                     json=payload,
                     timeout=10.0,
                 )
@@ -582,6 +572,9 @@ class PayPalService:
 
             live_status = data.get("status")
             raw_payer_id = (data.get("subscriber") or {}).get("payer_id") if isinstance(data.get("subscriber"), dict) else None
+            resp_req_id = None
+            if hasattr(res, "headers") and res.headers is not None:
+                resp_req_id = res.headers.get("PayPal-Request-Id") or res.headers.get("paypal-request-id") or None
             return {
                 "subscription_id": sub_id,
                 "status": live_status,
@@ -590,7 +583,7 @@ class PayPalService:
                 "payer_id": raw_payer_id or None,
                 "vault_id": None,
                 "payment_token": None,
-                "paypal_request_id": paypal_request_id,
+                "paypal_request_id": resp_req_id,
                 "created_time": data.get("create_time"),
                 "next_billing_time": (data.get("billing_info") or {}).get("next_billing_time") if isinstance(data.get("billing_info"), dict) else None,
                 "hateoas_links": links,

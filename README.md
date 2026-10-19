@@ -10,7 +10,7 @@
 [![AG Studio: v3.0.0](https://img.shields.io/badge/AG%20Studio-v3.0.0-blue.svg)](https://www.ag-grid.com/studio/react/)
 [![PayPal Agent Toolkit](https://img.shields.io/badge/PayPal-Agent%20Toolkit-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 572 Passed](https://img.shields.io/badge/Tests-572%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
+[![Tests: 677 Passed](https://img.shields.io/badge/Tests-677%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -51,8 +51,8 @@ python scripts/judge_audit_harness.py
 
 ### 2. Run the Full Automated Test Suite
 ```bash
-pytest backend/tests/ -q -n 4
-# 572 passed, 9 skipped (188 tests from Google's AP2 SDK + 384 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
+python -m pytest backend/tests -q -n 4
+# 677 passed, 9 skipped, 8 xfailed, 4 warnings in 43.12s (188 tests from Google's AP2 SDK + 489 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in Google's AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
 
@@ -121,8 +121,8 @@ The 8-slide walkthrough reflects the codebase as of 2026-10-10:
 | **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
-| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 19 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
-| **08** | **Empirical Verification** | 572 passing tests (188 SDK + 384 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 20 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
+| **08** | **Empirical Verification** | `677 passed, 9 skipped, 8 xfailed, 4 warnings in 43.12s` (188 SDK + 489 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
 
@@ -153,7 +153,7 @@ The 8-slide walkthrough reflects the codebase as of 2026-10-10:
 
 ## 5. What's Simulated
 
-Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (19 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
+Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (20 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
 
 ---
 

@@ -201,8 +201,22 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
 
     existing = get_recurring_charge(sale_id)
     if existing:
-        return _decision("ALREADY_PROCESSED", ACTION_NONE, existing.get("status") or "", sale_id=sale_id,
-                         subscription_id=sub_id)
+        existing_status = existing.get("status") or ""
+        extra_already: Dict[str, Any] = {"sale_id": sale_id, "subscription_id": sub_id}
+        if existing_status in (INITIAL, VERIFIED):
+            rec_existing = get_recurring_mandate(sub_id)
+            if rec_existing:
+                extra_already["renewal_receipt_jwt"] = create_renewal_receipt_jwt(
+                    sale_id=sale_id,
+                    subscription_id=sub_id,
+                    mandate_hash=existing.get("mandate_hash") or rec_existing["mandate_hash"],
+                    buyer_email=rec_existing.get("buyer_email") or "",
+                    amount_cents=int(existing.get("amount_cents") or 0),
+                    currency=existing.get("currency") or "USD",
+                    outcome=existing_status,
+                    charged_at=existing.get("charged_at") or now.isoformat(),
+                )
+        return _decision("ALREADY_PROCESSED", ACTION_NONE, existing_status, **extra_already)
 
     record = get_recurring_mandate(sub_id)
     if record is None:

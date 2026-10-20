@@ -746,8 +746,8 @@ def verify_ap2_chains(
         if mandate_context is not None:
             ctx = mandate_context
         else:
-            from ..database import get_open_mandate_settlement_totals
-            tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+            from ..database import get_open_mandate_total_usage
+            tot_amt, tot_uses = get_open_mandate_total_usage(open_pay_hash)
             ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
 
         try:

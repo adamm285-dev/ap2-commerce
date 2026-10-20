@@ -80,7 +80,7 @@ from ap2.sdk.constraints import (
 from ap2.sdk.utils import b64url_decode
 
 from ..config import settings
-from ..database import get_open_mandate_settlement_totals
+from ..database import get_open_mandate_total_usage
 from ..services.ap2_keys import get_demo_agent_key
 from ..services.ap2_service import (
     AP2_MERCHANT_ID,
@@ -584,7 +584,7 @@ class LLMBuyerAgent:
             )
 
             open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
-            tot_amt, tot_uses = get_open_mandate_settlement_totals(open_pay_hash)
+            tot_amt, tot_uses = get_open_mandate_total_usage(open_pay_hash)
             mandate_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
 
             pay_violations = check_payment_constraints(

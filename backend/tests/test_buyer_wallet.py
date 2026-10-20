@@ -718,6 +718,115 @@ def test_renewal_receipt_refuses_orphan_and_mismatched_initial_receipt(demo):
     )
     assert _refusal_code(demo.wallet.record_renewal_receipt, bad_init_jwt) == "RECEIPT_AMOUNT_MISMATCH"
 
+    # 3. Malformed charged_at is refused (fail closed)
+    bad_ts_jwt = create_renewal_receipt_jwt(
+        sale_id="SALE-BAD-TS",
+        subscription_id="I-SUB-1",
+        mandate_hash=demo.wallet._load_limits().canonical_payment_hash,
+        buyer_email=demo.email,
+        amount_cents=4999,
+        currency="USD",
+        outcome="VERIFIED",
+        charged_at="not-a-timestamp",
+    )
+    assert _refusal_code(demo.wallet.record_renewal_receipt, bad_ts_jwt) == "RECEIPT_MALFORMED"
+
+
+def test_renewal_receipt_succeeds_after_checkout_window_expires_and_verify_chains_counts_renewals(demo):
+    import datetime
+    from backend.services.ap2_service import create_renewal_receipt_jwt, verify_ap2_chains
+    from backend.services.recurring_mandate_service import evaluate_sale
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
+    # Owner signs a $100 total ceiling ($60/mo cap -> room for 2 x $49.99 charges)
+    demo.sign_limits(cap=60.0, ceiling=100.0, validity=3600)
+    import asyncio
+    nego1 = asyncio.run(_seller("negotiate_tier_terms", {
+        "buyer_agent_id": "claude-renewal-window-test",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-batch",
+        "monthly_budget_cap": 60.0,
+    }))
+    signed1 = demo.wallet.sign_checkout(nego1["checkout_jwt"])
+
+    # Settle first purchase on seller
+    purchase = asyncio.run(_seller("purchase_subscription", {
+        "offer_id": nego1["offer_id"],
+        "buyer_email": demo.email,
+        "checkout_mandate_chain": signed1["checkout_mandate_chain"],
+        "payment_mandate_chain": signed1["payment_mandate_chain"],
+    }))
+    assert purchase["status"] == "ACTIVE"
+    sub_id = purchase["subscription_id"]
+    sub_rec = _COMPLETED_SUBSCRIPTIONS.get(sub_id)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    evaluate_sale(
+        {"id": "SALE-M1", "billing_agreement_id": sub_id, "create_time": now.isoformat(),
+         "amount": {"total": "49.99", "currency": "USD"}},
+        sub_rec, now=now,
+    )
+    month2 = now + datetime.timedelta(days=31)
+    ren_m2 = evaluate_sale(
+        {"id": "SALE-M2", "billing_agreement_id": sub_id, "create_time": month2.isoformat(),
+         "amount": {"total": "49.99", "currency": "USD"}},
+        sub_rec, now=month2,
+    )
+    assert ren_m2["outcome"] == "VERIFIED"
+
+    # Re-calling evaluate_sale for the same sale_id returns ALREADY_PROCESSED with renewal_receipt_jwt
+    replay_m2 = evaluate_sale(
+        {"id": "SALE-M2", "billing_agreement_id": sub_id, "create_time": month2.isoformat(),
+         "amount": {"total": "49.99", "currency": "USD"}},
+        sub_rec, now=month2,
+    )
+    assert replay_m2["outcome"] == "ALREADY_PROCESSED"
+    assert "renewal_receipt_jwt" in replay_m2
+
+    # Seller's verify_ap2_chains now sees 2 charges (9998 cents) under this open payment mandate,
+    # so a second checkout presentation on the same open payment mandate is rejected for exceeding $100 budget!
+    chk2 = create_merchant_checkout(tier_id="ap2-batch", monthly_price=49.99, contractor_email=demo.email)
+    signed2 = demo.wallet.sign_checkout(chk2["checkout_jwt"])
+    ver2 = verify_ap2_chains(
+        signed2["checkout_mandate_chain"],
+        signed2["payment_mandate_chain"],
+        chk2["checkout_jwt"],
+        expected_aud="merchant-ap2-autonomous",
+        expected_nonce=chk2["nonce"],
+        buyer_email=demo.email,
+    )
+    assert ver2["valid"] is False
+    assert "exceeds budget limit 10000" in ver2["error_description"]
+
+    # Simulate the 24-hour checkout mandate window expiring while the 12-month payment mandate remains valid
+    raw_limits = json.loads((demo.dir / "owner_limits.json").read_text(encoding="utf-8"))
+    expired_chk_limits = create_trusted_surface_open_mandates(
+        buyer_email=demo.email,
+        monthly_budget_cap=60.0,
+        yearly_budget_ceiling=100.0,
+        agent_key=demo.wallet._agent_key(),
+        user_key=demo.owner,
+        validity_seconds=-60,
+    )
+    raw_limits["open_checkout_mandate_token"] = expired_chk_limits["open_checkout_mandate_token"]
+    (demo.dir / "owner_limits.json").write_text(json.dumps(raw_limits), encoding="utf-8")
+
+    # Starting a new checkout is refused because open_checkout_mandate expired,
+    # but recording the initial sale receipt under the still-valid open_payment_mandate succeeds!
+    assert _refusal_code(demo.wallet.sign_checkout, nego1["checkout_jwt"]) == "OWNER_LIMITS_EXPIRED"
+    init_jwt = create_renewal_receipt_jwt(
+        sale_id="SALE-M1",
+        subscription_id=sub_id,
+        mandate_hash=demo.wallet._load_limits(require_unexpired_checkout=False).canonical_payment_hash,
+        buyer_email=demo.email,
+        amount_cents=4999,
+        currency="USD",
+        outcome="INITIAL",
+        charged_at=now.isoformat(),
+    )
+    synced = demo.wallet.record_renewal_receipt(init_jwt)
+    assert synced["status"] == "RECORDED"
+
 
 def test_provision_rejection_includes_ap2_payment_challenge_and_header():
     res = client.post(

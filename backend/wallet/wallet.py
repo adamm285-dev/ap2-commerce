@@ -379,7 +379,7 @@ class BuyerWallet:
             f"No pinned merchant public key matches merchant '{merchant_id or 'unknown'}'.",
         )
 
-    def _load_limits(self) -> _OwnerLimits:
+    def _load_limits(self, require_unexpired_checkout: bool = True) -> _OwnerLimits:
         """Loads owner limits and verifies signature, expiry, agent binding and required constraints."""
         raw = _read_json(self.dir / OWNER_LIMITS_FILE, "owner spending limits")
         if not isinstance(raw, dict):
@@ -409,7 +409,7 @@ class BuyerWallet:
         for label, payload in (("checkout", open_chk), ("payment", open_pay)):
             if not isinstance(payload.exp, int):
                 raise WalletRefusal("OWNER_LIMITS_EXPIRED", f"Open {label} mandate has no expiry.")
-            if payload.exp <= now:
+            if (label == "payment" or require_unexpired_checkout) and payload.exp <= now:
                 raise WalletRefusal(
                     "OWNER_LIMITS_EXPIRED",
                     f"Open {label} mandate expired; ask the owner to sign new limits.",
@@ -908,8 +908,8 @@ class BuyerWallet:
             raise WalletRefusal("MISSING_RENEWAL_RECEIPT", "renewal_receipt_jwt is required.")
         renewal_receipt_jwt = renewal_receipt_jwt.strip()
 
-        # 1. Owner limits: signature, expiry, agent binding, required constraints
-        lim = self._load_limits()
+        # 1. Owner limits: signature, payment-term expiry, agent binding, required constraints
+        lim = self._load_limits(require_unexpired_checkout=False)
 
         # 2. Merchant signature verification against pinned merchant key
         merchant_pub, pinned_merchant_id = self._resolve_merchant_key(renewal_receipt_jwt)
@@ -986,9 +986,33 @@ class BuyerWallet:
                 message=f"Payee is not in the owner's allowed payee list: Payee {iss} not in allowed list",
             )
 
-        charged_at = payload.get("charged_at") if isinstance(payload.get("charged_at"), str) else (
-            datetime.datetime.now(datetime.timezone.utc).isoformat()
-        )
+        charged_at_raw = payload.get("charged_at")
+        if not isinstance(charged_at_raw, str) or not charged_at_raw.strip():
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt has no charged_at timestamp.")
+        try:
+            charged_at_dt = datetime.datetime.fromisoformat(charged_at_raw.strip().replace("Z", "+00:00"))
+        except ValueError as e:
+            raise WalletRefusal(
+                "RECEIPT_MALFORMED",
+                f"Renewal receipt charged_at is not a valid ISO-8601 timestamp: {e}",
+            )
+        if charged_at_dt.tzinfo is None:
+            charged_at_dt = charged_at_dt.replace(tzinfo=datetime.timezone.utc)
+        charged_at = charged_at_dt.isoformat()
+        if lim.payment.exp <= charged_at_dt.timestamp():
+            raise WalletRefusal(
+                "OWNER_LIMITS_EXPIRED",
+                "Open payment mandate had expired when the renewal was charged; ask the owner to sign new limits.",
+                escalation={
+                    "requires_human_approval": True,
+                    "action": "REAUTHORIZE_EXPIRED_LIMITS",
+                    "buyer_email": lim.buyer_email,
+                    "mandate_type": "payment",
+                    "expired_at": datetime.datetime.fromtimestamp(
+                        lim.payment.exp, tz=datetime.timezone.utc
+                    ).isoformat(),
+                },
+            )
 
         ledger = self._read_ledger()
         entry = ledger["open_payment_mandates"].setdefault(lim.payment_key, {"signed": {}})

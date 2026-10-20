@@ -42,6 +42,7 @@ import { SellerCopilotView } from './components/SellerCopilotView';
 import { EnterpriseFleetLedger } from './components/EnterpriseFleetLedger';
 import { type NodeSettingsData } from './components/NodeSettingsView';
 import { TrustedSurfaceLimitsModal } from './components/TrustedSurfaceLimitsModal';
+import { Ap2ThreeDStoryView } from './components/Ap2ThreeDStoryView';
 import './App.css';
 
 // 1. Initialize AG Studio License if supplied via environment
@@ -74,11 +75,11 @@ function Ap2Logo({ size = 38 }: { size?: number }) {
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'copilot' | 'fleet-ledger' | 'bryntum' | 'ag-studio' | 'zapier' | 'settings'>('copilot');
+  const [activeTab, setActiveTab] = useState<'story' | 'copilot' | 'fleet-ledger' | 'bryntum' | 'ag-studio' | 'zapier' | 'settings'>('story');
   const [ledgerViewMode, setLedgerViewMode] = useState<'grid' | 'studio'>('grid');
   const [mode, setMode] = useState<AgStudioMode>('view');
 
-  const handleNavigateTab = (tab: 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier' | 'settings') => {
+  const handleNavigateTab = (tab: 'story' | 'copilot' | 'fleet-ledger' | 'ag-studio' | 'bryntum' | 'zapier' | 'settings') => {
     if (tab === 'ag-studio') {
       setActiveTab('fleet-ledger');
       setLedgerViewMode('studio');
@@ -93,6 +94,7 @@ export function App() {
   };
   const [transactions, setTransactions] = useState<A2aTransaction[]>(initialA2aTransactions);
   const [activeSetupStep, setActiveSetupStep] = useState<number>(1);
+  const [isStoryHeroCollapsed, setIsStoryHeroCollapsed] = useState<boolean>(false);
   const [isSetupGuideCollapsed, setIsSetupGuideCollapsed] = useState<boolean>(true);
   const [isDashboardMetricsCollapsed, setIsDashboardMetricsCollapsed] = useState<boolean>(true);
   const [schedulerViewMode, setSchedulerViewMode] = useState<'timeline' | 'matrix'>('timeline');
@@ -503,13 +505,37 @@ export function App() {
                   border: '1px solid #334155',
                   padding: '3px',
                   minWidth: '340px',
-                  width: '370px',
+                  width: '445px',
                   maxWidth: '100%',
                   boxSizing: 'border-box',
                 }}
               >
                 {/* Row 1: Primary Navigation Tabs */}
                 <div style={{ display: 'flex', alignItems: 'center', height: '30px', width: '100%' }}>
+                  <button
+                    onClick={() => setActiveTab('story')}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      padding: '0 8px',
+                      height: '100%',
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: activeTab === 'story' ? '#059669' : 'transparent',
+                      color: activeTab === 'story' ? '#fff' : '#34d399',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                    }}
+                    title="Interactive 5-Station 3D Sponsor Pipeline Explainer"
+                  >
+                    <Sparkles size={13} /> 3D Story
+                  </button>
                   <button
                     onClick={() => setActiveTab('copilot')}
                     style={{
@@ -609,6 +635,16 @@ export function App() {
 
                 {/* Merged Gray Line & Row 2: Secondary View Switchers (Every tab has a custom Row 2) */}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '3px 0', width: '100%' }} />
+
+                {/* Tab 0 3D Story: 5-Station Sponsor Pipeline */}
+                {activeTab === 'story' && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '30px', width: '100%', padding: '0 8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                      5-Station 3D Pipeline &bull; PayPal &bull; AG Studio &bull; Bryntum &bull; MCP
+                    </span>
+                  </div>
+                )}
 
                 {/* Tab 1 Setup: MCP Status */}
                 {activeTab === 'copilot' && (
@@ -879,7 +915,9 @@ export function App() {
                 {/* Expand / Collapse Button (Uniform across all 4 Tabs) */}
                 <button
                   onClick={() => {
-                    if (activeTab === 'copilot') {
+                    if (activeTab === 'story') {
+                      setIsStoryHeroCollapsed((prev) => !prev);
+                    } else if (activeTab === 'copilot') {
                       setIsSetupGuideCollapsed((prev) => !prev);
                     } else if (activeTab === 'fleet-ledger' || activeTab === 'ag-studio') {
                       setIsDashboardMetricsCollapsed((prev) => !prev);
@@ -899,7 +937,8 @@ export function App() {
                     border: '1px solid #334155',
                     borderRadius: '6px',
                     color:
-                      (activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                      (activeTab === 'story' && isStoryHeroCollapsed) ||
+                    (activeTab === 'copilot' && isSetupGuideCollapsed) ||
                       ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
                       (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
                       (activeTab === 'zapier' && isMcpControlsCollapsed)
@@ -913,6 +952,7 @@ export function App() {
                     transition: 'all 0.15s ease',
                   }}
                   title={
+                    (activeTab === 'story' && isStoryHeroCollapsed) ||
                     (activeTab === 'copilot' && isSetupGuideCollapsed) ||
                     ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
                     (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
@@ -921,7 +961,8 @@ export function App() {
                       : 'Collapse Cards'
                   }
                 >
-                  {(activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                  {(activeTab === 'story' && isStoryHeroCollapsed) ||
+                  (activeTab === 'copilot' && isSetupGuideCollapsed) ||
                   ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
                   (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
                   (activeTab === 'zapier' && isMcpControlsCollapsed) ? (
@@ -930,7 +971,8 @@ export function App() {
                     <ChevronUp size={13} />
                   )}
                   <span>
-                    {(activeTab === 'copilot' && isSetupGuideCollapsed) ||
+                    {(activeTab === 'story' && isStoryHeroCollapsed) ||
+                  (activeTab === 'copilot' && isSetupGuideCollapsed) ||
                     ((activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && isDashboardMetricsCollapsed) ||
                     (activeTab === 'bryntum' && isScheduleMetricsCollapsed) ||
                     (activeTab === 'zapier' && isMcpControlsCollapsed)
@@ -942,6 +984,37 @@ export function App() {
             </div>
 
             {/* Row 3: Live Summary Metrics Strip (Clean telemetry for every tab) */}
+            {activeTab === 'story' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  paddingLeft: '4px',
+                  paddingTop: '2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Mode:</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>Live Sandbox API</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>MRR:</span>
+                  <span style={{ color: '#f8fafc', fontWeight: 700 }}>${totalMrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Active:</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>{activeLinesCount} Nodes</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>Protocol:</span>
+                  <span style={{ color: '#fde047', fontWeight: 700 }}>AP2 v0.2 ES256</span>
+                </div>
+              </div>
+            )}
             {activeTab === 'copilot' && (
               <div
                 style={{
@@ -1073,6 +1146,43 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="studio-canvas-container">
+        {activeTab === 'story' && (
+          <Ap2ThreeDStoryView
+            totalMrr={totalMrr}
+            activeLinesCount={activeLinesCount}
+            isHeaderCollapsed={isStoryHeroCollapsed}
+            onNavigateTab={handleNavigateTab}
+            onDealProvisioned={({ subscriptionId, allocatedDid, monthlyAmount, planName }) => {
+              setTransactions((prev) => {
+                const idx = prev.findIndex(
+                  (t) =>
+                    t.id === 'TXN-AP2-9021' ||
+                    t.id === 'AP2-TXN-9021' ||
+                    t.contractor_name === contractorName ||
+                    t.principal_entity === 'Demo Buyer Corp' ||
+                    t.contractor_name === 'Acme Compute Co'
+                );
+                if (idx !== -1) {
+                  const updated = [...prev];
+                  updated[idx] = {
+                    ...updated[idx],
+                    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    service_plan: planName,
+                    monthly_amount: monthlyAmount,
+                    paypal_sub_id: subscriptionId,
+                    kyc_status: 'SUBSCRIBER EMAIL MATCHED',
+                    allocated_did: allocatedDid,
+                    tcpa_guard: 'AP2 CHAIN VERIFIED (ES256)',
+                    status: 'ACTIVE_STREAMING',
+                  };
+                  return updated;
+                }
+                return prev;
+              });
+              setIsPendingDepositLocked(true);
+            }}
+          />
+        )}
         {activeTab === 'copilot' && (
           <SellerCopilotView
             contractorName={contractorName}

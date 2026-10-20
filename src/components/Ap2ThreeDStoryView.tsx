@@ -526,6 +526,10 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
           0%, 100% { opacity: 0.35; transform: scaleX(0.92); }
           50% { opacity: 1; transform: scaleX(1.04); }
         }
+        @keyframes ap2BubblePopIn {
+          0% { opacity: 0; transform: translateY(10px) scale(0.92); }
+          100% { opacity: 1; transform: translateY(0px) scale(1); }
+        }
       `}</style>
 
       {/* Top Headline & Sponsor Strip (PayPal = Lead Sponsor, zero Google references) */}
@@ -1640,164 +1644,273 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
         </div>
 
         {/* =====================================================================
-            INTERACTIVE STATION DEEP-DIVE DRAWER (Appears when any station is clicked!)
+            FLOATING POPOVER BUBBLE CARD (Pops up right over the station you clicked!)
            ===================================================================== */}
         {inspectedSpec && (
-          <div
-            data-testid="ap2-station-inspector-drawer"
-            style={{
-              position: 'relative',
-              zIndex: 30,
-              margin: '0 1.15rem 1.1rem',
-              padding: '1rem 1.25rem',
-              borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(6, 14, 31, 0.97), rgba(15, 23, 42, 0.98))',
-              border: `2px solid ${isHappy ? '#38bdf8' : '#f87171'}`,
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.85), 0 0 30px rgba(56, 189, 248, 0.25)',
-              backdropFilter: 'blur(16px)',
-            }}
-          >
+          <>
+            {/* Click-outside backdrop inside stage */}
             <div
+              onClick={() => setInspectedStation(null)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '0.75rem',
-                marginBottom: '0.75rem',
+                position: 'absolute',
+                inset: 0,
+                zIndex: 45,
+                background: 'rgba(2, 6, 18, 0.42)',
+                backdropFilter: 'blur(2px)',
+                cursor: 'pointer',
+              }}
+              title="Click anywhere to close bubble card"
+            />
+
+            <div
+              key={inspectedSpec.step}
+              data-testid="ap2-station-inspector-drawer"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: '74px',
+                left:
+                  inspectedSpec.step === 1
+                    ? '2.2%'
+                    : inspectedSpec.step === 2
+                      ? '19%'
+                      : inspectedSpec.step === 3
+                        ? '42%'
+                        : 'auto',
+                right: inspectedSpec.step === 4 ? '2.2%' : 'auto',
+                width: 'min(470px, 92vw)',
+                zIndex: 60,
+                padding: '1rem 1.15rem',
+                borderRadius: '18px',
+                background: 'linear-gradient(145deg, rgba(8, 18, 38, 0.98), rgba(4, 10, 24, 0.99))',
+                border: `2px solid ${
+                  !isHappy && inspectedSpec.step >= 3
+                    ? '#f87171'
+                    : inspectedSpec.step === 1
+                      ? '#fbbf24'
+                      : inspectedSpec.step === 2
+                        ? '#38bdf8'
+                        : '#34d399'
+                }`,
+                boxShadow:
+                  '0 24px 60px rgba(0, 0, 0, 0.92), 0 0 38px rgba(56, 189, 248, 0.35), inset 0 1px 0 rgba(255,255,255,0.15)',
+                animation: 'ap2BubblePopIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
               }}
             >
-              <div>
-                <span
-                  style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 900,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '999px',
-                    background: 'rgba(56, 189, 248, 0.16)',
-                    border: '1px solid rgba(56, 189, 248, 0.45)',
-                    color: '#7dd3fc',
-                  }}
-                >
-                  {inspectedSpec.sponsorBadge}
-                </span>
-                <h2 style={{ margin: '0.3rem 0 0', fontSize: '1.08rem', fontWeight: 900, color: '#f8fafc' }}>
-                  {inspectedSpec.title}
-                </h2>
-              </div>
+              {/* Speech Bubble Pointer Arrow pointing straight at the clicked station */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '-11px',
+                  left:
+                    inspectedSpec.step === 1
+                      ? '24%'
+                      : inspectedSpec.step === 2
+                        ? '42%'
+                        : inspectedSpec.step === 3
+                          ? '55%'
+                          : '74%',
+                  width: '20px',
+                  height: '20px',
+                  background: 'rgba(4, 10, 24, 0.99)',
+                  borderRight: `2px solid ${
+                    !isHappy && inspectedSpec.step >= 3
+                      ? '#f87171'
+                      : inspectedSpec.step === 1
+                        ? '#fbbf24'
+                        : inspectedSpec.step === 2
+                          ? '#38bdf8'
+                          : '#34d399'
+                  }`,
+                  borderBottom: `2px solid ${
+                    !isHappy && inspectedSpec.step >= 3
+                      ? '#f87171'
+                      : inspectedSpec.step === 1
+                        ? '#fbbf24'
+                        : inspectedSpec.step === 2
+                          ? '#38bdf8'
+                          : '#34d399'
+                  }`,
+                  transform: 'rotate(45deg)',
+                }}
+              />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                <button
-                  type="button"
-                  onClick={() => onNavigateTab?.(inspectedSpec.targetTab)}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '0.42rem 0.85rem',
-                    borderRadius: '9px',
-                    background: 'linear-gradient(135deg, #0284c7, #0369a1)',
-                    border: '1px solid #38bdf8',
-                    color: '#f0f9ff',
-                    fontSize: '0.76rem',
-                    fontWeight: 800,
-                  }}
-                >
-                  {inspectedSpec.targetTabLabel}
-                </button>
+              {/* Top Header of Bubble Card */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '0.6rem',
+                  marginBottom: '0.65rem',
+                }}
+              >
+                <div>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      fontSize: '0.66rem',
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.07em',
+                      padding: '0.18rem 0.55rem',
+                      borderRadius: '999px',
+                      background: 'rgba(56, 189, 248, 0.16)',
+                      border: '1px solid rgba(56, 189, 248, 0.45)',
+                      color: '#7dd3fc',
+                    }}
+                  >
+                    {inspectedSpec.sponsorBadge}
+                  </span>
+                  <h2
+                    style={{
+                      margin: '0.28rem 0 0',
+                      fontSize: '0.98rem',
+                      fontWeight: 900,
+                      color: '#f8fafc',
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {inspectedSpec.title}
+                  </h2>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setInspectedStation(null)}
                   style={{
                     cursor: 'pointer',
-                    padding: '0.42rem 0.75rem',
-                    borderRadius: '9px',
-                    background: 'rgba(30, 41, 59, 0.9)',
-                    border: '1px solid rgba(148, 163, 184, 0.35)',
-                    color: '#cbd5e1',
-                    fontSize: '0.76rem',
-                    fontWeight: 800,
+                    padding: '0.28rem 0.58rem',
+                    borderRadius: '8px',
+                    background: 'rgba(30, 41, 59, 0.95)',
+                    border: '1px solid rgba(148, 163, 184, 0.4)',
+                    color: '#f8fafc',
+                    fontSize: '0.74rem',
+                    fontWeight: 900,
+                    flexShrink: 0,
                   }}
+                  title="Close bubble"
                 >
-                  ✕ Close
+                  ✕
                 </button>
               </div>
-            </div>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '0.9rem',
-                marginBottom: '0.85rem',
-              }}
-            >
+              {/* Status Pill */}
               <div
                 style={{
-                  padding: '0.75rem 0.95rem',
-                  borderRadius: '12px',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  border: '1px solid rgba(148, 163, 184, 0.18)',
+                  marginBottom: '0.65rem',
+                  padding: '0.36rem 0.68rem',
+                  borderRadius: '9px',
+                  background: isHappy ? 'rgba(16, 185, 129, 0.16)' : 'rgba(239, 68, 68, 0.18)',
+                  border: `1px solid ${isHappy ? 'rgba(52, 211, 153, 0.45)' : 'rgba(248, 113, 113, 0.5)'}`,
+                  color: isHappy ? '#6ee7b7' : '#fca5a5',
+                  fontSize: '0.72rem',
+                  fontWeight: 900,
                 }}
               >
-                <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#38bdf8', textTransform: 'uppercase' }}>
-                  What Happens Here
-                </div>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.83rem', lineHeight: 1.5, color: '#e2e8f0' }}>
-                  {inspectedSpec.whatItDoes}
-                </p>
+                {isHappy ? inspectedSpec.happyStatusLabel : inspectedSpec.attackStatusLabel}
               </div>
 
+              {/* Concise Explanation */}
               <div
                 style={{
-                  padding: '0.75rem 0.95rem',
-                  borderRadius: '12px',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  border: '1px solid rgba(148, 163, 184, 0.18)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  marginBottom: '0.7rem',
                 }}
               >
-                <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#34d399', textTransform: 'uppercase' }}>
-                  Why It Matters for Security
-                </div>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.83rem', lineHeight: 1.5, color: '#e2e8f0' }}>
-                  {inspectedSpec.whyItMatters}
-                </p>
-              </div>
-            </div>
-
-            {/* Live Station Telemetry Metrics */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '0.6rem',
-              }}
-            >
-              {(isHappy ? inspectedSpec.happyKeyMetrics : inspectedSpec.attackKeyMetrics).map((metric) => (
                 <div
-                  key={metric.label}
                   style={{
                     padding: '0.55rem 0.75rem',
                     borderRadius: '10px',
-                    background: 'rgba(4, 10, 22, 0.9)',
-                    border: `1px solid ${isHappy ? 'rgba(52, 211, 153, 0.3)' : 'rgba(248, 113, 113, 0.35)'}`,
+                    background: 'rgba(15, 23, 42, 0.82)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
                   }}
                 >
-                  <div style={{ fontSize: '0.66rem', color: '#94a3b8', fontWeight: 700 }}>{metric.label}</div>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 900, color: '#38bdf8', textTransform: 'uppercase' }}>
+                    What Happens Here
+                  </div>
+                  <p style={{ margin: '0.18rem 0 0', fontSize: '0.78rem', lineHeight: 1.45, color: '#e2e8f0' }}>
+                    {inspectedSpec.whatItDoes}
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    padding: '0.55rem 0.75rem',
+                    borderRadius: '10px',
+                    background: 'rgba(15, 23, 42, 0.82)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                  }}
+                >
+                  <div style={{ fontSize: '0.66rem', fontWeight: 900, color: '#34d399', textTransform: 'uppercase' }}>
+                    Why It Matters for Security
+                  </div>
+                  <p style={{ margin: '0.18rem 0 0', fontSize: '0.78rem', lineHeight: 1.45, color: '#e2e8f0' }}>
+                    {inspectedSpec.whyItMatters}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2x2 Compact Telemetry Grid inside Bubble */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: '0.45rem',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                {(isHappy ? inspectedSpec.happyKeyMetrics : inspectedSpec.attackKeyMetrics).map((metric) => (
                   <div
+                    key={metric.label}
                     style={{
-                      fontSize: '0.8rem',
-                      color: isHappy ? '#6ee7b7' : '#fca5a5',
-                      fontWeight: 900,
-                      marginTop: '0.12rem',
+                      padding: '0.42rem 0.6rem',
+                      borderRadius: '8px',
+                      background: 'rgba(3, 8, 20, 0.92)',
+                      border: `1px solid ${isHappy ? 'rgba(52, 211, 153, 0.28)' : 'rgba(248, 113, 113, 0.32)'}`,
                     }}
                   >
-                    {metric.value}
+                    <div style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 700 }}>{metric.label}</div>
+                    <div
+                      style={{
+                        fontSize: '0.74rem',
+                        color: isHappy ? '#6ee7b7' : '#fca5a5',
+                        fontWeight: 900,
+                        marginTop: '0.08rem',
+                      }}
+                    >
+                      {metric.value}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              {/* Footer Action Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>
+                  Click another station or background to switch
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.(inspectedSpec.targetTab)}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+                    border: '1px solid #38bdf8',
+                    color: '#f0f9ff',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  {inspectedSpec.targetTabLabel}
+                </button>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 

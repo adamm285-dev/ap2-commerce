@@ -31,7 +31,7 @@ from backend.services.ap2_service import create_merchant_checkout
 from backend.services.crypto_mandate import sign_es256_challenge
 from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
 from backend.wallet import mcp_server as wallet_mcp
-from backend.wallet.wallet import BuyerWallet, WalletRefusal, init_agent_key
+from backend.wallet.wallet import BuyerWallet, WalletRefusal, init_agent_key, pin_merchant_key
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 client = TestClient(app)
@@ -297,8 +297,10 @@ def test_wallet_mcp_protocol_surface(demo):
 
     tools = wallet_mcp.handle_request({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})["result"]["tools"]
     by_name = {t["name"]: t for t in tools}
-    assert set(by_name) == {"get_spending_limits", "sign_checkout"}
+    assert set(by_name) == {"get_spending_limits", "preview_checkout", "sign_checkout", "record_renewal_receipt"}
+    assert by_name["preview_checkout"]["inputSchema"]["required"] == ["checkout_jwt"]
     assert by_name["sign_checkout"]["inputSchema"]["required"] == ["checkout_jwt"]
+    assert by_name["record_renewal_receipt"]["inputSchema"]["required"] == ["renewal_receipt_jwt"]
 
     unknown_tool = wallet_mcp.handle_request(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "sign_anything"}}, demo.wallet
@@ -464,3 +466,218 @@ def test_unusable_merchant_key_file_fails_closed(tmp_path, monkeypatch, content)
     with pytest.raises(RuntimeError):
         ap2_keys.get_merchant_key()
     assert ap2_keys._MERCHANT_KEY is None  # no silent fallback to an ephemeral key
+
+
+# ── P1 & P2: Dry-run preview, step-up escalation, multi-merchant, renewal sync ─
+
+
+@pytest.mark.asyncio
+async def test_preview_checkout_dry_run_verifies_without_reserving_budget(demo):
+    nego = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "claude-desktop-preview",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-gateway",
+        "monthly_budget_cap": 60.0,
+    })
+    assert nego["status"] == "COUNTER_OFFER"
+
+    preview, is_error = _wallet(demo, "preview_checkout", {"checkout_jwt": nego["checkout_jwt"]})
+    assert not is_error
+    assert preview["status"] == "WOULD_SIGN"
+    assert preview["dry_run"] is True
+    assert preview["tier_id"] == "ap2-batch"
+    assert preview["amount_cents"] == 4999
+    assert preview["already_signed"] is False
+    assert preview["budget_impact"]["signed_before_cents"] == 0
+    assert preview["budget_impact"]["signed_after_cents"] == 4999
+    assert preview["budget_impact"]["purchases_before"] == 0
+    assert preview["budget_impact"]["purchases_after"] == 1
+    assert "checkout_mandate_chain" not in preview
+
+    # sign_checkout with dry_run=True behaves identically and also leaves ledger untouched
+    dry_sign, is_error = _wallet(demo, "sign_checkout", {"checkout_jwt": nego["checkout_jwt"], "dry_run": True})
+    assert not is_error
+    assert dry_sign["status"] == "WOULD_SIGN"
+    assert dry_sign["dry_run"] is True
+
+    limits_after, _ = _wallet(demo, "get_spending_limits")
+    assert limits_after["signed_so_far_cents"] == 0
+    assert limits_after["purchases_signed"] == 0
+    assert not (demo.dir / "ledger.json").exists()
+
+
+def test_wallet_refusal_includes_structured_step_up_escalation(demo):
+    # 1. Per-purchase cap violation ($79.99 vs $60.00 cap -> 1999 cents shortfall)
+    over_cap = create_merchant_checkout(tier_id="ap2-gateway", monthly_price=79.99, contractor_email=demo.email)
+    refused, is_error = _wallet(demo, "preview_checkout", {"checkout_jwt": over_cap["checkout_jwt"]})
+    assert is_error
+    assert refused["error"] == "PAYMENT_CONSTRAINT_VIOLATION"
+    esc = refused["escalation"]
+    assert esc["requires_human_approval"] is True
+    assert esc["action"] == "INCREASE_SPENDING_LIMITS"
+    assert esc["requested_amount_cents"] == 7999
+    assert esc["current_max_per_purchase_cents"] == 6000
+    assert esc["required_max_per_purchase_cents"] == 7999
+    assert esc["per_purchase_shortfall_cents"] == 1999
+
+    # 2. Disallowed tier violation
+    demo.sign_limits(cap=100.0, tiers=["ap2-batch"])
+    wrong_tier = create_merchant_checkout(tier_id="ap2-gateway", monthly_price=79.99, contractor_email=demo.email)
+    refused_tier, is_error = _wallet(demo, "sign_checkout", {"checkout_jwt": wrong_tier["checkout_jwt"]})
+    assert is_error
+    assert refused_tier["error"] == "CHECKOUT_CONSTRAINT_VIOLATION"
+    esc_tier = refused_tier["escalation"]
+    assert esc_tier["requires_human_approval"] is True
+    assert esc_tier["action"] == "APPROVE_CHECKOUT_EXCEPTION"
+    assert esc_tier["requested_tier_id"] == "ap2-gateway"
+    assert esc_tier["allowed_tiers"] == ["ap2-batch"]
+
+    # 3. Expired owner limits
+    demo.sign_limits(validity=-60)
+    valid_chk = create_merchant_checkout(tier_id="ap2-batch", monthly_price=49.99, contractor_email=demo.email)
+    refused_exp, is_error = _wallet(demo, "sign_checkout", {"checkout_jwt": valid_chk["checkout_jwt"]})
+    assert is_error
+    assert refused_exp["error"] == "OWNER_LIMITS_EXPIRED"
+    esc_exp = refused_exp["escalation"]
+    assert esc_exp["requires_human_approval"] is True
+    assert esc_exp["action"] == "REAUTHORIZE_EXPIRED_LIMITS"
+    assert esc_exp["buyer_email"] == demo.email
+
+
+def test_multi_merchant_key_pinning_and_conflict_refusal(demo):
+    # Remove single merchant_public.jwk and use merchant_keys.json instead
+    (demo.dir / "merchant_public.jwk").unlink()
+    primary_pub = get_merchant_public_jwk()
+    secondary_key = _new_key("merchant-secondary")
+
+    pin_merchant_key("merchant-ap2-autonomous", primary_pub, demo.dir)
+    pin_merchant_key("merchant-ap2-autonomous", primary_pub, demo.dir)  # idempotent with same key
+    pin_merchant_key("merchant-secondary-cloud", secondary_key.export_public(as_dict=True), demo.dir)
+
+    # Overwriting an existing merchant_id with a different key is refused
+    with pytest.raises(WalletRefusal) as exc:
+        pin_merchant_key("merchant-ap2-autonomous", _new_key("impostor").export_public(as_dict=True), demo.dir)
+    assert exc.value.code == "MERCHANT_KEY_CONFLICT"
+
+    # Private key material is refused when pinning
+    with pytest.raises(WalletRefusal) as exc_priv:
+        pin_merchant_key("merchant-leak", json.loads(_new_key("leak").export_private()), demo.dir)
+    assert exc_priv.value.code == "PINNED_KEY_HAS_PRIVATE_PART"
+
+    # Valid checkout signed by merchant-ap2-autonomous succeeds via merchant_keys.json
+    chk = create_merchant_checkout(tier_id="ap2-batch", monthly_price=49.99, contractor_email=demo.email)
+    res = demo.wallet.preview_checkout(chk["checkout_jwt"])
+    assert res["status"] == "WOULD_SIGN"
+    assert res["merchant_id"] == "merchant-ap2-autonomous"
+
+    # Checkout claiming to be merchant-ap2-autonomous but signed by secondary_key is refused
+    payload = json.loads(b64url_decode(chk["checkout_jwt"].split(".")[1]))
+    cross_signed = create_jwt({"alg": "ES256", "typ": "JWT", "kid": secondary_key.kid}, payload, secondary_key)
+    assert _refusal_code(demo.wallet.preview_checkout, cross_signed) == "CHECKOUT_SIGNATURE_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_renewal_receipt_sync_updates_wallet_ledger_without_double_counting_initial_sale(demo):
+    import datetime
+    from backend.services.recurring_mandate_service import evaluate_sale
+    from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+
+    nego = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "claude-renewal-test",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-batch",
+        "monthly_budget_cap": 60.0,
+    })
+    signed, is_error = _wallet(demo, "sign_checkout", {"checkout_jwt": nego["checkout_jwt"]})
+    assert not is_error
+
+    purchase = await _seller("purchase_subscription", {
+        "offer_id": nego["offer_id"],
+        "buyer_email": demo.email,
+        "checkout_mandate_chain": signed["checkout_mandate_chain"],
+        "payment_mandate_chain": signed["payment_mandate_chain"],
+    })
+    assert purchase["status"] == "ACTIVE"
+    sub_id = purchase["subscription_id"]
+    sub_rec = _COMPLETED_SUBSCRIPTIONS.get(sub_id)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    # 1. Initial PayPal sale webhook -> INITIAL renewal receipt does not double-count
+    init_decision = evaluate_sale(
+        {
+            "id": f"SALE-INIT-{uuid.uuid4().hex[:8]}",
+            "billing_agreement_id": sub_id,
+            "create_time": now.isoformat(),
+            "amount": {"total": "49.99", "currency": "USD"},
+        },
+        sub_rec,
+        now=now,
+    )
+    assert init_decision["outcome"] == "INITIAL"
+    assert "renewal_receipt_jwt" in init_decision
+
+    sync_init, is_error = _wallet(
+        demo, "record_renewal_receipt", {"renewal_receipt_jwt": init_decision["renewal_receipt_jwt"]}
+    )
+    assert not is_error
+    assert sync_init["outcome"] == "INITIAL"
+    assert sync_init["signed_so_far_cents"] == 4999
+    assert sync_init["purchases_signed"] == 1
+    assert sync_init["renewals_recorded"] == 0
+
+    # 2. Month-2 renewal sale -> VERIFIED renewal receipt increments wallet usage
+    month2 = now + datetime.timedelta(days=31)
+    ren_decision = evaluate_sale(
+        {
+            "id": f"SALE-REN2-{uuid.uuid4().hex[:8]}",
+            "billing_agreement_id": sub_id,
+            "create_time": month2.isoformat(),
+            "amount": {"total": "49.99", "currency": "USD"},
+        },
+        sub_rec,
+        now=month2,
+    )
+    assert ren_decision["outcome"] == "VERIFIED"
+    assert "renewal_receipt_jwt" in ren_decision
+
+    sync_ren, is_error = _wallet(
+        demo, "record_renewal_receipt", {"renewal_receipt_jwt": ren_decision["renewal_receipt_jwt"]}
+    )
+    assert not is_error
+    assert sync_ren["outcome"] == "VERIFIED"
+    assert sync_ren["signed_so_far_cents"] == 9998
+    assert sync_ren["purchases_signed"] == 2
+    assert sync_ren["renewals_recorded"] == 1
+    assert sync_ren["renewal_spend_cents"] == 4999
+
+    # Re-submitting the same renewal receipt is idempotent
+    sync_again, is_error = _wallet(
+        demo, "record_renewal_receipt", {"renewal_receipt_jwt": ren_decision["renewal_receipt_jwt"]}
+    )
+    assert not is_error
+    assert sync_again["signed_so_far_cents"] == 9998
+    assert sync_again["purchases_signed"] == 2
+
+    # Forged renewal receipt is refused
+    payload = json.loads(b64url_decode(ren_decision["renewal_receipt_jwt"].split(".")[1]))
+    forged = create_jwt({"alg": "ES256", "typ": "JWT", "kid": "attacker"}, payload, _new_key("attacker"))
+    assert _refusal_code(demo.wallet.record_renewal_receipt, forged) == "RECEIPT_SIGNATURE_INVALID"
+
+
+def test_provision_rejection_includes_ap2_payment_challenge_and_header():
+    res = client.post(
+        "/api/agent/provision",
+        json={"subscriptionId": "I-MISSING-SUB-0000", "contractorEmail": "buyer@example.com"},
+    )
+    assert res.status_code == 404
+    assert "X-AP2-Payment-Required" in res.headers
+    detail = res.json()["detail"]
+    assert detail["error"] == "SUBSCRIPTION_NOT_FOUND"
+    challenge = detail["ap2_payment_challenge"]
+    assert challenge["protocol"] == "AP2-v0.2"
+    assert challenge["mcp_endpoint"] == "/mcp"
+    assert challenge["negotiation_tool"] == "negotiate_tier_terms"
+    assert challenge["wallet_preview_tool"] == "preview_checkout"
+    assert challenge["wallet_sign_tool"] == "sign_checkout"
+    assert challenge["purchase_tool"] == "purchase_subscription"
+

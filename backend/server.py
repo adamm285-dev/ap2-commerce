@@ -87,6 +87,8 @@ from .services.ap2_service import (
     get_stored_receipt,
     verify_receipt_jwt,
     get_issued_checkout,
+    AP2_MERCHANT_ID,
+    build_ap2_payment_challenge,
 )
 from .services.trusted_surface_service import (
     create_trusted_surface_open_mandates,
@@ -1047,9 +1049,32 @@ async def provision_line_endpoint(request: ProvisionRequest):
             status_code = status.HTTP_404_NOT_FOUND
         elif err in ["PAYMENT_APPROVAL_PENDING", "SUBSCRIPTION_NOT_CAPTURED"]:
             status_code = status.HTTP_402_PAYMENT_REQUIRED
+        detail_payload: Dict[str, Any] = {
+            "status": "REJECTED",
+            "error": err,
+            "reason": reason,
+            "approval_url": res.get("approval_url"),
+        }
+        headers: Optional[Dict[str, str]] = None
+        if res.get("ap2_payment_challenge") or err in [
+            "PAYMENT_APPROVAL_PENDING",
+            "SUBSCRIPTION_NOT_CAPTURED",
+            "SUBSCRIPTION_NOT_FOUND",
+            "SUBSCRIPTION_NOT_ACTIVE",
+        ]:
+            detail_payload["ap2_payment_challenge"] = (
+                res.get("ap2_payment_challenge") or build_ap2_payment_challenge()
+            )
+            headers = {
+                "X-AP2-Payment-Required": (
+                    f'AP2-v0.2 merchant="{AP2_MERCHANT_ID}", '
+                    'mcp="/mcp", negotiate="negotiate_tier_terms", purchase="purchase_subscription"'
+                )
+            }
         raise HTTPException(
             status_code=status_code,
-            detail={"status": "REJECTED", "error": err, "reason": reason, "approval_url": res.get("approval_url")},
+            detail=detail_payload,
+            headers=headers,
         )
 
     # Automatic post-provisioning downline dispatch via Zapier MCP (ERP Dispatch + QBO v3)

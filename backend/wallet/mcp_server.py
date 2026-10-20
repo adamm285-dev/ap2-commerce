@@ -29,9 +29,11 @@ INSTRUCTIONS = (
     "AP2 Buyer Wallet. Holds the buyer agent's signing key and the owner's signed spending limits.\n"
     "1. get_spending_limits: read the owner's limits (buyer_email, monthly_budget_cap, allowed tiers, remaining budget).\n"
     "2. Negotiate with the seller using that buyer_email and monthly_budget_cap.\n"
-    "3. sign_checkout: pass the seller's checkout_jwt. The wallet signs only if the merchant-signed checkout "
-    "fits the owner's limits; otherwise it refuses and explains why.\n"
-    "4. Send the returned checkout_mandate_chain and payment_mandate_chain to the seller's purchase_subscription."
+    "3. preview_checkout (optional dry-run): verify a merchant's checkout_jwt against the owner's limits without signing or reserving budget.\n"
+    "4. sign_checkout: pass the seller's checkout_jwt. The wallet signs only if the merchant-signed checkout "
+    "fits the owner's limits; otherwise it refuses and explains why (with structured step-up escalation details).\n"
+    "5. Send the returned checkout_mandate_chain and payment_mandate_chain to the seller's purchase_subscription.\n"
+    "6. record_renewal_receipt (optional): pass a merchant-signed renewal_receipt_jwt to sync recurring billing charges into the wallet ledger."
 )
 
 TOOLS = [
@@ -42,6 +44,25 @@ TOOLS = [
             "allowed tiers and merchants, remaining budget, and expiry. Call this before negotiating."
         ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "preview_checkout",
+        "description": (
+            "Read-only pre-flight ('paper-trading') check: verifies a merchant-signed checkout_jwt against the "
+            "owner's signed limits and AP2 constraints, returning WOULD_SIGN and projected budget impact without "
+            "signing or reserving budget in ledger.json."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["checkout_jwt"],
+            "properties": {
+                "checkout_jwt": {
+                    "type": "string",
+                    "description": "The checkout_jwt returned by the seller's negotiate_tier_terms.",
+                },
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "sign_checkout",
@@ -58,6 +79,28 @@ TOOLS = [
                 "checkout_jwt": {
                     "type": "string",
                     "description": "The checkout_jwt returned by the seller's negotiate_tier_terms.",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Optional: if true, runs a read-only pre-flight check (same as preview_checkout) without signing or reserving budget.",
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "record_renewal_receipt",
+        "description": (
+            "Verifies a merchant-signed AP2 renewal receipt JWT (ap2.renewal_receipt.1) and records the recurring "
+            "charge idempotently in ledger.json so get_spending_limits and sign_checkout reflect monthly renewals."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["renewal_receipt_jwt"],
+            "properties": {
+                "renewal_receipt_jwt": {
+                    "type": "string",
+                    "description": "The merchant-signed renewal_receipt_jwt issued for an authorized subscription sale.",
                 },
             },
             "additionalProperties": False,
@@ -124,8 +167,15 @@ def handle_request(request: Any, wallet: Optional[BuyerWallet] = None) -> Option
         try:
             if name == "get_spending_limits":
                 payload = w.describe_limits()
+            elif name == "preview_checkout":
+                payload = w.preview_checkout(arguments.get("checkout_jwt"))
             elif name == "sign_checkout":
-                payload = w.sign_checkout(arguments.get("checkout_jwt"))
+                if "dry_run" in arguments:
+                    payload = w.sign_checkout(arguments.get("checkout_jwt"), dry_run=arguments.get("dry_run"))
+                else:
+                    payload = w.sign_checkout(arguments.get("checkout_jwt"))
+            elif name == "record_renewal_receipt":
+                payload = w.record_renewal_receipt(arguments.get("renewal_receipt_jwt"))
             else:
                 return _rpc_error(req_id, -32601, f"Tool '{name}' not found.")
         except WalletRefusal as refusal:

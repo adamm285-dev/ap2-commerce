@@ -301,6 +301,65 @@ def create_payment_receipt_jwt(
     return token
 
 
+def create_renewal_receipt_jwt(
+    *,
+    sale_id: str,
+    subscription_id: str,
+    mandate_hash: str,
+    buyer_email: str,
+    amount_cents: int,
+    currency: str,
+    outcome: str,
+    charged_at: str,
+) -> str:
+    """
+    Creates an ES256-signed AP2 Renewal Receipt JWT (vct: ap2.renewal_receipt.1) so the
+    buyer wallet can verify and record recurring billing charges against its local ledger.
+    """
+    merchant_key = get_merchant_key()
+    now_ts = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    header = {
+        "alg": "ES256",
+        "typ": "JWT",
+        "kid": merchant_key.kid or settings.ap2_merchant_key_id,
+    }
+    payload = {
+        "vct": "ap2.renewal_receipt.1",
+        "iss": AP2_MERCHANT_ID,
+        "sub": (buyer_email or "").strip().lower(),
+        "sale_id": sale_id,
+        "subscription_id": subscription_id,
+        "mandate_hash": mandate_hash,
+        "amount_cents": int(amount_cents),
+        "currency": currency,
+        "outcome": outcome,
+        "charged_at": charged_at,
+        "iat": now_ts,
+    }
+    token = create_jwt(header, payload, merchant_key)
+    _RECEIPT_STORE[f"renewal:{sale_id}"] = payload
+    return token
+
+
+def build_ap2_payment_challenge() -> Dict[str, Any]:
+    """Returns machine-readable AP2 v0.2 procurement discovery metadata for unsubscribed/unapproved requests."""
+    return {
+        "protocol": "AP2-v0.2",
+        "merchant_id": AP2_MERCHANT_ID,
+        "merchant_name": AP2_MERCHANT_NAME,
+        "mcp_endpoint": "/mcp",
+        "negotiation_tool": "negotiate_tier_terms",
+        "wallet_preview_tool": "preview_checkout",
+        "wallet_sign_tool": "sign_checkout",
+        "purchase_tool": "purchase_subscription",
+        "available_tiers": [
+            {"tier_id": "ap2-batch", "price_cents": 4999, "currency": "USD"},
+            {"tier_id": "ap2-gateway", "price_cents": 7999, "currency": "USD"},
+            {"tier_id": "ap2-cluster", "price_cents": 17999, "currency": "USD"},
+        ],
+    }
+
+
 def verify_receipt_jwt(receipt_jwt: str) -> Dict[str, Any]:
     """Verifies the ES256 signature and returns the receipt payload."""
     pub_key = get_merchant_public_key()

@@ -9,6 +9,7 @@ Inputs it trusts, all local files written at setup time:
   - owner_limits.json:    owner-signed AP2 v0.2 Open Checkout and Open Payment mandates
   - owner_public.jwk:     the owner's pinned public key (verifies owner_limits.json)
   - merchant_public.jwk:  the merchant's pinned public key (verifies Checkout JWTs)
+  - merchant_keys.json:   optional map of merchant_id -> pinned public JWK for multi-merchant limits
 
 The wallet signs a closed Checkout + Payment mandate pair only after the merchant-signed
 Checkout JWT passes every owner constraint, evaluated with the vendored Google AP2 SDK.
@@ -23,13 +24,17 @@ reserved budget on an error receipt would allow budget bypass (signing -> tamper
 obtaining an error receipt -> releasing reservation -> honest retry settling for free).
 A true release path requires terminal merchant-voided receipts not present in AP2 v0.2.
 Because rejections on the seller do not burn the mandate, honest retries can settle
-against the existing reservation without double-counting.
+against the existing reservation without double-counting. Callers that want a pre-flight
+check without reserving budget can call preview_checkout (dry-run mode), and recurring
+renewals can be synchronized into ledger.json via merchant-signed renewal receipts
+(record_renewal_receipt).
 
 This module deliberately imports nothing from the seller side (agents, services, database).
 """
 
 from __future__ import annotations
 
+import base64
 import datetime
 import hashlib
 import json
@@ -75,6 +80,7 @@ AGENT_KEY_FILE = "agent_key.jwk"
 OWNER_LIMITS_FILE = "owner_limits.json"
 OWNER_PUBLIC_KEY_FILE = "owner_public.jwk"
 MERCHANT_PUBLIC_KEY_FILE = "merchant_public.jwk"
+MERCHANT_KEYS_FILE = "merchant_keys.json"
 LEDGER_FILE = "ledger.json"
 
 PAYMENT_INSTRUMENT = PaymentInstrument(type="paypal_vault", id="vault_agent_mit")
@@ -83,20 +89,30 @@ PAYMENT_INSTRUMENT = PaymentInstrument(type="paypal_vault", id="vault_agent_mit"
 class WalletRefusal(Exception):
     """The wallet refused to act. `code` is stable and machine-readable."""
 
-    def __init__(self, code: str, reason: str, message: Optional[str] = None):
+    def __init__(
+        self,
+        code: str,
+        reason: str,
+        message: Optional[str] = None,
+        escalation: Optional[Dict[str, Any]] = None,
+    ):
         msg = message or reason
         super().__init__(f"{code}: {msg}")
         self.code = code
         self.reason = reason
         self.message = msg
+        self.escalation = escalation
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result: Dict[str, Any] = {
             "status": "REFUSED",
             "error": self.code,
             "reason": self.reason,
             "message": self.message,
         }
+        if self.escalation is not None:
+            result["escalation"] = self.escalation
+        return result
 
 
 def wallet_dir() -> Path:
@@ -141,30 +157,118 @@ def _read_json(path: Path, what: str) -> Any:
         raise WalletRefusal("WALLET_FILE_UNREADABLE", f"Could not read {what} ({path.name}): {e}")
 
 
-def _load_key(path: Path, what: str, private: bool) -> JWK:
-    data = _read_json(path, what)
+def _validate_jwk_dict(data: Any, what: str, source_name: str, private: bool) -> JWK:
     if not isinstance(data, dict):
-        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({path.name}) is not a JWK object.")
+        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({source_name}) is not a JWK object.")
     try:
         key = JWK(**data)
         pub = key.export_public(as_dict=True)
     except Exception as e:
-        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({path.name}) is not a valid JWK: {e}")
+        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({source_name}) is not a valid JWK: {e}")
     if pub.get("kty") != "EC" or pub.get("crv") != "P-256":
-        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({path.name}) must be a P-256 key.")
+        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({source_name}) must be a P-256 key.")
     if private and not key.has_private:
-        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({path.name}) has no private part.")
+        raise WalletRefusal("WALLET_FILE_UNREADABLE", f"{what} ({source_name}) has no private part.")
     if not private and key.has_private:
         # A pinned key file with private material means another party's secret leaked into the wallet.
         raise WalletRefusal(
             "PINNED_KEY_HAS_PRIVATE_PART",
-            f"{what} ({path.name}) contains a private key. The wallet must only hold public keys for other parties.",
+            f"{what} ({source_name}) contains a private key. The wallet must only hold public keys for other parties.",
         )
     return key
 
 
+def _load_key(path: Path, what: str, private: bool) -> JWK:
+    data = _read_json(path, what)
+    return _validate_jwk_dict(data, what, path.name, private=private)
+
+
+def pin_merchant_key(
+    merchant_id: str,
+    public_jwk: Dict[str, Any],
+    directory: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Pins a merchant's public P-256 JWK in merchant_keys.json under `merchant_id`.
+    Never accepts private key material and never overwrites an existing merchant_id with a different key.
+    """
+    if not isinstance(merchant_id, str) or not merchant_id.strip():
+        raise WalletRefusal("WALLET_FILE_UNREADABLE", "merchant_id must be a non-empty string.")
+    clean_id = merchant_id.strip()
+    key = _validate_jwk_dict(
+        public_jwk,
+        f"pinned merchant public key for '{clean_id}'",
+        MERCHANT_KEYS_FILE,
+        private=False,
+    )
+    pub_dict = key.export_public(as_dict=True)
+
+    d = Path(directory) if directory else wallet_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / MERCHANT_KEYS_FILE
+    existing_map: Dict[str, Any] = {}
+    if path.exists():
+        raw = _read_json(path, "pinned merchant keyring")
+        if not isinstance(raw, dict):
+            raise WalletRefusal("WALLET_FILE_UNREADABLE", f"pinned merchant keyring ({MERCHANT_KEYS_FILE}) is not a JSON object.")
+        for mid, jwk_data in raw.items():
+            existing_key = _validate_jwk_dict(
+                jwk_data,
+                f"pinned merchant public key for '{mid}'",
+                MERCHANT_KEYS_FILE,
+                private=False,
+            )
+            if mid == clean_id and existing_key.thumbprint() != key.thumbprint():
+                raise WalletRefusal(
+                    "MERCHANT_KEY_CONFLICT",
+                    f"Merchant '{clean_id}' is already pinned to a different public key; refusing to overwrite.",
+                )
+            existing_map[mid] = existing_key.export_public(as_dict=True)
+
+    existing_map[clean_id] = pub_dict
+    tmp = d / (MERCHANT_KEYS_FILE + ".tmp")
+    tmp.write_text(json.dumps(existing_map, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return pub_dict
+
+
+def _peek_unverified_jwt_selector(jwt_token: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extracts only the unverified merchant_id (or iss) and kid selector from a JWT so the wallet
+    can look up the corresponding pinned public key on disk. Never reads key material from the JWT.
+    """
+    parts = jwt_token.split(".")
+    if len(parts) != 3:
+        return None, None
+    try:
+        pad_h = parts[0] + "=" * (-len(parts[0]) % 4)
+        pad_p = parts[1] + "=" * (-len(parts[1]) % 4)
+        header = json.loads(base64.urlsafe_b64decode(pad_h).decode("utf-8"))
+        payload = json.loads(base64.urlsafe_b64decode(pad_p).decode("utf-8"))
+    except Exception:
+        return None, None
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        return None, None
+    kid = header.get("kid") if isinstance(header.get("kid"), str) else None
+    merchant_id: Optional[str] = None
+    merchant_claim = payload.get("merchant")
+    if isinstance(merchant_claim, dict) and isinstance(merchant_claim.get("id"), str):
+        merchant_id = merchant_claim["id"].strip() or None
+    elif isinstance(payload.get("iss"), str):
+        merchant_id = payload["iss"].strip() or None
+    return merchant_id, kid
+
+
 def _sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _canonical_mandate_hash(token: str) -> str:
+    """Canonical SHA-256 hash matching the seller's compute_open_payment_mandate_hash."""
+    clean = token.strip()
+    if "~~" in clean:
+        clean = clean.split("~~")[0].strip()
+    return _sha256_hex(clean.rstrip("~"))
 
 
 def _thumbprint(jwk_dict: Any) -> str:
@@ -195,6 +299,7 @@ class _OwnerLimits:
         self.checkout = checkout
         self.payment = payment
         self.payment_key = _sha256_hex(payment_token)
+        self.canonical_payment_hash = _canonical_mandate_hash(payment_token)
 
 
 class BuyerWallet:
@@ -215,6 +320,67 @@ class BuyerWallet:
         if keystore_type == "passkey":
             return PasskeyAttestationKeystore(key=key)
         return SoftwareEnclaveKeystore(key)
+
+    def _resolve_merchant_key(self, jwt_token: str) -> Tuple[JWK, Optional[str]]:
+        """
+        Resolves a pinned merchant public key from merchant_keys.json or merchant_public.jwk.
+        Fails closed if no pinned key file exists or if any pinned file contains private key material.
+        """
+        keyring_path = self.dir / MERCHANT_KEYS_FILE
+        single_path = self.dir / MERCHANT_PUBLIC_KEY_FILE
+        has_keyring = keyring_path.exists()
+        has_single = single_path.exists()
+
+        if not has_keyring and not has_single:
+            raise WalletRefusal(
+                "WALLET_NOT_CONFIGURED",
+                f"Missing pinned merchant public key ({MERCHANT_PUBLIC_KEY_FILE}). Run: python scripts/setup_claude_desktop_demo.py",
+            )
+
+        keyring: Dict[str, JWK] = {}
+        if has_keyring:
+            raw = _read_json(keyring_path, "pinned merchant keyring")
+            if not isinstance(raw, dict) or not raw:
+                raise WalletRefusal(
+                    "WALLET_FILE_UNREADABLE",
+                    f"pinned merchant keyring ({MERCHANT_KEYS_FILE}) must be a non-empty JSON object.",
+                )
+            for mid, jwk_data in raw.items():
+                if not isinstance(mid, str) or not mid.strip():
+                    raise WalletRefusal(
+                        "WALLET_FILE_UNREADABLE",
+                        f"pinned merchant keyring ({MERCHANT_KEYS_FILE}) has an empty merchant id.",
+                    )
+                keyring[mid.strip()] = _validate_jwk_dict(
+                    jwk_data,
+                    f"pinned merchant public key for '{mid}'",
+                    MERCHANT_KEYS_FILE,
+                    private=False,
+                )
+
+        single_key: Optional[JWK] = None
+        if has_single:
+            single_key = _load_key(single_path, "pinned merchant public key", private=False)
+
+        merchant_id, kid = _peek_unverified_jwt_selector(jwt_token)
+        if merchant_id and merchant_id in keyring:
+            return keyring[merchant_id], merchant_id
+
+        if kid and keyring:
+            for mid, k in keyring.items():
+                if k.kid == kid and (merchant_id is None or merchant_id == mid):
+                    return k, mid
+
+        if single_key is not None and not keyring:
+            return single_key, None
+
+        if single_key is not None and (merchant_id is None or merchant_id not in keyring):
+            return single_key, None
+
+        raise WalletRefusal(
+            "CHECKOUT_SIGNATURE_INVALID",
+            f"No pinned merchant public key matches merchant '{merchant_id or 'unknown'}'.",
+        )
 
     def _load_limits(self) -> _OwnerLimits:
         """Loads owner limits and verifies signature, expiry, agent binding and required constraints."""
@@ -242,11 +408,22 @@ class BuyerWallet:
 
         now = int(time.time())
         agent_thumb = self._agent_key().thumbprint()
+        norm_email = buyer_email.strip().lower()
         for label, payload in (("checkout", open_chk), ("payment", open_pay)):
             if not isinstance(payload.exp, int):
                 raise WalletRefusal("OWNER_LIMITS_EXPIRED", f"Open {label} mandate has no expiry.")
             if payload.exp <= now:
-                raise WalletRefusal("OWNER_LIMITS_EXPIRED", f"Open {label} mandate expired; ask the owner to sign new limits.")
+                raise WalletRefusal(
+                    "OWNER_LIMITS_EXPIRED",
+                    f"Open {label} mandate expired; ask the owner to sign new limits.",
+                    escalation={
+                        "requires_human_approval": True,
+                        "action": "REAUTHORIZE_EXPIRED_LIMITS",
+                        "buyer_email": norm_email,
+                        "mandate_type": label,
+                        "expired_at": datetime.datetime.fromtimestamp(payload.exp, tz=datetime.timezone.utc).isoformat(),
+                    },
+                )
             try:
                 bound_thumb = _thumbprint((payload.cnf or {}).get("jwk"))
             except Exception as e:
@@ -264,9 +441,9 @@ class BuyerWallet:
         _constraint(open_pay.constraints, AllowedPayees)
         _constraint(open_pay.constraints, Budget)
 
-        return _OwnerLimits(buyer_email.strip().lower(), chk_token, pay_token, open_chk, open_pay)
+        return _OwnerLimits(norm_email, chk_token, pay_token, open_chk, open_pay)
 
-    # ── Ledger (what this wallet has already signed) ──────────────────────
+    # ── Ledger (what this wallet has already signed or synced) ────────────
 
     def _read_ledger(self) -> Dict[str, Any]:
         path = self.dir / LEDGER_FILE
@@ -278,8 +455,14 @@ class BuyerWallet:
         return data
 
     def _usage(self, payment_key: str, exclude_checkout_hash: Optional[str] = None) -> Tuple[int, int]:
-        """Returns (total_cents, uses) already signed against an open payment mandate."""
-        signed = self._read_ledger()["open_payment_mandates"].get(payment_key, {}).get("signed", {})
+        """Returns (total_cents, uses) already signed or renewed against an open payment mandate."""
+        mandate_entry = self._read_ledger()["open_payment_mandates"].get(payment_key, {})
+        if not isinstance(mandate_entry, dict):
+            raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json mandate entry is malformed.")
+        signed = mandate_entry.get("signed", {})
+        renewals = mandate_entry.get("renewals", {})
+        if not isinstance(signed, dict) or not isinstance(renewals, dict):
+            raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json signed/renewals entries are malformed.")
         total, uses = 0, 0
         for chk_hash, entry in signed.items():
             if chk_hash == exclude_checkout_hash:
@@ -289,18 +472,42 @@ class BuyerWallet:
                 raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json has a non-integer amount.")
             total += amount
             uses += 1
+        for _sale_id, entry in renewals.items():
+            amount = entry.get("amount_cents") if isinstance(entry, dict) else None
+            if not isinstance(amount, int) or isinstance(amount, bool):
+                raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json has a non-integer renewal amount.")
+            total += amount
+            uses += 1
         return total, uses
+
+    def _renewal_usage(self, payment_key: str) -> Tuple[int, int]:
+        """Returns (renewal_cents, renewal_count) recorded from verified merchant renewal receipts."""
+        mandate_entry = self._read_ledger()["open_payment_mandates"].get(payment_key, {})
+        renewals = mandate_entry.get("renewals", {}) if isinstance(mandate_entry, dict) else {}
+        if not isinstance(renewals, dict):
+            raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json renewals entry is malformed.")
+        total, count = 0, 0
+        for _sale_id, entry in renewals.items():
+            amount = entry.get("amount_cents") if isinstance(entry, dict) else None
+            if not isinstance(amount, int) or isinstance(amount, bool):
+                raise WalletRefusal("WALLET_FILE_UNREADABLE", "ledger.json has a non-integer renewal amount.")
+            total += amount
+            count += 1
+        return total, count
+
+    def _write_ledger(self, ledger: Dict[str, Any]) -> None:
+        tmp = self.dir / (LEDGER_FILE + ".tmp")
+        tmp.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+        os.replace(tmp, self.dir / LEDGER_FILE)
 
     def _record(self, payment_key: str, checkout_hash: str, amount_cents: int) -> None:
         ledger = self._read_ledger()
         entry = ledger["open_payment_mandates"].setdefault(payment_key, {"signed": {}})
-        entry["signed"][checkout_hash] = {
+        entry.setdefault("signed", {})[checkout_hash] = {
             "amount_cents": amount_cents,
             "signed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
-        tmp = self.dir / (LEDGER_FILE + ".tmp")
-        tmp.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
-        os.replace(tmp, self.dir / LEDGER_FILE)
+        self._write_ledger(ledger)
 
     # ── Tools ──────────────────────────────────────────────────────────────
 
@@ -315,6 +522,7 @@ class BuyerWallet:
 
         budget_cents = int(budget.max * 100)  # same conversion the SDK's BudgetEvaluator uses
         used_cents, used_count = self._usage(lim.payment_key)
+        renewal_cents, renewal_count = self._renewal_usage(lim.payment_key)
         tiers = sorted({
             item.id
             for req in line_items.items
@@ -331,6 +539,8 @@ class BuyerWallet:
             "signed_so_far_cents": used_cents,
             "remaining_budget_cents": max(budget_cents - used_cents, 0),
             "purchases_signed": used_count,
+            "renewals_recorded": renewal_count,
+            "renewal_spend_cents": renewal_cents,
             "max_purchases": recurrence[0].max_occurrences if recurrence else None,
             "recurrence": getattr(recurrence[0].frequency, "value", recurrence[0].frequency) if recurrence else None,
             "allowed_merchants": [p.id for p in payees.allowed],
@@ -340,8 +550,9 @@ class BuyerWallet:
             "billing_term_expires_at": datetime.datetime.fromtimestamp(lim.payment.exp, tz=datetime.timezone.utc).isoformat(),
             "how_to_buy": (
                 "1) Call the seller's negotiate_tier_terms with buyer_email and monthly_budget_cap from these limits. "
-                "2) Pass the returned checkout_jwt to this wallet's sign_checkout. "
-                "3) Call the seller's purchase_subscription with offer_id, buyer_email, "
+                "2) Optionally pass the returned checkout_jwt to preview_checkout to dry-run constraint checks without reserving budget. "
+                "3) Pass the returned checkout_jwt to this wallet's sign_checkout. "
+                "4) Call the seller's purchase_subscription with offer_id, buyer_email, "
                 "checkout_mandate_chain and payment_mandate_chain."
             ),
         }
@@ -414,10 +625,14 @@ class BuyerWallet:
             formatted.append(v)
         return "; ".join(formatted)
 
-    def sign_checkout(self, checkout_jwt: Any) -> Dict[str, Any]:
+    def _evaluate_checkout(
+        self, checkout_jwt: Any
+    ) -> Tuple[_OwnerLimits, Checkout, str, int, str, str, str, PaymentMandate, int, int]:
         """
-        Verifies a merchant-signed Checkout JWT against the owner's limits and, only if every
-        check passes, signs the closed Checkout and Payment mandates with the agent key.
+        Runs the full verification and constraint evaluation pipeline without signing or mutating ledger.json:
+          1. Owner limits: signature, expiry, agent binding, required constraints
+          2. Merchant checkout: signature with the pinned merchant key, then structure
+          3. Owner constraints, evaluated by the vendored AP2 SDK
         """
         if not isinstance(checkout_jwt, str) or not checkout_jwt.strip():
             raise WalletRefusal("MISSING_CHECKOUT_JWT", "checkout_jwt (from negotiate_tier_terms) is required.")
@@ -427,7 +642,7 @@ class BuyerWallet:
         lim = self._load_limits()
 
         # 2. Merchant checkout: signature with the pinned merchant key, then structure
-        merchant_pub = _load_key(self.dir / MERCHANT_PUBLIC_KEY_FILE, "pinned merchant public key", private=False)
+        merchant_pub, pinned_merchant_id = self._resolve_merchant_key(checkout_jwt)
         try:
             chk_payload = verify_jwt(checkout_jwt, merchant_pub)
         except Exception as e:
@@ -447,6 +662,11 @@ class BuyerWallet:
             raise WalletRefusal("CHECKOUT_MALFORMED", "Checkout has no merchant nonce.")
         if checkout.merchant is None or not checkout.merchant.id:
             raise WalletRefusal("CHECKOUT_MALFORMED", "Checkout has no merchant id.")
+        if pinned_merchant_id is not None and checkout.merchant.id != pinned_merchant_id:
+            raise WalletRefusal(
+                "CHECKOUT_SIGNATURE_INVALID",
+                f"Checkout merchant '{checkout.merchant.id}' does not match pinned merchant '{pinned_merchant_id}'.",
+            )
         if not checkout.currency:
             raise WalletRefusal("CHECKOUT_MALFORMED", "Checkout has no currency.")
         if len(checkout.line_items or []) != 1:
@@ -467,7 +687,28 @@ class BuyerWallet:
         if chk_violations:
             raw_reason = "; ".join(chk_violations)
             msg = self._format_checkout_violation(chk_violations, checkout, lim)
-            raise WalletRefusal("CHECKOUT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
+            allowed_merchants = [m.id for m in _constraint(lim.checkout.constraints, AllowedMerchants).allowed]
+            allowed_tiers = sorted({
+                item.id
+                for req in _constraint(lim.checkout.constraints, LineItems).items
+                for item in (req.acceptable_items or [])
+                if getattr(item, "id", None)
+            })
+            raise WalletRefusal(
+                "CHECKOUT_CONSTRAINT_VIOLATION",
+                raw_reason,
+                message=msg,
+                escalation={
+                    "requires_human_approval": True,
+                    "action": "APPROVE_CHECKOUT_EXCEPTION",
+                    "buyer_email": lim.buyer_email,
+                    "requested_merchant_id": merchant_id,
+                    "requested_tier_id": tier_id,
+                    "requested_amount_cents": total_cents,
+                    "allowed_merchants": allowed_merchants,
+                    "allowed_tiers": allowed_tiers,
+                },
+            )
 
         closed_pay = PaymentMandate(
             vct="mandate.payment.1",
@@ -490,13 +731,137 @@ class BuyerWallet:
         if pay_violations:
             raw_reason = "; ".join(pay_violations)
             msg = self._format_payment_violation(pay_violations, total_cents, lim, used_cents, used_count)
-            raise WalletRefusal("PAYMENT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
+            amount_range = _constraint(lim.payment.constraints, AmountRange)
+            budget_constraint = _constraint(lim.payment.constraints, Budget)
+            payees_constraint = _constraint(lim.payment.constraints, AllowedPayees)
+            recurrence = [c for c in lim.payment.constraints if isinstance(c, AgentRecurrence)]
+            max_occurrences = recurrence[0].max_occurrences if recurrence else None
+            budget_limit_cents = int(budget_constraint.max * 100)
+            remaining_budget_cents = max(budget_limit_cents - used_cents, 0)
+            per_purchase_shortfall_cents = max(total_cents - amount_range.max, 0)
+            budget_shortfall_cents = max((used_cents + total_cents) - budget_limit_cents, 0)
+            occurrences_shortfall = (
+                max((used_count + 1) - max_occurrences, 0) if max_occurrences is not None else 0
+            )
+            raise WalletRefusal(
+                "PAYMENT_CONSTRAINT_VIOLATION",
+                raw_reason,
+                message=msg,
+                escalation={
+                    "requires_human_approval": True,
+                    "action": "INCREASE_SPENDING_LIMITS",
+                    "buyer_email": lim.buyer_email,
+                    "requested_merchant_id": merchant_id,
+                    "requested_tier_id": tier_id,
+                    "requested_amount_cents": total_cents,
+                    "current_max_per_purchase_cents": amount_range.max,
+                    "required_max_per_purchase_cents": max(amount_range.max, total_cents),
+                    "per_purchase_shortfall_cents": per_purchase_shortfall_cents,
+                    "current_total_budget_cents": budget_limit_cents,
+                    "required_total_budget_cents": max(budget_limit_cents, used_cents + total_cents),
+                    "budget_shortfall_cents": budget_shortfall_cents,
+                    "remaining_budget_cents": remaining_budget_cents,
+                    "purchases_used": used_count,
+                    "max_purchases": max_occurrences,
+                    "occurrences_shortfall": occurrences_shortfall,
+                    "allowed_payees": [p.id for p in payees_constraint.allowed],
+                },
+            )
+
+        return (
+            lim,
+            checkout,
+            nonce,
+            total_cents,
+            tier_id,
+            merchant_id,
+            checkout_hash,
+            closed_pay,
+            used_cents,
+            used_count,
+        )
+
+    def preview_checkout(self, checkout_jwt: Any) -> Dict[str, Any]:
+        """
+        Read-only pre-flight ("paper-trading") check: verifies a merchant-signed Checkout JWT
+        against the owner's limits and AP2 constraints without signing or reserving budget in ledger.json.
+        """
+        (
+            lim,
+            checkout,
+            _nonce,
+            total_cents,
+            tier_id,
+            merchant_id,
+            checkout_hash,
+            _closed_pay,
+            used_cents,
+            used_count,
+        ) = self._evaluate_checkout(checkout_jwt)
+
+        budget = _constraint(lim.payment.constraints, Budget)
+        budget_cents = int(budget.max * 100)
+        recurrence = [c for c in lim.payment.constraints if isinstance(c, AgentRecurrence)]
+        max_purchases = recurrence[0].max_occurrences if recurrence else None
+        signed_map = self._read_ledger()["open_payment_mandates"].get(lim.payment_key, {}).get("signed", {})
+        already_signed = isinstance(signed_map, dict) and checkout_hash in signed_map
+        projected_used_cents = used_cents + total_cents
+        projected_used_count = used_count + 1
+
+        return {
+            "status": "WOULD_SIGN",
+            "dry_run": True,
+            "buyer_email": lim.buyer_email,
+            "merchant_id": merchant_id,
+            "tier_id": tier_id,
+            "amount_cents": total_cents,
+            "currency": checkout.currency,
+            "checkout_hash": checkout_hash,
+            "already_signed": already_signed,
+            "budget_impact": {
+                "total_budget_cents": budget_cents,
+                "signed_before_cents": used_cents,
+                "signed_after_cents": projected_used_cents,
+                "remaining_after_cents": max(budget_cents - projected_used_cents, 0),
+                "purchases_before": used_count,
+                "purchases_after": projected_used_count,
+                "max_purchases": max_purchases,
+            },
+            "next_step": (
+                "Call sign_checkout with the same checkout_jwt to cryptographically sign "
+                "the AP2 v0.2 checkout_mandate_chain and payment_mandate_chain."
+            ),
+        }
+
+    def sign_checkout(self, checkout_jwt: Any, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Verifies a merchant-signed Checkout JWT against the owner's limits and, only if every
+        check passes, signs the closed Checkout and Payment mandates with the agent key.
+        If dry_run=True, performs the exact same verification without signing or reserving budget.
+        """
+        if not isinstance(dry_run, bool):
+            raise WalletRefusal("INVALID_ARGUMENT", "dry_run must be a boolean.")
+        if dry_run:
+            return self.preview_checkout(checkout_jwt)
+
+        (
+            lim,
+            checkout,
+            nonce,
+            total_cents,
+            tier_id,
+            merchant_id,
+            checkout_hash,
+            closed_pay,
+            _used_cents,
+            _used_count,
+        ) = self._evaluate_checkout(checkout_jwt)
 
         # 4. Every check passed: sign with the agent key only
         agent_key = self._agent_key()
         closed_chk = CheckoutMandate(
             vct="mandate.checkout.1",
-            checkout_jwt=checkout_jwt,
+            checkout_jwt=checkout_jwt.strip(),
             checkout_hash=checkout_hash,
         )
         try:
@@ -533,4 +898,150 @@ class BuyerWallet:
                 "Call the seller's purchase_subscription with offer_id (from negotiate_tier_terms), "
                 "buyer_email, checkout_mandate_chain and payment_mandate_chain."
             ),
+        }
+
+    def record_renewal_receipt(self, renewal_receipt_jwt: Any) -> Dict[str, Any]:
+        """
+        Verifies a merchant-signed AP2 renewal receipt JWT (ap2.renewal_receipt.1) against the
+        pinned merchant key and the owner's payment mandate constraints, then records the renewal
+        idempotently in ledger.json so get_spending_limits and sign_checkout reflect recurring charges.
+        """
+        if not isinstance(renewal_receipt_jwt, str) or not renewal_receipt_jwt.strip():
+            raise WalletRefusal("MISSING_RENEWAL_RECEIPT", "renewal_receipt_jwt is required.")
+        renewal_receipt_jwt = renewal_receipt_jwt.strip()
+
+        # 1. Owner limits: signature, expiry, agent binding, required constraints
+        lim = self._load_limits()
+
+        # 2. Merchant signature verification against pinned merchant key
+        merchant_pub, pinned_merchant_id = self._resolve_merchant_key(renewal_receipt_jwt)
+        try:
+            payload = verify_jwt(renewal_receipt_jwt, merchant_pub)
+        except Exception as e:
+            raise WalletRefusal(
+                "RECEIPT_SIGNATURE_INVALID",
+                f"Renewal receipt JWT is not signed by the pinned merchant key: {e}",
+            )
+        if not isinstance(payload, dict):
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt JWT payload is not an object.")
+
+        if payload.get("vct") != "ap2.renewal_receipt.1":
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt must carry vct 'ap2.renewal_receipt.1'.")
+
+        iss = payload.get("iss")
+        if not isinstance(iss, str) or not iss.strip():
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt has no merchant 'iss'.")
+        iss = iss.strip()
+        if pinned_merchant_id is not None and iss != pinned_merchant_id:
+            raise WalletRefusal(
+                "RECEIPT_SIGNATURE_INVALID",
+                f"Renewal receipt issuer '{iss}' does not match pinned merchant '{pinned_merchant_id}'.",
+            )
+
+        sub = payload.get("sub")
+        if not isinstance(sub, str) or sub.strip().lower() != lim.buyer_email:
+            raise WalletRefusal(
+                "RECEIPT_MANDATE_MISMATCH",
+                f"Renewal receipt buyer email '{sub}' does not match wallet owner '{lim.buyer_email}'.",
+            )
+
+        mandate_hash = payload.get("mandate_hash")
+        if not isinstance(mandate_hash, str) or mandate_hash.strip() not in (lim.payment_key, lim.canonical_payment_hash):
+            raise WalletRefusal(
+                "RECEIPT_MANDATE_MISMATCH",
+                "Renewal receipt mandate_hash does not match this wallet's open payment mandate.",
+            )
+
+        sale_id = payload.get("sale_id")
+        if not isinstance(sale_id, str) or not sale_id.strip():
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt has no sale_id.")
+        sale_id = sale_id.strip()
+
+        subscription_id = payload.get("subscription_id")
+        if not isinstance(subscription_id, str) or not subscription_id.strip():
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt has no subscription_id.")
+        subscription_id = subscription_id.strip()
+
+        outcome = payload.get("outcome")
+        if outcome not in ("INITIAL", "VERIFIED"):
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt outcome must be 'INITIAL' or 'VERIFIED'.")
+
+        amount_cents = payload.get("amount_cents")
+        if not isinstance(amount_cents, int) or isinstance(amount_cents, bool) or amount_cents <= 0:
+            raise WalletRefusal("RECEIPT_MALFORMED", "Renewal receipt must carry a positive integer 'amount_cents'.")
+
+        amount_range = _constraint(lim.payment.constraints, AmountRange)
+        currency = payload.get("currency")
+        if not isinstance(currency, str) or currency != amount_range.currency:
+            raise WalletRefusal(
+                "RECEIPT_MALFORMED",
+                f"Renewal receipt currency '{currency}' does not match mandate currency '{amount_range.currency}'.",
+            )
+
+        charged_at = payload.get("charged_at") if isinstance(payload.get("charged_at"), str) else (
+            datetime.datetime.now(datetime.timezone.utc).isoformat()
+        )
+
+        ledger = self._read_ledger()
+        entry = ledger["open_payment_mandates"].setdefault(lim.payment_key, {"signed": {}})
+        renewals = entry.setdefault("renewals", {})
+        initial_sales = entry.setdefault("initial_sales", {})
+
+        if outcome == "INITIAL":
+            # Initial charge is already reserved in `signed` at checkout signing time; bind without double-counting
+            initial_sales[sale_id] = {
+                "subscription_id": subscription_id,
+                "amount_cents": amount_cents,
+                "currency": currency,
+                "charged_at": charged_at,
+            }
+            self._write_ledger(ledger)
+        else:
+            if sale_id not in renewals:
+                used_cents, used_count = self._usage(lim.payment_key)
+                candidate = PaymentMandate(
+                    vct="mandate.payment.1",
+                    transaction_id=sale_id,
+                    payment_amount=Amount(amount=amount_cents, currency=currency),
+                    payee=Merchant(id=iss, name=iss),
+                    payment_instrument=PAYMENT_INSTRUMENT,
+                )
+                try:
+                    pay_violations = check_payment_constraints(
+                        lim.payment,
+                        candidate,
+                        mandate_context=MandateContext(total_amount=used_cents, total_uses=used_count),
+                    )
+                except Exception as e:
+                    raise WalletRefusal("CONSTRAINT_EVALUATION_FAILED", f"Could not evaluate payment constraints: {e}")
+                if pay_violations:
+                    raw_reason = "; ".join(pay_violations)
+                    msg = self._format_payment_violation(pay_violations, amount_cents, lim, used_cents, used_count)
+                    raise WalletRefusal("PAYMENT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
+
+                renewals[sale_id] = {
+                    "subscription_id": subscription_id,
+                    "amount_cents": amount_cents,
+                    "currency": currency,
+                    "charged_at": charged_at,
+                }
+                self._write_ledger(ledger)
+
+        budget = _constraint(lim.payment.constraints, Budget)
+        budget_cents = int(budget.max * 100)
+        used_cents, used_count = self._usage(lim.payment_key)
+        renewal_cents, renewal_count = self._renewal_usage(lim.payment_key)
+
+        return {
+            "status": "RECORDED",
+            "outcome": outcome,
+            "sale_id": sale_id,
+            "subscription_id": subscription_id,
+            "amount_cents": amount_cents,
+            "currency": currency,
+            "signed_so_far_cents": used_cents,
+            "remaining_budget_cents": max(budget_cents - used_cents, 0),
+            "purchases_signed": used_count,
+            "renewals_recorded": renewal_count,
+            "renewal_spend_cents": renewal_cents,
         }

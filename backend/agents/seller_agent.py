@@ -69,6 +69,7 @@ from ..services.ap2_service import (
     verify_ap2_chains,
     create_checkout_receipt_jwt,
     create_payment_receipt_jwt,
+    build_ap2_payment_challenge,
     compute_checkout_hash,
     get_issued_checkout,
     ERR_INVALID_CREDENTIAL,
@@ -1547,6 +1548,7 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_FOUND",
                 "reason": f"Subscription '{subscription_id}' was not found or does not exist.",
+                "ap2_payment_challenge": build_ap2_payment_challenge(),
             }
 
         sub_status = (sub.get("status") or "").upper()
@@ -1556,6 +1558,7 @@ class SellerAgent:
                 "error": "SUBSCRIPTION_NOT_CAPTURED",
                 "reason": f"Subscription '{subscription_id}' is APPROVAL_PENDING. Buyer must authorize payment in PayPal before node provisioning.",
                 "approval_url": sub.get("approval_url"),
+                "ap2_payment_challenge": build_ap2_payment_challenge(),
             }
 
         if sub.get("status") == "REPLACED":
@@ -1570,6 +1573,7 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_ACTIVE",
                 "reason": f"Subscription '{subscription_id}' is not active (current status: {sub_status or 'UNKNOWN'}).",
+                "ap2_payment_challenge": build_ap2_payment_challenge(),
             }
 
         country = (sub.get("subscriber_country_code") or "US").upper()

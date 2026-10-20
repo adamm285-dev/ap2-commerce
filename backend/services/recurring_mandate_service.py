@@ -54,6 +54,7 @@ from .ap2_service import (
     AP2_MERCHANT_ID,
     AP2_MERCHANT_NAME,
     compute_open_payment_mandate_hash,
+    create_renewal_receipt_jwt,
     resolve_root_public_key,
 )
 from .trusted_surface_service import BILLING_CYCLE_SECONDS
@@ -297,6 +298,16 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
         sale_id=sale_id, subscription_id=sub_id, mandate_hash=mandate_hash, amount_cents=amount_cents,
         currency=currency, status=outcome, reason=reason, charged_at=charged_at_iso,
     )
+    renewal_receipt_jwt = create_renewal_receipt_jwt(
+        sale_id=sale_id,
+        subscription_id=sub_id,
+        mandate_hash=mandate_hash,
+        buyer_email=record.get("buyer_email") or "",
+        amount_cents=amount_cents,
+        currency=currency,
+        outcome=outcome,
+        charged_at=charged_at_iso,
+    )
     used_cents, used_count = get_open_mandate_total_usage(mandate_hash)
     blocker = _next_charge_blocker(mandate, used_cents, used_count, record["agreed_amount_cents"], charged_at)
     action = ACTION_CANCEL if blocker else ACTION_NONE
@@ -304,5 +315,6 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
     return _decision(
         outcome, action, blocker or reason,
         sale_id=sale_id, subscription_id=sub_id, amount_cents=amount_cents,
+        renewal_receipt_jwt=renewal_receipt_jwt,
         **_usage_summary(mandate, used_cents, used_count),
     )

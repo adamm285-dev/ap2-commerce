@@ -374,9 +374,6 @@ class BuyerWallet:
         if single_key is not None and not keyring:
             return single_key, None
 
-        if single_key is not None and (merchant_id is None or merchant_id not in keyring):
-            return single_key, None
-
         raise WalletRefusal(
             "CHECKOUT_SIGNATURE_INVALID",
             f"No pinned merchant public key matches merchant '{merchant_id or 'unknown'}'.",
@@ -805,6 +802,7 @@ class BuyerWallet:
         max_purchases = recurrence[0].max_occurrences if recurrence else None
         signed_map = self._read_ledger()["open_payment_mandates"].get(lim.payment_key, {}).get("signed", {})
         already_signed = isinstance(signed_map, dict) and checkout_hash in signed_map
+        actual_before_cents, actual_before_count = self._usage(lim.payment_key)
         projected_used_cents = used_cents + total_cents
         projected_used_count = used_count + 1
 
@@ -820,10 +818,10 @@ class BuyerWallet:
             "already_signed": already_signed,
             "budget_impact": {
                 "total_budget_cents": budget_cents,
-                "signed_before_cents": used_cents,
+                "signed_before_cents": actual_before_cents,
                 "signed_after_cents": projected_used_cents,
                 "remaining_after_cents": max(budget_cents - projected_used_cents, 0),
-                "purchases_before": used_count,
+                "purchases_before": actual_before_count,
                 "purchases_after": projected_used_count,
                 "max_purchases": max_purchases,
             },
@@ -939,10 +937,11 @@ class BuyerWallet:
             )
 
         sub = payload.get("sub")
-        if not isinstance(sub, str) or sub.strip().lower() != lim.buyer_email:
+        expected_email_hash = _sha256_hex(lim.buyer_email)
+        if not isinstance(sub, str) or sub.strip().lower() not in (lim.buyer_email, expected_email_hash):
             raise WalletRefusal(
                 "RECEIPT_MANDATE_MISMATCH",
-                f"Renewal receipt buyer email '{sub}' does not match wallet owner '{lim.buyer_email}'.",
+                f"Renewal receipt buyer subject '{sub}' does not match wallet owner '{lim.buyer_email}'.",
             )
 
         mandate_hash = payload.get("mandate_hash")
@@ -978,26 +977,83 @@ class BuyerWallet:
                 f"Renewal receipt currency '{currency}' does not match mandate currency '{amount_range.currency}'.",
             )
 
+        payees_constraint = _constraint(lim.payment.constraints, AllowedPayees)
+        allowed_payees = [p.id for p in payees_constraint.allowed]
+        if iss not in allowed_payees:
+            raise WalletRefusal(
+                "PAYMENT_CONSTRAINT_VIOLATION",
+                f"Payee {iss} not in allowed list",
+                message=f"Payee is not in the owner's allowed payee list: Payee {iss} not in allowed list",
+            )
+
         charged_at = payload.get("charged_at") if isinstance(payload.get("charged_at"), str) else (
             datetime.datetime.now(datetime.timezone.utc).isoformat()
         )
 
         ledger = self._read_ledger()
         entry = ledger["open_payment_mandates"].setdefault(lim.payment_key, {"signed": {}})
+        signed_map = entry.setdefault("signed", {})
         renewals = entry.setdefault("renewals", {})
         initial_sales = entry.setdefault("initial_sales", {})
 
+        if not isinstance(signed_map, dict) or not signed_map:
+            raise WalletRefusal(
+                "NO_SIGNED_CHECKOUT",
+                "Cannot record a renewal receipt before this wallet has signed an initial checkout.",
+            )
+
         if outcome == "INITIAL":
-            # Initial charge is already reserved in `signed` at checkout signing time; bind without double-counting
-            initial_sales[sale_id] = {
-                "subscription_id": subscription_id,
-                "amount_cents": amount_cents,
-                "currency": currency,
-                "charged_at": charged_at,
+            if sale_id in renewals:
+                raise WalletRefusal(
+                    "RECEIPT_CONFLICT",
+                    f"Sale '{sale_id}' is already recorded as a renewal; cannot reclassify as INITIAL.",
+                )
+            signed_amounts = {
+                s_entry.get("amount_cents")
+                for s_entry in signed_map.values()
+                if isinstance(s_entry, dict)
             }
-            self._write_ledger(ledger)
+            if amount_cents not in signed_amounts:
+                raise WalletRefusal(
+                    "RECEIPT_AMOUNT_MISMATCH",
+                    f"Initial sale amount ({amount_cents} cents) does not match any checkout signed by this wallet.",
+                )
+            existing_init = initial_sales.get(sale_id)
+            if isinstance(existing_init, dict):
+                if (
+                    existing_init.get("amount_cents") != amount_cents
+                    or existing_init.get("subscription_id") != subscription_id
+                ):
+                    raise WalletRefusal(
+                        "RECEIPT_CONFLICT",
+                        f"Sale '{sale_id}' is already recorded with different amount or subscription_id.",
+                    )
+            else:
+                # Initial charge is already reserved in `signed` at checkout signing time; bind without double-counting
+                initial_sales[sale_id] = {
+                    "subscription_id": subscription_id,
+                    "amount_cents": amount_cents,
+                    "currency": currency,
+                    "charged_at": charged_at,
+                }
+                self._write_ledger(ledger)
         else:
-            if sale_id not in renewals:
+            if sale_id in initial_sales:
+                raise WalletRefusal(
+                    "RECEIPT_CONFLICT",
+                    f"Sale '{sale_id}' is already recorded as an INITIAL sale; cannot record again as a renewal.",
+                )
+            existing_ren = renewals.get(sale_id)
+            if isinstance(existing_ren, dict):
+                if (
+                    existing_ren.get("amount_cents") != amount_cents
+                    or existing_ren.get("subscription_id") != subscription_id
+                ):
+                    raise WalletRefusal(
+                        "RECEIPT_CONFLICT",
+                        f"Renewal sale '{sale_id}' is already recorded with different amount or subscription_id.",
+                    )
+            else:
                 used_cents, used_count = self._usage(lim.payment_key)
                 candidate = PaymentMandate(
                     vct="mandate.payment.1",
@@ -1017,7 +1073,39 @@ class BuyerWallet:
                 if pay_violations:
                     raw_reason = "; ".join(pay_violations)
                     msg = self._format_payment_violation(pay_violations, amount_cents, lim, used_cents, used_count)
-                    raise WalletRefusal("PAYMENT_CONSTRAINT_VIOLATION", raw_reason, message=msg)
+                    budget_constraint = _constraint(lim.payment.constraints, Budget)
+                    recurrence = [c for c in lim.payment.constraints if isinstance(c, AgentRecurrence)]
+                    max_occurrences = recurrence[0].max_occurrences if recurrence else None
+                    budget_limit_cents = int(budget_constraint.max * 100)
+                    remaining_budget_cents = max(budget_limit_cents - used_cents, 0)
+                    per_purchase_shortfall_cents = max(amount_cents - amount_range.max, 0)
+                    budget_shortfall_cents = max((used_cents + amount_cents) - budget_limit_cents, 0)
+                    occurrences_shortfall = (
+                        max((used_count + 1) - max_occurrences, 0) if max_occurrences is not None else 0
+                    )
+                    raise WalletRefusal(
+                        "PAYMENT_CONSTRAINT_VIOLATION",
+                        raw_reason,
+                        message=msg,
+                        escalation={
+                            "requires_human_approval": True,
+                            "action": "INCREASE_SPENDING_LIMITS",
+                            "buyer_email": lim.buyer_email,
+                            "requested_merchant_id": iss,
+                            "requested_amount_cents": amount_cents,
+                            "current_max_per_purchase_cents": amount_range.max,
+                            "required_max_per_purchase_cents": max(amount_range.max, amount_cents),
+                            "per_purchase_shortfall_cents": per_purchase_shortfall_cents,
+                            "current_total_budget_cents": budget_limit_cents,
+                            "required_total_budget_cents": max(budget_limit_cents, used_cents + amount_cents),
+                            "budget_shortfall_cents": budget_shortfall_cents,
+                            "remaining_budget_cents": remaining_budget_cents,
+                            "purchases_used": used_count,
+                            "max_purchases": max_occurrences,
+                            "occurrences_shortfall": occurrences_shortfall,
+                            "allowed_payees": allowed_payees,
+                        },
+                    )
 
                 renewals[sale_id] = {
                     "subscription_id": subscription_id,

@@ -1238,6 +1238,24 @@ def get_recurring_charge(sale_id: str, db_path: Optional[Path] = None) -> Option
         conn.close()
 
 
+def list_subscription_recurring_charges(
+    subscription_id: str,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """Lists all recorded recurring charges for a subscription in chronological order."""
+    if not subscription_id:
+        return []
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT * FROM recurring_charges WHERE subscription_id = ? ORDER BY received_at ASC",
+            (subscription_id.strip(),),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_open_mandate_total_usage(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[int, int]:
     """
     Returns (total_amount_cents, total_uses) charged under an open payment mandate:

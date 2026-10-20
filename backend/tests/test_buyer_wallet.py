@@ -663,6 +663,61 @@ async def test_renewal_receipt_sync_updates_wallet_ledger_without_double_countin
     forged = create_jwt({"alg": "ES256", "typ": "JWT", "kid": "attacker"}, payload, _new_key("attacker"))
     assert _refusal_code(demo.wallet.record_renewal_receipt, forged) == "RECEIPT_SIGNATURE_INVALID"
 
+    # End-to-end MCP discovery: get_subscription_details exposes renewal_receipts with hashed sub (no cleartext PII)
+    details = await _seller("get_subscription_details", {"subscription_id": sub_id})
+    assert demo.email not in json.dumps(details)
+    receipts = details.get("renewal_receipts", [])
+    assert [r["outcome"] for r in receipts] == ["INITIAL", "VERIFIED"]
+    for r in receipts:
+        jwt_payload = json.loads(b64url_decode(r["renewal_receipt_jwt"].split(".")[1]))
+        assert demo.email not in json.dumps(jwt_payload)
+
+    # Previewing an already-signed checkout reports accurate before/after usage
+    prev_again, is_error = _wallet(demo, "preview_checkout", {"checkout_jwt": nego["checkout_jwt"]})
+    assert not is_error
+    assert prev_again["already_signed"] is True
+    assert prev_again["budget_impact"]["signed_before_cents"] == 9998
+    assert prev_again["budget_impact"]["signed_after_cents"] == 9998
+
+    # Conflicting replay of an already-recorded sale_id is refused
+    conflict_payload = dict(payload, outcome="INITIAL")
+    from backend.services.ap2_keys import get_merchant_key
+    m_key = get_merchant_key()
+    conflict_jwt = create_jwt({"alg": "ES256", "typ": "JWT", "kid": m_key.kid}, conflict_payload, m_key)
+    assert _refusal_code(demo.wallet.record_renewal_receipt, conflict_jwt) == "RECEIPT_CONFLICT"
+
+
+def test_renewal_receipt_refuses_orphan_and_mismatched_initial_receipt(demo):
+    from backend.services.ap2_service import create_renewal_receipt_jwt
+
+    # 1. Before any checkout is signed, an orphan renewal receipt is refused
+    orphan_jwt = create_renewal_receipt_jwt(
+        sale_id="SALE-ORPHAN-1",
+        subscription_id="I-SUB-ORPHAN",
+        mandate_hash=demo.wallet._load_limits().canonical_payment_hash,
+        buyer_email=demo.email,
+        amount_cents=4999,
+        currency="USD",
+        outcome="VERIFIED",
+        charged_at="2026-10-20T00:00:00Z",
+    )
+    assert _refusal_code(demo.wallet.record_renewal_receipt, orphan_jwt) == "NO_SIGNED_CHECKOUT"
+
+    # 2. Sign a $49.99 checkout, then present an INITIAL receipt with a mismatched amount
+    chk = create_merchant_checkout(tier_id="ap2-batch", monthly_price=49.99, contractor_email=demo.email)
+    demo.wallet.sign_checkout(chk["checkout_jwt"])
+    bad_init_jwt = create_renewal_receipt_jwt(
+        sale_id="SALE-BAD-INIT",
+        subscription_id="I-SUB-1",
+        mandate_hash=demo.wallet._load_limits().canonical_payment_hash,
+        buyer_email=demo.email,
+        amount_cents=1999,
+        currency="USD",
+        outcome="INITIAL",
+        charged_at="2026-10-20T00:00:00Z",
+    )
+    assert _refusal_code(demo.wallet.record_renewal_receipt, bad_init_jwt) == "RECEIPT_AMOUNT_MISMATCH"
+
 
 def test_provision_rejection_includes_ap2_payment_challenge_and_header():
     res = client.post(

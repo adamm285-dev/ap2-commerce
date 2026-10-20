@@ -323,10 +323,12 @@ def create_renewal_receipt_jwt(
         "typ": "JWT",
         "kid": merchant_key.kid or settings.ap2_merchant_key_id,
     }
+    clean_email = (buyer_email or "").strip().lower()
+    sub_hash = hashlib.sha256(clean_email.encode("utf-8")).hexdigest() if clean_email else ""
     payload = {
         "vct": "ap2.renewal_receipt.1",
         "iss": AP2_MERCHANT_ID,
-        "sub": (buyer_email or "").strip().lower(),
+        "sub": sub_hash,
         "sale_id": sale_id,
         "subscription_id": subscription_id,
         "mandate_hash": mandate_hash,

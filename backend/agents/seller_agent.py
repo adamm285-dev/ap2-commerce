@@ -60,7 +60,11 @@ from ..services.crypto_mandate import (
     verify_ap2_intent_mandate,
     is_trusted_buyer_key,
 )
-from ..database import get_buyer_key_email
+from ..database import (
+    get_buyer_key_email,
+    get_recurring_mandate,
+    list_subscription_recurring_charges,
+)
 from ..config import settings
 from ..services.ap2_service import (
     AP2_MERCHANT_ID,
@@ -69,6 +73,7 @@ from ..services.ap2_service import (
     verify_ap2_chains,
     create_checkout_receipt_jwt,
     create_payment_receipt_jwt,
+    create_renewal_receipt_jwt,
     build_ap2_payment_challenge,
     compute_checkout_hash,
     get_issued_checkout,
@@ -239,7 +244,7 @@ AP2_SELLER_MCP_TOOLS = [
     },
     {
         "name": "get_subscription_details",
-        "description": "Retrieves the live status, plan information, next billing date, and subscriber details of a PayPal subscription. Aligns with official PayPal AI-Toolkit subscription schema.",
+        "description": "Retrieves the live status, plan information, next billing date, subscriber details, and merchant-signed renewal_receipts (ap2.renewal_receipt.1 JWTs for wallet synchronization via record_renewal_receipt) of a PayPal subscription. Aligns with official PayPal AI-Toolkit subscription schema.",
         "input_schema": {
             "type": "object",
             "required": ["subscription_id"],
@@ -1492,6 +1497,32 @@ class SellerAgent:
         # Check local persistent store first
         sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id)
         if sub:
+            raw_email = (sub.get("buyer_email") or sub.get("contractor_email") or "").strip().lower()
+            rec_mandate = get_recurring_mandate(subscription_id)
+            if rec_mandate and not raw_email:
+                raw_email = (rec_mandate.get("buyer_email") or "").strip().lower()
+            renewal_receipts: List[Dict[str, Any]] = []
+            for chg in list_subscription_recurring_charges(subscription_id):
+                chg_status = chg.get("status")
+                if chg_status in ("INITIAL", "VERIFIED"):
+                    receipt_jwt = create_renewal_receipt_jwt(
+                        sale_id=chg["sale_id"],
+                        subscription_id=subscription_id,
+                        mandate_hash=chg["mandate_hash"],
+                        buyer_email=raw_email,
+                        amount_cents=int(chg["amount_cents"]),
+                        currency=chg.get("currency") or "USD",
+                        outcome=chg_status,
+                        charged_at=chg.get("charged_at") or "",
+                    )
+                    renewal_receipts.append({
+                        "sale_id": chg["sale_id"],
+                        "outcome": chg_status,
+                        "amount_cents": int(chg["amount_cents"]),
+                        "currency": chg.get("currency") or "USD",
+                        "charged_at": chg.get("charged_at") or "",
+                        "renewal_receipt_jwt": receipt_jwt,
+                    })
             return {
                 "id": sub.get("subscription_id"),
                 "status": sub.get("status"),
@@ -1505,6 +1536,7 @@ class SellerAgent:
                 "paypal_vault_status": sub.get("paypal_vault_status"),
                 "approval_url": sub.get("approval_url"),
                 "hateoas_links": sub.get("hateoas_links", []),
+                "renewal_receipts": renewal_receipts,
                 "mock_mode": paypal_service.mock_mode,
             }
 

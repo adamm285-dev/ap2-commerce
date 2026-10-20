@@ -95,6 +95,8 @@ def main() -> int:
     merchant_key = _new_key_file(merchant_key_path, f"ap2-merchant-demo-{secrets.token_hex(4)}")
     wallet_dir.mkdir(parents=True, exist_ok=True)
     (wallet_dir / "merchant_public.jwk").write_text(merchant_key.export_public(), encoding="utf-8")
+    from backend.wallet.wallet import pin_merchant_key
+    pin_merchant_key("merchant-ap2-autonomous", merchant_key.export_public(as_dict=True), wallet_dir)
     print(f"[1/5] Merchant key ready      kid={merchant_key.kid}")
 
     # 2. Agent key, created by the wallet process so this script never holds it

@@ -75,6 +75,7 @@ When `preview_checkout` or `sign_checkout` returns `isError: true` (`status: "RE
 
 ## Workflow 5: Synchronizing Recurring Renewal Receipts
 
-When a monthly PayPal renewal (`PAYMENT.SALE.COMPLETED`) is verified by the seller's `evaluate_sale`, the seller issues a merchant-signed `renewal_receipt_jwt` (`vct: "ap2.renewal_receipt.1"`):
-- Pass `renewal_receipt_jwt` to the wallet's `record_renewal_receipt` tool.
+When a monthly PayPal renewal (`PAYMENT.SALE.COMPLETED`) is verified by the seller's `evaluate_sale`, the seller records the charge and exposes merchant-signed renewal receipts (`vct: "ap2.renewal_receipt.1"`):
+- Call the seller's `get_subscription_details` tool with `subscription_id` to retrieve `renewal_receipts` (or inspect the `renewal_receipt_jwt` returned directly by `evaluate_sale`).
+- Pass each `renewal_receipt_jwt` to the wallet's `record_renewal_receipt` tool.
 - `INITIAL` sale receipts bind the initial charge without double-counting the checkout reservation; `VERIFIED` monthly renewal receipts are recorded idempotently by `sale_id` so `get_spending_limits` and future `sign_checkout` calls reflect true cumulative spend across the billing term.

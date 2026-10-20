@@ -214,10 +214,10 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
     mode: 'happy_counter',
     busy: false,
     stepIndex: 1,
-    autoPlaying: true,
-    headline: 'Smart Counter-Offer Approved ($79.99 → $49.99/mo)',
+    autoPlaying: false,
+    headline: 'Ready to Launch: Click "Play 3D Story Flow" to Watch AI Bargain & Buy ($60 → $49.99/mo)',
     plainEnglishSummary:
-      'You set a $60/mo limit in your PayPal + AP2 Vault. The vendor asked $79.99/mo, your AI Courier Bot haggled them down to $49.99/mo, PayPal verified the cryptographic signature, and the Compute Rack powered on!',
+      'You set a $60/mo limit in your PayPal + AP2 Vault. Click the glowing Play button to watch your AI Courier Bot haggle $79.99 down to $49.99/mo, pass the PayPal Settlement Gate, and power on the Compute Rack!',
     negotiation: null,
     receipt: null,
     blockedReason: null,
@@ -228,6 +228,7 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
     liveSandboxVerified: false,
   });
 
+  const [hasPlayedOnce, setHasPlayedOnce] = useState<boolean>(false);
   const [inspectedStation, setInspectedStation] = useState<number | null>(null);
   const [runCounter, setRunCounter] = useState<number>(0);
 
@@ -247,9 +248,12 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
     return () => window.clearTimeout(timer);
   }, [story.stepIndex, story.autoPlaying, runCounter]);
 
-  const runScenario = async (mode: StoryScenarioMode) => {
+  const runScenario = async (mode: StoryScenarioMode, startPlaying = true) => {
     setRunCounter((c) => c + 1);
     setInspectedStation(null);
+    if (startPlaying) {
+      setHasPlayedOnce(true);
+    }
 
     if (mode === 'happy_counter') {
       setStory((prev) => ({
@@ -257,8 +261,10 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
         mode,
         busy: true,
         stepIndex: 1,
-        autoPlaying: true,
-        headline: 'Step 1 → 4: AI Haggling $79.99 down to $49.99/mo in Live Sandbox...',
+        autoPlaying: startPlaying,
+        headline: startPlaying
+          ? 'Step 1 → 4: AI Haggling $79.99 down to $49.99/mo in Live Sandbox...'
+          : 'Ready to Launch: Click "Play 3D Story Flow" to Watch AI Bargain & Buy ($60 → $49.99/mo)',
         plainEnglishSummary:
           'Watch the 4 steps in order: Server lights start OFF → AI Drone flies to Gate → Gate scans once in Step 3 → Server lights power ON in Step 4 & receipt flows back!',
         blockedReason: null,
@@ -436,8 +442,44 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
   };
 
   useEffect(() => {
-    void runScenario('happy_counter');
+    void runScenario('happy_counter', false);
   }, []);
+
+  const handleHeroPlayOrReset = () => {
+    setInspectedStation(null);
+    setRunCounter((c) => c + 1);
+    if (!hasPlayedOnce && !story.autoPlaying) {
+      // First click: start playing the 4-step story flow!
+      setHasPlayedOnce(true);
+      setStory((prev) => ({
+        ...prev,
+        stepIndex: 1,
+        autoPlaying: true,
+        headline:
+          prev.mode === 'happy_counter'
+            ? 'Smart Counter-Offer Approved ($79.99 → $49.99/mo)'
+            : prev.headline,
+      }));
+      return;
+    }
+    if (story.autoPlaying) {
+      // Clicking while playing acts as a clean Reset back to Step 1 (ready to play)
+      setHasPlayedOnce(false);
+      setStory((prev) => ({
+        ...prev,
+        stepIndex: 1,
+        autoPlaying: false,
+      }));
+      return;
+    }
+    // Clicking after completion resets back to Step 1 and replays the flow!
+    setHasPlayedOnce(true);
+    setStory((prev) => ({
+      ...prev,
+      stepIndex: 1,
+      autoPlaying: true,
+    }));
+  };
 
   const isHappy = story.mode === 'happy_counter';
   const curStep = story.stepIndex;
@@ -558,6 +600,16 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
         @keyframes ap2BubblePopIn {
           0% { opacity: 0; transform: translateY(8px) scale(0.94); }
           100% { opacity: 1; transform: translateY(0px) scale(1); }
+        }
+        @keyframes ap2HeroPlayPulse {
+          0%, 100% {
+            box-shadow: 0 10px 28px rgba(16, 185, 129, 0.42), 0 0 22px rgba(56, 189, 248, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+            transform: translateY(0px) scale(1);
+          }
+          50% {
+            box-shadow: 0 14px 36px rgba(16, 185, 129, 0.68), 0 0 34px rgba(56, 189, 248, 0.72), inset 0 1px 2px rgba(255, 255, 255, 0.55);
+            transform: translateY(-1.5px) scale(1.02);
+          }
         }
       `}</style>
 
@@ -759,25 +811,78 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
 
         <button
           type="button"
-          onClick={() => {
-            setInspectedStation(null);
-            setRunCounter((c) => c + 1);
-            setStory((prev) => ({ ...prev, stepIndex: 1, autoPlaying: true }));
-          }}
+          data-testid="ap2-hero-play-restart-btn"
+          onClick={handleHeroPlayOrReset}
           style={{
             cursor: 'pointer',
-            padding: '0 0.95rem',
-            borderRadius: '11px',
-            background: 'rgba(56, 189, 248, 0.14)',
-            border: '1px solid rgba(56, 189, 248, 0.5)',
-            color: '#7dd3fc',
-            fontSize: '0.76rem',
-            fontWeight: 800,
+            padding: '0.45rem 1.25rem',
+            borderRadius: '14px',
+            background: !hasPlayedOnce && !story.autoPlaying
+              ? 'linear-gradient(135deg, #059669 0%, #10b981 48%, #0284c7 100%)'
+              : story.autoPlaying
+                ? 'linear-gradient(135deg, #0369a1 0%, #0284c7 50%, #0f766e 100%)'
+                : 'linear-gradient(135deg, #0284c7 0%, #0ea5e9 45%, #10b981 100%)',
+            border: !hasPlayedOnce && !story.autoPlaying
+              ? '2px solid #6ee7b7'
+              : '2px solid #7dd3fc',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.65rem',
             whiteSpace: 'nowrap',
+            animation: 'ap2HeroPlayPulse 2.1s ease-in-out infinite',
+            transition: 'all 0.25s ease',
           }}
-          title="Replay the 4-step animated story from Step 1 to Step 4"
+          title={
+            !hasPlayedOnce && !story.autoPlaying
+              ? 'Click to Play and Start the 4-Step 3D Story Flow!'
+              : story.autoPlaying
+                ? 'Click to Reset back to Step 1'
+                : 'Click to Reset & Replay the 4-Step 3D Story Flow'
+          }
         >
-          🔄 Replay Flow
+          <span
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: '1.5px solid rgba(255, 255, 255, 0.65)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.92rem',
+              boxShadow: '0 0 12px rgba(255, 255, 255, 0.35)',
+              flexShrink: 0,
+            }}
+          >
+            {!hasPlayedOnce && !story.autoPlaying ? '▶️' : story.autoPlaying ? '⏹' : '🔄'}
+          </span>
+          <div style={{ textAlign: 'left', lineHeight: 1.15 }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 900, letterSpacing: '0.01em', color: '#ffffff' }}>
+              {!hasPlayedOnce && !story.autoPlaying
+                ? 'Play 3D Story Flow'
+                : story.autoPlaying
+                  ? `Playing Step ${curStep}/4 • Reset`
+                  : 'Restart & Play Flow'}
+            </div>
+            <div
+              style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.07em',
+                color: '#e0f2fe',
+                marginTop: '0.1rem',
+              }}
+            >
+              {!hasPlayedOnce && !story.autoPlaying
+                ? '✨ Click to Start Show'
+                : story.autoPlaying
+                  ? 'Click to Reset to Step 1'
+                  : '✨ Reset & Run Step 1 → 4'}
+            </div>
+          </div>
         </button>
       </div>
 

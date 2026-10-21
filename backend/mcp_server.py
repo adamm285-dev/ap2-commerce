@@ -421,6 +421,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 sub_id = _require_str(arguments, "subscription_id")
                 result = await seller_agent.get_subscription_details(
                     subscription_id=sub_id,
+                    buyer_email=arguments.get("buyer_email") or arguments.get("contractor_email"),
                 )
 
             else:

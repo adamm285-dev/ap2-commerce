@@ -649,7 +649,8 @@ async def get_checkout_endpoint(order_id: str, request: Request):
     if not record:
         raise HTTPException(status_code=404, detail=f"Checkout '{order_id}' not found.")
     if not _has_admin_key(request):
-        record = {**record, "contractor_email": None}
+        record = {k: v for k, v in record.items() if k != "checkout_jwt"}
+        record["contractor_email"] = None
     return record
 
 

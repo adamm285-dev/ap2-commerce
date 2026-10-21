@@ -273,6 +273,10 @@ AP2_SELLER_MCP_TOOLS = [
                     "type": "string",
                     "description": "PayPal Subscription ID (e.g. 'I-...' or 'I-A2A-VAULT-...')",
                 },
+                "buyer_email": {
+                    "type": "string",
+                    "description": "Owner buyer email address required to receive renewal receipt JWTs.",
+                },
             },
         },
     },
@@ -1969,43 +1973,59 @@ class SellerAgent:
         finally:
             release_purchase_lease(lease_holder)
 
-    async def get_subscription_details(self, subscription_id: str) -> Dict[str, Any]:
+    async def get_subscription_details(
+        self,
+        subscription_id: str,
+        buyer_email: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         """
         Retrieves live subscription details, plan information, and status.
         Conforms to official PayPal AI-Toolkit subscription schema.
+        Renewal receipt JWTs are only included when buyer_email matches the subscription owner.
         """
         if not subscription_id:
             return {"error": "INVALID_ARGUMENT", "message": "subscription_id is required."}
 
         # Check local persistent store first
         sub = _COMPLETED_SUBSCRIPTIONS.get(subscription_id)
+        if not sub:
+            from ..database import get_subscription
+            sub = get_subscription(subscription_id)
+
         if sub:
             raw_email = (sub.get("buyer_email") or sub.get("contractor_email") or "").strip().lower()
             rec_mandate = get_recurring_mandate(subscription_id)
             if rec_mandate and not raw_email:
                 raw_email = (rec_mandate.get("buyer_email") or "").strip().lower()
+
+            caller_email = (buyer_email or kwargs.get("contractor_email") or kwargs.get("email") or "").strip().lower()
+            authorized_owner = bool(caller_email and raw_email and caller_email == raw_email)
+
             renewal_receipts: List[Dict[str, Any]] = []
             for chg in list_subscription_recurring_charges(subscription_id):
                 chg_status = chg.get("status")
                 if chg_status in ("INITIAL", "VERIFIED"):
-                    receipt_jwt = create_renewal_receipt_jwt(
-                        sale_id=chg["sale_id"],
-                        subscription_id=subscription_id,
-                        mandate_hash=chg["mandate_hash"],
-                        buyer_email=raw_email,
-                        amount_cents=int(chg["amount_cents"]),
-                        currency=chg.get("currency") or "USD",
-                        outcome=chg_status,
-                        charged_at=chg.get("charged_at") or "",
-                    )
-                    renewal_receipts.append({
+                    item: Dict[str, Any] = {
                         "sale_id": chg["sale_id"],
                         "outcome": chg_status,
                         "amount_cents": int(chg["amount_cents"]),
                         "currency": chg.get("currency") or "USD",
                         "charged_at": chg.get("charged_at") or "",
-                        "renewal_receipt_jwt": receipt_jwt,
-                    })
+                    }
+                    if authorized_owner:
+                        receipt_jwt = create_renewal_receipt_jwt(
+                            sale_id=chg["sale_id"],
+                            subscription_id=subscription_id,
+                            mandate_hash=chg["mandate_hash"],
+                            buyer_email=raw_email,
+                            amount_cents=int(chg["amount_cents"]),
+                            currency=chg.get("currency") or "USD",
+                            outcome=chg_status,
+                            charged_at=chg.get("charged_at") or "",
+                        )
+                        item["renewal_receipt_jwt"] = receipt_jwt
+                    renewal_receipts.append(item)
             return {
                 "id": sub.get("subscription_id"),
                 "status": sub.get("status"),
@@ -2080,10 +2100,17 @@ class SellerAgent:
                 "ap2_payment_challenge": build_ap2_payment_challenge(),
             }
 
-        owner_email = sub.get("buyer_email") or sub.get("contractor_email")
+        owner_email = (sub.get("buyer_email") or sub.get("contractor_email") or "").strip().lower()
         if not owner_email and isinstance(sub.get("subscriber"), dict):
-            owner_email = sub["subscriber"].get("email_address")
-        if owner_email and buyer_email and buyer_email.strip().lower() != owner_email.strip().lower():
+            owner_email = (sub["subscriber"].get("email_address") or "").strip().lower()
+        if not owner_email:
+            return {
+                "status": "REJECTED",
+                "error": "BUYER_EMAIL_REQUIRED",
+                "reason": f"Subscription '{subscription_id}' has no registered owner email.",
+                "ap2_payment_challenge": build_ap2_payment_challenge(),
+            }
+        if buyer_email and buyer_email.strip().lower() != owner_email:
             return {
                 "status": "REJECTED",
                 "error": "IDENTITY_MISMATCH_DETECTED",

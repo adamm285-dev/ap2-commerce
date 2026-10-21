@@ -391,3 +391,101 @@ async def test_purchase_result_never_contains_another_buyers_approval_url():
     assert prov_res.get("error") == "IDENTITY_MISMATCH_DETECTED"
     assert "approval_url" not in prov_res or prov_res.get("approval_url") is None
     assert secret_url not in json.dumps(prov_res)
+
+
+def test_checkout_endpoint_unauthenticated_does_not_contain_checkout_jwt():
+    """GET /api/checkout/{order_id} and /api/agent/checkout/{order_id} must not return checkout_jwt to a non-admin."""
+    chk = create_merchant_checkout("ap2-cluster", 179.99, "buyer-checkout-secret@example.com")
+    order_id = chk["order_id"]
+    jwt_secret = chk["checkout_jwt"]
+
+    for path in (f"/api/checkout/{order_id}", f"/api/agent/checkout/{order_id}"):
+        # 1. Unauthenticated request -> must NOT contain checkout_jwt
+        res_pub = client.get(path)
+        assert res_pub.status_code == 200
+        assert jwt_secret not in res_pub.text
+        data_pub = res_pub.json()
+        assert "checkout_jwt" not in data_pub or data_pub["checkout_jwt"] is None
+        assert data_pub.get("contractor_email") is None
+
+        # 2. Authenticated request -> contains checkout_jwt
+        res_adm = client.get(path, headers=ADMIN_HEADER)
+        assert res_adm.status_code == 200
+        data_adm = res_adm.json()
+        assert data_adm["checkout_jwt"] == jwt_secret
+        assert data_adm["contractor_email"] == "buyer-checkout-secret@example.com"
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_details_renewal_receipt_jwt_requires_matching_email():
+    """get_subscription_details must not return renewal_receipt_jwt unless caller passes matching buyer_email."""
+    from backend.database import record_recurring_charge
+    sub_id = f"I-TEST-RENEWAL-{uuid.uuid4().hex[:8].upper()}"
+    owner_email = "owner-renewal@example.com"
+    other_email = "attacker@example.com"
+
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = {
+        "subscription_id": sub_id,
+        "status": "ACTIVE",
+        "buyer_email": owner_email,
+        "contractor_email": owner_email,
+        "agreed_monthly_rate": 79.99,
+    }
+
+    # Record a recurring charge
+    record_recurring_charge(
+        sale_id=f"SALE-{uuid.uuid4().hex[:8].upper()}",
+        subscription_id=sub_id,
+        mandate_hash=f"mandate-hash-{uuid.uuid4().hex[:8]}",
+        amount_cents=7999,
+        currency="USD",
+        status="VERIFIED",
+        reason=None,
+        charged_at="2026-10-21T00:00:00Z",
+    )
+
+    # 1. Call with only subscription_id -> renewal_receipt_jwt must be omitted
+    details_anon = await seller_agent.get_subscription_details(subscription_id=sub_id)
+    assert len(details_anon["renewal_receipts"]) > 0
+    for r in details_anon["renewal_receipts"]:
+        assert "renewal_receipt_jwt" not in r
+
+    # 2. Call with mismatched buyer_email -> renewal_receipt_jwt must be omitted
+    details_other = await seller_agent.get_subscription_details(
+        subscription_id=sub_id, buyer_email=other_email
+    )
+    assert len(details_other["renewal_receipts"]) > 0
+    for r in details_other["renewal_receipts"]:
+        assert "renewal_receipt_jwt" not in r
+
+    # 3. Call with matching buyer_email -> renewal_receipt_jwt is returned
+    details_owner = await seller_agent.get_subscription_details(
+        subscription_id=sub_id, buyer_email=owner_email
+    )
+    assert len(details_owner["renewal_receipts"]) > 0
+    for r in details_owner["renewal_receipts"]:
+        assert "renewal_receipt_jwt" in r
+        assert r["renewal_receipt_jwt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_provision_compute_node_pending_without_email_rejected_without_approval_url():
+    """provision_compute_node must not include approval_url when subscription has no owner email."""
+    sub_id = f"I-PENDING-NOEMAIL-{uuid.uuid4().hex[:8].upper()}"
+    secret_url = "https://www.sandbox.paypal.com/checkoutnow?token=NOEMAIL_SECRET_TOKEN"
+
+    _COMPLETED_SUBSCRIPTIONS[sub_id] = {
+        "subscription_id": sub_id,
+        "status": "APPROVAL_PENDING",
+        "buyer_email": None,
+        "contractor_email": None,
+        "approval_url": secret_url,
+    }
+
+    res = await seller_agent.provision_compute_node(
+        subscription_id=sub_id,
+        buyer_email="someone@example.com",
+    )
+    assert res.get("status") == "REJECTED"
+    assert "approval_url" not in res or res.get("approval_url") is None
+    assert secret_url not in json.dumps(res)

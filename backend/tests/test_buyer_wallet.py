@@ -663,8 +663,12 @@ async def test_renewal_receipt_sync_updates_wallet_ledger_without_double_countin
     forged = create_jwt({"alg": "ES256", "typ": "JWT", "kid": "attacker"}, payload, _new_key("attacker"))
     assert _refusal_code(demo.wallet.record_renewal_receipt, forged) == "RECEIPT_SIGNATURE_INVALID"
 
-    # End-to-end MCP discovery: get_subscription_details exposes renewal_receipts with hashed sub (no cleartext PII)
-    details = await _seller("get_subscription_details", {"subscription_id": sub_id})
+    # End-to-end MCP discovery: get_subscription_details omits renewal_receipt_jwt without buyer_email
+    details_anon = await _seller("get_subscription_details", {"subscription_id": sub_id})
+    assert all("renewal_receipt_jwt" not in r for r in details_anon.get("renewal_receipts", []))
+
+    # When caller passes matching buyer_email, renewal_receipt_jwt is returned with hashed sub (no cleartext PII)
+    details = await _seller("get_subscription_details", {"subscription_id": sub_id, "buyer_email": demo.email})
     assert demo.email not in json.dumps(details)
     receipts = details.get("renewal_receipts", [])
     assert [r["outcome"] for r in receipts] == ["INITIAL", "VERIFIED"]

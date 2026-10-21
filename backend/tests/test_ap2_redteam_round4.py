@@ -1113,9 +1113,10 @@ def test_rt4_pii_masking_checkout_endpoint():
     resp_pub = client.get(f"/api/checkout/{order_id}")
     assert resp_pub.status_code == 200
     assert raw_email not in resp_pub.text
+    assert chk["checkout_jwt"] not in resp_pub.text
     pub_data = resp_pub.json()
     assert pub_data["contractor_email"] is None
-    assert pub_data["checkout_jwt"] is not None
+    assert pub_data.get("checkout_jwt") is None
 
     # 2. Admin request
     resp_adm = client.get(
@@ -1126,6 +1127,7 @@ def test_rt4_pii_masking_checkout_endpoint():
     assert raw_email in resp_adm.text
     adm_data = resp_adm.json()
     assert adm_data["contractor_email"] == raw_email
+    assert adm_data["checkout_jwt"] is not None
 
 
 def test_rt4_pii_masking_marketplace_operators_and_payouts():

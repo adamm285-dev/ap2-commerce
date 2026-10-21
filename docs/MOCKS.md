@@ -1,5 +1,7 @@
 # MOCKS.md: Mock Inventory
 
+![Production vs Simulation Demarcation](images/slides/slide_07_production_vs_simulation.png)
+
 Every place where the code stands in for real behavior: simulated API responses, seeded or hardcoded data, demo-only keys or endpoints, offline stubs, and fallbacks that fake success.
 
 **How this file is kept honest.** Each entry has an ID. The code it describes carries a marker with the same ID: `# MOCK(M-NNN): ...` in Python, `// MOCK(M-NNN): ...` in TypeScript. `backend/tests/test_mocks_ledger.py` fails if a marker has no entry, an entry has no marker, an entry lists a file with no marker for it, or a listed `path::symbol` doesn't exist. Run it directly with `python scripts/check_mocks.py`.

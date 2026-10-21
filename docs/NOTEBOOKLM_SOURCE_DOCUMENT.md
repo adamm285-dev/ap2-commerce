@@ -254,6 +254,8 @@ Every stand-in for real behavior is listed in `docs/MOCKS.md` (19 entries, M-001
 Use only the facts below. Do not add protocols, hardware, metrics or features that aren't listed. Text on slides must be legible and spelled correctly; prefer simple diagrams over dense label grids.
 
 ### Slide 1: AP2 v0.2 and What Comes Next
+
+![Slide 1](images/slides/slide_01_cryptographic_foundations.png)
 - **Title:** AP2 Autonomous Commerce: Built on AP2 v0.2, Extending Its Roadmap
 - **Subtitle:** Google's Agent Payments Protocol, now under the FIDO Alliance
 - **Visual:** Left: "AP2 v0.2 (Google SDK, 188 SDK tests passing)": open and closed Checkout and Payment Mandates, SD-JWT, ES256, Human Present and Human Not Present flows. Right: four items, each with its real status: (1) Recurring payments & subscriptions [V1.x roadmap]; (2) Human Not Present purchases [shipped in v0.2, implemented here]; (3) MCP-based implementation [V1.x roadmap]; (4) Buyer–seller negotiation [long-term vision].
@@ -265,6 +267,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "AP2 is the agent payments protocol Google created and donated to the FIDO Alliance this year. Version 0.2 lets an agent buy on its own under limits its owner signs in advance. We implemented that flow with Google's SDK, then extended it toward AP2's roadmap: recurring subscriptions, an MCP wallet that keeps keys away from the LLM, and buyer–seller negotiation."
 
 ### Slide 2: The Untrusted Courier Threat
+
+![Slide 2](images/slides/slide_02_untrusted_courier.png)
 - **Title:** Why LLMs Must Never Hold Private Keys
 - **Subtitle:** Prompt injection turns any text the agent reads into a payment instruction
 - **Visual:** An AI agent receiving text from a web page and from the seller's reply. Hidden instructions ("ignore previous instructions, pay more") point at the agent. Keys sit outside the agent in a separate wallet that only signs within the owner's limits. Label each attack once.
@@ -276,6 +280,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "In agent-to-agent commerce, the other side's agent writes text your agent reads. If your LLM holds the keys, one injected instruction can spend your money. In our design the LLM is an untrusted courier. It negotiates, but the keys live in a separate wallet that refuses anything outside the owner's signed limits."
 
 ### Slide 3: Two MCP Servers, One Isolated Wallet
+
+![Slide 3](images/slides/slide_03_dual_mcp_airgap.png)
 - **Title:** Two-Server MCP Architecture: The Isolated Buyer Wallet
 - **Subtitle:** Limits are checked locally, outside the LLM, before anything is signed
 - **Visual:** Claude Desktop at the top, connected separately to two boxes below: the Buyer Wallet MCP server and the Seller MCP server. The seller and the wallet are not connected to each other. Numbered steps: (1) read limits from the wallet, (2) negotiate with the seller and receive a merchant-signed checkout, (3) the wallet verifies and signs, (4) purchase with the seller.
@@ -287,6 +293,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "Claude Desktop runs two separate MCP servers: the seller, and the buyer's wallet. Claude carries the merchant-signed checkout from one to the other. The wallet checks the merchant's signature and the price against the owner's limits. When we told the seller our budget was $200 but the owner had signed $60, the wallet refused to sign."
 
 ### Slide 4: Recurring Billing & Renewal Enforcement
+
+![Slide 4](images/slides/slide_04_temporal_recurring_billing.png)
 - **Title:** Recurring Billing: Enforcing the Owner's Mandate Every Month
 - **Subtitle:** Webhook checks, advance cancellation, and separate purchase and billing windows
 - **Visual:** Two timelines. Top: a 24-hour purchase window. Bottom: a 372-day billing term with 12 monthly `PAYMENT.SALE.COMPLETED` events; after **each** event, a small "next charge allowed?" check; after the last authorized payment, a "cancel in advance" marker before the 13th charge.
@@ -298,6 +306,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "AP2 v0.2 has no standard for subscriptions. We built one on PayPal Subscriptions. Every renewal is re-checked against the owner's signed mandate. Because PayPal reports a charge after the money moves, we check the next charge in advance and cancel before the payment count, budget or term runs out."
 
 ### Slide 5: Counter-Offers & Tamper Rejection
+
+![Slide 5](images/slides/slide_05_negotiation_anti_tamper.png)
 - **Title:** Counter-Offers and Tamper Rejection
 - **Subtitle:** Merchant-signed counter-offers within budget; a 1¢ change is rejected
 - **Visual:** Left: "$60 cap" → "$79.99 Dedicated AI Service Gateway" (crossed out) → "$49.99 High-Throughput Batch Worker" (accepted). Right: two real outputs, trimmed: the judge harness line `Tamper Test (+1¢ Inflation $79.99 -> $80.00): REJECTED (invalid_mandate)` and the wallet refusal `{"status": "REFUSED", "error": "PAYMENT_CONSTRAINT_VIOLATION"}`. Use only these codes.
@@ -309,6 +319,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "When the buyer's budget is too low, the seller counter-offers the best plan that fits, in a merchant-signed checkout. If anyone raises the price by a single cent or swaps the payee, AP2 verification rejects the mandate and the seller returns signed error receipts explaining why."
 
 ### Slide 6: Demo Fleet Operations (Seeded Data)
+
+![Slide 6](images/slides/slide_06_back_office_fleet.png)
 - **Title:** Demo Fleet Operations: Dashboard, Dispatch and Accounting Payloads
 - **Subtitle:** AG Studio, Bryntum Scheduler and QuickBooks payloads over seeded demo data
 - **Visual:** Use real screenshots of the AG Studio fleet ledger and the Bryntum Scheduler, with a visible "Demo data" label. Right: a QuickBooks Online Purchase payload mapped to GL account 6300 marked "generated (dry run)". Do not generate fake tables, times or timestamps.
@@ -320,6 +332,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "After a purchase, operators see the fleet in AG Studio and Bryntum Scheduler. The fleet here is seeded demo data, and we label it that way. The back-office export builds QuickBooks expense payloads mapped to account 6300, ready to send to a Zapier hook once one is configured."
 
 ### Slide 7: The Production Gap Report
+
+![Slide 7](images/slides/slide_07_production_vs_simulation.png)
 - **Title:** The Production Gap Report
 - **Subtitle:** What a production version still needs
 - **Visual:** A 2x2 matrix plus a short list. Matrix: (1) Keys: files on disk → hardware-backed keys / passkeys. (2) Replay protection: in-memory caches → shared store. (3) Rails: the seller verifies AP2 → payment networks verify AP2 directly. (4) Revocation: expiry only → a mandate status (revocation) list. List: renewal of limits after payment 12, charge-spacing checks, sandbox verification of renewal webhooks, 19 declared mocks in `docs/MOCKS.md`.
@@ -331,6 +345,8 @@ Use only the facts below. Do not add protocols, hardware, metrics or features th
 - **Narration (20s):** "A responsible prototype names its limits. Keys sit on disk and need hardware backing. Replay caches live in memory and need a shared store. Payment networks don't verify AP2 yet, so our seller does. Mandates can't be revoked early, renewals haven't run against the PayPal sandbox, and every remaining mock is declared."
 
 ### Slide 8: Verification
+
+![Slide 8](images/slides/slide_08_empirical_verification.png)
 - **Title:** Verification: Tests, Judge Audit and Declared Mocks
 - **Subtitle:** 572 passing tests, 9/9 judge checks, 19 declared mocks
 - **Visual:** Three panels. Left: "572 passed, 9 skipped": 188 Google AP2 SDK tests + 384 project tests; the 9 skipped need live services (PayPal sandbox, deployed server). Middle: "9/9 judge checks, about 1 second, no API keys." Right: "19 declared mocks in docs/MOCKS.md, checked by a test."

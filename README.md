@@ -64,6 +64,9 @@ python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway
 By default this is a scripted, offline buyer (M-015). Pass `--provider` and `--model` to drive it with a real LLM.
 
 ### 4. Buy with a Desktop AI Agent (Seller MCP + Isolated Wallet MCP)
+
+![Dual-MCP Process Boundary Airgap](docs/images/slides/slide_03_dual_mcp_airgap.png)
+
 Claude Desktop runs two MCP servers side by side: the seller (`backend.mcp_server`) and the buyer's wallet (`backend.wallet.mcp_server`). The agent negotiates with the seller, asks the wallet to sign, and hands the signed AP2 v0.2 mandate chains back to the seller. The seller and the wallet never talk to each other directly.
 
 The agent is an **untrusted courier** and never sees private keys. The wallet signs only checkouts that fit the owner's signed limits, even if the agent is talked into claiming a larger budget.
@@ -85,6 +88,8 @@ This flow has been verified by launching both servers exactly as the generated c
 ---
 
 ## 1. Executive Summary: AP2 v0.2 and What Comes Next
+
+![AP2 Autonomous Commerce Architecture Overview](docs/images/slides/slide_01_cryptographic_foundations.png)
 
 AP2 v0.2 defines open and closed Checkout and Payment Mandates as SD-JWTs signed with ES256, for both Human Present and Human Not Present flows. Google donated AP2 to the FIDO Alliance in April 2026. AP2 Autonomous Commerce implements v0.2 with Google's SDK vendored in `backend/vendor/ap2/` (two documented fixes, listed in its `NOTICE`) and extends it where v0.2 stops.
 
@@ -129,6 +134,8 @@ The following architectural walkthrough details the 8 foundational pillars of th
 ### Slide 1: Cryptographic Foundations of Autonomous Commerce
 **Grounding FIDO AP2 v0.2 for Infrastructure Procurement**
 
+![Slide 1: Cryptographic Foundations of Autonomous Commerce](docs/images/slides/slide_01_cryptographic_foundations.png)
+
 The system is built strictly on Google's **Agent Payments Protocol (AP2) v0.2**, donated to the **FIDO Alliance in April 2026**, eliminating four critical failure modes inherent to autonomous AI infrastructure procurement:
 1. **Untrusted Courier:** LLM private key exposure and prompt injection attacks.
 2. **Recurring Blind Spot:** Lack of renewal lifecycle enforcement and post-facto verification.
@@ -165,6 +172,8 @@ The system is built strictly on Google's **Agent Payments Protocol (AP2) v0.2**,
 ### Slide 2: The Untrusted Courier Threat Model
 **Cryptographic Isolation of Signing Keys from AI Reasoning**
 
+![Slide 2: The Untrusted Courier Threat Model](docs/images/slides/slide_02_untrusted_courier.png)
+
 Granting an LLM direct access to private execution keys creates an unpatchable attack surface: adversarial prompt injections, model steering, or payment hallucinations can bypass semantic guardrails to extract keys or authorize unconstrained fund drainage. Under our zero-trust threat model, the AI Agent is fundamentally treated as an **untrusted courier**.
 
 ```
@@ -200,6 +209,8 @@ Granting an LLM direct access to private execution keys creates an unpatchable a
 ### Slide 3: Enforcing Zero-Trust with the Dual-MCP Airgap
 **Process Boundary Isolation Between Seller and Wallet MCP Servers**
 
+![Slide 3: Enforcing Zero-Trust with the Dual-MCP Airgap](docs/images/slides/slide_03_dual_mcp_airgap.png)
+
 The runtime environment enforces an OS-level airgap by splitting procurement capabilities across two separate Model Context Protocol (MCP) servers communicating over JSON-RPC 2.0:
 
 ```
@@ -233,6 +244,8 @@ The runtime environment enforces an OS-level airgap by splitting procurement cap
 
 ### Slide 4: Closing Temporal Vulnerabilities in Recurring Billing
 **Lifecycle Re-Verification & Predictive Advance Cancellation**
+
+![Slide 4: Closing Temporal Vulnerabilities in Recurring Billing](docs/images/slides/slide_04_temporal_recurring_billing.png)
 
 AP2 v0.2 specifies an `AgentRecurrence` constraint but lacks an active execution and renewal lifecycle. We integrate PayPal Subscriptions with automated cryptographic re-verification and advance cancellation to close this temporal vulnerability:
 
@@ -269,6 +282,8 @@ AP2 v0.2 specifies an `AgentRecurrence` constraint but lacks an active execution
 
 ### Slide 5: Constraining Autonomy via Negotiation & Anti-Tamper Logic
 **Sub-Budget Counter-Offers and Cryptographic Anti-Tamper Invariants**
+
+![Slide 5: Constraining Autonomy via Negotiation & Anti-Tamper Logic](docs/images/slides/slide_05_negotiation_anti_tamper.png)
 
 Autonomous procurement must be flexible enough to handle catalog variations while strictly enforcing cryptographic anti-tamper invariants:
 
@@ -313,6 +328,8 @@ Autonomous procurement must be flexible enough to handle catalog variations whil
 ### Slide 6: Bridging Autonomy to Back-Office Reality
 **High-Density Fleet Ledger, Workload Scheduling, and ERP Ingestion**
 
+![Slide 6: Bridging Autonomy to Back-Office Reality](docs/images/slides/slide_06_back_office_fleet.png)
+
 Autonomous procurement cannot exist in a vacuum; every agent transaction must seamlessly integrate into enterprise operations, visual telemetry, and accounting pipelines:
 
 ```
@@ -350,6 +367,8 @@ Autonomous procurement cannot exist in a vacuum; every agent transaction must se
 ### Slide 7: Transparent Boundaries Between Production & Simulation
 **Cryptographic Rigor vs. Seeded UI Presentation Layers**
 
+![Slide 7: Transparent Boundaries Between Production & Simulation](docs/images/slides/slide_07_production_vs_simulation.png)
+
 To maintain absolute security auditability, the codebase enforces strict demarcation between core cryptographic verification code and visual presentation simulation layers:
 
 ```
@@ -380,6 +399,8 @@ To maintain absolute security auditability, the codebase enforces strict demarca
 
 ### Slide 8: Empirical Verification of Cryptographic Constraints
 **Comprehensive Test Coverage and Sub-Second Invariant Auditing**
+
+![Slide 8: Empirical Verification of Cryptographic Constraints](docs/images/slides/slide_08_empirical_verification.png)
 
 The system's zero-trust guarantees and architectural boundaries are validated continuously through rigorous empirical testing:
 
@@ -434,6 +455,8 @@ The system's zero-trust guarantees and architectural boundaries are validated co
 ---
 
 ## 5. What's Simulated
+
+![Production vs Simulation Demarcation](docs/images/slides/slide_07_production_vs_simulation.png)
 
 Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (23 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
 

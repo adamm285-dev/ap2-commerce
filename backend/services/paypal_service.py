@@ -39,9 +39,7 @@ class PayPalService:
         self.base_url = settings.paypal_base_url
         self.client_id = settings.paypal_client_id
         self.client_secret = settings.paypal_client_secret
-        self.mock_mode = (
-            settings.mock_external_apis or not self.client_id or not self.client_secret
-        )
+        self.mock_mode = bool(settings.mock_external_apis)
         self._cached_token: Optional[str] = None
         self._token_expires_at: Optional[datetime.datetime] = None
         self._mock_subscriptions: Dict[str, Dict[str, Any]] = {}

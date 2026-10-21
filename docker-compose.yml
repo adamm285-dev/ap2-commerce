@@ -11,7 +11,10 @@ services:
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8001
-      - MOCK_EXTERNAL_APIS=true
+      - MOCK_EXTERNAL_APIS=${MOCK_EXTERNAL_APIS:-true}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID:-}
+      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET:-}
+      - PAYPAL_WEBHOOK_ID=${PAYPAL_WEBHOOK_ID:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s

@@ -76,10 +76,11 @@ def _dict_factory(cursor: sqlite3.Cursor, row: Tuple[Any, ...]) -> Dict[str, Any
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
-def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
+def get_connection(db_path: Optional[Path] = None, _skip_mode_check: bool = False) -> sqlite3.Connection:
     """
     Creates and configures a thread-safe connection to the SQLite database.
-    Enforces WAL journal mode, 5000ms busy timeout, and dictionary row factory.
+    Enforces WAL journal mode, 5000ms busy timeout, dictionary row factory,
+    and cross-process MOCK_EXTERNAL_APIS agreement on shared A2A_DB_PATH.
     """
     target = db_path or get_db_path()
     if str(target) == ":memory:":
@@ -94,15 +95,46 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
+
+    if not _skip_mode_check and str(target) != ":memory:":
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT meta_value, owner_pid FROM db_runtime_meta WHERE meta_key = 'mock_external_apis'"
+            )
+            row = cur.fetchone()
+            if row is not None:
+                current_mode = "true" if bool(getattr(settings, "mock_external_apis", False)) else "false"
+                if int(row["owner_pid"]) != os.getpid() and row["meta_value"] != current_mode:
+                    msg = (
+                        f"[DB MODE CONFLICT] Database at '{target}' is bound to "
+                        f"MOCK_EXTERNAL_APIS={row['meta_value']}, but this process has "
+                        f"MOCK_EXTERNAL_APIS={current_mode}. Processes sharing A2A_DB_PATH "
+                        f"must not disagree about MOCK_EXTERNAL_APIS."
+                    )
+                    logger.critical(msg)
+                    conn.close()
+                    raise SystemExit(msg)
+        except sqlite3.OperationalError:
+            pass
+
     return conn
 
 
 def init_db(db_path: Optional[Path] = None) -> None:
     """Initializes all database tables, indexes, and default key seeds."""
-    conn = get_connection(db_path)
+    target = db_path or get_db_path()
+    conn = get_connection(db_path, _skip_mode_check=True)
     try:
         with conn:
             conn.executescript("""
+            CREATE TABLE IF NOT EXISTS db_runtime_meta (
+                meta_key TEXT PRIMARY KEY,
+                meta_value TEXT NOT NULL,
+                owner_pid INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS subscriptions (
                 subscription_id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
@@ -354,6 +386,28 @@ def init_db(db_path: Optional[Path] = None) -> None:
             """)
 
             cur = conn.cursor()
+            current_mode = "true" if bool(getattr(settings, "mock_external_apis", False)) else "false"
+            cur.execute("SELECT meta_value FROM db_runtime_meta WHERE meta_key = 'mock_external_apis'")
+            existing_meta = cur.fetchone()
+            now_iso_meta = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            if existing_meta is None:
+                cur.execute(
+                    """
+                    INSERT INTO db_runtime_meta (meta_key, meta_value, owner_pid, updated_at)
+                    VALUES ('mock_external_apis', ?, ?, ?)
+                    """,
+                    (current_mode, os.getpid(), now_iso_meta),
+                )
+            elif existing_meta["meta_value"] != current_mode:
+                msg = (
+                    f"[DB MODE CONFLICT] Database at '{target}' is bound to "
+                    f"MOCK_EXTERNAL_APIS={existing_meta['meta_value']}, but this process has "
+                    f"MOCK_EXTERNAL_APIS={current_mode}. Processes sharing A2A_DB_PATH "
+                    f"must not disagree about MOCK_EXTERNAL_APIS."
+                )
+                logger.critical(msg)
+                raise SystemExit(msg)
+
             # Safe schema migration: rename legacy columns in dispatch_slots if they exist
             cur.execute("PRAGMA table_info(dispatch_slots)")
             slot_cols = [row["name"] for row in cur.fetchall()]

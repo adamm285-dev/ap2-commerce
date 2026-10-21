@@ -78,7 +78,7 @@ export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps>
           yearly_budget_ceiling: yearlyCeiling,
           allowed_tiers: allowedTiers,
           validity_hours: validityHours,
-          human_confirmed: true,
+          human_confirmed: humanConfirmed,
         }),
       });
 

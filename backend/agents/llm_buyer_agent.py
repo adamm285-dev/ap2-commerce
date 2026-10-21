@@ -31,8 +31,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
-load_dotenv()
-
 # Ensure isolated temp DB in LLM buyer agent to protect development DB
 if not os.environ.get("A2A_DB_PATH"):
     _temp_buyer_db = os.path.join(tempfile.gettempdir(), f"a2a_llm_buyer_{os.getpid()}_{uuid.uuid4().hex[:8]}.db")
@@ -48,6 +46,11 @@ if not os.environ.get("A2A_DB_PATH"):
                 pass
 
     atexit.register(_cleanup_llm_buyer_temp_db)
+
+from ..config import settings
+
+if not os.environ.get("TESTING"):
+    load_dotenv()
 
 
 from jwcrypto.jwk import JWK
@@ -1119,12 +1122,9 @@ async def _main():
 
     limits_path = args.mandates_file
 
-    # If --mint-owner-limits or mandates file doesn't exist or default demo file, execute demo owner command in mock mode
-    should_mint = args.mint_owner_limits or not os.path.exists(limits_path)
-    if not should_mint and args.mandates_file == "owner_limits.json":
-        from ..config import settings
-        if settings.mock_external_apis:
-            should_mint = True
+    # Only mint owner limits when --mint-owner-limits is explicitly passed or the file does not exist yet.
+    # Never overwrite an existing owner_limits.json unless --mint-owner-limits was passed.
+    should_mint = bool(args.mint_owner_limits) or not os.path.exists(limits_path)
 
     if should_mint:
         print(f"\n[DEMO OWNER COMMAND] Minting human-authorized open mandates with demo owner key (mock mode only)...")

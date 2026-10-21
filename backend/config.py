@@ -1,6 +1,7 @@
 """
 Configuration settings for the AP2 Autonomous Commerce & Multi-Agent Backend.
-Loads environment variables safely from .env with fallback to mock mode when keys are omitted.
+Loads environment variables from process environment and .env, failing closed when
+MOCK_EXTERNAL_APIS is false and required PayPal credentials are missing.
 """
 
 import os
@@ -17,12 +18,67 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = ROOT_DIR / ".env"
 
 
+def _dotenv_declares_live_mode(env_path: Path) -> bool:
+    """Returns True only if the .env file itself explicitly sets MOCK_EXTERNAL_APIS=false."""
+    if not env_path.is_file():
+        return False
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            if k.strip() == "MOCK_EXTERNAL_APIS":
+                val = v.strip().strip("'\"").lower()
+                return val in ("false", "0", "no")
+    except OSError:
+        return False
+    return False
+
+
+def validate_live_mode_credentials(cfg: "Settings") -> None:
+    """
+    Enforces that when MOCK_EXTERNAL_APIS is false, PayPal credentials are present.
+    Never flips mock_external_apis back to True. Logs why and exits if a credential is missing.
+    """
+    if not cfg.mock_external_apis:
+        missing = []
+        if not (cfg.paypal_client_id and cfg.paypal_client_id.strip()):
+            missing.append("PAYPAL_CLIENT_ID")
+        if not (cfg.paypal_client_secret and cfg.paypal_client_secret.strip()):
+            missing.append("PAYPAL_CLIENT_SECRET")
+        if missing:
+            msg = (
+                f"[CONFIG] Refusing to start with MOCK_EXTERNAL_APIS=false: "
+                f"missing required PayPal credential(s): {', '.join(missing)}."
+            )
+            logger.critical(msg)
+            raise SystemExit(msg)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=ENV_PATH if ENV_PATH.exists() else None,
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    def __init__(self, **values: Any):
+        super().__init__(**values)
+        if not self.mock_external_apis and not _dotenv_declares_live_mode(ENV_PATH):
+            if (
+                "PAYPAL_CLIENT_ID" not in os.environ
+                and "paypal_client_id" not in values
+                and "PAYPAL_CLIENT_ID" not in values
+            ):
+                self.paypal_client_id = ""
+            if (
+                "PAYPAL_CLIENT_SECRET" not in os.environ
+                and "paypal_client_secret" not in values
+                and "PAYPAL_CLIENT_SECRET" not in values
+            ):
+                self.paypal_client_secret = ""
+        validate_live_mode_credentials(self)
 
     # App & Seller Name
     app_name: str = Field(default="AP2 Autonomous Commerce Node", alias="APP_NAME")
@@ -143,7 +199,3 @@ def get_db_path() -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "a2a_commerce.db"
 
-# Automatically force mock mode if required keys are missing
-# MOCK(M-001): mock mode switches on silently when PayPal keys are missing
-if not settings.paypal_client_id or not settings.paypal_client_secret:
-    settings.mock_external_apis = True

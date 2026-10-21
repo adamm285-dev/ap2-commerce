@@ -15,13 +15,9 @@ from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 import logging
-from ..config import settings, ENV_PATH
-import dotenv
+from ..config import settings
 
 logger = logging.getLogger("a2a_crypto")
-
-if ENV_PATH.exists():
-    dotenv.load_dotenv(ENV_PATH)
 
 # Environment-configurable secret / keys (Zero hardcoded secrets in tracked repository)
 _raw_secret = os.getenv("A2A_MANDATE_SECRET") or settings.a2a_mandate_secret

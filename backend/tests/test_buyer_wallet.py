@@ -1352,4 +1352,267 @@ async def test_seller_agent_dispatch_zapier_mcp_rejects_missing_or_demo_subscrip
     assert demo_paypal_res["error"] == "SUBSCRIPTION_NOT_FOUND"
 
 
+def test_package1_live_mode_without_paypal_secret_exits_before_serving(tmp_path):
+    """
+    Package 1: A process with MOCK_EXTERNAL_APIS=false and no PayPal secret
+    logs why and exits before it serves (never flips mock_external_apis to True).
+    """
+    # 1. Missing PAYPAL_CLIENT_SECRET (omitted from env)
+    env_no_secret = _subprocess_env(
+        tmp_path,
+        MOCK_EXTERNAL_APIS="false",
+        PAYPAL_CLIENT_ID="test-live-client-id",
+    )
+    env_no_secret.pop("PAYPAL_CLIENT_SECRET", None)
+    out1 = subprocess.run(
+        [sys.executable, "-m", "backend.server"],
+        cwd=str(tmp_path),
+        env=env_no_secret,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out1.returncode != 0
+    assert "MOCK_EXTERNAL_APIS=false" in out1.stderr
+    assert "PAYPAL_CLIENT_SECRET" in out1.stderr
+
+    # 2. Empty PAYPAL_CLIENT_SECRET="" on MCP server as well
+    env_empty_secret = _subprocess_env(
+        tmp_path,
+        MOCK_EXTERNAL_APIS="false",
+        PAYPAL_CLIENT_ID="test-live-client-id",
+        PAYPAL_CLIENT_SECRET="",
+    )
+    out2 = subprocess.run(
+        [sys.executable, "-m", "backend.mcp_server"],
+        cwd=str(tmp_path),
+        env=env_empty_secret,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out2.returncode != 0
+    assert "MOCK_EXTERNAL_APIS=false" in out2.stderr
+    assert "PAYPAL_CLIENT_SECRET" in out2.stderr
+
+
+def test_package1_live_process_refuses_sign_limits_copilot_purchase_and_deck_purchase(tmp_path):
+    """
+    Package 1: On a process started with MOCK_EXTERNAL_APIS=false (and PayPal credentials configured),
+    sign-limits, the copilot purchase ('yes'/'ok'), and deck-purchase all refuse without recording subscriptions.
+    """
+    live_db = tmp_path / "live_routes.db"
+    env_live = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(live_db),
+        MOCK_EXTERNAL_APIS="false",
+        PAYPAL_CLIENT_ID="live-client-id-123",
+        PAYPAL_CLIENT_SECRET="live-client-secret-456",
+    )
+    probe = (
+        "import json\n"
+        "from fastapi.testclient import TestClient\n"
+        "from backend.config import settings\n"
+        "from backend.server import app\n"
+        "from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS\n"
+        "assert settings.mock_external_apis is False\n"
+        "c = TestClient(app)\n"
+        "r_sign = c.post('/api/trusted-surface/sign-limits', json={\n"
+        "    'buyer_email': 'live@example.com', 'monthly_budget_cap': 80.0, 'human_confirmed': True\n"
+        "})\n"
+        "r_cop_yes = c.post('/api/seller-copilot/chat', json={'message': 'yes', 'budget_cap': 100.0})\n"
+        "r_cop_ok = c.post('/api/seller-copilot/chat', json={'message': 'ok', 'budget_cap': 100.0})\n"
+        "r_deck = c.post('/api/agent/deck-purchase', json={\n"
+        "    'tierId': 'ap2-gateway', 'agreedMonthlyRate': 79.99, 'buyerEmail': 'live@example.com'\n"
+        "})\n"
+        "print(json.dumps({\n"
+        "    'mock_external_apis': settings.mock_external_apis,\n"
+        "    'sign_status': r_sign.status_code,\n"
+        "    'cop_yes_phase': r_cop_yes.json().get('phase'),\n"
+        "    'cop_yes_exec': r_cop_yes.json().get('execution_result', {}).get('status'),\n"
+        "    'cop_ok_phase': r_cop_ok.json().get('phase'),\n"
+        "    'cop_ok_exec': r_cop_ok.json().get('execution_result', {}).get('status'),\n"
+        "    'deck_status': r_deck.status_code,\n"
+        "    'subscriptions_count': len(_COMPLETED_SUBSCRIPTIONS),\n"
+        "}))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=str(tmp_path),
+        env=env_live,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode == 0, out.stderr
+    res = json.loads(out.stdout.strip().splitlines()[-1])
+    assert res["mock_external_apis"] is False
+    assert res["sign_status"] == 404
+    assert res["cop_yes_phase"] == "REJECTED"
+    assert res["cop_yes_exec"] == "REJECTED"
+    assert res["cop_ok_phase"] == "REJECTED"
+    assert res["cop_ok_exec"] == "REJECTED"
+    assert res["deck_status"] == 404
+    assert res["subscriptions_count"] == 0
+
+
+def test_package1_existing_owner_limits_json_survives_cli_run_without_mint_flag(tmp_path):
+    """
+    Package 1: An existing owner_limits.json survives a python -m backend.agents.llm_buyer_agent
+    CLI run without --mint-owner-limits (even when the default filename owner_limits.json is used in mock mode).
+    """
+    from backend.services.trusted_surface_service import create_trusted_surface_open_mandates
+
+    limits_file = tmp_path / "owner_limits.json"
+    initial_limits = create_trusted_surface_open_mandates(
+        buyer_email="cli-preserve@example.com",
+        monthly_budget_cap=60.00,
+        allowed_tiers=["ap2-batch"],
+    )
+    initial_limits["custom_marker"] = "preserve-me-across-cli-run"
+    raw_before = json.dumps(initial_limits, indent=2)
+    limits_file.write_text(raw_before, encoding="utf-8")
+
+    env = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(tmp_path / "cli_run.db"),
+        MOCK_EXTERNAL_APIS="true",
+    )
+    # Run CLI in tmp_path using default --mandates-file owner_limits.json WITHOUT --mint-owner-limits
+    run1 = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "backend.agents.llm_buyer_agent",
+            "--email",
+            "cli-preserve@example.com",
+            "--budget",
+            "60",
+            "--tier",
+            "ap2-gateway",
+        ],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run1.returncode == 0, run1.stderr
+    assert limits_file.read_text(encoding="utf-8") == raw_before
+
+    # When --mint-owner-limits IS explicitly passed, owner_limits.json is newly minted
+    run2 = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "backend.agents.llm_buyer_agent",
+            "--email",
+            "cli-preserve@example.com",
+            "--budget",
+            "85",
+            "--tier",
+            "ap2-gateway",
+            "--mint-owner-limits",
+        ],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run2.returncode == 0, run2.stderr
+    updated = json.loads(limits_file.read_text(encoding="utf-8"))
+    assert "custom_marker" not in updated
+    assert updated["constraints"]["monthly_budget_cap_cents"] == 8500
+
+
+def test_package1_portal_and_claude_seller_cannot_disagree_on_flag_sharing_db(tmp_path):
+    """
+    Package 1: The portal process (backend.server) and the Claude seller (backend.mcp_server)
+    must not be able to disagree about MOCK_EXTERNAL_APIS while sharing A2A_DB_PATH.
+    """
+    shared_db = tmp_path / "shared_mode.db"
+
+    # 1. Claude seller initializes shared_db with MOCK_EXTERNAL_APIS=true
+    env_mock = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(shared_db),
+        MOCK_EXTERNAL_APIS="true",
+    )
+    seller_ok = subprocess.run(
+        [sys.executable, "-c", "import backend.mcp_server; print('OK')"],
+        cwd=str(tmp_path),
+        env=env_mock,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert seller_ok.returncode == 0, seller_ok.stderr
+
+    # 2. Portal process attempting to open the same A2A_DB_PATH with MOCK_EXTERNAL_APIS=false refuses to start
+    env_live = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(shared_db),
+        MOCK_EXTERNAL_APIS="false",
+        PAYPAL_CLIENT_ID="live-client-id-123",
+        PAYPAL_CLIENT_SECRET="live-client-secret-456",
+    )
+    portal_conflict = subprocess.run(
+        [sys.executable, "-c", "import backend.server"],
+        cwd=str(tmp_path),
+        env=env_live,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert portal_conflict.returncode != 0
+    assert "DB MODE CONFLICT" in portal_conflict.stderr
+
+    # 3. Conversely, if a database is initialized with MOCK_EXTERNAL_APIS=false,
+    #    the Claude seller with MOCK_EXTERNAL_APIS=true refuses to open it
+    shared_live_db = tmp_path / "shared_live.db"
+    env_live_init = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(shared_live_db),
+        MOCK_EXTERNAL_APIS="false",
+        PAYPAL_CLIENT_ID="live-client-id-123",
+        PAYPAL_CLIENT_SECRET="live-client-secret-456",
+    )
+    portal_ok = subprocess.run(
+        [sys.executable, "-c", "import backend.server; print('OK')"],
+        cwd=str(tmp_path),
+        env=env_live_init,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert portal_ok.returncode == 0, portal_ok.stderr
+
+    env_mock_conflict = _subprocess_env(
+        tmp_path,
+        A2A_DB_PATH=str(shared_live_db),
+        MOCK_EXTERNAL_APIS="true",
+    )
+    seller_conflict = subprocess.run(
+        [sys.executable, "-c", "import backend.mcp_server"],
+        cwd=str(tmp_path),
+        env=env_mock_conflict,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert seller_conflict.returncode != 0
+    assert "DB MODE CONFLICT" in seller_conflict.stderr
+
+
+def test_package1_portal_service_does_not_call_sign_limits():
+    """
+    Package 1: The portal negotiation service (src/services/paypalAgentService.ts)
+    must not call /api/trusted-surface/sign-limits on its own.
+    """
+    ts_source = (REPO_ROOT / "src" / "services" / "paypalAgentService.ts").read_text(encoding="utf-8")
+    assert "/api/trusted-surface/sign-limits" not in ts_source
+
+
+
 

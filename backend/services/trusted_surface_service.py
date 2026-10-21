@@ -90,7 +90,14 @@ def create_trusted_surface_open_mandates(
         raise ValueError("A valid buyer email is required for the Trusted Surface mandate.")
 
     # MOCK(M-005): falls back to server-held demo owner and agent keys
-    # Default to demo keys if not explicitly supplied (mock/test environments)
+    # Default to demo keys if not explicitly supplied (mock/test environments only)
+    if user_key is None or agent_key is None:
+        from ..config import settings
+        if not bool(getattr(settings, "mock_external_apis", False)):
+            raise PermissionError(
+                "Server-held demo owner/agent keys are unavailable when MOCK_EXTERNAL_APIS=false. "
+                "Provide explicit user_key and agent_key."
+            )
     actual_user_key = user_key or get_demo_user_key()
     actual_agent_key = agent_key or get_demo_agent_key()
 

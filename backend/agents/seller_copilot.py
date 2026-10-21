@@ -376,6 +376,30 @@ class SellerCopilot:
 
         protocol_trace: List[Dict[str, Any]] = []
 
+        if not bool(getattr(settings, "mock_external_apis", False)):
+            reason = (
+                "Outside mock mode, the copilot refuses to execute purchases; "
+                "purchases require a signed AP2 mandate chain from the buyer wallet."
+            )
+            return {
+                "status": "REJECTED",
+                "error": "MOCK_MODE_REQUIRED",
+                "reason": reason,
+                "protocol_trace": [
+                    {
+                        "step": 1,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "protocol": "AP2 Security Gate",
+                        "method": "copilot:execute_autonomous_a2a_cycle",
+                        "decision": "REJECTED",
+                        "budget_cap": self.budget_cap,
+                        "authorized_amount": 0.0,
+                        "remaining_budget": self.budget_cap,
+                        "reason": reason,
+                    }
+                ],
+            }
+
         # Step 1: Programmatic Spending Mandate Verification
         t1 = datetime.now(timezone.utc).isoformat()
         mandate_req = {

@@ -6,15 +6,9 @@ Every place where the code stands in for real behavior: simulated API responses,
 
 **Format.** One `### M-NNN: title` heading per entry, then four fields: `Where` (one or more backticked `path::symbol`), `What it fakes`, `Why`, and `To make it real`.
 
-**Retired IDs (never reuse):** M-013 (failing-open Vault capture, code deleted 2026-10-10), M-017 (frontend faked success when the backend was unreachable, fixed 2026-10-10; it now reports the failure), M-021 (back-office run log reported deliveries that didn't happen, fixed 2026-10-10; now builds from backend delivery status and headers).
+**Retired IDs (never reuse):** M-001 (mock mode switched on silently when PayPal keys were missing, fixed 2026-10-20; live mode now refuses to start without PayPal credentials), M-013 (failing-open Vault capture, code deleted 2026-10-10), M-017 (frontend faked success when the backend was unreachable, fixed 2026-10-10; it now reports the failure), M-021 (back-office run log reported deliveries that didn't happen, fixed 2026-10-10; now builds from backend delivery status and headers).
 
 ---
-
-### M-001: Mock mode turns itself on when PayPal keys are missing
-- **Where:** `backend/config.py::settings`
-- **What it fakes:** If `PAYPAL_CLIENT_ID` or `PAYPAL_CLIENT_SECRET` is empty, `MOCK_EXTERNAL_APIS` is forced to true, so every mock below activates even if you asked for live mode.
-- **Why:** Lets the app start with no credentials.
-- **To make it real:** In live deployments, refuse to start when live mode is requested and credentials are missing, instead of switching silently.
 
 ### M-002: PayPal REST calls are simulated in mock mode
 - **Where:** `backend/services/paypal_service.py::PayPalService.get_access_token`, `backend/services/paypal_service.py::PayPalService.get_sync_access_token`, `backend/services/paypal_service.py::PayPalService.stop_subscription`, `backend/services/paypal_service.py::PayPalService.create_order`, `backend/services/paypal_service.py::PayPalService.verify_subscription`, `backend/services/paypal_service.py::PayPalService.create_subscription`, `backend/services/paypal_service.py::PayPalService.create_payout_batch`, `backend/services/paypal_service.py::PayPalService.get_payout_batch`
@@ -41,9 +35,9 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Owner keys come only from the registry (enrolled via the challenge flow) and are held on the owner's device, ideally a passkey. Agents sign with their own key in their own process, as `backend/wallet/` does.
 
 ### M-006: The server signs owner limits for any caller (mock mode only)
-- **Where:** `backend/server.py::trusted_surface_sign_limits_endpoint`, `src/services/paypalAgentService.ts::evaluateAgentNegotiation`
-- **What it fakes:** The owner's signing surface. Any caller that sends `human_confirmed: true` gets owner-signed limits with any cap. The flag is not proof that a human confirmed, and the portal's negotiation step sends it hardcoded to true without asking anyone.
-- **Why:** Lets the portal UI demo "owner sets limits" without a passkey.
+- **Where:** `backend/server.py::trusted_surface_sign_limits_endpoint`
+- **What it fakes:** The owner's signing surface. Any caller that sends `human_confirmed: true` gets owner-signed limits with any cap. The flag is not cryptographic proof that a human confirmed.
+- **Why:** Lets the portal Trusted Surface modal demo "owner sets limits" without a passkey.
 - **To make it real:** The owner signs in the browser or on a phone (WebCrypto or passkey); the server only verifies. Live mode already returns 404 here.
 
 ### M-007: Deck purchase runs the whole purchase server-side (mock mode only)
@@ -120,7 +114,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 
 ### M-022: Default buyer keys seeded without challenge-response enrollment
 - **Where:** `backend/database.py::init_db`, `backend/services/crypto_mandate.py::REGISTERED_BUYER_KEYS`
-- **What it fakes:** Default buyer keys seeded directly into SQLite and the in-memory key registry without cryptographic challenge-response signature verification. Mock mode also switches on by itself when PayPal keys are missing (M-001), so a deployment without PayPal keys would trust these demo keys.
+- **What it fakes:** Default buyer keys seeded directly into SQLite and the in-memory key registry in mock mode (`MOCK_EXTERNAL_APIS=true`) without cryptographic challenge-response signature verification.
 - **Why:** Allows offline unit tests and mock demos to authenticate known buyer agents without interactive challenge enrollment.
 - **To make it real:** Require all buyer agents to complete the challenge-response registration flow (`/api/agent/keys/challenge` and `/api/agent/keys/register`) before their keys are trusted.
 

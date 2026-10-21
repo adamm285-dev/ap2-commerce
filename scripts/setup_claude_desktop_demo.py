@@ -210,10 +210,13 @@ def main() -> int:
     if os.name == "nt":
         backend_cmd = (
             f'$env:A2A_DB_PATH="{db_path}"; $env:AP2_MERCHANT_PRIVATE_KEY_FILE="{merchant_key_path}"; '
-            "python -m backend.server"
+            f'$env:MOCK_EXTERNAL_APIS="true"; python -m backend.server'
         )
     else:
-        backend_cmd = f'A2A_DB_PATH="{db_path}" AP2_MERCHANT_PRIVATE_KEY_FILE="{merchant_key_path}" python -m backend.server'
+        backend_cmd = (
+            f'A2A_DB_PATH="{db_path}" AP2_MERCHANT_PRIVATE_KEY_FILE="{merchant_key_path}" '
+            f'MOCK_EXTERNAL_APIS="true" python -m backend.server'
+        )
     print(
         "\nNext:\n"
         f"  - Copy both entries from {config_out.name} into Claude Desktop's claude_desktop_config.json\n"

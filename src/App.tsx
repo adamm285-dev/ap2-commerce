@@ -1601,7 +1601,7 @@ export function App() {
                     [AP2 Open Mandate Source]:{' '}
                     {negotiationResult.openMandateSource === 'trusted_surface'
                       ? 'Human-Signed via Trusted Surface (mandate.checkout.open.1 + mandate.payment.open.1)'
-                      : 'Server Auto-Signed Demo Fallback (M-006)'}
+                      : 'Not pre-signed (human owner must sign limits explicitly via Trusted Surface)'}
                   </div>
                   <div className="negotiation-line">[BuyerAgent]: Querying AP2 Seller MCP Catalog: {negotiationResult.sellerMcpEndpoint}</div>
                   <div className="negotiation-line">[SellerMCP]: Quoted Capability: {negotiationResult.requestedPlanName || negotiationResult.agreedPlanName} @ ${(negotiationResult.requestedMonthlyRate ?? negotiationResult.monthlyFee).toFixed(2)}/mo</div>

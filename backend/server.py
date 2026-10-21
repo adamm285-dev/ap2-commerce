@@ -1162,7 +1162,7 @@ async def execute_mock_deck_purchase(
     closes mandates via the buyer agent key, presents AP2 v0.2 chains to
     seller_agent.purchase_subscription, and provisions the compute node.
     """
-    if not getattr(settings, "mock_external_apis", True):
+    if not bool(getattr(settings, "mock_external_apis", False)):
         raise ValueError("Mock deck purchase is only available when MOCK_EXTERNAL_APIS=true.")
 
     from ap2.sdk.mandate import MandateClient
@@ -1303,7 +1303,7 @@ async def deck_purchase_endpoint(req: DeckPurchaseRequest):
     buyer agent key, presenting valid AP2 v0.2 chains to seller_agent.purchase_subscription.
     Only available when MOCK_EXTERNAL_APIS=true (AGENTS.md rule 5).
     """
-    if not getattr(settings, "mock_external_apis", True):
+    if not bool(getattr(settings, "mock_external_apis", False)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Deck purchase simulation is only available when MOCK_EXTERNAL_APIS=true.",

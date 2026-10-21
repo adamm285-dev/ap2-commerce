@@ -10,6 +10,7 @@ from backend.services.trusted_surface_service import create_trusted_surface_open
 from backend.services.ap2_keys import get_demo_agent_key, get_demo_user_key
 from backend.database import register_buyer_key
 from backend.services.ap2_service import AP2_MERCHANT_ID, AP2_MERCHANT_NAME, create_merchant_checkout
+from backend.services.mandate_evaluator import register_authorized_mandate
 from ap2.sdk.mandate import MandateClient
 from ap2.sdk.generated.checkout_mandate import CheckoutMandate
 from ap2.sdk.generated.payment_mandate import PaymentMandate
@@ -265,6 +266,78 @@ async def test_purchase_omitted_email_returns_rejected():
     assert res["status"] in ("REJECTED", "ACTIVE")
     if res["status"] == "REJECTED":
         assert res["error"] in ("BUYER_EMAIL_REQUIRED", "invalid_credential")
+
+
+@pytest.mark.asyncio
+async def test_purchase_refused_when_offer_and_chains_carry_no_email():
+    """purchase_subscription refuses with REJECTED and BUYER_EMAIL_REQUIRED before PayPal when offer and chains carry no email."""
+    owner_key = get_demo_user_key()
+    agent_key = get_demo_agent_key()
+    unique_kid = f"test-no-email-{uuid.uuid4().hex[:8]}"
+    owner_key.kid = unique_kid
+    # Key is registered without any contractor_email
+    register_buyer_key(
+        kid=unique_kid,
+        public_key_hex=owner_key.export_public(),
+        contractor_email=None,
+    )
+    limits = create_trusted_surface_open_mandates(
+        buyer_email="tmp@example.com",
+        monthly_budget_cap=100.0,
+        user_key=owner_key,
+        agent_key=agent_key,
+        allowed_tiers=["ap2-gateway"],
+    )
+    # Checkout created without contractor_email
+    chk = create_merchant_checkout(tier_id="ap2-gateway", monthly_price=79.99, contractor_email=None)
+    nonce = uuid.uuid4().hex
+    mc = MandateClient()
+    chk_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=chk["checkout_jwt"], checkout_hash=chk["checkout_hash"])],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+    pay_chain = mc.present(
+        holder_key=agent_key,
+        mandate_token=limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(vct="mandate.payment.1", transaction_id=chk["checkout_hash"], payment_amount=Amount(amount=7999, currency="USD"), payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME), payment_instrument=PaymentInstrument(type="vault", id="v1"))],
+        aud=AP2_MERCHANT_ID,
+        nonce=nonce,
+    )
+
+    # Offer recorded with no email
+    offer_id = f"offer-no-email-{uuid.uuid4().hex[:8]}"
+    register_authorized_mandate(
+        offer_id,
+        {
+            "offer_id": offer_id,
+            "tier_id": "ap2-gateway",
+            "monthly_budget_cap": 100.0,
+            "contractor_email": None,
+            "buyer_agent_id": "buyer-no-email-agent",
+            "checkout_hash": chk["checkout_hash"],
+        },
+    )
+
+    # Purchase with no email supplied by caller, neither offer nor chains carry email
+    res = await seller_agent.purchase_subscription(
+        tier_id="ap2-gateway",
+        agreed_monthly_rate=79.99,
+        offer_id=offer_id,
+        buyer_email=None,
+        contractor_email=None,
+        checkout_mandate_chain=chk_chain,
+        payment_mandate_chain=pay_chain,
+        checkout_jwt=chk["checkout_jwt"],
+        nonce=nonce,
+    )
+
+    assert res["status"] == "REJECTED"
+    assert res["error"] == "BUYER_EMAIL_REQUIRED"
+    assert "BUYER_EMAIL_REQUIRED" in res["reason"]
+    assert "subscription_id" not in res
 
 
 @pytest.mark.asyncio

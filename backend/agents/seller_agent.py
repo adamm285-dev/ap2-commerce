@@ -1315,7 +1315,22 @@ class SellerAgent:
             if auth_email and not contractor_email:
                 contractor_email = auth_email
 
-        norm_email = contractor_email.strip().lower() if contractor_email else None
+        if not contractor_email:
+            for k in (offer_id, mandate_proof_hash, checkout_hash):
+                if k:
+                    entry = get_authorized_mandate(k)
+                    if entry:
+                        e_email = (entry.get("contractor_email") or entry.get("buyer_email") or "").strip().lower()
+                        if e_email:
+                            contractor_email = e_email
+                            break
+
+        if not contractor_email or not str(contractor_email).strip():
+            desc = "BUYER_EMAIL_REQUIRED: contractor_email is required to complete purchase."
+            logger.warning(f"[SECURITY] {desc}")
+            return _reject_purchase(desc, "BUYER_EMAIL_REQUIRED")
+
+        norm_email = contractor_email.strip().lower()
         open_pay_hash = ap2_verify_res.get("open_payment_mandate_hash") or open_pay_hash
         lease_holder = acquire_purchase_lease(
             open_mandate_hash=open_pay_hash,
@@ -1456,6 +1471,10 @@ class SellerAgent:
                 desc = "MISSING_CHECKOUT_HASH: Verified checkout chain is missing checkout_hash required for PayPal idempotency."
                 logger.error(f"[SECURITY] {desc}")
                 return _reject_purchase(desc, ERR_INVALID_MANDATE)
+            if not contractor_email or not str(contractor_email).strip():
+                desc = "BUYER_EMAIL_REQUIRED: contractor_email is required to create PayPal subscription."
+                logger.error(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "BUYER_EMAIL_REQUIRED")
             paypal_request_id = f"ap2-sub-{str(checkout_hash).strip()[:32]}"
             try:
                 paypal_result = await paypal_service.create_subscription(

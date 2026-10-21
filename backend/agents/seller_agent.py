@@ -1439,9 +1439,20 @@ class SellerAgent:
                     "reason": "Mandate already redeemed; negotiate again.",
                     "message": "Purchase rejected: mandate already redeemed; negotiate again.",
                 }
-            cached_email = candidate_replay_sub.get("contractor_email") or candidate_replay_sub.get("buyer_email")
-            if contractor_email and cached_email and contractor_email.strip().lower() != cached_email.strip().lower():
-                reason = f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{cached_email}', cannot be redeemed by '{contractor_email}'."
+            cached_email = (candidate_replay_sub.get("contractor_email") or candidate_replay_sub.get("buyer_email") or "").strip().lower()
+            caller_email = (contractor_email or verified_buyer_email or "").strip().lower()
+            if cached_email:
+                if not caller_email or caller_email != cached_email:
+                    reason = f"IDENTITY_MISMATCH_DETECTED: Subscription belongs to '{cached_email}', cannot be accessed by '{caller_email or 'unspecified'}'."
+                    logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_SECURITY_BREACH",
+                        "reason": reason,
+                        "message": f"Purchase rejected: {reason}",
+                    }
+            if verified_buyer_email and cached_email and verified_buyer_email.strip().lower() != cached_email:
+                reason = f"IDENTITY_MISMATCH_DETECTED: Verified payment chain is signed for '{verified_buyer_email}', but subscription belongs to '{cached_email}'."
                 logger.warning(f"[SECURITY] Mandate verification failed: {reason}")
                 return {
                     "status": "REJECTED",
@@ -1449,7 +1460,13 @@ class SellerAgent:
                     "reason": reason,
                     "message": f"Purchase rejected: {reason}",
                 }
-            return {**candidate_replay_sub, "idempotent_replay": True}
+            replay_res = {**candidate_replay_sub, "idempotent_replay": True}
+            if c_status == "ACTIVE":
+                replay_res["approval_url"] = None
+                if "next_action" in replay_res and isinstance(replay_res["next_action"], dict):
+                    if replay_res["next_action"].get("action") == "approve_paypal_subscription":
+                        replay_res["next_action"]["approval_url"] = None
+            return replay_res
 
         if not mandate_proof_hash and offer_id:
             auth_entry_lookup = auth_lookup or get_authorized_mandate(offer_id)
@@ -1710,7 +1727,7 @@ class SellerAgent:
                 return _reject_purchase(desc, "PAYPAL_SUBSCRIPTION_ERROR")
 
             is_mock = bool(paypal_result.get("mock_mode")) if "mock_mode" in paypal_result else getattr(paypal_service, "mock_mode", False)
-            approval_url = paypal_result.get("approval_url")
+            approval_url = paypal_result.get("approval_url") if sub_status == "APPROVAL_PENDING" else None
             created_time = paypal_result.get("created_time") or (
                 datetime.datetime.now(datetime.timezone.utc).isoformat() if is_mock else None
             )
@@ -1726,11 +1743,14 @@ class SellerAgent:
             if is_mock and hateoas_links:
                 for link in hateoas_links:
                     link["simulated"] = True
-            if not approval_url and hateoas_links:
-                for link in hateoas_links:
-                    if link.get("rel") == "approve":
-                        approval_url = link.get("href")
-                        break
+            if sub_status == "APPROVAL_PENDING":
+                if not approval_url and hateoas_links:
+                    for link in hateoas_links:
+                        if link.get("rel") == "approve":
+                            approval_url = link.get("href")
+                            break
+            else:
+                hateoas_links = [l for l in hateoas_links if l.get("rel") != "approve"]
 
             # Mark old subscription as REPLACED (Plan Change Model)
             if old_sub_id and old_sub and old_sub_id != sub_id:
@@ -1997,8 +2017,8 @@ class SellerAgent:
                 "create_time": sub.get("create_time"),
                 "next_billing_time": sub.get("next_billing_time"),
                 "paypal_vault_status": sub.get("paypal_vault_status"),
-                "approval_url": sub.get("approval_url"),
-                "hateoas_links": sub.get("hateoas_links", []),
+                "approval_url": None,
+                "hateoas_links": [link for link in sub.get("hateoas_links", []) if isinstance(link, dict) and link.get("rel") != "approve"],
                 "renewal_receipts": renewal_receipts,
                 "mock_mode": paypal_service.mock_mode,
             }
@@ -2006,6 +2026,13 @@ class SellerAgent:
         # Query PayPal Sandbox API directly
         try:
             live_data = await paypal_service.verify_subscription(subscription_id)
+            if isinstance(live_data, dict):
+                live_data["approval_url"] = None
+                if "hateoas_links" in live_data and isinstance(live_data["hateoas_links"], list):
+                    live_data["hateoas_links"] = [
+                        l for l in live_data["hateoas_links"]
+                        if isinstance(l, dict) and l.get("rel") != "approve"
+                    ]
             return live_data
         except Exception as e:
             return {"error": "NOT_FOUND", "message": f"Subscription '{subscription_id}' not found: {e}"}
@@ -2053,6 +2080,16 @@ class SellerAgent:
                 "ap2_payment_challenge": build_ap2_payment_challenge(),
             }
 
+        owner_email = sub.get("buyer_email") or sub.get("contractor_email")
+        if not owner_email and isinstance(sub.get("subscriber"), dict):
+            owner_email = sub["subscriber"].get("email_address")
+        if owner_email and buyer_email and buyer_email.strip().lower() != owner_email.strip().lower():
+            return {
+                "status": "REJECTED",
+                "error": "IDENTITY_MISMATCH_DETECTED",
+                "reason": f"Subscription '{subscription_id}' belongs to '{owner_email}', cannot be provisioned for '{buyer_email}'.",
+            }
+
         sub_status = (sub.get("status") or "").upper()
         if sub_status == "APPROVAL_PENDING":
             return {
@@ -2084,16 +2121,6 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "US_DOMESTIC_ONLY",
                 "reason": f"Compute node provisioning is strictly restricted to US entities (found '{country}').",
-            }
-
-        owner_email = sub.get("buyer_email") or sub.get("contractor_email")
-        if not owner_email and isinstance(sub.get("subscriber"), dict):
-            owner_email = sub["subscriber"].get("email_address")
-        if owner_email and buyer_email.strip().lower() != owner_email.strip().lower():
-            return {
-                "status": "REJECTED",
-                "error": "IDENTITY_MISMATCH_DETECTED",
-                "reason": f"Subscription '{subscription_id}' belongs to '{owner_email}', cannot be provisioned for '{buyer_email}'.",
             }
 
         clean_sub = sub_key.replace("-", "").lower()
@@ -2238,7 +2265,12 @@ class SellerAgent:
             webhookUrl=webhook_url,
         )
         res = await zapier_mcp_dispatcher.execute_downline_sync(req)
-        return res.model_dump(by_alias=True)
+        dump = res.model_dump(by_alias=True)
+        # Redact HMAC signature headers from public tool output
+        for key in ("webhookHeaders", "webhook_headers"):
+            if key in dump and isinstance(dump[key], dict):
+                dump[key] = {k: v for k, v in dump[key].items() if k.lower() != "x-ap2-signature"}
+        return dump
 
 
 seller_agent = SellerAgent()

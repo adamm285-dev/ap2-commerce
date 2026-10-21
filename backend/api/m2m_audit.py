@@ -4,10 +4,12 @@ Caches and serves authentic ERP routing and QuickBooks Online API v3 payloads
 generated during Step 7 (dispatch_zapier_mcp) for 1-click judge inspection and verification.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, Any, Optional
+import hmac
 import json
 import logging
+from ..config import settings
 
 logger = logging.getLogger("m2m_audit")
 
@@ -15,6 +17,16 @@ router = APIRouter(prefix="/m2m", tags=["M2M Audit"])
 
 # Cache the latest run artifacts for 1-click judge inspection
 _LATEST_M2M_RUN: Dict[str, Any] = {}
+
+
+def _has_admin_key(request: Request) -> bool:
+    """True only when the request carries the configured ADMIN_API_KEY (X-Admin-Key or Bearer)."""
+    expected = (getattr(settings, "admin_api_key", None) or "").strip()
+    if not expected or expected == "dev-admin-secret-key":
+        return False
+    raw = request.headers.get("Authorization") or request.headers.get("X-Admin-Key") or ""
+    token = raw[7:].strip() if raw.startswith("Bearer ") else raw.strip()
+    return bool(token) and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 
 def record_m2m_artifacts(
@@ -49,11 +61,26 @@ def get_latest_artifacts() -> Dict[str, Any]:
 
 
 @router.get("/payloads/latest")
-async def get_latest_payloads() -> Dict[str, Any]:
+async def get_latest_payloads(request: Request) -> Dict[str, Any]:
     """Returns the latest M2M autonomous transaction artifacts for in-UI inspection."""
     if not _LATEST_M2M_RUN:
         raise HTTPException(
             status_code=404,
             detail="No M2M transaction executed yet. Run the Buyer Agent harness or approve Copilot proposal first.",
         )
-    return _LATEST_M2M_RUN
+    if _has_admin_key(request):
+        return _LATEST_M2M_RUN
+
+    # Mask sensitive webhook HMAC signature for non-admin callers
+    sanitized = dict(_LATEST_M2M_RUN)
+    sanitized["hmac_signature"] = None
+    if "webhook_meta" in sanitized and isinstance(sanitized["webhook_meta"], dict):
+        wm = dict(sanitized["webhook_meta"])
+        wm["signature"] = None
+        if "headers" in wm and isinstance(wm["headers"], dict):
+            hdrs = dict(wm["headers"])
+            hdrs.pop("X-AP2-Signature", None)
+            hdrs.pop("x-ap2-signature", None)
+            wm["headers"] = hdrs
+        sanitized["webhook_meta"] = wm
+    return sanitized

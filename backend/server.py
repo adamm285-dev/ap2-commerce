@@ -456,9 +456,12 @@ async def mcp_wire_stream(request: Request):
     Streams live Server-Sent Events (SSE) of raw JSON-RPC 2.0 frames
     exchanged between agents and the AP2 MCP Server.
     Emits the standard MCP 2024-11-05 discovery handshake: `event: endpoint\ndata: /mcp\n\n`.
+    Only authenticated admins receive the internal frame stream; public callers receive discovery and keepalive.
     """
+    is_admin = _has_admin_key(request)
+
     async def event_generator():
-        q = subscribe_wire_stream()
+        q = subscribe_wire_stream() if is_admin else None
         try:
             # 1. MCP Standard 2024-11-05 SSE discovery handshake event
             yield "event: endpoint\ndata: /mcp\n\n"
@@ -472,13 +475,18 @@ async def mcp_wire_stream(request: Request):
             yield f"data: {json.dumps(init_event)}\n\n"
 
             while True:
-                try:
-                    frame = await asyncio.wait_for(q.get(), timeout=15.0)
-                    yield f"data: {json.dumps(frame)}\n\n"
-                except asyncio.TimeoutError:
+                if q is not None:
+                    try:
+                        frame = await asyncio.wait_for(q.get(), timeout=15.0)
+                        yield f"data: {json.dumps(frame)}\n\n"
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                else:
+                    await asyncio.sleep(15.0)
                     yield ": keep-alive\n\n"
         finally:
-            unsubscribe_wire_stream(q)
+            if q is not None:
+                unsubscribe_wire_stream(q)
 
     return StreamingResponse(
         event_generator(),
@@ -493,8 +501,10 @@ async def mcp_wire_stream(request: Request):
 
 @app.get("/api/mcp/frames", tags=["MCP Wire Protocol"])
 @app.get("/m2m/frames", tags=["MCP Wire Protocol"])
-async def get_wire_frames():
+async def get_wire_frames(request: Request):
     """Returns the buffer of recent JSON-RPC 2.0 frames for packet inspection."""
+    if not _has_admin_key(request):
+        return {"frames": []}
     return {"frames": get_recent_wire_frames()}
 
 
@@ -607,7 +617,7 @@ async def get_jwks():
 
 @app.get("/api/receipts/{reference}", tags=["AP2 Mandates & Receipts"])
 @app.get("/api/agent/receipts/{reference}", tags=["AP2 Mandates & Receipts"])
-async def get_receipt_endpoint(reference: str, jwt: Optional[str] = None):
+async def get_receipt_endpoint(reference: str, request: Request, jwt: Optional[str] = None):
     """
     Retrieves or verifies an authentic AP2 v0.2 Checkout or Payment Receipt.
     Supports lookup by closed mandate reference or direct JWT signature verification.
@@ -622,6 +632,12 @@ async def get_receipt_endpoint(reference: str, jwt: Optional[str] = None):
     stored = get_stored_receipt(reference)
     if not stored:
         raise HTTPException(status_code=404, detail=f"No receipt found for reference '{reference}'.")
+    if not _has_admin_key(request):
+        if isinstance(stored, dict):
+            stored = {
+                k: v for k, v in stored.items()
+                if k not in ("receipt_jwt", "_receipt_jwt", "raw_jwt", "token")
+            }
     return {"verified": True, "reference": reference, "receipt": stored}
 
 
@@ -686,10 +702,12 @@ async def revoke_mandate_endpoint(req: RevokeMandateRequest, request: Request):
 
 
 @app.get("/api/mandates/revocations", tags=["Mandate Revocation"])
-async def list_revoked_mandates_endpoint(limit: int = Query(default=100, ge=1, le=1000)):
+async def list_revoked_mandates_endpoint(request: Request, limit: int = Query(default=100, ge=1, le=1000)):
     """Returns the cryptographic mandate revocation status list (SPEC-001 v1.9.0)."""
     from .database import list_revoked_mandates
     revocations = list_revoked_mandates(limit=limit)
+    if not _has_admin_key(request):
+        revocations = [{**r, "signature_hex": None} for r in revocations]
     return {
         "status": "success",
         "count": len(revocations),
@@ -698,7 +716,7 @@ async def list_revoked_mandates_endpoint(limit: int = Query(default=100, ge=1, l
 
 
 @app.get("/api/mandates/revocations/{mandate_hash}", tags=["Mandate Revocation"])
-async def get_mandate_revocation_endpoint(mandate_hash: str):
+async def get_mandate_revocation_endpoint(mandate_hash: str, request: Request):
     """Checks whether a specific mandate proof hash has been cryptographically revoked."""
     from .database import get_mandate_revocation
     rec = get_mandate_revocation(mandate_hash)
@@ -707,6 +725,9 @@ async def get_mandate_revocation_endpoint(mandate_hash: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"revoked": False, "message": f"Mandate '{mandate_hash}' is not in the revocation status list."},
         )
+    if not _has_admin_key(request):
+        rec = {**rec, "signature_hex": None}
+    return {"revoked": True, "revocation": rec}
     return {"revoked": True, "revocation": rec}
 
 
@@ -816,10 +837,12 @@ async def execute_batch_payout_endpoint(req: ExecuteBatchPayoutRequest, request:
 
 
 @app.get("/api/marketplace/payouts/batches", tags=["Marketplace Payouts"])
-async def list_payout_batches_endpoint(limit: int = Query(default=50, ge=1, le=500)):
+async def list_payout_batches_endpoint(request: Request, limit: int = Query(default=50, ge=1, le=500)):
     """Lists historical PayPal payout batches with gross, payout, and platform margin totals."""
     from .database import list_payout_batches
     batches = list_payout_batches(limit=limit)
+    if not _has_admin_key(request):
+        batches = [{**b, "raw_response_json": None} for b in batches]
     return {"status": "SUCCESS", "count": len(batches), "batches": batches}
 
 
@@ -836,7 +859,8 @@ async def get_payout_batch_endpoint(batch_id: str, request: Request):
             {**it, "receiver_email": _mask_email(it.get("receiver_email"))}
             for it in items
         ]
-        batch = {**batch, "items": masked_items}
+        batch = {**batch, "items": masked_items, "raw_response_json": None}
+    return {"status": "SUCCESS", "batch": batch}
     return {"status": "SUCCESS", "batch": batch}
 
 
@@ -1697,10 +1721,10 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     tags=["Autonomous Buyer Onboarding"],
 )
 async def list_registered_buyer_keys_endpoint(request: Request):
-    """Lists registered buyer agent keys. Contractor emails and entities are returned to admins only."""
+    """Lists registered buyer agent keys. Contractor emails, entities, and payer IDs are returned to admins only."""
     records = list_buyer_key_records()
     if not _has_admin_key(request):
-        records = [{**r, "contractor_email": None, "business_name": None} for r in records]
+        records = [{**r, "contractor_email": None, "business_name": None, "payer_id": None} for r in records]
     return BuyerKeyRegistryResponse(
         status="active",
         count=len(records),

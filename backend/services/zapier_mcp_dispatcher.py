@@ -36,14 +36,18 @@ class ZapierMcpDispatcher:
         target_webhook = request.webhook_url or self.webhook_export_url or ""
 
         if is_a2a:
-            # MOCK(M-012): demo fallback IDs (I-AUTONOMOUS-8902, HMAC-MANDATE-VERIFIED-01) when fields are omitted
+            # MOCK(M-012): demo fallback contractor, entity, and proof hash when fields are omitted
             contractor = request.contractor_name or "Demo Autonomous Buyer"
             entity = request.business_entity or "Demo Buyer Corp"
             fee = request.monthly_subscription_fee or 79.99
             did = request.allocated_did or "mcp+https://gateway-01.example.com/mcp"
-            sub_id = request.paypal_subscription_id or "I-AUTONOMOUS-8902"
+            if not request.paypal_subscription_id or not str(request.paypal_subscription_id).strip():
+                raise ValueError("paypal_subscription_id is required for downline sync.")
+            sub_id = str(request.paypal_subscription_id).strip()
             vertical = request.trade_vertical or "Dedicated AI Service Gateway"
-            email = request.contractor_email or "agent-alpha@example.com"
+            if not request.contractor_email or not str(request.contractor_email).strip():
+                raise ValueError("contractor_email is required for downline sync.")
+            email = str(request.contractor_email).strip()
             proof_hash = request.mandate_proof_hash or "HMAC-MANDATE-VERIFIED-01"
 
             erp_pkg = {"status": "SKIPPED", "service": "QBO_ONLY"}

@@ -1100,26 +1100,6 @@ async def provision_line_endpoint(request: ProvisionRequest):
             headers=headers,
         )
 
-    # Automatic post-provisioning downline dispatch via Zapier MCP (ERP Dispatch + QBO v3)
-    next_action = res.get("next_action")
-    if next_action and next_action.get("tool") == "dispatch_zapier_mcp":
-        params = next_action.get("parameters", {})
-        zapier_req = ZapierSyncRequest(
-            workflowType=params.get("workflow_type", "a2a_onboarding"),
-            contractorName=params.get("contractor_name", "Demo Autonomous Buyer"),
-            businessEntity=params.get("business_entity", "Demo Buyer Corp"),
-            allocatedDid=params.get("allocated_did", res.get("assigned_did")),
-            tradeVertical=params.get("trade_vertical", "Autonomous Compute & Worker Nodes"),
-            monthlySubscriptionFee=params.get("monthly_subscription_fee", 49.99),
-            paypalSubscriptionId=params.get("paypal_subscription_id", request.subscription_id),
-            contractorEmail=params.get("contractor_email", request.contractor_email),
-            mandateProofHash=params.get("mandate_proof_hash"),
-        )
-        try:
-            await zapier_mcp_dispatcher.execute_downline_sync(zapier_req)
-        except Exception as e:
-            logger.warning(f"Automatic downline Zapier MCP dispatch failed: {e}")
-
     return ProvisionResponse(**res)
 
 

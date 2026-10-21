@@ -117,10 +117,6 @@ ALLOWED_BUYER_TOOLS = {
     "inspect_subscription_tiers",
     "negotiate_tier_terms",
     "evaluate_spending_mandate",
-    "purchase_subscription",
-    "provision_compute_node",
-    "dispatch_zapier_mcp",
-    "get_subscription_details",
     "sign_and_purchase",
 }
 
@@ -288,19 +284,10 @@ class StubbedModelRunner(BaseModelRunner):
                 sub_id = tool_result.get("subscription_id")
                 status = tool_result.get("status")
                 if status == "ACTIVE" and sub_id:
-                    ctx = messages[0].get("context", {})
-                    tier_id = ctx.get("target_tier", "ap2-gateway")
-                    node_type = "gateway" if "gateway" in tier_id else ("batch" if "batch" in tier_id else "cluster")
                     return {
-                        "thought": f"Subscription {sub_id} activated! Now provisioning dedicated compute node.",
-                        "action": "call_tool",
-                        "tool_name": "provision_compute_node",
-                        "tool_call_id": f"call_provision_{uuid.uuid4().hex[:8]}",
-                        "parameters": {
-                            "subscription_id": sub_id,
-                            "buyer_email": ctx.get("buyer_email", "agent-alpha@example.com"),
-                            "node_type": node_type,
-                        },
+                        "thought": f"Subscription {sub_id} activated! AP2 procurement cycle complete.",
+                        "action": "finish",
+                        "content": f"Successfully procured and provisioned AP2 autonomous compute subscription: {sub_id} (PROVISIONED)",
                     }
                 else:
                     return {
@@ -674,8 +661,8 @@ class LLMBuyerAgent:
             }
         ]
 
-        # Prepare tools list: seller MCP tools plus sign_and_purchase tool schema
-        mcp_tools = list(seller_agent.list_mcp_tools())
+        # Prepare tools list: seller MCP tools in allowlist plus sign_and_purchase tool schema
+        mcp_tools = [t for t in seller_agent.list_mcp_tools() if t.get("name") in ALLOWED_BUYER_TOOLS]
         all_tools = mcp_tools + [SIGN_AND_PURCHASE_TOOL]
 
         active = True

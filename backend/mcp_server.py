@@ -119,8 +119,11 @@ class InvalidParams(ValueError):
     """Raised for tool arguments that fail validation (JSON-RPC -32602)."""
 
 
-def _rpc_error(req_id: Any, code: int, message: str) -> Dict[str, Any]:
-    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+def _rpc_error(req_id: Any, code: int, message: str, data: Optional[Any] = None) -> Dict[str, Any]:
+    err: Dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        err["data"] = data
+    return {"jsonrpc": "2.0", "id": req_id, "error": err}
 
 
 def _num(arguments: Dict[str, Any], key: str, default: Any = None, minimum: float = 0.0) -> Optional[float]:
@@ -463,10 +466,20 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             }
 
         except InvalidParams as e:
-            return _rpc_error(req_id, -32602, f"Invalid params: {e}")
+            return _rpc_error(
+                req_id,
+                -32602,
+                f"Invalid params: {e}",
+                data={"status": "REJECTED", "error": "VALIDATION_ERROR", "reason": str(e)},
+            )
         except ValidationError as e:
             fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in e.errors())
-            return _rpc_error(req_id, -32602, f"Invalid params: {fields}")
+            return _rpc_error(
+                req_id,
+                -32602,
+                f"Invalid params: {fields}",
+                data={"status": "REJECTED", "error": "VALIDATION_ERROR", "reason": fields},
+            )
         except Exception as e:
             logger.error(f"[MCP] Error executing tool '{tool_name}': {e}", exc_info=True)
             return _rpc_error(req_id, -32603, "Internal error: tool execution failed.")

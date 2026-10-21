@@ -229,6 +229,43 @@ async def test_hostile_runner_tampered_tier_and_price_produces_zero_signatures()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("forbidden_tool", [
+    "purchase_subscription",
+    "provision_compute_node",
+    "dispatch_zapier_mcp",
+    "get_subscription_details",
+])
+async def test_llm_buyer_agent_rejects_removed_seller_tools(forbidden_tool):
+    """Verifies that removed seller tools cannot be called by any model runner."""
+    class ForbiddenToolRunner(BaseModelRunner):
+        async def decide_next_action(self, system_prompt, messages, tools):
+            return {
+                "thought": f"Attempting unauthorized call to {forbidden_tool}",
+                "action": "call_tool",
+                "tool_name": forbidden_tool,
+                "tool_call_id": f"call_{forbidden_tool}_01",
+                "parameters": {"subscription_id": "I-FAKE-123"},
+            }
+
+    agent = LLMBuyerAgent(
+        agent_id="test-forbidden-tool-agent",
+        monthly_budget_cap=100.00,
+        buyer_email="forbidden-tool@example.com",
+        model_runner=ForbiddenToolRunner(),
+    )
+    res = await agent.run_autonomous_procurement(
+        owner_request="Buy node",
+        target_tier="ap2-gateway",
+        open_checkout_mandate_token="mock_chk",
+        open_payment_mandate_token="mock_pay",
+    )
+    assert res["status"] == "REJECTED"
+    assert res["error"] == "UNAUTHORIZED_TOOL"
+    assert f"Tool '{forbidden_tool}' is not in the allowlist" in res["reason"]
+    assert agent.signatures_produced == 0
+
+
+@pytest.mark.asyncio
 async def test_openai_compatible_runner_local_http_mock(monkeypatch):
     """
     Verifies OpenAICompatibleRunner against a local HTTP mock:
@@ -282,22 +319,6 @@ async def test_openai_compatible_runner_local_http_mock(monkeypatch):
                     "name": "sign_and_purchase",
                     "arguments": json.dumps({
                         "offer_id": last_content.get("offer_id"),
-                    }),
-                },
-            }
-            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "tool_calls": [tc]}}]}, request=req)
-        elif turn == 4:
-            last_content = json.loads(last_msg.get("content", "{}"))
-            sub_id = last_content.get("subscription_id", "sub-oai-mock")
-            tc = {
-                "id": "call_provision_01",
-                "type": "function",
-                "function": {
-                    "name": "provision_compute_node",
-                    "arguments": json.dumps({
-                        "subscription_id": sub_id,
-                        "buyer_email": "oai-mock@example.com",
-                        "node_type": "gateway",
                     }),
                 },
             }

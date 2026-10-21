@@ -172,7 +172,7 @@ class DispatchLockResponse(BaseModel):
 
 
 # --- Zapier MCP & Back-Office Export Models ---
-# MOCK(M-012): default demo values (including I-AUTONOMOUS-8902) for omitted ZapierSyncRequest fields
+# MOCK(M-012): default demo contractor and entity values for omitted ZapierSyncRequest fields
 class ZapierSyncRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -191,7 +191,7 @@ class ZapierSyncRequest(BaseModel):
         default=79.99,
         alias="paymentAmount",
     )
-    paypal_txn_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalTxnId")
+    paypal_txn_id: Optional[str] = Field(default=None, alias="paypalTxnId")
 
     # A2A Contractor Onboarding specific attributes
     contractor_name: Optional[str] = Field(default="Acme Compute Co", alias="contractorName")
@@ -199,8 +199,8 @@ class ZapierSyncRequest(BaseModel):
     allocated_did: Optional[str] = Field(default="mcp+https://gateway-01.example.com/agents/gateway", alias="allocatedDid")
     trade_vertical: Optional[str] = Field(default="Dedicated AI Service Gateway", alias="tradeVertical")
     monthly_subscription_fee: Optional[float] = Field(default=79.99, alias="monthlySubscriptionFee")
-    paypal_subscription_id: Optional[str] = Field(default="I-AUTONOMOUS-8902", alias="paypalSubscriptionId")
-    contractor_email: Optional[str] = Field(default="agent@example.com", alias="contractorEmail")
+    paypal_subscription_id: Optional[str] = Field(default=None, alias="paypalSubscriptionId")
+    contractor_email: Optional[str] = Field(default=None, alias="contractorEmail")
     mandate_proof_hash: Optional[str] = Field(default=None, alias="mandateProofHash")
     webhook_url: Optional[str] = Field(default=None, alias="webhookUrl")
     dry_run: Optional[bool] = Field(default=True, alias="dryRun")

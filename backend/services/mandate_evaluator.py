@@ -100,13 +100,22 @@ def get_authorized_mandate(key: str) -> Optional[Dict[str, Any]]:
 
 def bind_mandate_email(proof_hash: str, contractor_email: str):
     """Locks a mandate that was issued without a contractor email to its first redeemer."""
+    if not proof_hash or not contractor_email:
+        return
+    email = contractor_email.strip().lower()
     auth = _AUTHORIZED_MANDATES.get(proof_hash)
-    if auth is not None and not auth.get("contractor_email"):
-        email = contractor_email.strip().lower()
-        auth["contractor_email"] = email
+    if auth is not None:
+        if not auth.get("contractor_email"):
+            auth["contractor_email"] = email
         offer_id = auth.get("offer_id")
-        if offer_id and offer_id in _AUTHORIZED_MANDATES:
+        if offer_id and offer_id in _AUTHORIZED_MANDATES and not _AUTHORIZED_MANDATES[offer_id].get("contractor_email"):
             _AUTHORIZED_MANDATES[offer_id]["contractor_email"] = email
+        ph = auth.get("mandate_proof_hash") or auth.get("proof_hash")
+        if ph and ph in _AUTHORIZED_MANDATES and not _AUTHORIZED_MANDATES[ph].get("contractor_email"):
+            _AUTHORIZED_MANDATES[ph]["contractor_email"] = email
+        ch = auth.get("checkout_hash")
+        if ch and ch in _AUTHORIZED_MANDATES and not _AUTHORIZED_MANDATES[ch].get("contractor_email"):
+            _AUTHORIZED_MANDATES[ch]["contractor_email"] = email
 
 
 def _intent_mandate_body(

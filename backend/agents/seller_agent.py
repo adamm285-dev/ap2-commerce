@@ -531,6 +531,36 @@ class SellerAgent:
         if category is None:
             category = "autonomous-node-service"
 
+        if not tier_id or not str(tier_id).strip():
+            return {
+                "status": "REJECTED",
+                "error": "TIER_ID_REQUIRED",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "reason": "tier_id is required.",
+            }
+
+        if monthly_budget_cap is None or not isinstance(monthly_budget_cap, (int, float)) or not math.isfinite(monthly_budget_cap) or monthly_budget_cap < 0:
+            return {
+                "status": "REJECTED",
+                "error": "BUDGET_CAP_REQUIRED",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "reason": "monthly_budget_cap is required and must be a finite number >= 0.",
+            }
+
+        if not buyer_agent_id or not str(buyer_agent_id).strip():
+            return {
+                "status": "REJECTED",
+                "error": "BUYER_AGENT_ID_REQUIRED",
+                "approved": False,
+                "original_request_approved": False,
+                "tier_id": tier_id,
+                "reason": "buyer_agent_id is required.",
+            }
+
         if not contractor_email and buyer_email:
             contractor_email = buyer_email
 
@@ -1029,9 +1059,6 @@ class SellerAgent:
         Cryptographically verifies the mandate proof against tier, rate, and buyer identity.
         Replayed requests return the identical, immutable subscription record (idempotency).
         """
-        if not contractor_email and buyer_email:
-            contractor_email = buyer_email
-
         verified_chk_receipt = None
         verified_pay_receipt = None
 
@@ -1061,16 +1088,60 @@ class SellerAgent:
                 "payment_receipt": err_pay_receipt,
             }
 
+        if not contractor_email and buyer_email:
+            contractor_email = buyer_email
+
         chk_jwt = checkout_jwt
         expected_nonce = kwargs.get("nonce")
         auth_lookup: Optional[Dict[str, Any]] = None
         if offer_id:
             auth_lookup = get_authorized_mandate(offer_id)
-            if auth_lookup:
-                if not chk_jwt:
-                    chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
-                if not expected_nonce:
-                    expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
+        if not auth_lookup and mandate_proof_hash:
+            auth_lookup = get_authorized_mandate(mandate_proof_hash)
+        if not auth_lookup and chk_jwt:
+            from ..services.ap2_service import compute_checkout_hash
+            c_hash = compute_checkout_hash(chk_jwt)
+            if c_hash:
+                auth_lookup = get_authorized_mandate(c_hash)
+
+        if auth_lookup:
+            if not chk_jwt:
+                chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
+            if not expected_nonce:
+                expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
+            auth_email = (auth_lookup.get("contractor_email") or auth_lookup.get("buyer_email") or "").strip().lower()
+            if auth_email:
+                if contractor_email and contractor_email.strip().lower() != auth_email:
+                    desc = (
+                        f"IDENTITY_MISMATCH_DETECTED: Offer is bound to '{auth_email}', "
+                        f"cannot be redeemed by '{contractor_email.strip().lower()}'."
+                    )
+                    logger.warning(f"[SECURITY] {desc}")
+                    ref = mandate_proof_hash or offer_id or "offer_mismatch"
+                    err_receipt = create_checkout_receipt_jwt(
+                        order_id=offer_id or "unknown_order",
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="MANDATE_SECURITY_BREACH",
+                        error_description=desc,
+                    )
+                    err_pay_receipt = create_payment_receipt_jwt(
+                        payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="MANDATE_SECURITY_BREACH",
+                        error_description=desc,
+                    )
+                    return {
+                        "status": "REJECTED",
+                        "error": "MANDATE_SECURITY_BREACH",
+                        "reason": desc,
+                        "message": f"Purchase rejected: {desc}",
+                        "checkout_receipt": err_receipt,
+                        "payment_receipt": err_pay_receipt,
+                    }
+                if not contractor_email:
+                    contractor_email = auth_email
 
         from ..services.ap2_service import (
             compute_open_payment_mandate_hash,
@@ -1366,8 +1437,13 @@ class SellerAgent:
                 )
 
             # Mandates issued without an email are locked to their first redeemer only after all budget checks pass
-            if mandate_proof_hash and contractor_email:
-                bind_mandate_email(mandate_proof_hash, contractor_email)
+            if contractor_email:
+                if mandate_proof_hash:
+                    bind_mandate_email(mandate_proof_hash, contractor_email)
+                if offer_id:
+                    bind_mandate_email(offer_id, contractor_email)
+                if checkout_hash:
+                    bind_mandate_email(checkout_hash, contractor_email)
 
             # 3. Invoke PayPal Gateway
             subscriber_name = (
@@ -1385,7 +1461,7 @@ class SellerAgent:
                 paypal_result = await paypal_service.create_subscription(
                     tier_id=tier_id,
                     agreed_monthly_rate=agreed_monthly_rate,
-                    contractor_email=contractor_email or "buyer-agent@example.com",
+                    contractor_email=contractor_email,
                     contractor_name=subscriber_name,
                     offer_id=offer_id,
                     mandate_proof_hash=mandate_proof_hash,
@@ -1714,9 +1790,16 @@ class SellerAgent:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Tool implementation: Provisions a dedicated autonomous compute node endpoint (mcp+https) upon verified PayPal subscription."""
+        if not subscription_id or not str(subscription_id).strip():
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_ID_REQUIRED",
+                "reason": "subscription_id is required for node provisioning.",
+            }
+
         if not buyer_email and contractor_email:
             buyer_email = contractor_email
-        if not buyer_email or "@" not in buyer_email:
+        if not buyer_email or not str(buyer_email).strip() or "@" not in str(buyer_email):
             return {
                 "status": "REJECTED",
                 "error": "BUYER_EMAIL_REQUIRED",
@@ -1895,8 +1978,13 @@ class SellerAgent:
             buyer_email
             or contractor_email
             or (sub.get("buyer_email") or sub.get("contractor_email") if sub else None)
-            or "buyer-agent@example.com"
         )
+        if not email or not str(email).strip() or "@" not in str(email):
+            return {
+                "status": "REJECTED",
+                "error": "BUYER_EMAIL_REQUIRED",
+                "reason": "buyer_email is required for dispatch.",
+            }
 
         fee = monthly_subscription_fee
         if fee is None:

@@ -62,6 +62,25 @@ def test_package6_fresh_database_shows_empty_fleet():
     assert sched["resources"] == []
 
 
+def test_package6_fleet_ledger_with_one_subscription_omits_notice():
+    """When the ledger has rows, GET /api/fleet/ledger must omit simulated_fleet_notice."""
+    save_subscription({
+        "subscription_id": "I-SUB-ONE-ROW-TEST",
+        "status": "ACTIVE",
+        "contractor_email": "single-row@example.com",
+        "contractor_name": "Single Contractor",
+        "tier_id": "ap2-gateway",
+        "agreed_monthly_rate": 79.99,
+        "subscriber_country_code": "US",
+    })
+    resp = client.get("/api/fleet/ledger")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] == 1
+    assert len(data["transactions"]) == 1
+    assert "simulated_fleet_notice" not in data
+
+
 def test_package6_live_provision_refuses_undeployed_compute(monkeypatch):
     """provision_compute_node must not return PROVISIONED in live mode when nothing is deployed."""
     # Set up an active subscription in database

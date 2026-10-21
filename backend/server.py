@@ -1419,13 +1419,15 @@ async def get_fleet_ledger_endpoint(request: Request, profile: str = Query("defa
         if (profile or "").strip().lower() == "ap2" else
         "Rows represent simulated live fleet telemetry demonstrating 24/7 AG Studio operations across autonomous compute and worker nodes."
     )
-    return {
+    result = {
         "status": "active",
         "count": len(txns),
         "profile": profile,
-        "simulated_fleet_notice": notice,
         "transactions": txns,
     }
+    if not txns:
+        result["simulated_fleet_notice"] = notice
+    return result
 
 
 @app.get("/api/fleet/stats", tags=["Enterprise Fleet Ledger"])

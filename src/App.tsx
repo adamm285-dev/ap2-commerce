@@ -229,9 +229,7 @@ export function App() {
       const res = await fetchFleetLedgerData();
       if (mounted) {
         setTransactions(res.transactions);
-        if (res.simulatedFleetNotice) {
-          setSimulatedFleetNotice(res.simulatedFleetNotice);
-        }
+        setSimulatedFleetNotice(res.simulatedFleetNotice || null);
         setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
         const pendingEntry = res.transactions.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
         if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
@@ -245,9 +243,7 @@ export function App() {
       if (!mounted) return;
       const res = await fetchFleetLedgerData();
       if (mounted) {
-        if (res.simulatedFleetNotice) {
-          setSimulatedFleetNotice(res.simulatedFleetNotice);
-        }
+        setSimulatedFleetNotice(res.simulatedFleetNotice || null);
         setTransactions(res.transactions);
       }
     }, 10000);
@@ -260,9 +256,7 @@ export function App() {
 
   const handleRefreshFleet = useCallback(async () => {
     const res = await fetchFleetLedgerData();
-    if (res.simulatedFleetNotice) {
-      setSimulatedFleetNotice(res.simulatedFleetNotice);
-    }
+    setSimulatedFleetNotice(res.simulatedFleetNotice || null);
     setTransactions(res.transactions);
     setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
     const pendingEntry = res.transactions.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');

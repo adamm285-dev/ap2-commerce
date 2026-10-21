@@ -30,6 +30,13 @@ def test_fresh_database_shows_empty_fleet():
     assert "simulated_fleet_notice" in data
     assert len(data["simulated_fleet_notice"]) > 0
 
+    ap2_empty_resp = client.get("/api/fleet/ledger?profile=ap2")
+    assert ap2_empty_resp.status_code == 200
+    ap2_empty_data = ap2_empty_resp.json()
+    assert ap2_empty_data["count"] == 0
+    assert "simulated_fleet_notice" in ap2_empty_data
+    assert "AP2 Autonomous Commerce" in ap2_empty_data["simulated_fleet_notice"]
+
     stats_resp = client.get("/api/fleet/stats")
     assert stats_resp.status_code == 200
     stats = stats_resp.json()
@@ -42,14 +49,36 @@ def test_fresh_database_shows_empty_fleet():
     sched = sched_resp.json()
     assert sched["resources"] == []
 
+
+def test_fleet_ledger_with_one_subscription_omits_notice():
+    """GET /api/fleet/ledger must omit simulated_fleet_notice when the ledger has rows."""
+    from ..database import save_subscription
+    save_subscription({
+        "subscription_id": "I-SUB-ONE-ROW-TEST",
+        "status": "ACTIVE",
+        "contractor_email": "single-row@example.com",
+        "contractor_name": "Single Contractor",
+        "tier_id": "ap2-gateway",
+        "agreed_monthly_rate": 79.99,
+        "subscriber_country_code": "US",
+    })
+    response = client.get("/api/fleet/ledger")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert len(data["transactions"]) == 1
+    assert "simulated_fleet_notice" not in data
+
+
 def test_get_fleet_ledger_endpoint():
-    """GET /api/fleet/ledger returns all 14 fleet contractor subscriptions from SQLite."""
+    """GET /api/fleet/ledger returns all 14 fleet contractor subscriptions from SQLite and omits notice."""
     seed_fleet_subscriptions_if_empty()
     response = client.get("/api/fleet/ledger")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "active"
     assert data["count"] == 14
+    assert "simulated_fleet_notice" not in data
     txns = data["transactions"]
     assert len(txns) == 14
 
@@ -172,14 +201,14 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
 def test_ap2_profile_fleet_endpoints():
     """Verify ?profile=ap2 fleet endpoints return AP2 autonomous agent data with exact Node Settings capabilities."""
     seed_fleet_subscriptions_if_empty()
-    # 1. Test /api/fleet/ledger?profile=ap2
+    # 1. Test /api/fleet/ledger?profile=ap2 omits simulated_fleet_notice when rows are present
     ledger_resp = client.get("/api/fleet/ledger?profile=ap2")
     assert ledger_resp.status_code == 200
     data = ledger_resp.json()
     assert data["status"] == "active"
     assert data["count"] == 14
     assert data["profile"] == "ap2"
-    assert "AP2 Autonomous Commerce" in data["simulated_fleet_notice"]
+    assert "simulated_fleet_notice" not in data
     txns = data["transactions"]
     assert len(txns) == 14
 

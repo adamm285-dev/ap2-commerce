@@ -6,7 +6,6 @@
   "mcp_server": {
     "name": "ap2-seller-node",
     "url": "https://api.ap2-commerce.org/mcp",
-    "sse_url": "https://api.ap2-commerce.org/sse",
     "transport": "streamable_http",
     "protocol": "2024-11-05",
     "tools": [
@@ -68,7 +67,7 @@
     }
   },
   "cryptographic_attestation": {
-    "signature_standard": "ES256 (P-256 SD-JWT) & RFC 8032 Ed25519",
+    "signature_standard": "ES256 (P-256 SD-JWT)",
     "enclave_attestation": "Multi-Region Distributed Cluster",
     "mandate_protocol": "AP2 v0.2 SD-JWT Checkout & Payment Mandate Chains (ES256)"
   }

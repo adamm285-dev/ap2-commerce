@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AgStudioLicenseManager } from 'ag-studio';
 import type { AgDataSourcesDefinition, AgStudioMode } from 'ag-studio';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
@@ -130,6 +130,7 @@ export function App() {
   const [negotiationResult, setNegotiationResult] = useState<AgentNegotiationResponse | null>(null);
   const [provisioningResult, setProvisioningResult] = useState<ProvisioningResult | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
+  const pendingPurchaseResultRef = useRef<ProvisioningResult | null>(null);
   const [paypalError, setPaypalError] = useState<string | null>(null);
   const [purchaseErrorMeta, setPurchaseErrorMeta] = useState<{
     httpStatus?: number;
@@ -340,7 +341,9 @@ export function App() {
 
         const agreedPlanName = negotiationResult?.agreedPlanName || canonicalPlanName;
 
-        const result = await executeDeckAp2Purchase({
+        const result = (pendingPurchaseResultRef.current && (pendingPurchaseResultRef.current.subscriptionId === subId || !subId)
+          ? pendingPurchaseResultRef.current
+          : null) || await executeDeckAp2Purchase({
           subscriptionId: subId || '',
           principalEntity: businessEntity,
           contractorName: contractorName,
@@ -349,6 +352,11 @@ export function App() {
           monthlyBudgetCap: maxMonthlyBudget,
           negotiation: negotiationResult || undefined,
         });
+
+        if (!result || !result.success) {
+          throw new Error('AP2 mandate verification or node provisioning failed.');
+        }
+
         setProvisioningResult(result);
         const resolvedSubId = result.subscriptionId || subId || 'not available';
 
@@ -408,8 +416,28 @@ export function App() {
           reason,
         });
         setPaypalError(reason || (err instanceof Error ? err.message : String(err)));
+
+        // A failed follow-up must not leave an approved subscription with a verified label
+        if (subId) {
+          setTransactions((prev) => {
+            const idx = prev.findIndex((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.contractor_name === contractorName || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
+            if (idx !== -1) {
+              const updated = [...prev];
+              updated[idx] = {
+                ...updated[idx],
+                paypal_sub_id: subId,
+                kyc_status: 'FOLLOW-UP VERIFICATION FAILED',
+                tcpa_guard: 'UNVERIFIED (PROVISIONING FAILED)',
+                status: 'PENDING_DEPOSIT',
+              };
+              return updated;
+            }
+            return prev;
+          });
+        }
       } finally {
         setIsProvisioning(false);
+        pendingPurchaseResultRef.current = null;
       }
     },
     [contractorName, businessEntity, tradeVertical, maxMonthlyBudget, negotiationResult]
@@ -1719,10 +1747,51 @@ export function App() {
                         >
                           <PayPalButtons
                             style={{ layout: 'vertical', color: 'blue', shape: 'rect', label: 'subscribe' }}
-                            createSubscription={(_data, actions) => {
-                              return actions.subscription.create({
-                                plan_id: negotiationResult.agreedPlanId || PAYPAL_CONFIG.planId,
-                              });
+                            createSubscription={async () => {
+                              setPaypalError(null);
+                              setPurchaseErrorMeta(null);
+
+                              const agreedMonthlyAmount = negotiationResult?.monthlyFee ?? 79.99;
+                              let actualTier = 'Dedicated AI Service Gateway';
+                              if (Math.abs(agreedMonthlyAmount - 49.99) < 0.05) {
+                                actualTier = 'High-Throughput Batch Worker';
+                              } else if (Math.abs(agreedMonthlyAmount - 179.99) < 0.05) {
+                                actualTier = 'Enterprise Cluster Node';
+                              }
+
+                              try {
+                                const result = await executeDeckAp2Purchase({
+                                  subscriptionId: '',
+                                  principalEntity: businessEntity,
+                                  contractorName: contractorName,
+                                  capability: actualTier,
+                                  agreedMonthlyRate: agreedMonthlyAmount,
+                                  monthlyBudgetCap: maxMonthlyBudget,
+                                  negotiation: negotiationResult || undefined,
+                                });
+
+                                if (!result?.subscriptionId) {
+                                  throw new Error('AP2 purchase_subscription did not return a valid subscription ID.');
+                                }
+
+                                pendingPurchaseResultRef.current = result;
+                                return result.subscriptionId;
+                              } catch (err: any) {
+                                const rawDetail = err?.rawResponse?.detail;
+                                const code = typeof rawDetail === 'object' ? rawDetail?.code || rawDetail?.error : undefined;
+                                const reason = typeof rawDetail === 'object'
+                                  ? rawDetail?.reason || rawDetail?.message
+                                  : typeof rawDetail === 'string'
+                                  ? rawDetail
+                                  : undefined;
+                                setPurchaseErrorMeta({
+                                  httpStatus: err?.httpStatus,
+                                  code,
+                                  reason,
+                                });
+                                setPaypalError(reason || (err instanceof Error ? err.message : String(err)));
+                                throw err;
+                              }
                             }}
                             onApprove={async (data) => {
                               if (!data.subscriptionID) {

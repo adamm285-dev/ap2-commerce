@@ -239,12 +239,13 @@ async def agent_discovery_card():
     Publishes capabilities, cryptographic identity keys, pricing plans, and MCP endpoints.
     """
     return {
-        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /public/llms.txt.",
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /llms.txt.",
         "name": "AP2 Autonomous Seller Node (PayPal Sandbox Demo)",
         "description": "Autonomous Agent-to-Agent (A2A) Commerce Protocol Engine for Compute & Infrastructure Services.",
         "version": "1.0.0",
         "protocol_version": "2024-11-05",
         "supported_protocols": ["A2A", "AP2", "MCP"],
+        "instructions": "/llms.txt",
         "provider": {
             "organization": "AP2 Autonomous Node Network Inc.",
             "service": "AP2 Autonomous Infrastructure SaaS",
@@ -252,16 +253,13 @@ async def agent_discovery_card():
         },
         "endpoints": {
             "mcp": "/mcp",
-            "sse": "/sse",
-            "catalog": "/api/agent/catalog",
+            "inspect_subscription_tiers": "inspect_subscription_tiers",
             "health": "/health",
-            "m2m_audit": "/api/m2m/audit-trail",
-            "wire_stream": "/api/mcp/sse",
         },
         "authentication": {
             "type": "asymmetric_cryptographic_mandate",
             "protocol": "ap2_v0.2_sd_jwt_kb",
-            "algorithms": ["ES256", "Ed25519", "HMAC-SHA256"],
+            "algorithms": ["ES256", "HMAC-SHA256"],
             "seller_kid": DEFAULT_SELLER_KID,
             "seller_public_key": DEFAULT_SELLER_PUBLIC_KEY_HEX,
             "jwks_uri": "/.well-known/jwks.json",
@@ -368,11 +366,10 @@ async def well_known_mcp_discovery():
         "name": "AP2 Autonomous Seller Node",
         "version": "1.0.0",
         "description": "24/7 autonomous compute node provisioning, workload orchestration, and subscription bargaining platform for agent networks.",
-        "agent_instructions": "https://ap2-commerce.org/llms.txt",
+        "agent_instructions": "https://api.ap2-commerce.org/llms.txt",
         "mcp_server": {
             "url": "https://api.ap2-commerce.org/mcp",
             "legacy_url": "https://api.ap2-commerce.org/a2a/mcp",
-            "sse_url": "https://api.ap2-commerce.org/sse",
             "transport": "streamable_http",
             "protocol": "2024-11-05",
             "tools": [
@@ -408,8 +405,6 @@ async def well_known_mcp_discovery():
             "ap2_mandate_verification": True,
             "ap2_protocol_version": "0.2",
             "sd_jwt_es256_signatures": True,
-            "ed25519_signatures": True,
-            "audit_trail_retention": "immutable",
         },
     }
 
@@ -418,15 +413,15 @@ async def well_known_mcp_discovery():
 async def agents_json_discovery():
     """Agent discovery manifest specifying autonomous endpoints and capabilities."""
     return {
-        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /public/llms.txt.",
+        "notice": "PayPal Sandbox demo for the PayPal AI Hackathon; real AP2 protocol documentation is at /llms.txt.",
         "schema_version": "1.0",
         "name": "AP2 Autonomous Marketplace (PayPal Sandbox Demo)",
         "description": "Agent-to-Agent autonomous compute node and service gateway commerce system.",
+        "instructions": "/llms.txt",
         "endpoints": {
-            "mcp": "https://api.ap2-commerce.org/a2a/mcp",
-            "sse": "https://api.ap2-commerce.org/sse",
+            "mcp": "https://api.ap2-commerce.org/mcp",
             "portal": "https://api.ap2-commerce.org/portal/",
-            "catalog": "https://api.ap2-commerce.org/api/agent/catalog",
+            "inspect_subscription_tiers": "inspect_subscription_tiers",
             "keys_challenge": "https://api.ap2-commerce.org/api/agent/keys/challenge",
             "keys_register": "https://api.ap2-commerce.org/api/agent/keys/register",
         },

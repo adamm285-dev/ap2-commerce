@@ -7,9 +7,12 @@
         "PYTHONPATH": "."
       }
     },
-    "ap2-seller-http": {
-      "url": "http://127.0.0.1:8001/mcp",
-      "transport": "http"
+    "ap2-buyer-wallet": {
+      "command": "python",
+      "args": ["-m", "backend.wallet.mcp_server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
     }
   }
 }

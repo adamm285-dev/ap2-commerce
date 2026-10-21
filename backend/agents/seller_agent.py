@@ -1837,7 +1837,6 @@ class SellerAgent:
             },
         }
 
-    # MOCK(M-012): fills missing subscription ID and onboarding fields with demo defaults (e.g. I-AUTONOMOUS-8902)
     async def dispatch_zapier_mcp(
         self,
         workflow_type: str = "a2a_onboarding",
@@ -1858,19 +1857,25 @@ class SellerAgent:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Tool implementation: Dispatches downline business automation through Zapier MCP."""
-        target_sub_id = subscription_id or paypal_subscription_id or kwargs.get("sub_id")
-        sub = None
-        if target_sub_id:
-            sub = _COMPLETED_SUBSCRIPTIONS.get(target_sub_id)
-            if not sub:
-                from ..database import get_subscription
-                sub = get_subscription(target_sub_id)
-            if not sub and target_sub_id != "I-AUTONOMOUS-8902":
-                return {
-                    "status": "REJECTED",
-                    "error": "SUBSCRIPTION_NOT_FOUND",
-                    "reason": f"Cannot dispatch back-office automation: Subscription '{target_sub_id}' was not found.",
-                }
+        raw_sub_id = subscription_id or paypal_subscription_id or kwargs.get("sub_id")
+        target_sub_id = raw_sub_id.strip() if isinstance(raw_sub_id, str) else ""
+        if not target_sub_id:
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_ID_REQUIRED",
+                "reason": "Cannot dispatch back-office automation: subscription_id is required.",
+            }
+
+        sub = _COMPLETED_SUBSCRIPTIONS.get(target_sub_id)
+        if not sub:
+            from ..database import get_subscription
+            sub = get_subscription(target_sub_id)
+        if not sub:
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_NOT_FOUND",
+                "reason": f"Cannot dispatch back-office automation: Subscription '{target_sub_id}' was not found.",
+            }
 
         sub_name = (
             subscriber_name
@@ -1895,13 +1900,13 @@ class SellerAgent:
 
         fee = monthly_subscription_fee
         if fee is None:
-            fee = sub.get("agreed_monthly_rate", 79.99) if sub else 79.99
+            fee = sub.get("agreed_monthly_rate", 79.99)
 
         proof = (
             mandate_proof_hash
-            or (sub.get("mandate_proof_hash") or sub.get("traceable_proof") if sub else None)
+            or sub.get("mandate_proof_hash")
+            or sub.get("traceable_proof")
         )
-        resolved_sub_id = target_sub_id or "I-AUTONOMOUS-8902"
 
         req = ZapierSyncRequest(
             workflowType=workflow_type,
@@ -1910,7 +1915,7 @@ class SellerAgent:
             allocatedDid=endpoint,
             tradeVertical=vertical,
             monthlySubscriptionFee=fee,
-            paypalSubscriptionId=resolved_sub_id,
+            paypalSubscriptionId=target_sub_id,
             contractorEmail=email,
             mandateProofHash=proof,
             webhookUrl=webhook_url,

@@ -904,8 +904,10 @@ async def test_public_discovery_surfaces_match_ap2_v02_and_two_server_model():
 
 
 @pytest.mark.asyncio
-async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results():
-    # 1. Purchase rejected for missing chains -> isError must be True
+async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results(demo, monkeypatch):
+    from backend.agents.seller_agent import seller_agent
+
+    # 1. status == "REJECTED" (purchase rejected for missing chains) -> isError must be True
     pur_resp = await process_mcp_request({
         "jsonrpc": "2.0",
         "id": 1,
@@ -919,7 +921,7 @@ async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results():
     pur_body = json.loads(pur_resp["result"]["content"][0]["text"])
     assert pur_body["status"] == "REJECTED"
 
-    # 2. Negotiation rejected for budget below minimum tier -> isError must be True
+    # 2. status == "REJECTED" (negotiation rejected for budget below minimum tier) -> isError must be True
     neg_rej = await process_mcp_request({
         "jsonrpc": "2.0",
         "id": 2,
@@ -935,8 +937,9 @@ async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results():
         },
     })
     assert neg_rej["result"]["isError"] is True
+    assert json.loads(neg_rej["result"]["content"][0]["text"])["status"] == "REJECTED"
 
-    # 3. Negotiation COUNTER_OFFER -> actionable offer with checkout_jwt, isError must be False
+    # 3. status == "COUNTER_OFFER" -> actionable offer with checkout_jwt, isError must be False
     neg_co = await process_mcp_request({
         "jsonrpc": "2.0",
         "id": 3,
@@ -945,25 +948,141 @@ async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results():
             "name": "negotiate_tier_terms",
             "arguments": {
                 "buyer_agent_id": "wave1-agent",
-                "buyer_email": "wave1@example.com",
+                "buyer_email": demo.email,
                 "tier_id": "ap2-gateway",
                 "monthly_budget_cap": 60.0,
             },
         },
     })
     assert neg_co["result"]["isError"] is False
+    neg_co_body = json.loads(neg_co["result"]["content"][0]["text"])
+    assert neg_co_body["status"] == "COUNTER_OFFER"
 
-    # 4. Provision rejected for unknown subscription -> isError must be True
-    prov_rej = await process_mcp_request({
+    # 4. status == "APPROVED" -> isError must be False
+    neg_ok = await process_mcp_request({
         "jsonrpc": "2.0",
         "id": 4,
         "method": "tools/call",
         "params": {
-            "name": "provision_compute_node",
-            "arguments": {"subscription_id": "I-UNKNOWN-999", "buyer_email": "wave1@example.com"},
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "buyer_email": demo.email,
+                "tier_id": "ap2-batch",
+                "monthly_budget_cap": 60.0,
+            },
         },
     })
-    assert prov_rej["result"]["isError"] is True
+    assert neg_ok["result"]["isError"] is False
+    neg_ok_body = json.loads(neg_ok["result"]["content"][0]["text"])
+    assert neg_ok_body["status"] == "APPROVED"
+
+    # Settle ap2-batch subscription for demo.email so we can test ACTIVE, PROVISIONED, ALREADY_SUBSCRIBED, NO_BETTER_OFFER
+    signed = demo.wallet.sign_checkout(neg_ok_body["checkout_jwt"])
+    pur_ok = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "purchase_subscription",
+            "arguments": {
+                "offer_id": neg_ok_body["offer_id"],
+                "buyer_email": demo.email,
+                "checkout_mandate_chain": signed["checkout_mandate_chain"],
+                "payment_mandate_chain": signed["payment_mandate_chain"],
+            },
+        },
+    })
+    assert pur_ok["result"]["isError"] is False
+    pur_ok_body = json.loads(pur_ok["result"]["content"][0]["text"])
+    assert pur_ok_body["status"] == "ACTIVE"
+
+    # 5. status == "PROVISIONED" -> isError must be False
+    prov_ok = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+            "name": "provision_compute_node",
+            "arguments": {
+                "subscription_id": pur_ok_body["subscription_id"],
+                "buyer_email": demo.email,
+            },
+        },
+    })
+    assert prov_ok["result"]["isError"] is False
+    assert json.loads(prov_ok["result"]["content"][0]["text"])["status"] == "PROVISIONED"
+
+    # 6. status == "ALREADY_SUBSCRIBED" -> isError must be True
+    already_resp = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "buyer_email": demo.email,
+                "tier_id": "ap2-batch",
+                "monthly_budget_cap": 60.0,
+            },
+        },
+    })
+    assert already_resp["result"]["isError"] is True
+    assert json.loads(already_resp["result"]["content"][0]["text"])["status"] == "ALREADY_SUBSCRIBED"
+
+    # 7. status == "NO_BETTER_OFFER" -> isError must be True
+    no_better_resp = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "buyer_email": demo.email,
+                "tier_id": "ap2-gateway",
+                "monthly_budget_cap": 60.0,
+            },
+        },
+    })
+    assert no_better_resp["result"]["isError"] is True
+    assert json.loads(no_better_resp["result"]["content"][0]["text"])["status"] == "NO_BETTER_OFFER"
+
+    # 8. approved: False without status (evaluate_spending_mandate over budget) -> isError must be True
+    eval_rej = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+            "name": "evaluate_spending_mandate",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "amount": 95.0,
+                "monthly_budget_cap": 50.0,
+            },
+        },
+    })
+    assert eval_rej["result"]["isError"] is True
+    eval_body = json.loads(eval_rej["result"]["content"][0]["text"])
+    assert eval_body["approved"] is False
+
+    # 9. status == "REFUSED" and status == "ERROR" -> isError must be True
+    for idx, st in enumerate(("REFUSED", "ERROR"), start=10):
+        async def _fake_status(*args, _st=st, **kwargs):
+            return {"status": _st, "reason": f"simulated {_st}"}
+        monkeypatch.setattr(seller_agent, "get_subscription_details", _fake_status)
+        st_resp = await process_mcp_request({
+            "jsonrpc": "2.0",
+            "id": idx,
+            "method": "tools/call",
+            "params": {
+                "name": "get_subscription_details",
+                "arguments": {"subscription_id": "I-TEST-STATUS"},
+            },
+        })
+        assert st_resp["result"]["isError"] is True
+        assert json.loads(st_resp["result"]["content"][0]["text"])["status"] == st
 
 
 @pytest.mark.asyncio
@@ -1179,7 +1298,28 @@ async def test_multi_worker_sqlite_fallback_and_sse_wire_log_redaction(demo):
     assert recovered_receipt is not None
     assert recovered_receipt["status"] == "Success"
 
-    # Verify SSE wire log (/api/mcp/frames) redacts all sensitive JWTs and mandate chains
+    # If the stored SQLite checkout_receipt cannot be verified (corrupted or wrong key),
+    # get_stored_receipt must return None rather than fabricating status == "Success",
+    # and verify_ap2_chains must not treat an unverifiable receipt as redeemed.
+    from backend.database import get_subscription, save_subscription
+    from backend.services.ap2_service import verify_ap2_chains
+    sub_row = get_subscription(nego["checkout_hash"])
+    assert sub_row is not None
+    corrupted_row = dict(sub_row, checkout_receipt="eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdGF0dXMiOiJTdWNjZXNzIn0.corrupted_sig")
+    save_subscription(corrupted_row)
+    _RECEIPT_STORE.clear()
+    assert get_stored_receipt(nego["checkout_hash"]) is None
+    reverify = verify_ap2_chains(
+        checkout_mandate_token=signed["checkout_mandate_chain"],
+        payment_mandate_token=signed["payment_mandate_chain"],
+        checkout_jwt=nego["checkout_jwt"],
+        enforce_replay_defense=True,
+        buyer_email=demo.email,
+    )
+    assert reverify["valid"] is True
+
+    # Restore valid receipt and verify SSE wire log (/api/mcp/frames) redacts all sensitive JWTs and mandate chains
+    save_subscription(sub_row)
     frames = client.get("/api/mcp/frames").json()["frames"]
     serialized_frames = json.dumps(frames)
     assert nego["checkout_jwt"] not in serialized_frames
@@ -1187,5 +1327,29 @@ async def test_multi_worker_sqlite_fallback_and_sse_wire_log_redaction(demo):
     assert signed["payment_mandate_chain"] not in serialized_frames
     assert pur["checkout_receipt"] not in serialized_frames
     assert pur["payment_receipt"] not in serialized_frames
+
+
+@pytest.mark.asyncio
+async def test_seller_agent_dispatch_zapier_mcp_rejects_missing_or_demo_subscription_id():
+    from backend.agents.seller_agent import seller_agent
+
+    # 1. Missing subscription_id on seller_agent.dispatch_zapier_mcp directly -> REJECTED
+    missing_res = await seller_agent.dispatch_zapier_mcp()
+    assert missing_res["status"] == "REJECTED"
+    assert missing_res["error"] == "SUBSCRIPTION_ID_REQUIRED"
+
+    blank_res = await seller_agent.dispatch_zapier_mcp(subscription_id="   ")
+    assert blank_res["status"] == "REJECTED"
+    assert blank_res["error"] == "SUBSCRIPTION_ID_REQUIRED"
+
+    # 2. Demo placeholder I-AUTONOMOUS-8902 is not exempted on seller_agent.dispatch_zapier_mcp -> REJECTED
+    demo_id_res = await seller_agent.dispatch_zapier_mcp(subscription_id="I-AUTONOMOUS-8902")
+    assert demo_id_res["status"] == "REJECTED"
+    assert demo_id_res["error"] == "SUBSCRIPTION_NOT_FOUND"
+
+    demo_paypal_res = await seller_agent.dispatch_zapier_mcp(paypal_subscription_id="I-AUTONOMOUS-8902")
+    assert demo_paypal_res["status"] == "REJECTED"
+    assert demo_paypal_res["error"] == "SUBSCRIPTION_NOT_FOUND"
+
 
 

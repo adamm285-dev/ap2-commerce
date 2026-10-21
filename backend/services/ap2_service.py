@@ -379,12 +379,9 @@ def get_stored_receipt(reference: str) -> Optional[Dict[str, Any]]:
     if sub and isinstance(sub, dict) and sub.get("checkout_receipt"):
         try:
             return verify_receipt_jwt(sub["checkout_receipt"])
-        except Exception:
-            return {
-                "status": "Success",
-                "reference": reference,
-                "order_id": sub.get("offer_id") or sub.get("subscription_id"),
-            }
+        except Exception as e:
+            logger.warning(f"Failed to verify stored SQLite checkout_receipt for '{reference}': {e}")
+            return None
     return None
 
 

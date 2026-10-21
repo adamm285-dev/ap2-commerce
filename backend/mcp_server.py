@@ -433,11 +433,19 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             is_error = bool(
                 isinstance(result, dict)
                 and (
-                    result.get("status") in ("REJECTED", "REFUSED", "ERROR")
+                    result.get("status")
+                    in (
+                        "REJECTED",
+                        "REFUSED",
+                        "ERROR",
+                        "ALREADY_SUBSCRIBED",
+                        "NO_BETTER_OFFER",
+                    )
                     or (
                         result.get("approved") is False
                         and result.get("status") not in ("APPROVED", "COUNTER_OFFER", "ACTIVE", "PROVISIONED")
                     )
+                    or (result.get("status") is None and bool(result.get("error")))
                 )
             )
             return {

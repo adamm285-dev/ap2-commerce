@@ -471,7 +471,9 @@ export interface DispatchLockResult {
 }
 
 /**
- * Atomically locks a 75-minute estimate window upon verified PayPal deposit capture.
+ * Atomically reserves an appointment window across territory zones.
+ * Note: Stores an unverified caller-supplied PayPal transaction reference;
+ * does not verify deposit status against PayPal.
  * Calls FastAPI backend at POST /api/agent/dispatch/lock-slot with client-side fallback.
  */
 export async function lockDispatchSlot(
@@ -587,22 +589,38 @@ export interface FleetScheduleResponse {
   }>;
 }
 
+export interface FleetLedgerResponse {
+  transactions: A2aTransaction[];
+  simulatedFleetNotice?: string;
+  count: number;
+}
+
 /**
- * Fetches dynamic enterprise fleet ledger from SQLite via GET /api/fleet/ledger?profile=ap2.
+ * Fetches dynamic enterprise fleet ledger and simulated fleet notice from SQLite via GET /api/fleet/ledger?profile=ap2.
  */
-export async function fetchFleetLedger(): Promise<A2aTransaction[]> {
+export async function fetchFleetLedgerData(): Promise<FleetLedgerResponse> {
   try {
     const res = await fetch('/api/fleet/ledger?profile=ap2');
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.transactions) && data.transactions.length > 0) {
-        return data.transactions;
-      }
+      return {
+        transactions: Array.isArray(data.transactions) ? data.transactions : [],
+        simulatedFleetNotice: data.simulated_fleet_notice,
+        count: data.count ?? (Array.isArray(data.transactions) ? data.transactions.length : 0),
+      };
     }
   } catch (err) {
-    console.warn('[Fleet Ledger] Live backend not reachable, using fallback:', err);
+    console.warn('[Fleet Ledger] Live backend not reachable:', err);
   }
-  return [];
+  return { transactions: [], count: 0 };
+}
+
+/**
+ * Fetches dynamic enterprise fleet ledger from SQLite via GET /api/fleet/ledger?profile=ap2.
+ */
+export async function fetchFleetLedger(): Promise<A2aTransaction[]> {
+  const data = await fetchFleetLedgerData();
+  return data.transactions;
 }
 
 /**
@@ -636,7 +654,8 @@ export async function fetchFleetSchedule(): Promise<FleetScheduleResponse | null
 }
 
 /**
- * Locks a territory dispatch slot for an enterprise node via POST /api/agent/dispatch/lock-slot.
+ * Reserves a territory dispatch slot for an enterprise node via POST /api/agent/dispatch/lock-slot.
+ * Note: Stores an unverified caller-supplied deposit transaction reference.
  */
 export async function lockTerritorySlot(
   jobId: string,

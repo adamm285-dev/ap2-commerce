@@ -39,6 +39,7 @@ from .ap2_service import (
     compute_open_payment_mandate_hash,
     verify_ap2_chains,
 )
+from .paypal_service import paypal_service
 
 logger = logging.getLogger("ap2_gateway_service")
 
@@ -235,9 +236,21 @@ class Ap2GatewayService:
                 raise ValueError(f"REPLAY_DETECTED: Mandate '{order_id}' has already been captured and settled.")
 
             charge_id = f"chg_{uuid.uuid4().hex[:12]}"
-            paypal_capture_id = f"CAP-{uuid.uuid4().hex[:12].upper()}"
 
-            # 6. Authentic QuickBooks Online v3 Purchase payload
+            # Call PayPal service to capture the payment against the verified instrument
+            pay_res = paypal_service.capture_direct_payment(
+                payment_source_id=source_id,
+                amount_cents=amount_cents,
+                currency="USD",
+                custom_id=order_id,
+            )
+            paypal_capture_id = pay_res.get("capture_id") if isinstance(pay_res, dict) else None
+            if not paypal_capture_id or pay_res.get("status") != "COMPLETED":
+                raise RuntimeError(
+                    "CAPTURE_FAILED: Direct charge cannot be settled: PayPal did not issue a valid capture ID."
+                )
+
+            # MOCK(M-011): authentic QuickBooks Online v3 Purchase payload generated in memory, not delivered
             qbo_purchase_id = f"QBO-PUR-{uuid.uuid4().hex[:6].upper()}"
             qbo_doc = f"AP2-DIR-{charge_id[-6:].upper()}"
             now_date = datetime.datetime.now(timezone.utc).strftime("%Y-%m-%d")

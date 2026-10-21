@@ -11,8 +11,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 ---
 
 ### M-002: PayPal REST calls are simulated in mock mode
-- **Where:** `backend/services/paypal_service.py::PayPalService.get_access_token`, `backend/services/paypal_service.py::PayPalService.get_sync_access_token`, `backend/services/paypal_service.py::PayPalService.stop_subscription`, `backend/services/paypal_service.py::PayPalService.create_order`, `backend/services/paypal_service.py::PayPalService.verify_subscription`, `backend/services/paypal_service.py::PayPalService.create_subscription`, `backend/services/paypal_service.py::PayPalService.create_payout_batch`, `backend/services/paypal_service.py::PayPalService.get_payout_batch`
-- **What it fakes:** OAuth tokens, orders, subscription creation (returned as ACTIVE with no buyer approval), subscription lookups, cancel/suspend calls, and batch payouts. No request reaches PayPal.
+- **Where:** `backend/services/paypal_service.py::PayPalService.get_access_token`, `backend/services/paypal_service.py::PayPalService.get_sync_access_token`, `backend/services/paypal_service.py::PayPalService.stop_subscription`, `backend/services/paypal_service.py::PayPalService.create_order`, `backend/services/paypal_service.py::PayPalService.capture_direct_payment`, `backend/services/paypal_service.py::PayPalService.verify_subscription`, `backend/services/paypal_service.py::PayPalService.create_subscription`, `backend/services/paypal_service.py::PayPalService.create_payout_batch`, `backend/services/paypal_service.py::PayPalService.get_payout_batch`
+- **What it fakes:** OAuth tokens, orders, direct payment captures, subscription creation (returned as ACTIVE with no buyer approval), subscription lookups, cancel/suspend calls, and batch payouts. No request reaches PayPal.
 - **Why:** Project rule 9 (no live network calls) and credential-free judging.
 - **To make it real:** Set `MOCK_EXTERNAL_APIS=false` with sandbox credentials. The live branches exist but the live tests (`backend/tests/test_live_paypal_sandbox.py`) have not been run, and they don't cover cancel/suspend.
 
@@ -53,7 +53,7 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Load the merchant key from a KMS or HSM and publish its public key (JWKS).
 
 ### M-009: The fleet ledger and schedule are seeded demo data
-- **Where:** `backend/database.py::AP2_FLEET_SEEDED_SUBSCRIPTIONS`, `backend/database.py::seed_fleet_subscriptions_if_empty`, `backend/database.py::get_fleet_ledger`, `backend/database.py::get_fleet_schedule`
+- **Where:** `backend/database.py::AP2_FLEET_SEEDED_SUBSCRIPTIONS`, `backend/database.py::seed_fleet_subscriptions_if_empty`, `backend/database.py::get_fleet_schedule`
 - **What it fakes:** A fleet of 14 compute-node subscriptions (13 active) and a hardcoded scheduler event list. The fleet MRR and ARR on the dashboard come from this seed.
 - **Why:** The AG Studio and Bryntum views have something to show without 14 real purchases.
 - **To make it real:** Seed only behind an explicit demo flag; build the ledger and schedule from real subscriptions.
@@ -65,8 +65,8 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **To make it real:** Call a real provisioning backend and return its actual endpoint.
 
 ### M-011: Back-office exports are generated, not delivered
-- **Where:** `backend/services/backoffice/webhook_dispatcher.py::is_url_permitted`, `backend/services/backoffice/webhook_dispatcher.py::BackofficeWebhookDispatcher.dispatch`, `backend/services/zapier_mcp_dispatcher.py::ZapierMcpDispatcher.execute_downline_sync`
-- **What it fakes:** Delivery to QuickBooks, ERP and calendar systems. Without a webhook URL the export is a dry run with no network call. Mock mode also allows localhost and mock-only domains. Non-onboarding workflows return made-up ERP, QuickBooks and calendar IDs.
+- **Where:** `backend/services/backoffice/webhook_dispatcher.py::is_url_permitted`, `backend/services/backoffice/webhook_dispatcher.py::BackofficeWebhookDispatcher.dispatch`, `backend/services/zapier_mcp_dispatcher.py::ZapierMcpDispatcher.execute_downline_sync`, `backend/services/ap2_gateway_service.py::Ap2GatewayService.process_direct_charge`
+- **What it fakes:** Delivery to QuickBooks, ERP and calendar systems. Without a webhook URL the export is a dry run with no network call. Non-onboarding workflows and direct charges generate in-memory QuickBooks payloads that are not delivered to QuickBooks. Mock mode also allows localhost and mock-only domains.
 - **Why:** Shows the payloads without QuickBooks or Zapier accounts.
 - **To make it real:** Configure a webhook target (for example a Zapier catch hook connected to QuickBooks) and return the IDs the downstream systems actually assign.
 

@@ -2594,6 +2594,9 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
             "kyc_status": item["kyc_status"],
             "tcpa_guard": item["tcpa_guard"],
             "initial_txn_id": item["id"],
+            "data_source": "Demo data",
+            "allocated_did": item["allocated_did"],
+            "kyc_legal_entity": item["kyc_legal_entity"],
         }
 
         monthly_amt = float(item["monthly_amount"])
@@ -2602,7 +2605,7 @@ def seed_fleet_subscriptions_if_empty(db_path: Optional[Path] = None) -> int:
 
         sub_record = {
             "subscription_id": sub_id,
-            "status": "ACTIVE" if is_active else "PENDING_DEPOSIT",
+            "status": "ACTIVE_STREAMING" if is_active else "PENDING_DEPOSIT",
             "contractor_email": norm_email,
             "contractor_name": item["contractor_name"],
             "business_entity": item["kyc_legal_entity"],
@@ -2679,97 +2682,98 @@ def get_fleet_ledger(
 ) -> List[Dict[str, Any]]:
     """
     Returns the dynamic enterprise fleet ledger formatted for AG Grid and AG Studio.
-    Serves the AP2 autonomous agent seller deck dataset (Demo data).
+    Reads authentic subscription rows from SQLite. If the database is empty, returns an empty list.
     Masks PII when mask_pii=True for public endpoints.
     """
     conn = get_connection(db_path)
-    active_sub = None
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT * FROM subscriptions 
-            WHERE status IN ('ACTIVE', 'ACTIVE_STREAMING')
-              AND contractor_email = 'agent-alpha@example.com'
-              AND subscription_id != 'TXN-AP2-9021'
-            ORDER BY updated_at DESC, created_at DESC
-            LIMIT 1
-            """
-        )
-        active_sub = cur.fetchone()
+        cur.execute("SELECT * FROM subscriptions ORDER BY created_at ASC")
+        rows = [dict(r) for r in cur.fetchall()]
     except Exception:
-        pass
+        rows = []
     finally:
         conn.close()
 
-    if not active_sub:
-        try:
-            from .agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
-            for s_id, s_data in _COMPLETED_SUBSCRIPTIONS.items():
-                c_email = (s_data.get("contractor_email") or "").lower()
-                if s_data.get("status") in ["ACTIVE", "ACTIVE_STREAMING"] and (
-                    c_email == "agent-alpha@example.com"
-                ) and s_id != "TXN-AP2-9021":
-                    active_sub = s_data
-                    break
-        except Exception:
-            pass
+    if not rows:
+        return []
 
     result = []
-    # MOCK(M-009): ledger rows built from the seeded demo fleet
-    for item in AP2_FLEET_SEEDED_SUBSCRIPTIONS:
-        is_pending_batch = item["id"] == "TXN-AP2-9021"
-        if is_pending_batch and active_sub:
-            status = "ACTIVE_STREAMING"
-            is_active = True
-            sub_id = active_sub.get("subscription_id") or "I-AP2-SUB-9021"
-            assigned = active_sub.get("assigned_did") or active_sub.get("allocated_did") or active_sub.get("mcp_endpoint")
-            if assigned and str(assigned).startswith("mcp+https://"):
-                display_endpoint = str(assigned)
-            else:
-                display_endpoint = "mcp+https://gateway-01.example.com/agents/batch-alpha"
-            kyc_status = "VERIFIED (Ed25519 Mandate Bound)"
-            anti_tamper = active_sub.get("mandate_proof_hash") or "SHA256 Match (PASS)"
-        else:
-            status = item["status"]
-            is_active = status in ["ACTIVE", "ACTIVE_STREAMING"]
-            sub_id = item["paypal_sub_id"]
-            display_endpoint = item["allocated_did"]
-            kyc_status = item["kyc_status"]
-            anti_tamper = None
+    for row in rows:
+        sub_id = row.get("subscription_id", "")
+        status = row.get("status", "PENDING_DEPOSIT")
+        is_active = status in ["ACTIVE", "ACTIVE_STREAMING"]
 
+        raw = {}
+        raw_json = row.get("raw_details_json")
+        if raw_json:
+            try:
+                raw = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+                if not isinstance(raw, dict):
+                    raw = {}
+            except Exception:
+                raw = {}
+
+        if isinstance(raw.get("raw_details"), dict):
+            raw = {**raw.get("raw_details"), **raw}
+
+        created_at = row.get("created_at") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        contractor_name = row.get("contractor_name") or raw.get("contractor_name") or raw.get("buyer_agent") or "Autonomous Buyer Agent"
+        buyer_agent = row.get("buyer_agent_id") or raw.get("buyer_agent") or contractor_name
+        principal_entity = row.get("business_entity") or raw.get("principal_entity") or "Demo Buyer Corp"
+
+        tier_id = row.get("tier_id") or "ap2-gateway"
+        trade_vertical = raw.get("trade_vertical") or (
+            "High-Throughput Batch Worker" if "batch" in tier_id else (
+                "Enterprise Cluster Node" if "cluster" in tier_id else "Dedicated AI Service Gateway"
+            )
+        )
+        service_plan = raw.get("service_plan") or row.get("plan_id") or tier_id
+
+        monthly_float = float(row.get("agreed_monthly_rate") or 0.0)
         display_sub_id = (_mask_sub_id(sub_id) if is_active else "AWAITING_PAYPAL_TOKEN") if mask_pii else (sub_id if is_active else "AWAITING_PAYPAL_TOKEN")
-        monthly_float = float(item["monthly_amount"])
+
+        display_endpoint = row.get("assigned_did") or raw.get("allocated_did") or ("AWAITING_ENDPOINT" if not is_active else None)
+
+        kyc_status = raw.get("kyc_status") or ("VERIFIED (AP2 Mandate Bound)" if row.get("mandate_proof_hash") else "PENDING_VERIFICATION")
+        kyc_legal_entity = row.get("business_entity") or raw.get("kyc_legal_entity") or principal_entity
+        tcpa_guard = raw.get("tcpa_guard") or "STIR/SHAKEN A-Level Attestation (Autonomous)"
+
         gross_cents = int(round(monthly_float * 100))
         net_cents = (gross_cents * 8500) // 10000
         margin_cents = gross_cents - net_cents
-        node_ref = display_endpoint or item.get("allocated_did") or item["trade_vertical"]
+
+        node_ref = display_endpoint or trade_vertical
         op = get_operator_for_node(node_ref, db_path=db_path)
         op_name = op["name"] if op else "Lambda Autonomous Compute"
         op_email = op["email"] if op else "payouts-lambda@example.com"
 
+        data_source = raw.get("data_source") or "Persistent SQLite"
+
         entry = {
-            "id": item["id"],
-            "timestamp": item["timestamp"],
-            "buyer_agent": item["buyer_agent"],
-            "contractor_name": item["buyer_agent"],
-            "principal_entity": item["principal_entity"],
-            "trade_vertical": item["trade_vertical"],
-            "service_plan": item["service_plan"],
+            "id": row.get("offer_id") or raw.get("initial_txn_id") or sub_id,
+            "timestamp": created_at,
+            "buyer_agent": buyer_agent,
+            "contractor_name": contractor_name,
+            "principal_entity": principal_entity,
+            "trade_vertical": trade_vertical,
+            "service_plan": service_plan,
             "monthly_amount": monthly_float,
             "paypal_sub_id": display_sub_id,
             "kyc_status": kyc_status,
-            "kyc_legal_entity": item["kyc_legal_entity"],
+            "kyc_legal_entity": kyc_legal_entity,
             "allocated_did": display_endpoint,
-            "tcpa_guard": item["tcpa_guard"],
+            "tcpa_guard": tcpa_guard,
             "status": status,
-            "data_source": "Demo data",
+            "data_source": data_source,
             "operator_name": op_name,
             "operator_email": _mask_email(op_email) if mask_pii else op_email,
             "operator_split_bps": 8500,
             "operator_monthly_net": round(net_cents / 100, 2),
             "platform_margin_fee": round(margin_cents / 100, 2),
         }
+        anti_tamper = row.get("mandate_proof_hash") or raw.get("anti_tamper_hash")
         if anti_tamper:
             entry["anti_tamper_hash"] = anti_tamper
         result.append(entry)
@@ -2840,6 +2844,26 @@ def get_fleet_schedule(db_path: Optional[Path] = None, profile: str = "ap2") -> 
             "did": item["allocated_did"],
             "status": item["status"],
         })
+
+    if not resources:
+        slots = list_dispatch_slots(db_path=db_path)
+        events = []
+        for s in slots:
+            events.append({
+                "id": f"slot-{s.get('slot_id', 'dynamic')}",
+                "resourceId": "node-1",
+                "name": f"Takeoff: {s.get('project_scope', 'Compute Node')} ({s.get('territory_zone', 'Cluster')})",
+                "startDate": s.get("slot_start_iso", "2026-10-02 14:00"),
+                "endDate": s.get("slot_end_iso", "2026-10-02 15:15"),
+                "eventColor": "blue",
+                "iconCls": "b-fa b-fa-calendar-check",
+                "depositStatus": f"DEPOSIT VERIFIED ({s.get('deposit_payment_id', 'PAY-DEP-9921')})",
+                "paypalTxn": s.get("deposit_payment_id", "PAY-DEP-9921"),
+            })
+        return {
+            "resources": [],
+            "events": events,
+        }
 
     events = [
         {

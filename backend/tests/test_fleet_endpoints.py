@@ -7,13 +7,44 @@ and locked territory appointment scheduling.
 import pytest
 from fastapi.testclient import TestClient
 from ..server import app
-from ..database import get_fleet_ledger, get_fleet_stats, get_fleet_schedule, list_dispatch_slots
+from ..database import (
+    get_fleet_ledger,
+    get_fleet_stats,
+    get_fleet_schedule,
+    list_dispatch_slots,
+    seed_fleet_subscriptions_if_empty,
+)
 
 client = TestClient(app)
 
 
+
+
+def test_fresh_database_shows_empty_fleet():
+    """A fresh database without seeds returns count 0, transactions empty list, and simulated_fleet_notice."""
+    response = client.get("/api/fleet/ledger")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 0
+    assert data["transactions"] == []
+    assert "simulated_fleet_notice" in data
+    assert len(data["simulated_fleet_notice"]) > 0
+
+    stats_resp = client.get("/api/fleet/stats")
+    assert stats_resp.status_code == 200
+    stats = stats_resp.json()
+    assert stats["total_subscribers"] == 0
+    assert stats["active_lines"] == 0
+    assert stats["total_mrr"] == 0.0
+
+    sched_resp = client.get("/api/fleet/schedule")
+    assert sched_resp.status_code == 200
+    sched = sched_resp.json()
+    assert sched["resources"] == []
+
 def test_get_fleet_ledger_endpoint():
     """GET /api/fleet/ledger returns all 14 fleet contractor subscriptions from SQLite."""
+    seed_fleet_subscriptions_if_empty()
     response = client.get("/api/fleet/ledger")
     assert response.status_code == 200
     data = response.json()
@@ -37,6 +68,7 @@ def test_get_fleet_ledger_endpoint():
 
 def test_get_fleet_stats_endpoint():
     """GET /api/fleet/stats returns aggregated metrics matching database state."""
+    seed_fleet_subscriptions_if_empty()
     response = client.get("/api/fleet/stats")
     assert response.status_code == 200
     stats = response.json()
@@ -52,6 +84,7 @@ def test_get_fleet_stats_endpoint():
 
 def test_get_fleet_schedule_and_lock_slot():
     """Bryntum schedule returns resources, 24/7 shifts, and locked territory appointment windows."""
+    seed_fleet_subscriptions_if_empty()
     # 1. Initial schedule check
     sched_resp = client.get("/api/fleet/schedule")
     assert sched_resp.status_code == 200
@@ -87,13 +120,14 @@ def test_get_fleet_schedule_and_lock_slot():
 
 def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
     """When Alpha Batch Worker node is provisioned, fleet ledger and stats update to 14 active lines ($1,269.86 MRR)."""
+    seed_fleet_subscriptions_if_empty()
     from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 
     # Save active subscription for Alpha Batch Worker
-    sub_id = "I-AUTONOMOUS-8902"
+    sub_id = "TXN-AP2-9021"
     _COMPLETED_SUBSCRIPTIONS[sub_id] = {
         "subscription_id": sub_id,
-        "status": "ACTIVE",
+        "status": "ACTIVE_STREAMING",
         "contractor_email": "agent-alpha@example.com",
         "contractor_name": "AutonomousBuyerAgent-Alpha-Batch",
         "business_entity": "Demo Buyer Corp",
@@ -137,6 +171,7 @@ def test_fleet_ledger_dynamically_elevates_when_alpha_node_provisioned():
 
 def test_ap2_profile_fleet_endpoints():
     """Verify ?profile=ap2 fleet endpoints return AP2 autonomous agent data with exact Node Settings capabilities."""
+    seed_fleet_subscriptions_if_empty()
     # 1. Test /api/fleet/ledger?profile=ap2
     ledger_resp = client.get("/api/fleet/ledger?profile=ap2")
     assert ledger_resp.status_code == 200

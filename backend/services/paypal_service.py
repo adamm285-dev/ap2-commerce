@@ -334,6 +334,102 @@ class PayPalService:
                 mock_mode=False,
             )
 
+    def capture_direct_payment(
+        self,
+        payment_source_id: str,
+        amount_cents: int,
+        currency: str = "USD",
+        custom_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Captures a direct payment against a saved payment source / vault token via PayPal Orders API.
+        In mock mode: simulates a successful capture under M-002.
+        In live mode: executes capture against PayPal Orders API (/v2/checkout/orders).
+        """
+        # MOCK(M-002): direct payment capture simulated in mock mode
+        if self.mock_mode:
+            capture_id = f"CAP-{uuid.uuid4().hex[:12].upper()}"
+            logger.info(
+                f"[PayPal MOCK] Captured direct payment {capture_id} for ${amount_cents / 100:.2f} {currency} "
+                f"(source: {payment_source_id})"
+            )
+            return {
+                "capture_id": capture_id,
+                "status": "COMPLETED",
+                "amount_cents": amount_cents,
+                "currency": currency,
+                "payment_source_id": payment_source_id,
+                "mock_mode": True,
+            }
+
+        token = self.get_sync_access_token()
+        if not token:
+            raise RuntimeError(
+                "LIVE_PAYPAL_NOT_CONFIGURED: Cannot capture direct payment without authentic PayPal access token."
+            )
+
+        amount_str = f"{amount_cents / 100:.2f}"
+        payload = {
+            "intent": "CAPTURE",
+            "purchase_units": [
+                {
+                    "amount": {"currency_code": currency, "value": amount_str},
+                    "description": "AP2 Direct Rail Gateway Charge",
+                    "custom_id": custom_id or "ap2-direct-charge",
+                }
+            ],
+            "payment_source": {
+                "token": {
+                    "id": payment_source_id,
+                    "type": "PAYMENT_METHOD_TOKEN",
+                }
+            },
+        }
+
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                res = client.post(
+                    f"{self.base_url}/v2/checkout/orders",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                res.raise_for_status()
+                data = res.json()
+        except Exception as e:
+            logger.error(f"[PayPal Direct Charge] Failed to capture payment: {e}")
+            raise RuntimeError(f"PAYPAL_CAPTURE_FAILED: PayPal direct payment capture failed: {e}")
+
+        # Extract capture ID from response
+        capture_id = None
+        capture_status = None
+        try:
+            units = data.get("purchase_units", [])
+            if units:
+                payments = units[0].get("payments", {})
+                captures = payments.get("captures", [])
+                if captures:
+                    capture_id = captures[0].get("id")
+                    capture_status = captures[0].get("status")
+        except Exception:
+            pass
+
+        if not capture_id or capture_status != "COMPLETED":
+            raise RuntimeError(
+                f"PAYPAL_CAPTURE_NOT_COMPLETED: PayPal did not return a completed capture ID (got status: {capture_status!r})."
+            )
+
+        return {
+            "capture_id": capture_id,
+            "status": "COMPLETED",
+            "amount_cents": amount_cents,
+            "currency": currency,
+            "payment_source_id": payment_source_id,
+            "mock_mode": False,
+        }
+
     async def verify_subscription(self, subscription_id: str) -> Dict[str, Any]:
         """Checks the active status of a PayPal Recurring Subscription."""
         sub_key = (subscription_id or "").strip()

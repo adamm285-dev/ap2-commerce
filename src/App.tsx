@@ -20,7 +20,6 @@ import {
   Play,
 } from 'lucide-react';
 import {
-  initialA2aTransactions,
   kycAuditData,
   nodeClusterData,
   buildTradeImpactFromTransactions,
@@ -30,7 +29,7 @@ import {
   evaluateAgentNegotiation,
   resetMandateLedger,
   executeDeckAp2Purchase,
-  fetchFleetLedger,
+  fetchFleetLedgerData,
   PAYPAL_CONFIG,
   type AgentNegotiationRequest,
   type AgentNegotiationResponse,
@@ -92,7 +91,8 @@ export function App() {
       setActiveTab(tab);
     }
   };
-  const [transactions, setTransactions] = useState<A2aTransaction[]>(initialA2aTransactions);
+  const [transactions, setTransactions] = useState<A2aTransaction[]>([]);
+  const [simulatedFleetNotice, setSimulatedFleetNotice] = useState<string | null>(null);
   const [activeSetupStep, setActiveSetupStep] = useState<number>(1);
   const [isStoryHeroCollapsed, setIsStoryHeroCollapsed] = useState<boolean>(false);
   const [isSetupGuideCollapsed, setIsSetupGuideCollapsed] = useState<boolean>(true);
@@ -226,11 +226,14 @@ export function App() {
   useEffect(() => {
     let mounted = true;
     async function loadInitialFleet() {
-      const liveTxns = await fetchFleetLedger();
-      if (mounted && liveTxns.length > 0) {
-        setTransactions(liveTxns);
+      const res = await fetchFleetLedgerData();
+      if (mounted) {
+        setTransactions(res.transactions);
+        if (res.simulatedFleetNotice) {
+          setSimulatedFleetNotice(res.simulatedFleetNotice);
+        }
         setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
-        const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
+        const pendingEntry = res.transactions.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
         if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
           setIsPendingDepositLocked(true);
         }
@@ -240,24 +243,12 @@ export function App() {
 
     const intervalId = setInterval(async () => {
       if (!mounted) return;
-      const liveTxns = await fetchFleetLedger();
-      if (mounted && liveTxns.length > 0) {
-        setTransactions((prev) => {
-          const isPendingElevatedLocally = prev.some((t) => (t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021') && t.status === 'ACTIVE_STREAMING');
-          const localExtraRows = prev.filter((t) => !liveTxns.some((lt) => lt.id === t.id));
-
-          let merged = liveTxns.map((lt) => {
-            if ((lt.id === 'TXN-AP2-9021' || lt.id === 'AP2-TXN-9021') && isPendingElevatedLocally) {
-              const localElevated = prev.find((t) => t.id === lt.id);
-              return localElevated || { ...lt, status: 'ACTIVE_STREAMING' };
-            }
-            return lt;
-          });
-          if (localExtraRows.length > 0) {
-            merged = [...localExtraRows, ...merged];
-          }
-          return merged;
-        });
+      const res = await fetchFleetLedgerData();
+      if (mounted) {
+        if (res.simulatedFleetNotice) {
+          setSimulatedFleetNotice(res.simulatedFleetNotice);
+        }
+        setTransactions(res.transactions);
       }
     }, 10000);
 
@@ -268,29 +259,15 @@ export function App() {
   }, []);
 
   const handleRefreshFleet = useCallback(async () => {
-    const liveTxns = await fetchFleetLedger();
-    if (liveTxns.length > 0) {
-      setTransactions((prev) => {
-        const isPendingElevatedLocally = prev.some((t) => (t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021') && t.status === 'ACTIVE_STREAMING');
-        const localExtraRows = prev.filter((t) => !liveTxns.some((lt) => lt.id === t.id));
-
-        let merged = liveTxns.map((lt) => {
-          if ((lt.id === 'TXN-AP2-9021' || lt.id === 'AP2-TXN-9021') && isPendingElevatedLocally) {
-            const localElevated = prev.find((t) => t.id === lt.id);
-            return localElevated || { ...lt, status: 'ACTIVE_STREAMING' };
-          }
-          return lt;
-        });
-        if (localExtraRows.length > 0) {
-          merged = [...localExtraRows, ...merged];
-        }
-        return merged;
-      });
-      setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
-      const pendingEntry = liveTxns.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
-      if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
-        setIsPendingDepositLocked(true);
-      }
+    const res = await fetchFleetLedgerData();
+    if (res.simulatedFleetNotice) {
+      setSimulatedFleetNotice(res.simulatedFleetNotice);
+    }
+    setTransactions(res.transactions);
+    setLastFetchTime(new Date().toISOString().slice(11, 19) + ' UTC');
+    const pendingEntry = res.transactions.find((t) => t.id === 'TXN-AP2-9021' || t.id === 'AP2-TXN-9021' || t.principal_entity === 'Demo Buyer Corp' || t.contractor_name === 'Acme Compute Co');
+    if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
+      setIsPendingDepositLocked(true);
     }
   }, []);
 
@@ -1254,24 +1231,37 @@ export function App() {
         )}
 
         {(activeTab === 'fleet-ledger' || activeTab === 'ag-studio') && (
-          <EnterpriseFleetLedger
-            transactions={transactions}
-            tradeImpactData={dynamicTradeImpact}
-            kycAuditData={kycAuditData}
-            studioData={studioData}
-            studioMode={mode}
-            onSetStudioMode={setMode}
-            onSimulateClick={() => setIsModalOpen(true)}
-            onInspectTrace={() => {
-              setActiveTab('copilot');
-            }}
-            onNavigateTab={handleNavigateTab}
-            onRefreshData={handleRefreshFleet}
-            viewMode={activeTab === 'ag-studio' ? 'studio' : ledgerViewMode}
-            onViewModeChange={setLedgerViewMode}
-            isTopMetricsCollapsed={isDashboardMetricsCollapsed}
-            onToggleTopMetrics={() => setIsDashboardMetricsCollapsed((prev) => !prev)}
-          />
+          <div className="space-y-4">
+            {simulatedFleetNotice && (
+              <div
+                data-testid="simulated-fleet-notice"
+                className="bg-amber-950/40 border border-amber-500/30 text-amber-200 px-4 py-2.5 rounded-lg text-xs font-mono flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>{simulatedFleetNotice}</span>
+                </div>
+              </div>
+            )}
+            <EnterpriseFleetLedger
+              transactions={transactions}
+              tradeImpactData={dynamicTradeImpact}
+              kycAuditData={kycAuditData}
+              studioData={studioData}
+              studioMode={mode}
+              onSetStudioMode={setMode}
+              onSimulateClick={() => setIsModalOpen(true)}
+              onInspectTrace={() => {
+                setActiveTab('copilot');
+              }}
+              onNavigateTab={handleNavigateTab}
+              onRefreshData={handleRefreshFleet}
+              viewMode={activeTab === 'ag-studio' ? 'studio' : ledgerViewMode}
+              onViewModeChange={setLedgerViewMode}
+              isTopMetricsCollapsed={isDashboardMetricsCollapsed}
+              onToggleTopMetrics={() => setIsDashboardMetricsCollapsed((prev) => !prev)}
+            />
+          </div>
         )}
 
         {activeTab === 'bryntum' && (

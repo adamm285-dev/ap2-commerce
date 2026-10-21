@@ -29,7 +29,7 @@ from backend.services.mandate_revocation_service import (
 from backend.services.marketplace_payout_service import marketplace_payout_service
 from backend.services.paypal_service import paypal_service
 from backend.services.paypal_oidc_service import PayPalOidcService
-from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge, get_connection
+from backend.database import save_subscription, get_buyer_identity, get_subscription, record_direct_charge, get_connection, seed_fleet_subscriptions_if_empty
 from backend.config import settings
 from backend.agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
 from backend.tests.ap2_test_utils import build_test_ap2_chains, setup_test_vault
@@ -1228,10 +1228,12 @@ def test_rt4_mandates_revocations_contains_no_emails():
 
 def test_rt4_fleet_ledger_pii_masking_without_testing_gate():
     """
+    seed_fleet_subscriptions_if_empty()
     GET /api/fleet/ledger must mask paypal_sub_id and operator_email for non-admins,
     even when TESTING env var is set. Only callers with valid admin authorization
     receive unmasked values.
     """
+    seed_fleet_subscriptions_if_empty()
     resp_pub = client.get("/api/fleet/ledger")
     assert resp_pub.status_code == 200
     txns_pub = resp_pub.json()["transactions"]

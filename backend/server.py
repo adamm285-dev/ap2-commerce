@@ -980,7 +980,7 @@ async def get_trade_catalog():
 
 @app.post("/api/agent/quote", response_model=QuoteResponse, tags=["Quoting & Scoping"])
 async def calculate_trade_quote(request: QuoteRequest):
-    """Calculates trade scoping estimates, waste allowances, and required mobilization deposits."""
+    """Calculates flooring and tile trade scoping estimates, waste allowances, and required mobilization deposits (physical trade labor scoping, not compute pricing)."""
     # Waste allowance calculation (standard 10% overage for standard materials, 15% for complex)
     waste_multiplier = 1.15 if "complex" in request.trade_id else 1.10
     waste_sq_ft = round(request.square_footage * waste_multiplier, 1)
@@ -1341,7 +1341,7 @@ _MAX_SLOT_LOCKS_PER_HOUR = 60
     tags=["Dispatch Scheduling"],
 )
 async def lock_dispatch_slot(request: DispatchLockRequest):
-    """Atomically reserves a 75-minute estimate window across 4 territory zones upon verified PayPal deposit capture."""
+    """Atomically reserves an appointment window across territory zones with a caller-supplied transaction reference (unverified deposit reference; does not verify deposit status against PayPal)."""
     try:
         slot_start = datetime.datetime.fromisoformat(request.slot_start_iso.replace("Z", "+00:00"))
     except ValueError:

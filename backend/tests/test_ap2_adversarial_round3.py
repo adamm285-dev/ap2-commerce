@@ -1,3 +1,4 @@
+from backend.database import seed_fleet_subscriptions_if_empty
 """
 Round 3 Adversarial Security & Exploit Regression Test Suite.
 Verifies hardened defenses across:
@@ -339,6 +340,7 @@ async def test_adversarial_marketplace_payout_cycle_id_injection():
             )
 
     # Valid cycle identifier succeeds
+    seed_fleet_subscriptions_if_empty()
     valid_res = await marketplace_payout_service.execute_fleet_payout_batch(
         cycle_id="2026-10",
         dry_run=True,

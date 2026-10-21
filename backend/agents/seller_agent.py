@@ -2134,7 +2134,7 @@ class SellerAgent:
                 "reason": f"Subscription '{subscription_id}' was replaced by '{sub.get('replaced_by')}' and is no longer active.",
             }
 
-        if sub_status != "ACTIVE":
+        if sub_status not in ("ACTIVE", "ACTIVE_STREAMING"):
             return {
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_ACTIVE",
@@ -2148,6 +2148,13 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "US_DOMESTIC_ONLY",
                 "reason": f"Compute node provisioning is strictly restricted to US entities (found '{country}').",
+            }
+
+        if not getattr(settings, "mock_external_apis", False):
+            return {
+                "status": "REJECTED",
+                "error": "LIVE_PROVISIONING_NOT_CONFIGURED",
+                "reason": "Live autonomous compute node deployment is not configured; no compute infrastructure is deployed.",
             }
 
         clean_sub = sub_key.replace("-", "").lower()

@@ -37,6 +37,7 @@ from ..services.crypto_mandate import (
     verify_ap2_cart_mandate,
 )
 from ..services.mandate_evaluator import ledger, validate_buyer_intent_mandate, build_buyer_intent_mandate
+from ..database import seed_fleet_subscriptions_if_empty
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -341,6 +342,7 @@ def test_admin_routes_reject_missing_or_wrong_key(path, headers):
 @finding("AUD-05")
 @pytest.mark.parametrize("variant", ["query", "bearer"])
 def test_fleet_ledger_unmask_requires_admin_key(variant, monkeypatch):
+    seed_fleet_subscriptions_if_empty()
     monkeypatch.delenv("TESTING", raising=False)
     masked = client.get("/api/fleet/ledger").json()["transactions"]
     if variant == "query":
@@ -587,6 +589,7 @@ def test_fleet_mrr_and_arr_reconcile_with_active_rows():
 
 @finding("AUD-13")
 def test_mandates_cleared_is_not_a_multiplier():
+    seed_fleet_subscriptions_if_empty()
     stats = client.get("/api/fleet/stats").json()
     assert stats["mandates_cleared"] != stats["total_subscribers"] * 12
 

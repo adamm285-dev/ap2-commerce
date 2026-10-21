@@ -1109,6 +1109,22 @@ def reset_open_mandate_settlements(db_path: Optional[Path] = None) -> None:
         conn.close()
 
 
+def delete_open_mandate_settlement(
+    subscription_id: str,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Removes the settlement for a subscription (e.g. expired or cancelled approval)."""
+    if not subscription_id:
+        return False
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cur = conn.execute("DELETE FROM open_mandate_settlements WHERE subscription_id = ?", (subscription_id.strip(),))
+            return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 PURCHASE_LEASE_TTL_SECONDS: int = 120
 
 
@@ -2202,7 +2218,6 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
             conn.execute("DELETE FROM contractor_authorized_caps")
             conn.execute("DELETE FROM agent_spends")
             conn.execute("DELETE FROM spend_history")
-            conn.execute("DELETE FROM processed_webhooks")
             conn.execute("DELETE FROM dispatch_slots")
             conn.execute("DELETE FROM open_mandate_settlements")
             conn.execute("DELETE FROM recurring_mandates")

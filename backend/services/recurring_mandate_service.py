@@ -47,6 +47,7 @@ from ..database import (
     get_recurring_charge,
     get_recurring_mandate,
     is_mandate_revoked,
+    list_subscription_recurring_charges,
     record_recurring_charge,
     save_recurring_mandate,
 )
@@ -264,11 +265,15 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
         return finish(OUT_OF_MANDATE, ACTION_CANCEL,
                       "MANDATE_REVOKED: owner revoked this payment mandate.", mandate)
 
-    created_at = _parse_time(record.get("created_at")) or charged_at
-    is_initial = (
-        not record.get("initial_sale_id")
-        and (charged_at - created_at).total_seconds() < BILLING_CYCLE_SECONDS / 2
-    )
+    # Expiry at the time PayPal charged
+    if not isinstance(mandate.exp, int) or mandate.exp <= charged_at.timestamp():
+        return finish(OUT_OF_MANDATE, ACTION_CANCEL, "MANDATE_EXPIRED: the owner's mandate had expired when PayPal charged.", mandate)
+
+    if record.get("initial_sale_id"):
+        is_initial = (record.get("initial_sale_id") == sale_id)
+    else:
+        existing_charges = list_subscription_recurring_charges(sub_id)
+        is_initial = not any(c.get("status") == INITIAL or c.get("amount_cents", 0) > 0 for c in existing_charges)
     if is_initial:
         # The purchase already verified and counted this charge; only check it matches
         if amount_cents != record["agreed_amount_cents"] or currency != record["currency"]:
@@ -278,10 +283,6 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
         bind_initial_sale(sub_id, sale_id)
         outcome, reason = INITIAL, "First charge matches the AP2-verified purchase."
     else:
-        # 2. Expiry at the time PayPal charged
-        if not isinstance(mandate.exp, int) or mandate.exp <= charged_at.timestamp():
-            return finish(OUT_OF_MANDATE, ACTION_CANCEL, "MANDATE_EXPIRED: the owner's mandate had expired when PayPal charged.", mandate)
-
         # 3. Owner constraints, evaluated by the vendored AP2 SDK against usage so far
         used_cents, used_count = get_open_mandate_total_usage(mandate_hash)
         candidate = PaymentMandate(

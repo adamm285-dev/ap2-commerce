@@ -247,7 +247,15 @@ def create_checkout_receipt_jwt(
     }
     payload = receipt_obj.root.model_dump(mode="json", exclude_none=True)
     token = create_jwt(header, payload, merchant_key)
-    _RECEIPT_STORE[closed_mandate_reference] = payload
+
+    if status.lower() == "success":
+        _RECEIPT_STORE[closed_mandate_reference] = payload
+    else:
+        # Do not overwrite a Success receipt with an Error receipt
+        existing = _RECEIPT_STORE.get(closed_mandate_reference) or get_stored_receipt(closed_mandate_reference)
+        if not existing or existing.get("status") != "Success":
+            _RECEIPT_STORE[closed_mandate_reference] = payload
+
     return token
 
 
@@ -297,7 +305,12 @@ def create_payment_receipt_jwt(
     }
     payload = receipt_obj.root.model_dump(mode="json", exclude_none=True)
     token = create_jwt(header, payload, merchant_key)
-    _RECEIPT_STORE[closed_mandate_reference] = payload
+    if status.lower() == "success":
+        _RECEIPT_STORE[closed_mandate_reference] = payload
+    else:
+        existing = _RECEIPT_STORE.get(closed_mandate_reference) or get_stored_receipt(closed_mandate_reference)
+        if not existing or existing.get("status") != "Success":
+            _RECEIPT_STORE[closed_mandate_reference] = payload
     return token
 
 
@@ -373,12 +386,17 @@ def get_stored_receipt(reference: str) -> Optional[Dict[str, Any]]:
     if not reference:
         return None
     if reference in _RECEIPT_STORE:
-        return _RECEIPT_STORE[reference]
+        rec = _RECEIPT_STORE[reference]
+        if isinstance(rec, dict):
+            return rec
     from ..database import get_subscription
     sub = get_subscription(reference)
     if sub and isinstance(sub, dict) and sub.get("checkout_receipt"):
         try:
-            return verify_receipt_jwt(sub["checkout_receipt"])
+            verified = verify_receipt_jwt(sub["checkout_receipt"])
+            if verified and isinstance(verified, dict):
+                _RECEIPT_STORE[reference] = verified
+                return verified
         except Exception as e:
             logger.warning(f"Failed to verify stored SQLite checkout_receipt for '{reference}': {e}")
             return None
@@ -387,6 +405,8 @@ def get_stored_receipt(reference: str) -> Optional[Dict[str, Any]]:
 
 def clear_stored_receipt(reference: str) -> None:
     """Removes a stored receipt from the in-memory store by reference."""
+    if not reference:
+        return
     _RECEIPT_STORE.pop(reference, None)
 
 
@@ -515,6 +535,34 @@ def resolve_root_public_key(
     if not kid:
         raise ValueError("MISSING_KEY_ID: Root mandate token header must include a registered 'kid'.")
     raise ValueError(f"UNREGISTERED_BUYER_KEY: No registered public key found for kid '{kid}'.")
+
+
+def extract_checkout_jwt_from_chain(checkout_mandate_token: str) -> Optional[str]:
+    """Extracts the merchant-issued checkout JWT from a closed checkout mandate chain token."""
+    if not checkout_mandate_token or not isinstance(checkout_mandate_token, str):
+        return None
+    parts = checkout_mandate_token.split("~~")
+    if len(parts) >= 2 and parts[1].strip():
+        from ap2.sdk.mandate import _canonical_chain_segment
+        from ap2.sdk.sdjwt import chain as _ap2_chain
+        try:
+            parsed_closed = common.parse_token(_canonical_chain_segment(parts[1].strip(), 1, len(parts)))
+            candidate_claims: List[Dict[str, Any]] = [parsed_closed.payload]
+            for disc in parsed_closed.disclosures:
+                dec = _ap2_chain._decode_disclosure_dict(disc, 1)
+                if isinstance(dec, dict):
+                    candidate_claims.append(dec)
+            for claim_dict in candidate_claims:
+                if isinstance(claim_dict.get("checkout_jwt"), str) and claim_dict["checkout_jwt"].strip():
+                    return claim_dict["checkout_jwt"].strip()
+                chk_hash = claim_dict.get("checkout_hash")
+                if isinstance(chk_hash, str) and chk_hash:
+                    issued = get_issued_checkout(chk_hash)
+                    if issued and issued.get("checkout_jwt"):
+                        return issued["checkout_jwt"].strip()
+        except Exception:
+            return None
+    return None
 
 
 def verify_ap2_chains(

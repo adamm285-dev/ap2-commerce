@@ -1031,8 +1031,6 @@ async def reset_mandate_endpoint(request: Request):
         agent_id = qp_agent
 
     ledger.reset(agent_id=agent_id)
-    if not agent_id:
-        _PROCESSED_WEBHOOK_IDS.clear()
     return {
         "status": "reset",
         "agent_id": agent_id or "all",
@@ -2059,14 +2057,27 @@ def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optio
                 v["node_status"] = new_status
                 v["vault_billing_authorized"] = False
                 v["paypal_vault_status"] = f"VAULT_{new_status}"
+
+        from .database import save_subscription
+        save_subscription(sub_record)
     else:
         email = fallback_email
+        from .database import get_subscription, save_subscription
+        db_sub = get_subscription(sub_id)
+        if db_sub:
+            db_sub["status"] = new_status
+            db_sub["node_status"] = new_status
+            save_subscription(db_sub)
 
     # Reconcile contractor ledger strictly from subscription state:
     # commitment = rate of the contractor's one ACTIVE subscription.
     # Replaced, cancelled, or suspended subscriptions contribute 0.0 to commitment.
     if email:
         reconcile_contractor_ledger(email)
+
+    if new_status in ("CANCELLED", "EXPIRED", "DENIED"):
+        from .database import delete_open_mandate_settlement
+        delete_open_mandate_settlement(sub_id)
 
 
 def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = None) -> None:
@@ -2076,6 +2087,7 @@ def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = 
         _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
         reconcile_contractor_ledger,
     )
+    from .database import get_subscription, save_subscription, set_recurring_mandate_status
 
     email = None
     if sub_id in _COMPLETED_SUBSCRIPTIONS:
@@ -2097,8 +2109,17 @@ def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = 
                 v["node_status"] = "ACTIVE"
                 v["vault_billing_authorized"] = True
                 v["paypal_vault_status"] = "VAULT_BOUND"
+
+        save_subscription(sub_record)
     else:
         email = fallback_email
+        db_sub = get_subscription(sub_id)
+        if db_sub:
+            db_sub["status"] = "ACTIVE"
+            db_sub["node_status"] = "ACTIVE"
+            save_subscription(db_sub)
+
+    set_recurring_mandate_status(sub_id, "ACTIVE")
 
     if email:
         reconcile_contractor_ledger(email)
@@ -2175,7 +2196,6 @@ async def paypal_webhook_receiver(request: Request):
             "verification_status": "SUCCESS",
             "duplicate": True,
         }
-    _PROCESSED_WEBHOOK_IDS.add(event_id)
 
     recurring_check: Optional[Dict[str, Any]] = None
 
@@ -2194,8 +2214,21 @@ async def paypal_webhook_receiver(request: Request):
             _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
             reconcile_contractor_ledger,
         )
-        if sub_id in _COMPLETED_SUBSCRIPTIONS:
-            sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
+        from .database import (
+            get_subscription,
+            save_subscription,
+            set_recurring_mandate_status,
+            record_open_mandate_settlement,
+        )
+
+        sub_record = _COMPLETED_SUBSCRIPTIONS.get(sub_id)
+        if not sub_record:
+            db_sub = get_subscription(sub_id)
+            if db_sub:
+                _COMPLETED_SUBSCRIPTIONS[sub_id] = db_sub
+                sub_record = db_sub
+
+        if sub_record:
             sub_record["status"] = "ACTIVE"
             sub_record["paypal_vault_status"] = "VAULT_BOUND"
             sub_record["vault_billing_authorized"] = True
@@ -2220,6 +2253,7 @@ async def paypal_webhook_receiver(request: Request):
                 old_sub["replaced_by"] = sub_id
                 old_sub.pop("pending_replacement", None)
                 old_sub["vault_billing_authorized"] = False
+                save_subscription(old_sub)
 
             # Also update any aliases that map to the same subscription record
             for k, v in list(_COMPLETED_SUBSCRIPTIONS.items()):
@@ -2229,6 +2263,15 @@ async def paypal_webhook_receiver(request: Request):
                     v["vault_billing_authorized"] = True
                     v["vault_customer_present"] = False
                     v["next_action"] = sub_record["next_action"]
+
+            save_subscription(sub_record)
+            set_recurring_mandate_status(sub_id, "ACTIVE")
+
+            mandate_hash = sub_record.get("mandate_proof_hash")
+            rate = float(sub_record.get("agreed_monthly_rate") or 0.0)
+            rate_cents = int(round(rate * 100))
+            if mandate_hash and rate_cents > 0:
+                record_open_mandate_settlement(mandate_hash, sub_id, rate_cents)
 
             # Reconcile contractor ledger strictly from active subscription state:
             # commitment = rate of the contractor's one ACTIVE subscription
@@ -2305,20 +2348,25 @@ async def paypal_webhook_receiver(request: Request):
         )
 
         refund_cents = int(round(refund_amount * 100))
-        if sub_id:
-            mandate_hash = (parent_charge.get("mandate_hash") if parent_charge else None) or (sub_record.get("mandate_proof_hash") if isinstance(sub_record, dict) else None) or "unknown_hash"
-            record_recurring_charge(
-                sale_id=refund_id,
-                subscription_id=sub_id,
-                mandate_hash=mandate_hash,
-                amount_cents=-refund_cents,
-                currency=amount_info.get("currency") or "USD",
-                status="REFUNDED",
-                reason=resource.get("reason_code") or "Refund processed",
-                charged_at=resource.get("create_time") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            )
+        if sub_id and parent_charge:
+            mandate_hash = parent_charge.get("mandate_hash") or (sub_record.get("mandate_proof_hash") if isinstance(sub_record, dict) else None)
+            if mandate_hash and mandate_hash != "unknown_hash":
+                parent_cents = max(0, int(parent_charge.get("amount_cents") or 0))
+                capped_refund_cents = min(refund_cents, parent_cents)
+                if capped_refund_cents > 0:
+                    record_recurring_charge(
+                        sale_id=refund_id,
+                        subscription_id=sub_id,
+                        mandate_hash=mandate_hash,
+                        amount_cents=-capped_refund_cents,
+                        currency=amount_info.get("currency") or "USD",
+                        status="REFUNDED",
+                        reason=resource.get("reason_code") or "Refund processed",
+                        charged_at=resource.get("create_time") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    )
 
         logger.info(f"[PayPal Webhook] Processed PAYMENT.SALE.REFUNDED for {refund_id} (${refund_amount:.2f}). QBO Credit Memo: {qbo_credit_memo['credit_memo_id']}")
+        _PROCESSED_WEBHOOK_IDS.add(event_id)
         response = {
             "status": "received",
             "event_type": event_type,
@@ -2333,6 +2381,7 @@ async def paypal_webhook_receiver(request: Request):
         # Recurring charge: check it against the owner's AP2 mandate (signature already verified above)
         recurring_check = await _enforce_recurring_mandate(body.get("resource", {}))
 
+    _PROCESSED_WEBHOOK_IDS.add(event_id)
     response = {
         "status": "received",
         "event_type": event_type,

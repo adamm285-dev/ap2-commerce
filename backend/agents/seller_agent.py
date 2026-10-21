@@ -63,6 +63,7 @@ from ..services.crypto_mandate import (
 from ..database import (
     get_buyer_key_email,
     get_recurring_mandate,
+    get_subscription,
     list_subscription_recurring_charges,
 )
 from ..config import settings
@@ -1096,17 +1097,55 @@ class SellerAgent:
         auth_lookup: Optional[Dict[str, Any]] = None
         if offer_id:
             auth_lookup = get_authorized_mandate(offer_id)
+        from ..services.ap2_service import (
+            compute_open_payment_mandate_hash,
+            compute_checkout_hash,
+            extract_checkout_jwt_from_chain,
+            get_stored_receipt,
+            clear_stored_receipt,
+        )
+
+        if not chk_jwt and checkout_mandate_chain:
+            chk_jwt = extract_checkout_jwt_from_chain(checkout_mandate_chain)
+
         if not auth_lookup and mandate_proof_hash:
             auth_lookup = get_authorized_mandate(mandate_proof_hash)
         if not auth_lookup and chk_jwt:
-            from ..services.ap2_service import compute_checkout_hash
             c_hash = compute_checkout_hash(chk_jwt)
             if c_hash:
                 auth_lookup = get_authorized_mandate(c_hash)
 
         if auth_lookup:
-            if not chk_jwt:
-                chk_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
+            offer_jwt = auth_lookup.get("counter_checkout_jwt") or auth_lookup.get("checkout_jwt")
+            if offer_jwt:
+                if chk_jwt and chk_jwt.strip() != offer_jwt.strip():
+                    desc = f"OFFER_MISMATCH_DETECTED: Caller checkout_jwt does not match offer '{offer_id}' checkout_jwt."
+                    logger.warning(f"[SECURITY] {desc}")
+                    ref = mandate_proof_hash or offer_id or "offer_mismatch"
+                    err_receipt = create_checkout_receipt_jwt(
+                        order_id=offer_id or "unknown_order",
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="OFFER_MISMATCH_DETECTED",
+                        error_description=desc,
+                    )
+                    err_pay_receipt = create_payment_receipt_jwt(
+                        payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="OFFER_MISMATCH_DETECTED",
+                        error_description=desc,
+                    )
+                    return {
+                        "status": "REJECTED",
+                        "error": "OFFER_MISMATCH_DETECTED",
+                        "reason": desc,
+                        "message": f"Purchase rejected: {desc}",
+                        "checkout_receipt": err_receipt,
+                        "payment_receipt": err_pay_receipt,
+                    }
+                if not chk_jwt:
+                    chk_jwt = offer_jwt
             if not expected_nonce:
                 expected_nonce = auth_lookup.get("counter_nonce") or auth_lookup.get("nonce")
             auth_email = (auth_lookup.get("contractor_email") or auth_lookup.get("buyer_email") or "").strip().lower()
@@ -1143,12 +1182,17 @@ class SellerAgent:
                 if not contractor_email:
                     contractor_email = auth_email
 
-        from ..services.ap2_service import (
-            compute_open_payment_mandate_hash,
-            compute_checkout_hash,
-            get_stored_receipt,
-            clear_stored_receipt,
-        )
+        expected_offer_hash = None
+        if auth_lookup:
+            expected_offer_hash = (
+                auth_lookup.get("checkout_hash")
+                or auth_lookup.get("counter_checkout_hash")
+            )
+        elif offer_id and offer_id in _COMPLETED_SUBSCRIPTIONS:
+            old_sub = _COMPLETED_SUBSCRIPTIONS[offer_id]
+            if isinstance(old_sub, dict):
+                expected_offer_hash = old_sub.get("checkout_hash") or old_sub.get("mandate_proof_hash")
+
         from ..database import (
             get_open_mandate_total_usage,
             is_mandate_revoked,
@@ -1165,11 +1209,77 @@ class SellerAgent:
             else None
         )
 
+        if offer_id and expected_offer_hash and computed_chk_hash:
+            if str(computed_chk_hash).strip() != str(expected_offer_hash).strip():
+                desc = (
+                    f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' checkout hash '{expected_offer_hash}' "
+                    f"does not match presented checkout hash '{computed_chk_hash}'."
+                )
+                logger.warning(f"[SECURITY] {desc}")
+                ref = computed_chk_hash or offer_id
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=offer_id,
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                return {
+                    "status": "REJECTED",
+                    "error": "OFFER_MISMATCH_DETECTED",
+                    "reason": desc,
+                    "message": f"Purchase rejected: {desc}",
+                    "checkout_receipt": err_receipt,
+                    "payment_receipt": err_pay_receipt,
+                }
+
         candidate_replay_sub = None
-        for k in (offer_id, mandate_proof_hash, computed_chk_hash):
+        for k in (computed_chk_hash,):
             if k and k in _COMPLETED_SUBSCRIPTIONS:
                 candidate_replay_sub = _COMPLETED_SUBSCRIPTIONS[k]
                 break
+
+        if not candidate_replay_sub and offer_id and offer_id in _COMPLETED_SUBSCRIPTIONS:
+            old_sub = _COMPLETED_SUBSCRIPTIONS[offer_id]
+            if isinstance(old_sub, dict):
+                old_h = old_sub.get("checkout_hash") or old_sub.get("mandate_proof_hash")
+                if computed_chk_hash and old_h and computed_chk_hash == old_h:
+                    candidate_replay_sub = old_sub
+                elif not computed_chk_hash:
+                    candidate_replay_sub = old_sub
+                else:
+                    desc = f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' was already completed for a different checkout mandate."
+                    logger.warning(f"[SECURITY] {desc}")
+                    ref = computed_chk_hash or offer_id
+                    err_receipt = create_checkout_receipt_jwt(
+                        order_id=offer_id,
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="OFFER_MISMATCH_DETECTED",
+                        error_description=desc,
+                    )
+                    err_pay_receipt = create_payment_receipt_jwt(
+                        payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                        closed_mandate_reference=ref,
+                        status="Error",
+                        error="OFFER_MISMATCH_DETECTED",
+                        error_description=desc,
+                    )
+                    return {
+                        "status": "REJECTED",
+                        "error": "OFFER_MISMATCH_DETECTED",
+                        "reason": desc,
+                        "message": f"Purchase rejected: {desc}",
+                        "checkout_receipt": err_receipt,
+                        "payment_receipt": err_pay_receipt,
+                    }
 
         open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_chain)
         exclude_sub_id = (
@@ -1217,14 +1327,110 @@ class SellerAgent:
         closed_pay_obj = ap2_verify_res.get("closed_payment_mandate")
         closed_pay_tx_id = getattr(closed_pay_obj, "transaction_id", None) if closed_pay_obj else None
 
+        if offer_id:
+            if not expected_offer_hash and auth_lookup:
+                expected_offer_hash = auth_lookup.get("checkout_hash") or auth_lookup.get("counter_checkout_hash")
+            if not expected_offer_hash and offer_id in _COMPLETED_SUBSCRIPTIONS:
+                old_sub = _COMPLETED_SUBSCRIPTIONS[offer_id]
+                if isinstance(old_sub, dict):
+                    expected_offer_hash = old_sub.get("checkout_hash") or old_sub.get("mandate_proof_hash")
+            if expected_offer_hash and checkout_hash and str(checkout_hash).strip() != str(expected_offer_hash).strip():
+                desc = (
+                    f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' checkout hash '{expected_offer_hash}' "
+                    f"does not match verified checkout hash '{checkout_hash}'."
+                )
+                logger.warning(f"[SECURITY] {desc}")
+                ref = checkout_hash or offer_id
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=offer_id,
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                return {
+                    "status": "REJECTED",
+                    "error": "OFFER_MISMATCH_DETECTED",
+                    "reason": desc,
+                    "message": f"Purchase rejected: {desc}",
+                    "checkout_receipt": err_receipt,
+                    "payment_receipt": err_pay_receipt,
+                }
+
         if not candidate_replay_sub:
-            for k in (offer_id, mandate_proof_hash, checkout_hash):
+            for k in (checkout_hash, mandate_proof_hash):
                 if k and k in _COMPLETED_SUBSCRIPTIONS:
                     candidate_replay_sub = _COMPLETED_SUBSCRIPTIONS[k]
                     break
+            if not candidate_replay_sub and offer_id and offer_id in _COMPLETED_SUBSCRIPTIONS:
+                old_sub = _COMPLETED_SUBSCRIPTIONS[offer_id]
+                if isinstance(old_sub, dict):
+                    old_h = old_sub.get("checkout_hash") or old_sub.get("mandate_proof_hash")
+                    if old_h and checkout_hash and old_h == checkout_hash:
+                        candidate_replay_sub = old_sub
+                    else:
+                        desc = f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' was already completed for a different checkout mandate."
+                        logger.warning(f"[SECURITY] {desc}")
+                        ref = checkout_hash or offer_id
+                        err_receipt = create_checkout_receipt_jwt(
+                            order_id=offer_id,
+                            closed_mandate_reference=ref,
+                            status="Error",
+                            error="OFFER_MISMATCH_DETECTED",
+                            error_description=desc,
+                        )
+                        err_pay_receipt = create_payment_receipt_jwt(
+                            payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                            closed_mandate_reference=ref,
+                            status="Error",
+                            error="OFFER_MISMATCH_DETECTED",
+                            error_description=desc,
+                        )
+                        return {
+                            "status": "REJECTED",
+                            "error": "OFFER_MISMATCH_DETECTED",
+                            "reason": desc,
+                            "message": f"Purchase rejected: {desc}",
+                            "checkout_receipt": err_receipt,
+                            "payment_receipt": err_pay_receipt,
+                        }
 
         # If this is a replay of an already-settled subscription and verification succeeded:
         if candidate_replay_sub and isinstance(candidate_replay_sub, dict):
+            cand_hash = candidate_replay_sub.get("checkout_hash") or candidate_replay_sub.get("mandate_proof_hash")
+            if cand_hash and checkout_hash and str(checkout_hash).strip() != str(cand_hash).strip():
+                desc = f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' was already completed for a different checkout mandate."
+                logger.warning(f"[SECURITY] {desc}")
+                ref = checkout_hash or offer_id
+                err_receipt = create_checkout_receipt_jwt(
+                    order_id=offer_id or "unknown_order",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                err_pay_receipt = create_payment_receipt_jwt(
+                    payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                    closed_mandate_reference=ref,
+                    status="Error",
+                    error="OFFER_MISMATCH_DETECTED",
+                    error_description=desc,
+                )
+                return {
+                    "status": "REJECTED",
+                    "error": "OFFER_MISMATCH_DETECTED",
+                    "reason": desc,
+                    "message": f"Purchase rejected: {desc}",
+                    "checkout_receipt": err_receipt,
+                    "payment_receipt": err_pay_receipt,
+                }
             c_status = str(candidate_replay_sub.get("status", "")).upper()
             if c_status in ("CANCELLED", "CANCELED", "EXPIRED", "DENIED", "REPLACED"):
                 return {
@@ -1254,10 +1460,12 @@ class SellerAgent:
         def _reject_purchase(desc: str, err_code: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             ref = checkout_hash or mandate_proof_hash or offer_id or "unknown_ref"
             pay_ref = closed_pay_tx_id or ref
-            if checkout_hash:
-                clear_stored_receipt(checkout_hash)
-            if closed_pay_tx_id:
-                clear_stored_receipt(closed_pay_tx_id)
+            is_completed = bool(candidate_replay_sub) or (bool(checkout_hash) and bool(get_subscription(checkout_hash)))
+            if not is_completed:
+                if checkout_hash:
+                    clear_stored_receipt(checkout_hash)
+                if closed_pay_tx_id:
+                    clear_stored_receipt(closed_pay_tx_id)
             err_receipt = create_checkout_receipt_jwt(
                 order_id=offer_id or "unknown_order",
                 closed_mandate_reference=ref,
@@ -1567,7 +1775,7 @@ class SellerAgent:
                     )
 
             # Record open payment mandate settlement upon successful purchase
-            if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
+            if ap2_verify_res and sub_status == "ACTIVE":
                 from ..database import record_open_mandate_settlement
                 amount_cents = dollars_to_minor_units(agreed_monthly_rate)
                 record_open_mandate_settlement(
@@ -1730,6 +1938,8 @@ class SellerAgent:
                 _COMPLETED_SUBSCRIPTIONS[auth["offer_id"]] = response
             if offer_id:
                 _COMPLETED_SUBSCRIPTIONS[offer_id] = response
+            if checkout_hash:
+                _COMPLETED_SUBSCRIPTIONS[checkout_hash] = response
             _COMPLETED_SUBSCRIPTIONS[sub_id] = response
             if norm_email:
                 if sub_status == "ACTIVE":

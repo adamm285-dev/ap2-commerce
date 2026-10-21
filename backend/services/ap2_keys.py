@@ -41,11 +41,19 @@ def get_merchant_key() -> JWK:
     raw_env_key = settings.ap2_merchant_private_key_jwk or os.environ.get("AP2_MERCHANT_PRIVATE_KEY_JWK", "")
     if raw_env_key.strip():
         try:
-            _MERCHANT_KEY = JWK.from_json(raw_env_key.strip())
-            logger.info("Loaded merchant ES256 key from environment.")
-            return _MERCHANT_KEY
+            key = JWK.from_json(raw_env_key.strip())
         except Exception as e:
-            logger.warning(f"Failed to parse AP2_MERCHANT_PRIVATE_KEY_JWK from environment: {e}")
+            raise RuntimeError(
+                f"AP2_MERCHANT_PRIVATE_KEY_JWK is set but could not be loaded as a JWK: {e}"
+            ) from e
+        pub = key.export_public(as_dict=True)
+        if not key.has_private or pub.get("kty") != "EC" or pub.get("crv") != "P-256":
+            raise RuntimeError(
+                "AP2_MERCHANT_PRIVATE_KEY_JWK must contain a private P-256 (ES256) JWK."
+            )
+        _MERCHANT_KEY = key
+        logger.info("Loaded merchant ES256 key from environment.")
+        return _MERCHANT_KEY
 
     key_file = settings.ap2_merchant_private_key_file or os.environ.get("AP2_MERCHANT_PRIVATE_KEY_FILE", "")
     if key_file.strip():

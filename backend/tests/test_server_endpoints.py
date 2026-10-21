@@ -4,6 +4,7 @@ Integration tests for FastAPI REST endpoints matching openapi.yaml contract.
 
 from fastapi.testclient import TestClient
 from ..server import app
+from ..config import settings
 
 client = TestClient(app)
 
@@ -665,7 +666,11 @@ def test_create_paypal_order_mock():
         "currency": "USD",
         "description": "Mobilization Deposit",
     }
-    res = client.post("/api/paypal/create-order", json=payload)
+    # Unauthenticated call rejected with 401
+    assert client.post("/api/paypal/create-order", json=payload).status_code == 401
+
+    admin_key = getattr(settings, "admin_api_key", "ci_admin_secret_token_key_for_testing")
+    res = client.post("/api/paypal/create-order", headers={"Authorization": f"Bearer {admin_key}"}, json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "CREATED"

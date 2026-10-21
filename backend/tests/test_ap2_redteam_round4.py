@@ -1140,14 +1140,18 @@ def test_rt4_pii_masking_marketplace_operators_and_payouts():
     raw_receiver_email = f"payout-{uuid.uuid4().hex[:8]}@recipient-{uuid.uuid4().hex[:4]}.net"
     op_id = f"op_{uuid.uuid4().hex[:8]}"
 
-    reg_res = client.post("/api/marketplace/operators/register", json={
-        "operator_id": op_id,
-        "name": "Confidential Compute Node",
-        "email": raw_op_email,
-        "payout_method": "PAYPAL",
-        "payout_email": raw_op_email,
-        "split_percentage_bps": 8500,
-    })
+    reg_res = client.post(
+        "/api/marketplace/operators/register",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+        json={
+            "operator_id": op_id,
+            "name": "Confidential Compute Node",
+            "email": raw_op_email,
+            "payout_method": "PAYPAL",
+            "payout_email": raw_op_email,
+            "split_percentage_bps": 8500,
+        },
+    )
     assert reg_res.status_code == 201
 
     # Seed a batch and payout item with raw_receiver_email

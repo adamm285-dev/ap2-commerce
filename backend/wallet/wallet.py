@@ -41,6 +41,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -129,6 +130,18 @@ def _write_new_file(path: Path, text: str) -> None:
         os.chmod(path, 0o600)
     except OSError:
         pass
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            username = os.environ.get("USERNAME")
+            if username:
+                subprocess.run(
+                    ["icacls", str(path), "/inheritance:r", "/grant:r", f"{username}:(R,W)"],
+                    capture_output=True,
+                    check=False,
+                )
+        except Exception:
+            pass
 
 
 def init_agent_key(directory: Optional[Path] = None) -> Dict[str, Any]:

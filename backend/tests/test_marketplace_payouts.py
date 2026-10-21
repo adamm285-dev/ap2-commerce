@@ -14,6 +14,7 @@ Verifies:
 import pytest
 from fastapi.testclient import TestClient
 from backend.server import app
+from backend.config import settings
 from backend.services.marketplace_payout_service import (
     calculate_split_amounts_cents,
     dollars_to_integer_cents,
@@ -316,7 +317,11 @@ def test_marketplace_rest_endpoints():
         "split_bps": 8500,
         "operator_id": "op_alpha_dc",
     }
-    res = client.post("/api/marketplace/operators/register", json=reg_payload)
+    res = client.post(
+        "/api/marketplace/operators/register",
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+        json=reg_payload,
+    )
     assert res.status_code == 201
     body = res.json()
     assert body["status"] == "SUCCESS"

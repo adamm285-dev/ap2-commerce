@@ -61,6 +61,19 @@ def _new_key_file(path: Path, kid: str):
             os.chmod(path, 0o600)
         except OSError:
             pass
+        if sys.platform == "win32":
+            # Note: chmod 0o600 does not restrict Windows ACLs; set explicit ACL via icacls
+            try:
+                import subprocess
+                username = os.environ.get("USERNAME")
+                if username:
+                    subprocess.run(
+                        ["icacls", str(path), "/inheritance:r", "/grant:r", f"{username}:(R,W)"],
+                        capture_output=True,
+                        check=False,
+                    )
+            except Exception:
+                pass
     return JWK.from_json(path.read_text(encoding="utf-8"))
 
 
@@ -221,6 +234,7 @@ def main() -> int:
         "\nNext:\n"
         f"  - Copy both entries from {config_out.name} into Claude Desktop's claude_desktop_config.json\n"
         "    (Windows: %APPDATA%\\Claude\\, macOS: ~/Library/Application Support/Claude/), then restart Claude Desktop.\n"
+        "  - Security note: On Windows, chmod 0o600 does not restrict NTFS ACLs; explicit ACLs are configured via icacls.\n"
         "  - To watch purchases in the portal, start the backend against the same database and merchant key:\n"
         f"      {backend_cmd}\n"
         "  - Re-run this script any time to sign fresh limits (new cap, or after they expire)."

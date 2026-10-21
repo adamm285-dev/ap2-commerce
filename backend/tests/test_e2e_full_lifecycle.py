@@ -58,7 +58,12 @@ def test_complete_autonomous_a2a_lifecycle():
         "description": "AP2 Dedicated AI Service Gateway Compute Subscription",
         "custom_id": f"A2A-MANDATE-{proof_hash[:12]}",
     }
-    res_order = client.post("/api/paypal/create-order", json=order_payload)
+    admin_key = getattr(settings, "admin_api_key", "ci_admin_secret_token_key_for_testing")
+    res_order = client.post(
+        "/api/paypal/create-order",
+        headers={"Authorization": f"Bearer {admin_key}"},
+        json=order_payload,
+    )
     assert res_order.status_code == 200
     order = res_order.json()
     assert order["status"] == "CREATED"

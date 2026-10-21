@@ -261,17 +261,24 @@ class StubbedModelRunner(BaseModelRunner):
                 elif status == "APPROVED":
                     price = float(tool_result.get("agreed_monthly_rate", 79.99))
                     tier_id = tool_result.get("tier_id", "ap2-gateway")
-                    return {
-                        "thought": f"Seller APPROVED requested tier '{tier_id}' at ${price:.2f}/mo within budget cap. Signing closed mandates.",
-                        "action": "call_tool",
-                        "tool_name": "sign_and_purchase",
-                        "tool_call_id": f"call_sign_{uuid.uuid4().hex[:8]}",
-                        "parameters": {
-                            "offer_id": tool_result.get("offer_id"),
-                            "tier_id": tier_id,
-                            "monthly_price": price,
-                        },
-                    }
+                    if price <= budget_cap and (not allowed_tiers or tier_id in allowed_tiers):
+                        return {
+                            "thought": f"Seller APPROVED requested tier '{tier_id}' at ${price:.2f}/mo within budget cap. Signing closed mandates.",
+                            "action": "call_tool",
+                            "tool_name": "sign_and_purchase",
+                            "tool_call_id": f"call_sign_{uuid.uuid4().hex[:8]}",
+                            "parameters": {
+                                "offer_id": tool_result.get("offer_id"),
+                                "tier_id": tier_id,
+                                "monthly_price": price,
+                            },
+                        }
+                    else:
+                        return {
+                            "thought": f"Approved price of ${price:.2f}/mo exceeds budget cap ${budget_cap:.2f} or tier '{tier_id}' is not allowed. REJECTING.",
+                            "action": "reject",
+                            "content": f"Negotiation rejected: approved price ${price:.2f}/mo exceeds authorized budget cap ${budget_cap:.2f}.",
+                        }
                 else:
                     reason = tool_result.get("reason", "Budget cap breach")
                     return {
@@ -570,7 +577,7 @@ class LLMBuyerAgent:
                 transaction_id=checkout_hash,
                 payment_amount=Amount(amount=price_cents, currency="USD"),
                 payee=Merchant(id=AP2_MERCHANT_ID, name=AP2_MERCHANT_NAME),
-                payment_instrument=PaymentInstrument(type="paypal_vault", id=f"vault_{self.agent_id}"),
+                payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_agent_mit"),
             )
 
             open_pay_hash = compute_open_payment_mandate_hash(open_pay_tok)
@@ -974,9 +981,22 @@ class LLMBuyerAgent:
                             )
 
                     elif status == "APPROVED":
+                        price = float(tool_res.get("agreed_monthly_rate", 79.99))
+                        if price <= self.monthly_budget_cap:
+                            self._log_step(
+                                "STEP 4: CHECKED AGAINST LIMITS",
+                                f"Policy Check: ${price:.2f} <= ${self.monthly_budget_cap:.2f} Cap (Remaining: ${self.monthly_budget_cap - price:.2f}) -> ACCEPTED",
+                                {"approved": True, "remaining_cap": self.monthly_budget_cap - price},
+                            )
+                        else:
+                            self._log_step(
+                                "STEP 4: CHECKED AGAINST LIMITS",
+                                f"Policy Check: ${price:.2f} > ${self.monthly_budget_cap:.2f} Cap -> REJECTED",
+                                {"approved": False},
+                            )
                         self._log_step(
                             "APPROVED",
-                            f"Seller approved requested tier '{target_tier}' within budget cap.",
+                            f"Seller approved requested tier '{target_tier}' at ${price:.2f}/mo.",
                         )
                     elif status == "REJECTED":
                         chk_rec = tool_res.get("checkout_receipt")

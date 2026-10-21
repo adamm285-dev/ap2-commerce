@@ -501,7 +501,11 @@ def test_create_order_rejects_out_of_range(body):
 
 
 def test_create_order_accepts_normal_deposit():
-    res = client.post("/api/paypal/create-order", json={"amount": 149.0, "currency": "USD", "description": "Compute node deposit"})
+    res = client.post(
+        "/api/paypal/create-order",
+        headers=admin_headers(),
+        json={"amount": 149.0, "currency": "USD", "description": "Compute node deposit"},
+    )
     assert res.status_code == 200
 
 

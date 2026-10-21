@@ -749,21 +749,26 @@ class ExecuteBatchPayoutRequest(BaseModel):
 
 @app.post("/api/marketplace/operators/register", status_code=status.HTTP_201_CREATED, tags=["Marketplace Payouts"])
 async def register_operator_endpoint(req: RegisterOperatorRequest, request: Request):
-    """Registers or updates a compute node operator in the two-sided marketplace."""
+    """Registers or updates a compute node operator in the two-sided marketplace. Requires admin key."""
     from .services.marketplace_payout_service import marketplace_payout_service, DEFAULT_OPERATOR_SPLIT_BPS
     is_admin = _has_admin_key(request)
-    if not is_admin and req.splitBps != DEFAULT_OPERATOR_SPLIT_BPS:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="OPERATOR_SPLIT_FORBIDDEN: Setting custom split_bps requires admin authorization.",
-        )
-    if req.operatorId:
-        existing = marketplace_payout_service.get_operator(req.operatorId)
-        if existing and existing.get("email") != req.email.strip().lower() and not is_admin:
+    if not is_admin:
+        if req.operatorId:
+            existing = marketplace_payout_service.get_operator(req.operatorId)
+            if existing and existing.get("email") != req.email.strip().lower():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"OPERATOR_MODIFICATION_FORBIDDEN: Admin authorization required to update payout destination for '{req.operatorId}'.",
+                )
+        if req.splitBps != DEFAULT_OPERATOR_SPLIT_BPS:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"OPERATOR_MODIFICATION_FORBIDDEN: Admin authorization required to update payout destination for '{req.operatorId}'.",
+                detail="OPERATOR_SPLIT_FORBIDDEN: Setting custom split_bps requires admin authorization.",
             )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OPERATOR_REGISTRATION_FORBIDDEN: Admin authorization required to register marketplace operators.",
+        )
     try:
         op = marketplace_payout_service.register_operator(
             name=req.name,
@@ -1892,8 +1897,13 @@ async def get_buyer_identity_endpoint(kid: str, request: Request):
     response_model=PayPalOrderResponse,
     tags=["PayPal Orders"],
 )
-async def create_paypal_order(request: PayPalOrderCreateRequest):
-    """Creates a PayPal Checkout Order for subscriptions or estimate deposits."""
+async def create_paypal_order(request: PayPalOrderCreateRequest, http_request: Request):
+    """Creates a PayPal Checkout Order for subscriptions or estimate deposits. Requires administrative authorization."""
+    if not _has_admin_key(http_request):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authorization required to create PayPal checkout orders.",
+        )
     try:
         return await paypal_service.create_order(
             amount=request.amount,
@@ -2433,7 +2443,14 @@ async def run_external_buyer_agent_endpoint(req: RunBuyerAgentRequest, request: 
     Executes the external buyer agent harness headlessly over MCP (HTTP or stdio).
     Returns the step-by-step audit log, cryptographic proof, and back-office payloads.
     Requires administrative authorization.
+    Only available when MOCK_EXTERNAL_APIS=true.
     """
+    if not bool(getattr(settings, "mock_external_apis", False)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="External buyer agent harness is only available when MOCK_EXTERNAL_APIS=true.",
+        )
+
     # Admin authorization check
     auth_header = request.headers.get("Authorization") or request.headers.get("X-Admin-Key")
 

@@ -41,8 +41,9 @@ if not ("--remote" in sys.argv or os.environ.get("REMOTE_AUDIT") == "1"):
                     pass
 
         atexit.register(_cleanup_judge_temp_db)
-        from backend.database import init_db
+        from backend.database import init_db, seed_fleet_subscriptions_if_empty
         init_db()
+        seed_fleet_subscriptions_if_empty()
 
 import argparse
 import httpx

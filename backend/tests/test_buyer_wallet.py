@@ -845,3 +845,347 @@ def test_provision_rejection_includes_ap2_payment_challenge_and_header():
     assert challenge["wallet_sign_tool"] == "sign_checkout"
     assert challenge["purchase_tool"] == "purchase_subscription"
 
+
+# ── Wave 1 Adversarial Review Regression Tests ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_public_discovery_surfaces_match_ap2_v02_and_two_server_model():
+    llms_txt = (REPO_ROOT / "public" / "llms.txt").read_text(encoding="utf-8")
+    for stale in ("provision_execution_node", "solo-driver", "pro-driver", "fleet-dispatch"):
+        assert stale not in llms_txt
+    for expected in (
+        "provision_compute_node",
+        "get_subscription_details",
+        "ap2-buyer-wallet",
+        "preview_checkout",
+        "sign_checkout",
+        "record_renewal_receipt",
+        "checkout_mandate_chain",
+        "payment_mandate_chain",
+        "ES256",
+    ):
+        assert expected in llms_txt
+
+    mcp_manifest = json.loads((REPO_ROOT / "public" / ".well-known" / "mcp.json").read_text(encoding="utf-8"))
+    manifest_tools = set(mcp_manifest["mcp_server"]["tools"])
+    assert manifest_tools == {
+        "get_service_catalog",
+        "inspect_subscription_tiers",
+        "negotiate_tier_terms",
+        "evaluate_spending_mandate",
+        "purchase_subscription",
+        "provision_compute_node",
+        "get_subscription_details",
+        "dispatch_zapier_mcp",
+    }
+    assert mcp_manifest["companion_wallet_server"]["tools"] == [
+        "get_spending_limits",
+        "preview_checkout",
+        "sign_checkout",
+        "record_renewal_receipt",
+    ]
+
+    api_mcp = client.get("/.well-known/mcp.json").json()
+    assert set(api_mcp["mcp_server"]["tools"]) == manifest_tools
+    assert api_mcp["companion_wallet_server"]["name"] == "ap2-buyer-wallet"
+    assert api_mcp["companion_wallet_server"]["command"] == "python -m backend.wallet.mcp_server"
+
+    agent_card = client.get("/.well-known/agent.json").json()
+    assert "ES256" in agent_card["authentication"]["algorithms"]
+
+    init_resp = await process_mcp_request(
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}
+    )
+    instructions = init_resp["result"]["instructions"]
+    assert "record_renewal_receipt" in instructions
+    assert "get_subscription_details" in instructions
+    assert "preview_checkout" in instructions
+
+
+@pytest.mark.asyncio
+async def test_seller_mcp_sets_is_error_true_on_rejected_tool_results():
+    # 1. Purchase rejected for missing chains -> isError must be True
+    pur_resp = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "purchase_subscription",
+            "arguments": {"tier_id": "ap2-batch", "agreed_monthly_rate": 49.99},
+        },
+    })
+    assert pur_resp["result"]["isError"] is True
+    pur_body = json.loads(pur_resp["result"]["content"][0]["text"])
+    assert pur_body["status"] == "REJECTED"
+
+    # 2. Negotiation rejected for budget below minimum tier -> isError must be True
+    neg_rej = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "buyer_email": "wave1@example.com",
+                "tier_id": "ap2-gateway",
+                "monthly_budget_cap": 20.0,
+            },
+        },
+    })
+    assert neg_rej["result"]["isError"] is True
+
+    # 3. Negotiation COUNTER_OFFER -> actionable offer with checkout_jwt, isError must be False
+    neg_co = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "wave1-agent",
+                "buyer_email": "wave1@example.com",
+                "tier_id": "ap2-gateway",
+                "monthly_budget_cap": 60.0,
+            },
+        },
+    })
+    assert neg_co["result"]["isError"] is False
+
+    # 4. Provision rejected for unknown subscription -> isError must be True
+    prov_rej = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+            "name": "provision_compute_node",
+            "arguments": {"subscription_id": "I-UNKNOWN-999", "buyer_email": "wave1@example.com"},
+        },
+    })
+    assert prov_rej["result"]["isError"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name, bad_args", [
+    # Missing buyer_agent_id, tier_id, budget, or email on negotiate_tier_terms
+    ("negotiate_tier_terms", {"tier_id": "ap2-gateway", "monthly_budget_cap": 60.0, "buyer_email": "a@b.com"}),
+    ("negotiate_tier_terms", {"buyer_agent_id": "ag1", "monthly_budget_cap": 60.0, "buyer_email": "a@b.com"}),
+    ("negotiate_tier_terms", {"buyer_agent_id": "ag1", "tier_id": "ap2-gateway", "buyer_email": "a@b.com"}),
+    ("negotiate_tier_terms", {"buyer_agent_id": "ag1", "tier_id": "ap2-gateway", "monthly_budget_cap": 60.0}),
+    # Missing subscription_id or buyer_email on provision_compute_node
+    ("provision_compute_node", {"buyer_email": "a@b.com"}),
+    ("provision_compute_node", {"subscription_id": "I-SUB-1"}),
+    # Missing subscription_id on dispatch_zapier_mcp or get_subscription_details
+    ("dispatch_zapier_mcp", {"event_type": "PROVISIONED"}),
+    ("get_subscription_details", {}),
+    # Missing buyer_agent_id or amount on evaluate_spending_mandate
+    ("evaluate_spending_mandate", {"amount": 49.99}),
+    ("evaluate_spending_mandate", {"buyer_agent_id": "ag1"}),
+])
+async def test_seller_mcp_omitted_arguments_fail_closed_with_invalid_params(tool_name, bad_args):
+    resp = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 99,
+        "method": "tools/call",
+        "params": {"name": tool_name, "arguments": bad_args},
+    })
+    assert "error" in resp, f"Expected JSON-RPC error for {tool_name}({bad_args}), got {resp}"
+    assert resp["error"]["code"] == -32602
+
+
+@pytest.mark.asyncio
+async def test_seller_mcp_accepts_integer_cents_and_rejects_float_cents_disagreement(demo):
+    # 1. Integer cents only on negotiate_tier_terms
+    nego = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "cents-agent",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-batch",
+        "monthly_budget_cap_cents": 6000,
+    })
+    assert nego["status"] == "APPROVED"
+    assert nego["price_cents"] == 4999
+    assert nego["agreed_monthly_rate_cents"] == 4999
+    assert nego["monthly_budget_cap_cents"] == 6000
+    assert nego["monthly_cap_remaining_cents"] == 1001
+
+    # 2. Disagreement between monthly_budget_cap_cents and monthly_budget_cap -> -32602
+    disagree = await process_mcp_request({
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "negotiate_tier_terms",
+            "arguments": {
+                "buyer_agent_id": "cents-agent",
+                "buyer_email": demo.email,
+                "tier_id": "ap2-batch",
+                "monthly_budget_cap": 60.0,
+                "monthly_budget_cap_cents": 5000,
+            },
+        },
+    })
+    assert disagree["error"]["code"] == -32602
+
+    # 3. Purchase using agreed_monthly_rate_cents
+    signed = demo.wallet.sign_checkout(nego["checkout_jwt"])
+    pur = await _seller("purchase_subscription", {
+        "offer_id": nego["offer_id"],
+        "tier_id": "ap2-batch",
+        "agreed_monthly_rate_cents": 4999,
+        "buyer_email": demo.email,
+        "checkout_mandate_chain": signed["checkout_mandate_chain"],
+        "payment_mandate_chain": signed["payment_mandate_chain"],
+    })
+    assert pur["status"] == "ACTIVE"
+    assert pur["agreed_monthly_rate_cents"] == 4999
+    assert pur["monthly_budget_cap_cents"] == 6000
+
+
+@pytest.mark.asyncio
+async def test_seller_rejections_include_structured_step_up_escalation_with_integer_cents(demo):
+    # 1. Negotiation below minimum tier ($20.00 vs $49.99 minimum and $79.99 requested)
+    neg_rej = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "stepup-agent",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-gateway",
+        "monthly_budget_cap_cents": 2000,
+    })
+    assert neg_rej["status"] == "REJECTED"
+    esc = neg_rej["escalation"]
+    assert esc["type"] == "human_step_up_required"
+    assert esc["action"] == "increase_spending_limits"
+    assert esc["requested_amount_cents"] == 7999
+    assert esc["minimum_viable_amount_cents"] == 4999
+    assert esc["monthly_budget_cap_cents"] == 2000
+    assert esc["shortfall_cents"] == 5999
+    assert esc["minimum_viable_shortfall_cents"] == 2999
+
+
+@pytest.mark.asyncio
+async def test_email_and_offer_binding_enforced_even_when_buyer_email_omitted(demo):
+    # Negotiate two distinct checkouts
+    nego_batch = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "binding-agent",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-batch",
+        "monthly_budget_cap_cents": 6000,
+    })
+    other_chk = create_merchant_checkout(tier_id="ap2-batch", monthly_price=49.99, contractor_email=demo.email)
+    signed_other = demo.wallet.sign_checkout(other_chk["checkout_jwt"])
+
+    # 1. Presenting signed chains for other_chk against nego_batch's offer_id (even with other_chk's nonce) is rejected
+    from backend.agents.seller_agent import seller_agent
+    mismatch_offer = await seller_agent.purchase_subscription(
+        offer_id=nego_batch["offer_id"],
+        checkout_mandate_chain=signed_other["checkout_mandate_chain"],
+        payment_mandate_chain=signed_other["payment_mandate_chain"],
+        checkout_jwt=other_chk["checkout_jwt"],
+        nonce=other_chk["nonce"],
+    )
+    assert mismatch_offer["status"] == "REJECTED"
+    assert mismatch_offer["error"] == "OFFER_MISMATCH_DETECTED"
+
+    # 2. Enrolling an impostor owner key and trying to redeem a checkout issued for demo.email without passing buyer_email
+    impostor_key = _new_key("owner-impostor-wave1")
+    _enroll_owner(impostor_key, "impostor@example.com")
+    impostor_limits = create_trusted_surface_open_mandates(
+        buyer_email="impostor@example.com",
+        monthly_budget_cap=100.0,
+        yearly_budget_ceiling=500.0,
+        agent_key=demo.wallet._agent_key(),
+        user_key=impostor_key,
+    )
+    from ap2.sdk.mandate import MandateClient
+    from ap2.sdk.generated.checkout_mandate import CheckoutMandate
+    from ap2.sdk.generated.payment_mandate import PaymentMandate
+    from ap2.sdk.generated.types.amount import Amount
+    from ap2.sdk.generated.types.merchant import Merchant
+    from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
+    mc = MandateClient()
+    imp_chk_chain = mc.present(
+        holder_key=demo.wallet._agent_key(),
+        mandate_token=impostor_limits["open_checkout_mandate_token"],
+        payloads=[CheckoutMandate(vct="mandate.checkout.1", checkout_jwt=nego_batch["checkout_jwt"], checkout_hash=nego_batch["checkout_hash"])],
+        aud="merchant-ap2-autonomous",
+        nonce=nego_batch["nonce"],
+    )
+    imp_pay_chain = mc.present(
+        holder_key=demo.wallet._agent_key(),
+        mandate_token=impostor_limits["open_payment_mandate_token"],
+        payloads=[PaymentMandate(
+            vct="mandate.payment.1",
+            transaction_id=nego_batch["checkout_hash"],
+            payment_amount=Amount(amount=4999, currency="USD"),
+            payee=Merchant(id="merchant-ap2-autonomous", name="AP2 Autonomous Node Network"),
+            payment_instrument=PaymentInstrument(type="paypal_vault", id="vault_imp"),
+        )],
+        aud="merchant-ap2-autonomous",
+        nonce=nego_batch["nonce"],
+    )
+    # Omitting buyer_email still catches that impostor_key's registered email != nego_batch's issued email
+    imp_pur = await _seller("purchase_subscription", {
+        "checkout_mandate_chain": imp_chk_chain,
+        "payment_mandate_chain": imp_pay_chain,
+        "checkout_jwt": nego_batch["checkout_jwt"],
+    })
+    assert imp_pur["status"] == "REJECTED"
+    assert "EMAIL_KEY_BINDING_MISMATCH" in imp_pur["reason"]
+
+    # 3. Valid purchase omitting both buyer_email and checkout_jwt recovers checkout_jwt from SD-JWT disclosure
+    # and binds verified_buyer_email from demo's registered key
+    signed_valid = demo.wallet.sign_checkout(nego_batch["checkout_jwt"])
+    valid_pur = await _seller("purchase_subscription", {
+        "checkout_mandate_chain": signed_valid["checkout_mandate_chain"],
+        "payment_mandate_chain": signed_valid["payment_mandate_chain"],
+    })
+    assert valid_pur["status"] == "ACTIVE"
+    assert valid_pur["buyer_email"] == demo.email
+
+
+@pytest.mark.asyncio
+async def test_multi_worker_sqlite_fallback_and_sse_wire_log_redaction(demo):
+    from backend.services.ap2_service import (
+        _ISSUED_CHECKOUTS,
+        _RECEIPT_STORE,
+        get_issued_checkout,
+        get_stored_receipt,
+    )
+
+    nego = await _seller("negotiate_tier_terms", {
+        "buyer_agent_id": "worker-test",
+        "buyer_email": demo.email,
+        "tier_id": "ap2-batch",
+        "monthly_budget_cap_cents": 6000,
+    })
+    signed = demo.wallet.sign_checkout(nego["checkout_jwt"])
+    pur = await _seller("purchase_subscription", {
+        "offer_id": nego["offer_id"],
+        "buyer_email": demo.email,
+        "checkout_mandate_chain": signed["checkout_mandate_chain"],
+        "payment_mandate_chain": signed["payment_mandate_chain"],
+    })
+    assert pur["status"] == "ACTIVE"
+
+    # Simulate a second worker / process restart by clearing in-memory caches
+    _ISSUED_CHECKOUTS.clear()
+    _RECEIPT_STORE.clear()
+
+    recovered_chk = get_issued_checkout(nego["checkout_hash"])
+    assert recovered_chk is not None
+    assert recovered_chk["checkout_jwt"] == nego["checkout_jwt"]
+
+    recovered_receipt = get_stored_receipt(nego["checkout_hash"])
+    assert recovered_receipt is not None
+    assert recovered_receipt["status"] == "Success"
+
+    # Verify SSE wire log (/api/mcp/frames) redacts all sensitive JWTs and mandate chains
+    frames = client.get("/api/mcp/frames").json()["frames"]
+    serialized_frames = json.dumps(frames)
+    assert nego["checkout_jwt"] not in serialized_frames
+    assert signed["checkout_mandate_chain"] not in serialized_frames
+    assert signed["payment_mandate_chain"] not in serialized_frames
+    assert pur["checkout_receipt"] not in serialized_frames
+    assert pur["payment_receipt"] not in serialized_frames
+
+

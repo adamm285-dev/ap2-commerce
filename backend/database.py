@@ -1256,7 +1256,11 @@ def list_subscription_recurring_charges(
         conn.close()
 
 
-def get_open_mandate_total_usage(mandate_hash: str, db_path: Optional[Path] = None) -> Tuple[int, int]:
+def get_open_mandate_total_usage(
+    mandate_hash: str,
+    exclude_subscription_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Tuple[int, int]:
     """
     Returns (total_amount_cents, total_uses) charged under an open payment mandate:
     purchase-time settlements plus every later PayPal charge recorded for it. INITIAL charges
@@ -1264,7 +1268,11 @@ def get_open_mandate_total_usage(mandate_hash: str, db_path: Optional[Path] = No
     """
     if not mandate_hash:
         raise ValueError("mandate_hash is required to compute mandate usage.")
-    settled_cents, settled_uses = get_open_mandate_settlement_totals(mandate_hash, db_path=db_path)
+    settled_cents, settled_uses = get_open_mandate_settlement_totals(
+        mandate_hash,
+        exclude_subscription_id=exclude_subscription_id,
+        db_path=db_path,
+    )
     conn = get_connection(db_path)
     try:
         cur = conn.execute(

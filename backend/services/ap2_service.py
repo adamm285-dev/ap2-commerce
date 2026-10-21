@@ -369,8 +369,23 @@ def verify_receipt_jwt(receipt_jwt: str) -> Dict[str, Any]:
 
 
 def get_stored_receipt(reference: str) -> Optional[Dict[str, Any]]:
-    """Checks whether a receipt exists for the given closed mandate reference."""
-    return _RECEIPT_STORE.get(reference)
+    """Checks whether a receipt exists for the given closed mandate reference (with SQLite fallback)."""
+    if not reference:
+        return None
+    if reference in _RECEIPT_STORE:
+        return _RECEIPT_STORE[reference]
+    from ..database import get_subscription
+    sub = get_subscription(reference)
+    if sub and isinstance(sub, dict) and sub.get("checkout_receipt"):
+        try:
+            return verify_receipt_jwt(sub["checkout_receipt"])
+        except Exception:
+            return {
+                "status": "Success",
+                "reference": reference,
+                "order_id": sub.get("offer_id") or sub.get("subscription_id"),
+            }
+    return None
 
 
 def clear_stored_receipt(reference: str) -> None:
@@ -380,8 +395,36 @@ def clear_stored_receipt(reference: str) -> None:
 
 
 def get_issued_checkout(identifier: str) -> Optional[Dict[str, Any]]:
-    """Retrieves an issued merchant checkout record by order_id or checkout_hash."""
-    return _ISSUED_CHECKOUTS.get(identifier)
+    """Retrieves an issued merchant checkout record by order_id or checkout_hash (with SQLite fallback)."""
+    if not identifier:
+        return None
+    if identifier in _ISSUED_CHECKOUTS:
+        return _ISSUED_CHECKOUTS[identifier]
+    from ..database import get_mandate
+    db_mandate = get_mandate(identifier)
+    if db_mandate and isinstance(db_mandate, dict):
+        chk_jwt = db_mandate.get("checkout_jwt") or db_mandate.get("counter_offer_checkout_jwt")
+        if chk_jwt:
+            chk_hash = (
+                db_mandate.get("checkout_hash")
+                or db_mandate.get("counter_checkout_hash")
+                or compute_checkout_hash(chk_jwt)
+            )
+            order_id = db_mandate.get("offer_id") or identifier
+            amt = float(db_mandate.get("amount") or 0.0)
+            return {
+                "order_id": order_id,
+                "checkout_id": order_id,
+                "checkout_jwt": chk_jwt,
+                "checkout_hash": chk_hash,
+                "nonce": db_mandate.get("nonce") or db_mandate.get("counter_nonce"),
+                "tier_id": db_mandate.get("tier_id"),
+                "price_cents": dollars_to_minor_units(amt),
+                "monthly_price": amt,
+                "currency": "USD",
+                "contractor_email": db_mandate.get("contractor_email"),
+            }
+    return None
 
 
 def compute_open_payment_mandate_hash(payment_mandate_token: str) -> str:
@@ -499,34 +542,48 @@ def verify_ap2_chains(
     order_id = "unknown_order"
 
     try:
-        # Step 0: Resolve checkout_jwt if not provided directly
+        # Step 0: Resolve checkout_jwt if not provided directly (using vendored AP2 SDK parser, fail-closed)
+        recovery_error: Optional[str] = None
         if not checkout_jwt:
-            try:
-                parts = checkout_mandate_token.split("~~")
-                if len(parts) >= 2:
-                    from ap2.sdk.utils import b64url_decode
-                    closed_part = parts[1].split("~")[0]
-                    payload_b64 = closed_part.split(".")[1]
-                    payload_json = json.loads(b64url_decode(payload_b64).decode("utf-8"))
-                    chk_hash = payload_json.get("checkout_hash")
-                    if chk_hash and chk_hash in _ISSUED_CHECKOUTS:
-                        checkout_jwt = _ISSUED_CHECKOUTS[chk_hash]["checkout_jwt"]
-            except Exception:
-                pass
+            parts = (checkout_mandate_token or "").split("~~")
+            if len(parts) >= 2 and parts[1].strip():
+                from ap2.sdk.mandate import _canonical_chain_segment
+                from ap2.sdk.sdjwt import chain as _ap2_chain
+                try:
+                    parsed_closed = common.parse_token(_canonical_chain_segment(parts[1].strip(), 1, len(parts)))
+                    candidate_claims: List[Dict[str, Any]] = [parsed_closed.payload]
+                    for disc in parsed_closed.disclosures:
+                        dec = _ap2_chain._decode_disclosure_dict(disc, 1)
+                        if isinstance(dec, dict):
+                            candidate_claims.append(dec)
+                    for claim_dict in candidate_claims:
+                        if not checkout_jwt and isinstance(claim_dict.get("checkout_jwt"), str):
+                            checkout_jwt = claim_dict["checkout_jwt"]
+                        chk_hash = claim_dict.get("checkout_hash")
+                        if not checkout_jwt and isinstance(chk_hash, str) and chk_hash:
+                            issued = get_issued_checkout(chk_hash)
+                            if issued:
+                                checkout_jwt = issued.get("checkout_jwt")
+                except ValueError as parse_err:
+                    recovery_error = str(parse_err)
+                    logger.warning(f"Failed to parse closed checkout mandate token during checkout_jwt recovery: {recovery_error}")
 
         if not checkout_jwt:
             ref = f"err_{uuid.uuid4().hex[:8]}"
+            desc = "checkout_jwt is required to verify checkout constraints."
+            if recovery_error:
+                desc = f"{desc} (closed mandate parse error: {recovery_error})"
             err_receipt = create_checkout_receipt_jwt(
                 order_id=order_id,
                 closed_mandate_reference=ref,
                 status="Error",
                 error=ERR_INVALID_MANDATE,
-                error_description="checkout_jwt is required to verify checkout constraints.",
+                error_description=desc,
             )
             return {
                 "valid": False,
                 "error": ERR_INVALID_MANDATE,
-                "error_description": "checkout_jwt is required to verify checkout constraints.",
+                "error_description": desc,
                 "checkout_receipt": err_receipt,
                 "payment_receipt": None,
             }
@@ -556,7 +613,7 @@ def verify_ap2_chains(
             }
 
         # Step 1.5: Verify First — Mandate Revocation Status List Check (SPEC-001 v1.9.0)
-        from ..database import is_mandate_revoked
+        from ..database import is_mandate_revoked, get_buyer_key_email
         open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_token)
         if is_mandate_revoked(checkout_hash) or is_mandate_revoked(open_pay_hash) or (order_id and is_mandate_revoked(order_id)):
             msg = "MANDATE_REVOKED: This mandate has been cryptographically revoked by the owner."
@@ -585,25 +642,45 @@ def verify_ap2_chains(
                 "payment_receipt": err_pay_receipt,
             }
 
-        # Resolve buyer_email if not explicitly provided
-        if not buyer_email:
-            if checkout_hash in _ISSUED_CHECKOUTS:
-                buyer_email = _ISSUED_CHECKOUTS[checkout_hash].get("contractor_email")
-            elif order_id in _ISSUED_CHECKOUTS:
-                buyer_email = _ISSUED_CHECKOUTS[order_id].get("contractor_email")
+        # Resolve issued checkout record (in-memory or SQLite) for email & nonce binding
+        issued_rec = get_issued_checkout(checkout_hash) or get_issued_checkout(order_id)
+        issued_email = (
+            (issued_rec.get("contractor_email") or "").strip().lower() or None
+            if isinstance(issued_rec, dict)
+            else None
+        )
+        caller_email = (
+            buyer_email.strip().lower()
+            if isinstance(buyer_email, str) and buyer_email.strip()
+            else None
+        )
+        effective_email = caller_email or issued_email
 
         # Resolve expected_nonce if not explicitly provided
         if not expected_nonce:
             if isinstance(chk_payload, dict) and "nonce" in chk_payload:
                 expected_nonce = chk_payload.get("nonce")
-            if not expected_nonce and checkout_hash in _ISSUED_CHECKOUTS:
-                expected_nonce = _ISSUED_CHECKOUTS[checkout_hash].get("nonce")
-            if not expected_nonce and order_id in _ISSUED_CHECKOUTS:
-                expected_nonce = _ISSUED_CHECKOUTS[order_id].get("nonce")
+            if not expected_nonce and isinstance(issued_rec, dict):
+                expected_nonce = issued_rec.get("nonce")
 
         # Step 2: Verify Checkout Mandate chain
+        verified_checkout_root_kid: Optional[str] = None
         def checkout_root_provider(t: common.ParsedToken) -> JWK:
-            return resolve_root_public_key(t, override_key=user_public_key, buyer_email=buyer_email)
+            nonlocal verified_checkout_root_kid, effective_email
+            header = t.header if hasattr(t, "header") else getattr(t, "jwt_header", {})
+            verified_checkout_root_kid = header.get("kid")
+            resolved_key = resolve_root_public_key(t, override_key=user_public_key, buyer_email=caller_email)
+            if verified_checkout_root_kid and user_public_key is None:
+                reg_email = get_buyer_key_email(verified_checkout_root_kid)
+                if reg_email and reg_email.strip():
+                    norm_reg = reg_email.strip().lower()
+                    if issued_email and norm_reg != issued_email:
+                        raise ValueError(
+                            f"EMAIL_KEY_BINDING_MISMATCH: Registered key '{verified_checkout_root_kid}' is bound to '{norm_reg}', "
+                            f"which does not match checkout email '{issued_email}'."
+                        )
+                    effective_email = norm_reg
+            return resolved_key
 
         try:
             checkout_payloads = client.verify(
@@ -665,12 +742,21 @@ def verify_ap2_chains(
                     error=ERR_INVALID_MANDATE,
                     error_description=detail,
                 )
+                req_tier = chk_payload.get("line_items", [{}])[0].get("item", {}).get("id", "unknown")
+                req_cents = int(chk_payload.get("totals", [{}])[-1].get("amount") or 0)
                 return {
                     "valid": False,
                     "error": ERR_INVALID_MANDATE,
                     "error_description": detail,
                     "checkout_receipt": err_receipt,
                     "payment_receipt": err_pay_receipt,
+                    "escalation": {
+                        "requires_human_approval": True,
+                        "action": "APPROVE_CHECKOUT_EXCEPTION",
+                        "requested_merchant_id": AP2_MERCHANT_ID,
+                        "requested_tier_id": req_tier,
+                        "requested_amount_cents": req_cents,
+                    },
                 }
         except Exception as e:
             detail = str(e)
@@ -702,10 +788,15 @@ def verify_ap2_chains(
         # Step 3: Verify Payment Mandate chain
         verified_payment_root_kid: Optional[str] = None
         def payment_root_provider(t: common.ParsedToken) -> JWK:
-            nonlocal verified_payment_root_kid
+            nonlocal verified_payment_root_kid, effective_email
             header = t.header if hasattr(t, "header") else getattr(t, "jwt_header", {})
             verified_payment_root_kid = header.get("kid")
-            return resolve_root_public_key(t, override_key=user_public_key, buyer_email=buyer_email)
+            resolved_key = resolve_root_public_key(t, override_key=user_public_key, buyer_email=effective_email)
+            if not effective_email and verified_payment_root_kid and user_public_key is None:
+                reg_email = get_buyer_key_email(verified_payment_root_kid)
+                if reg_email and reg_email.strip():
+                    effective_email = reg_email.strip().lower()
+            return resolved_key
 
         try:
             payment_payloads = client.verify(
@@ -776,12 +867,45 @@ def verify_ap2_chains(
                     error=ERR_INVALID_MANDATE,
                     error_description=detail,
                 )
+                req_tier = chk_payload.get("line_items", [{}])[0].get("item", {}).get("id", "unknown")
+                req_cents = int(payment_chain.closed_mandate.payment_amount.amount)
+                cap_cents = 0
+                budget_limit_cents = 0
+                max_occurrences = None
+                for c in (payment_chain.open_mandate.constraints or []):
+                    vct_val = getattr(c, "vct", None) or (c.get("vct") if isinstance(c, dict) else "")
+                    if "amount_range" in str(vct_val) or hasattr(c, "min"):
+                        cap_cents = int(getattr(c, "max", 0) or 0)
+                    elif "budget" in str(vct_val):
+                        budget_limit_cents = int(round(float(getattr(c, "max", 0) or 0) * 100))
+                    elif "recurrence" in str(vct_val) or hasattr(c, "max_occurrences"):
+                        max_occurrences = getattr(c, "max_occurrences", None)
+                used_cents = int(ctx.total_amount or 0)
+                used_count = int(ctx.total_uses or 0)
+                rem_cents = max(budget_limit_cents - used_cents, 0) if budget_limit_cents else 0
                 return {
                     "valid": False,
                     "error": ERR_INVALID_MANDATE,
                     "error_description": detail,
                     "checkout_receipt": err_chk_receipt,
                     "payment_receipt": err_receipt,
+                    "escalation": {
+                        "requires_human_approval": True,
+                        "action": "INCREASE_SPENDING_LIMITS",
+                        "requested_merchant_id": AP2_MERCHANT_ID,
+                        "requested_tier_id": req_tier,
+                        "requested_amount_cents": req_cents,
+                        "current_max_per_purchase_cents": cap_cents,
+                        "required_max_per_purchase_cents": max(cap_cents, req_cents),
+                        "per_purchase_shortfall_cents": max(req_cents - cap_cents, 0),
+                        "current_total_budget_cents": budget_limit_cents,
+                        "required_total_budget_cents": max(budget_limit_cents, used_cents + req_cents),
+                        "budget_shortfall_cents": max((used_cents + req_cents) - budget_limit_cents, 0) if budget_limit_cents else 0,
+                        "remaining_budget_cents": rem_cents,
+                        "purchases_used": used_count,
+                        "max_purchases": max_occurrences,
+                        "occurrences_shortfall": max((used_count + 1) - max_occurrences, 0) if max_occurrences is not None else 0,
+                    },
                 }
         except Exception as e:
             detail = str(e)
@@ -987,7 +1111,9 @@ def verify_ap2_chains(
             "open_payment_mandate": payment_chain.open_mandate,
             "closed_payment_mandate": closed_pay,
             "open_payment_mandate_hash": open_pay_hash,
+            "checkout_root_kid": verified_checkout_root_kid,
             "payment_root_kid": verified_payment_root_kid,
+            "verified_buyer_email": effective_email,
         }
 
     except Exception as e:

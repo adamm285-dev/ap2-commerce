@@ -76,11 +76,11 @@ Every place where the code stands in for real behavior: simulated API responses,
 - **Why:** Shows the payloads without QuickBooks or Zapier accounts.
 - **To make it real:** Configure a webhook target (for example a Zapier catch hook connected to QuickBooks) and return the IDs the downstream systems actually assign.
 
-### M-012: MCP tools and Zapier sync models fill missing IDs with demo values
-- **Where:** `backend/mcp_server.py::_handle_mcp_request_internal`, `backend/agents/seller_agent.py::SellerAgent.dispatch_zapier_mcp`, `backend/models.py::ZapierSyncRequest`, `backend/services/zapier_mcp_dispatcher.py::ZapierMcpDispatcher.execute_downline_sync`
-- **What it fakes:** Caller input. `provision_compute_node` defaults to subscription `I-MOCK-SUB-01`; `dispatch_zapier_mcp`, `ZapierSyncRequest`, and `execute_downline_sync` default missing subscription/transaction IDs to `I-AUTONOMOUS-8902`, missing mandate proof hash to `HMAC-MANDATE-VERIFIED-01`, a $79.99 fee, and placeholder names and endpoints.
-- **Why:** Lets an MCP client or back-office demo endpoint call the tools with almost no arguments during demos.
-- **To make it real:** Make these arguments required and reject calls that omit them.
+### M-012: Zapier sync models and internal fallback helpers fill missing IDs with demo values
+- **Where:** `backend/agents/seller_agent.py::SellerAgent.dispatch_zapier_mcp`, `backend/models.py::ZapierSyncRequest`, `backend/services/zapier_mcp_dispatcher.py::ZapierMcpDispatcher.execute_downline_sync`
+- **What it fakes:** Caller input on non-MCP internal/REST sync helpers. `SellerAgent.dispatch_zapier_mcp`, `ZapierSyncRequest`, and `execute_downline_sync` default missing subscription/transaction IDs to `I-AUTONOMOUS-8902`, missing mandate proof hash to `HMAC-MANDATE-VERIFIED-01`, a $79.99 fee, and placeholder names and endpoints when invoked directly without a subscription ID (the MCP `tools/call` handler now requires explicit `subscription_id` and `buyer_email` arguments).
+- **Why:** Lets the back-office demo endpoint call the sync helpers with minimal arguments during demos.
+- **To make it real:** Make these arguments required on internal/REST helpers as well and reject calls that omit them.
 
 ### M-014: The anti-tamper playground uses demo keys and a demo secret
 - **Where:** `backend/services/crypto_mandate.py::DEMO_TAMPER_SECRET`, `backend/services/crypto_mandate.py::_DEMO_TAMPER_KEY`, `backend/server.py::verify_tamper_endpoint`, `backend/server.py::generate_proof_endpoint`, `backend/server.py::get_sample_proof`, `src/components/AdversarialTamperModal.tsx::AdversarialTamperModal`

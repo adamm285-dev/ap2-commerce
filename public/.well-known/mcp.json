@@ -1,9 +1,10 @@
 {
   "name": "AP2 Autonomous Seller Node",
   "version": "1.0.0",
-  "description": "Autonomous Agent Payments Protocol (AP2) commerce protocol and execution node provisioning for high-throughput batch workers, dedicated AI service gateways, and distributed cluster nodes.",
-  "agent_instructions": "https://api.ap2-commerce.org/portal/llms.txt",
+  "description": "Autonomous Agent Payments Protocol (AP2 v0.2) commerce protocol and execution node provisioning for high-throughput batch workers, dedicated AI service gateways, and distributed cluster nodes.",
+  "agent_instructions": "https://api.ap2-commerce.org/llms.txt",
   "mcp_server": {
+    "name": "ap2-seller-node",
     "url": "https://api.ap2-commerce.org/mcp",
     "sse_url": "https://api.ap2-commerce.org/sse",
     "transport": "streamable_http",
@@ -14,10 +15,21 @@
       "negotiate_tier_terms",
       "evaluate_spending_mandate",
       "purchase_subscription",
-      "provision_execution_node",
+      "provision_compute_node",
       "dispatch_zapier_mcp",
-      "verify_mandate_anti_tamper",
-      "inspect_fleet_ledger"
+      "get_subscription_details"
+    ]
+  },
+  "companion_wallet_server": {
+    "name": "ap2-buyer-wallet",
+    "command": "python -m backend.wallet.mcp_server",
+    "transport": "stdio",
+    "protocol": "2025-06-18",
+    "tools": [
+      "get_spending_limits",
+      "preview_checkout",
+      "sign_checkout",
+      "record_renewal_receipt"
     ]
   },
   "payment_rail": {
@@ -26,35 +38,38 @@
     "currency": "USD",
     "billing_period": "monthly",
     "plans": {
-      "tier_batch_worker": {
-        "tier_id": "tier_batch_worker",
+      "ap2-batch": {
+        "tier_id": "ap2-batch",
         "name": "High-Throughput Batch Worker",
         "price": "$49.99/mo",
-        "operations_quota": 125,
+        "price_cents": 4999,
+        "workload_tasks_per_month": 125,
         "sla": "99.95% Availability",
         "paypal_plan_id": "P-5ML4271244454362WXNWU5NQ"
       },
-      "tier_inference_gateway": {
-        "tier_id": "tier_inference_gateway",
+      "ap2-gateway": {
+        "tier_id": "ap2-gateway",
         "name": "Dedicated AI Service Gateway",
         "price": "$79.99/mo",
-        "operations_quota": 450,
+        "price_cents": 7999,
+        "workload_tasks_per_month": 450,
         "sla": "99.98% Low Latency (<350ms)",
         "paypal_plan_id": "P-1GH8273644454362WXNWU7ZZ"
       },
-      "tier_enterprise_cluster": {
-        "tier_id": "tier_enterprise_cluster",
+      "ap2-cluster": {
+        "tier_id": "ap2-cluster",
         "name": "Enterprise Cluster Node",
         "price": "$179.99/mo",
-        "operations_quota": 1500,
+        "price_cents": 17999,
+        "workload_tasks_per_month": 1500,
         "sla": "99.99% Multi-Region Failover",
         "paypal_plan_id": "P-9KL9921444454362WXNWU9AA"
       }
     }
   },
   "cryptographic_attestation": {
-    "signature_standard": "RFC 8032 Ed25519",
+    "signature_standard": "ES256 (P-256 SD-JWT) & RFC 8032 Ed25519",
     "enclave_attestation": "Multi-Region Distributed Cluster",
-    "mandate_protocol": "AP2 Intent & Cart Mandates with HMAC-SHA256"
+    "mandate_protocol": "AP2 v0.2 SD-JWT Checkout & Payment Mandate Chains (ES256)"
   }
 }

@@ -1,9 +1,9 @@
 # AP2 Autonomous Seller Node Protocol (PayPal Sandbox Demo)
 
 > PayPal Sandbox demo for the PayPal AI Hackathon, no real charges.
-> Autonomous Agent Payments Protocol (AP2) Commerce & Execution Node Provisioning Network.
+> Autonomous Agent Payments Protocol (AP2 v0.2) Commerce & Execution Node Provisioning Network.
 
-AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicated AI service gateways, and multi-region distributed clusters. The AP2 protocol allows autonomous buyer agents (e.g. procurement agents running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision dedicated MCP execution nodes entirely machine-to-machine in the PayPal Sandbox environment.
+AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicated AI service gateways, and multi-region distributed clusters. The AP2 v0.2 protocol allows autonomous buyer agents (e.g. procurement agents running on Claude, Gemini, ChatGPT, or Grok) to discover, negotiate, subscribe, and provision dedicated MCP execution nodes machine-to-machine in the PayPal Sandbox environment.
 
 - **Interactive Fleet Portal:** https://api.ap2-commerce.org/portal/?profile=ap2
 - **Remote MCP Endpoint:** https://api.ap2-commerce.org/mcp
@@ -14,66 +14,77 @@ AP2 Autonomous Seller Node provides high-throughput autonomous compute, dedicate
 - **Machine Discovery Manifest:** https://api.ap2-commerce.org/agents.json
 - **OpenAPI 3.1.0 Contract:** https://api.ap2-commerce.org/openapi.json
 
+## Two-Server Untrusted-Courier Architecture
+Completing an AP2 v0.2 purchase requires two separate MCP servers and a pre-enrolled human owner key:
+1. **Remote Merchant (`ap2-seller-node` at `/mcp` or `python -m backend.mcp_server`):** Lists tiers, negotiates terms (`negotiate_tier_terms`), verifies AP2 v0.2 SD-JWT mandate chains and settles subscriptions (`purchase_subscription`), provisions compute nodes (`provision_compute_node`), and issues signed renewal receipts (`get_subscription_details`).
+2. **Local Buyer Wallet (`ap2-buyer-wallet` via `python -m backend.wallet.mcp_server`):** The only signer (`get_spending_limits`, `preview_checkout`, `sign_checkout`, `record_renewal_receipt`). The buyer agent never holds the human owner's private key; it closes open mandates (`owner_limits.json`) with its own holder key (`agent_key.jwk`) after verifying the merchant's Checkout JWT against pinned merchant keys (`merchant_keys.json` / `merchant_public.jwk`).
+
 ## Supported Protocols & Standards
-- **Model Context Protocol (MCP):** Specification version 2024-11-05 via streamable HTTP and SSE transports.
-- **Agent Payments Protocol (AP2):** Asymmetric cryptographic Intent Mandate and Cart Mandate signing using Ed25519 and HMAC-SHA256 non-repudiation.
-- **FIDO / Asymmetric Key Enrollment:** Ephemeral challenge-response dynamic buyer key registration.
+- **Model Context Protocol (MCP):** Specification version 2024-11-05 via streamable HTTP and stdio/SSE transports.
+- **Agent Payments Protocol (AP2 v0.2):** ES256 (P-256) SD-JWT Open-to-Closed Checkout Mandate (`mandate.checkout.open.1` -> `mandate.checkout.1`) and Payment Mandate (`mandate.payment.open.1` -> `mandate.payment.1`) presentation chains with Key Binding (`cnf.jwk`), plus merchant-signed ES256 Checkout JWTs and Receipts (`checkout_receipt`, `payment_receipt`, `ap2.renewal_receipt.1`).
+- **FIDO / Asymmetric Key Enrollment:** Ephemeral challenge-response dynamic buyer key registration supporting P-256 (`ES256` JWK) and Ed25519 keys.
 - **Payment Rail:** PayPal Subscriptions & Vault Merchant-Initiated Transactions (MIT).
+- **HTTP 402 Payment Challenge:** Unsubscribed provisioning attempts return `X-AP2-Payment-Required` and `ap2_payment_challenge` discovery metadata.
 
 ## Subscription Plans & Pricing
-- High-Throughput Batch Worker: $49.99/mo (125 operations/mo, tier `tier_batch_worker`, 99.95% Availability SLA, US-Central Batch RAG).
-- Dedicated AI Service Gateway: $79.99/mo (450 operations/mo, tier `tier_inference_gateway`, 99.98% Low Latency <350ms SLA, US-East Low-Latency Gateway).
-- Enterprise Cluster Node: $179.99/mo (1,500 operations/mo, tier `tier_enterprise_cluster`, 99.99% Multi-Region Failover SLA, Multi-Region Distributed Cluster).
+- High-Throughput Batch Worker: $49.99/mo (`4999` cents, 125 workload tasks/mo, tier `ap2-batch`, 99.95% Availability SLA).
+- Dedicated AI Service Gateway: $79.99/mo (`7999` cents, 450 workload tasks/mo, tier `ap2-gateway`, 99.98% Low Latency <350ms SLA).
+- Enterprise Cluster Node: $179.99/mo (`17999` cents, 1,500 workload tasks/mo, tier `ap2-cluster`, 99.99% Multi-Region Failover SLA).
 
 ## MCP Tools Catalog
-External agents connected via MCP (POST /mcp or GET /sse) can execute the following tools:
+External agents connected to `ap2-seller-node` (POST /mcp or stdio) can execute the following 8 seller tools:
 
 1. `get_service_catalog`
-   - Returns the complete AP2 seller node catalog, capability quotas, SLA terms, and pricing tiers.
+   - Returns the complete AP2 seller node catalog, workload task quotas, SLA terms, and pricing tiers.
    - Arguments: None.
 
 2. `inspect_subscription_tiers`
-   - Returns details on the three capability tiers ($49.99 / $79.99 / $179.99), operation quotas, and SLAs.
+   - Returns details on the three capability tiers (`ap2-batch` at $49.99, `ap2-gateway` at $79.99, `ap2-cluster` at $179.99), workload task quotas, and features.
    - Arguments: None.
 
 3. `negotiate_tier_terms`
-   - Evaluates buyer budget cap against the requested tier. If budget is less than asking price, returns an authorized counter-offer down-tiering to a plan within budget (e.g. High-Throughput Batch Worker at $49.99/mo) along with a signed AP2 Intent Mandate.
-   - Required Arguments: `buyer_agent_id` (str), `buyer_email` (str), `tier_id` (str), `monthly_budget_cap` (float).
-   - Optional Arguments: `proposed_price` (float), `recurrence` (str, default 'monthly'), `category` (str), `buyer_intent_mandate` (dict).
+   - Evaluates buyer budget cap against the requested tier. If budget is less than asking price, returns a `COUNTER_OFFER` down-tiering to `ap2-batch` ($49.99/mo) along with `offer_id` and a merchant-signed `checkout_jwt` (ES256).
+   - Required Arguments: `buyer_agent_id` (str), `buyer_email` (str), `tier_id` (str: `ap2-batch` | `ap2-gateway` | `ap2-cluster`), and `monthly_budget_cap` (float USD) or `monthly_budget_cap_cents` (int cents).
+   - Optional Arguments: `proposed_price` (float) / `proposed_price_cents` (int), `recurrence` (str, default `'monthly'`), `category` (str), `buyer_intent_mandate` (dict), `checkout_jwt` (str).
 
 4. `evaluate_spending_mandate`
-   - Evaluates and cryptographically verifies an AP2 Intent Mandate against the merchant's spending policy and budget cap.
-   - Required Arguments: `buyer_agent_id` (str), `amount` (float), `monthly_budget_cap` (float).
+   - Evaluates buyer agent programmatic budget caps against a proposed amount.
+   - Required Arguments: `buyer_agent_id` (str), `amount` (float) or `amount_cents` (int), `monthly_budget_cap` (float) or `monthly_budget_cap_cents` (int).
 
 5. `purchase_subscription`
-   - Submits the approved `offer_id` or mandate proof to bind the subscription to PayPal Recurring Vault.
-   - Required Arguments: `tier_id` (str), `agreed_monthly_rate` (float), `mandate_proof_hash` (str), `buyer_email` (str).
-   - Optional Arguments: `offer_id` (str).
+   - Verifies AP2 v0.2 `checkout_mandate_chain` and `payment_mandate_chain` (signed by `ap2-buyer-wallet`'s `sign_checkout`), enforces budget/recurrence/revocation constraints, creates the PayPal subscription, and returns merchant-signed `checkout_receipt` and `payment_receipt` JWTs.
+   - Required Arguments: `buyer_email` (str), `checkout_mandate_chain` (str), `payment_mandate_chain` (str).
+   - Optional Arguments: `offer_id` (str), `checkout_jwt` (str), `tier_id` (str), `agreed_monthly_rate` (float) / `agreed_monthly_rate_cents` (int), `mandate_proof_hash` (str).
 
-6. `provision_execution_node`
-   - Provisions a dedicated worker node endpoint (`mcp+https://...`) bound to an authenticated node allocation for the active subscription.
+6. `provision_compute_node`
+   - Provisions a dedicated worker node endpoint (`mcp+https://...`) bound to an active subscription.
    - Required Arguments: `subscription_id` (str), `buyer_email` (str).
-   - Optional Arguments: `preferred_region` (str, default 'us-east-1').
+   - Optional Arguments: `node_type` (str: `batch` | `gateway` | `cluster`, default `'gateway'`).
 
 7. `dispatch_zapier_mcp`
    - Triggers downstream ERP integration (CloudEvents v1.0 and QuickBooks Online API v3 Account 6300 general ledger sync).
-   - Required Arguments: `workflow_type` (str), `buyer_agent` (str), `principal_entity` (str), `allocated_node_endpoint` (str), `monthly_subscription_fee` (float), `paypal_subscription_id` (str), `buyer_email` (str), `mandate_proof_hash` (str).
+   - Required Arguments: `subscription_id` (str) or `paypal_subscription_id` (str).
+   - Optional Arguments: `workflow_type` (str), `subscriber_name` (str), `business_entity` (str), `node_endpoint` (str), `service_vertical` (str), `monthly_subscription_fee` (float) / `monthly_subscription_fee_cents` (int), `buyer_email` (str), `mandate_proof_hash` (str).
 
-8. `verify_mandate_anti_tamper`
-   - Proves mathematical rejection of any altered payload, 1-cent price inflation, or expired timestamp.
-   - Required Arguments: `payload` (dict), `signature` (str).
+8. `get_subscription_details`
+   - Retrieves live subscription status, plan metadata, next billing date, and merchant-signed `renewal_receipts` (`ap2.renewal_receipt.1` JWTs) for wallet ledger synchronization via `record_renewal_receipt`.
+   - Required Arguments: `subscription_id` (str).
 
-9. `inspect_fleet_ledger`
-   - Queries the live Enterprise Fleet Ledger reconciling active nodes, MRR, ARR, and subscriber allocations.
-   - Arguments: None.
+## Companion Buyer Wallet MCP Tools (`ap2-buyer-wallet`)
+Agents connected to the local `ap2-buyer-wallet` server (`python -m backend.wallet.mcp_server`) can call:
+1. `get_spending_limits` — Inspect active owner-signed limits (`monthly_budget_cap_cents`, `yearly_budget_ceiling_cents`, `remaining_budget_cents`, `allowed_tiers`, `allowed_merchants`).
+2. `preview_checkout` — Dry-run ("paper-trade") a merchant `checkout_jwt` against owner limits without signing or mutating wallet state. Returns `WOULD_APPROVE` or `REFUSED` with a structured `escalation` object.
+3. `sign_checkout` — Verify `checkout_jwt` and produce `checkout_mandate_chain` and `payment_mandate_chain` for `purchase_subscription`.
+4. `record_renewal_receipt` — Verify a merchant-signed `renewal_receipt_jwt` (`ap2.renewal_receipt.1`) from `get_subscription_details` and record recurring renewal charges in the local wallet ledger.
 
 ## Dynamic Buyer Key Registration (Challenge-Response)
-To onboard an autonomous buyer agent with its own Ed25519 signing key:
+To enroll a human owner's P-256 (`ES256` JWK) or Ed25519 public key in the seller's key registry:
 1. `GET /api/agent/keys/challenge` -> Returns ephemeral 32-byte challenge nonce (64 hex chars) with 300s TTL.
-2. Sign challenge nonce using buyer agent's Ed25519 private key.
-3. `POST /api/agent/keys/register` -> Body: `{"buyer_agent_id": "...", "principal_entity": "...", "buyer_email": "...", "public_key": "...", "signed_challenge": "..."}`.
-4. On success, key is active in the seller's cryptographic registry.
+2. Sign the challenge nonce using the owner's P-256 (`ES256`) or Ed25519 private key.
+3. `POST /api/agent/keys/register` -> Body: `{"kid": "...", "publicKeyJwk": {...}, "contractorEmail": "...", "businessEntity": "...", "challenge": "...", "challengeSignature": "..."}` (or `"publicKeyHex"` for hex/Ed25519 keys).
+4. On success (`HTTP 201`), `kid` is permanently bound to `contractorEmail` in the seller's key registry and cannot be overwritten (`HTTP 409`).
 
 ## Security & Policy Controls
-- **Security & Node Isolation:** Execution nodes are deployed into authenticated, rate-governed execution allocations across multi-region distributed clusters.
-- **Non-Repudiation:** Every transaction carries an Ed25519 signature proof hash bound to the buyer agent and verified against RFC 8032 standards.
+- **Verify First & Fail Closed:** Mandate chain signature verification, key-to-email binding, and revocation checks run before any settlement or replay lookup.
+- **Strict Separation of Keys:** The buyer agent holds only `agent_key.jwk` and closes mandates within the owner's signed SD-JWT constraints.
+- **Step-Up Escalation:** When a checkout or purchase exceeds budget, per-purchase caps, or allowed tiers, both the wallet (`status: "REFUSED"`) and seller (`status: "REJECTED"`) return a structured `escalation` object with integer-cent shortfalls.

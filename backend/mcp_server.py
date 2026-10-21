@@ -41,10 +41,19 @@ _REDACTED_KEYS = {
     "subscription_id", "active_subscription_id", "replaces_subscription_id",
     "current_subscription_id", "paypal_subscription_id", "approval_url",
     "payment_token", "vault_id", "payer_id",
+    "checkout_mandate_chain", "checkoutMandateChain",
+    "payment_mandate_chain", "paymentMandateChain",
+    "checkout_jwt", "checkoutJwt", "counter_checkout_jwt", "counter_offer_checkout_jwt",
+    "checkout_receipt", "checkoutReceipt", "payment_receipt", "paymentReceipt",
+    "renewal_receipt_jwt", "renewalReceiptJwt",
+    "nonce", "counter_nonce", "buyer_intent_mandate", "ap2_intent_mandate", "ap2_cart_mandate",
+    "open_checkout_mandate_token", "open_payment_mandate_token",
+    "webhook_url", "webhookUrl",
 }
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _OFFER_RE = re.compile(r"\boff_[A-Za-z0-9_]+")
 _SUB_ID_RE = re.compile(r"\bI-[A-Z0-9][A-Z0-9-]{5,}")
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_~.-]+")
 
 
 def _redact_frame(obj: Any) -> Any:
@@ -61,6 +70,7 @@ def _redact_frame(obj: Any) -> Any:
                 return json.dumps(_redact_frame(json.loads(obj)), indent=2)
             except ValueError:
                 pass
+        obj = _JWT_RE.sub("***", obj)
         obj = _EMAIL_RE.sub("***@***", obj)
         obj = _OFFER_RE.sub("off_***", obj)
         return _SUB_ID_RE.sub("I-***", obj)
@@ -129,6 +139,53 @@ def _num(arguments: Dict[str, Any], key: str, default: Any = None, minimum: floa
     return value
 
 
+def _require_str(arguments: Dict[str, Any], *keys: str, label: Optional[str] = None) -> str:
+    """Requires at least one of `keys` to be a non-empty string."""
+    for k in keys:
+        val = arguments.get(k)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    name = label or keys[0]
+    raise InvalidParams(f"'{name}' is required and must be a non-empty string.")
+
+
+def _int_cents(arguments: Dict[str, Any], key: str, minimum: int = 0) -> Optional[int]:
+    """Parses an integer-cent tool argument >= minimum."""
+    raw = arguments.get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise InvalidParams(f"'{key}' must be an integer (cents).")
+    if raw < minimum:
+        raise InvalidParams(f"'{key}' must be an integer >= {minimum}.")
+    return raw
+
+
+def _money_arg(
+    arguments: Dict[str, Any],
+    usd_key: str,
+    cents_key: str,
+    *,
+    required: bool = False,
+    minimum_cents: int = 0,
+) -> Optional[float]:
+    """Resolves a monetary parameter from either integer cents (`cents_key`) or USD (`usd_key`), failing closed on disagreement."""
+    usd_val = _num(arguments, usd_key, None, minimum=minimum_cents / 100.0)
+    cents_val = _int_cents(arguments, cents_key, minimum=minimum_cents)
+    if usd_val is not None and cents_val is not None:
+        if int(round(usd_val * 100)) != cents_val:
+            raise InvalidParams(
+                f"'{usd_key}' (${usd_val:.2f}) and '{cents_key}' ({cents_val} cents) disagree."
+            )
+    if cents_val is not None:
+        return round(cents_val / 100.0, 2)
+    if usd_val is not None:
+        return usd_val
+    if required:
+        raise InvalidParams(f"'{usd_key}' (or '{cents_key}') is required.")
+    return None
+
+
 async def process_mcp_request(request_data: Any) -> Optional[Dict[str, Any]]:
     """
     Processes a single JSON-RPC 2.0 MCP request and returns the standard response.
@@ -172,10 +229,11 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
             "Every autonomous workload (batch processing, gateway routing, cluster execution) is supported across all tiers.\n"
             "Recommended buyer procurement workflow:\n"
             "1. inspect_subscription_tiers: Inspect AP2 compute subscription tiers, workload task quotas ($49.99 / $79.99 / $179.99), and compute features.\n"
-            "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap. If budget < asking price, returns a counter-offer for a plan within budget. Either way it returns offer_id and a merchant-signed checkout_jwt.\n"
-            "3. Have the buyer's wallet (the owner-authorized signer, e.g. the ap2-buyer-wallet MCP server's sign_checkout) sign the checkout_jwt into AP2 v0.2 checkout_mandate_chain and payment_mandate_chain.\n"
+            "2. negotiate_tier_terms: Submit desired tier_id, buyer_agent_id, buyer_email, and monthly_budget_cap (or monthly_budget_cap_cents). If budget < asking price, returns a counter-offer for a plan within budget. Either way it returns offer_id and a merchant-signed checkout_jwt.\n"
+            "3. Have the buyer's wallet (the owner-authorized signer, e.g. the ap2-buyer-wallet MCP server's preview_checkout and sign_checkout tools) verify and sign the checkout_jwt into AP2 v0.2 checkout_mandate_chain and payment_mandate_chain.\n"
             "4. purchase_subscription: Submit offer_id, buyer_email, checkout_mandate_chain and payment_mandate_chain. Purchases without both AP2 v0.2 chains are rejected.\n"
-            "5. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription."
+            "5. provision_compute_node: (Optional) Allocate dedicated autonomous compute node endpoint (mcp+https) upon verified subscription.\n"
+            "6. get_subscription_details: (Recurring billing sync) Retrieve live subscription status and merchant-signed renewal_receipts (renewal_receipt_jwt), and pass each receipt to the buyer wallet's record_renewal_receipt tool so the local wallet ledger stays synchronized with monthly recurring charges."
         )
         return {
             "jsonrpc": jsonrpc,
@@ -234,13 +292,36 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 result = await seller_agent.get_service_catalog()
 
             elif tool_name == "negotiate_tier_terms":
+                buyer_agent_id = _require_str(arguments, "buyer_agent_id")
+                tier_id = _require_str(arguments, "tier_id")
+                monthly_budget_cap = _money_arg(
+                    arguments,
+                    "monthly_budget_cap",
+                    "monthly_budget_cap_cents",
+                    required=True,
+                    minimum_cents=0,
+                )
+                proposed_price = _money_arg(
+                    arguments,
+                    "proposed_price",
+                    "proposed_price_cents",
+                    required=False,
+                    minimum_cents=0,
+                )
                 email = arguments.get("buyer_email") or arguments.get("contractor_email")
+                if not (isinstance(email, str) and email.strip()):
+                    bim = arguments.get("buyer_intent_mandate")
+                    if isinstance(bim, dict):
+                        email = bim.get("buyer_email") or bim.get("contractor_email")
+                if not (isinstance(email, str) and email.strip()):
+                    raise InvalidParams("'buyer_email' (or 'contractor_email') is required and must be a non-empty string.")
+                email = email.strip()
                 result = await seller_agent.negotiate_tier_terms(
-                    buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
-                    tier_id=arguments.get("tier_id", "ap2-gateway"),
-                    monthly_budget_cap=_num(arguments, "monthly_budget_cap", 60.00),
+                    buyer_agent_id=buyer_agent_id,
+                    tier_id=tier_id,
+                    monthly_budget_cap=monthly_budget_cap,
                     contractor_email=email,
-                    proposed_price=_num(arguments, "proposed_price"),
+                    proposed_price=proposed_price,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "autonomous-node-service"),
                     buyer_intent_mandate=arguments.get("buyer_intent_mandate"),
@@ -250,9 +331,16 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
 
             elif tool_name == "purchase_subscription":
                 email = arguments.get("buyer_email") or arguments.get("contractor_email")
+                agreed_rate = _money_arg(
+                    arguments,
+                    "agreed_monthly_rate",
+                    "agreed_monthly_rate_cents",
+                    required=False,
+                    minimum_cents=0,
+                )
                 result = await seller_agent.purchase_subscription(
                     tier_id=arguments.get("tier_id"),
-                    agreed_monthly_rate=_num(arguments, "agreed_monthly_rate"),
+                    agreed_monthly_rate=agreed_rate,
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
                     contractor_email=email,
                     offer_id=arguments.get("offer_id"),
@@ -263,11 +351,24 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 )
 
             elif tool_name == "evaluate_spending_mandate":
-                amount = _num(arguments, "amount", 79.99, minimum=0.01)
-                mb_cap = _num(arguments, "monthly_budget_cap")
+                buyer_agent_id = _require_str(arguments, "buyer_agent_id")
+                amount = _money_arg(
+                    arguments,
+                    "amount",
+                    "amount_cents",
+                    required=True,
+                    minimum_cents=1,
+                )
+                mb_cap = _money_arg(
+                    arguments,
+                    "monthly_budget_cap",
+                    "monthly_budget_cap_cents",
+                    required=False,
+                    minimum_cents=0,
+                )
                 email = arguments.get("buyer_email") or arguments.get("contractor_email")
                 result = await seller_agent.verify_spending_mandate(
-                    buyer_agent_id=arguments.get("buyer_agent_id", "buyer-agent-01"),
+                    buyer_agent_id=buyer_agent_id,
                     amount=amount,
                     recurrence=arguments.get("recurrence", "monthly"),
                     category=arguments.get("category", "autonomous-node-service"),
@@ -276,19 +377,28 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                 )
 
             elif tool_name == "provision_compute_node":
-                buyer_email = arguments.get("buyer_email") or arguments.get("contractor_email") or os.getenv("A2A_DEFAULT_EMAIL", "buyer@example.com")
+                sub_id = _require_str(arguments, "subscription_id")
+                buyer_email = _require_str(arguments, "buyer_email", "contractor_email", label="buyer_email")
                 result = await seller_agent.provision_compute_node(
-                    # MOCK(M-012): missing subscription_id defaults to a demo ID
-                    subscription_id=arguments.get("subscription_id", "I-MOCK-SUB-01"),
+                    subscription_id=sub_id,
                     buyer_email=buyer_email,
                     node_type=arguments.get("node_type", "gateway"),
                 )
 
             elif tool_name == "dispatch_zapier_mcp":
-                sub_id = arguments.get("subscription_id") or arguments.get("paypal_subscription_id")
-                # MOCK(M-012): missing dispatch arguments default to demo values
-                resolved_sub_id = sub_id or "I-AUTONOMOUS-8902"
-                fee = _num(arguments, "monthly_subscription_fee")
+                resolved_sub_id = _require_str(
+                    arguments,
+                    "subscription_id",
+                    "paypal_subscription_id",
+                    label="subscription_id",
+                )
+                fee = _money_arg(
+                    arguments,
+                    "monthly_subscription_fee",
+                    "monthly_subscription_fee_cents",
+                    required=False,
+                    minimum_cents=0,
+                )
 
                 result = await seller_agent.dispatch_zapier_mcp(
                     workflow_type=arguments.get("workflow_type", "a2a_onboarding"),
@@ -301,12 +411,13 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     subscription_id=resolved_sub_id,
                     buyer_email=arguments.get("buyer_email") or arguments.get("contractor_email"),
                     mandate_proof_hash=arguments.get("mandate_proof_hash"),
-                    webhook_url=arguments.get("webhook_url") if settings.mock_external_apis else None,
+                    webhook_url=None,
                 )
 
             elif tool_name == "get_subscription_details":
+                sub_id = _require_str(arguments, "subscription_id")
                 result = await seller_agent.get_subscription_details(
-                    subscription_id=arguments.get("subscription_id", ""),
+                    subscription_id=sub_id,
                 )
 
             else:
@@ -319,6 +430,16 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                     },
                 }
 
+            is_error = bool(
+                isinstance(result, dict)
+                and (
+                    result.get("status") in ("REJECTED", "REFUSED", "ERROR")
+                    or (
+                        result.get("approved") is False
+                        and result.get("status") not in ("APPROVED", "COUNTER_OFFER", "ACTIVE", "PROVISIONED")
+                    )
+                )
+            )
             return {
                 "jsonrpc": jsonrpc,
                 "id": req_id,
@@ -329,7 +450,7 @@ async def _handle_mcp_request_internal(request_data: Dict[str, Any]) -> Optional
                             "text": json.dumps(result, indent=2),
                         }
                     ],
-                    "isError": False,
+                    "isError": is_error,
                 },
             }
 

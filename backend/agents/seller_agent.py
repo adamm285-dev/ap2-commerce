@@ -77,6 +77,7 @@ from ..services.ap2_service import (
     build_ap2_payment_challenge,
     compute_checkout_hash,
     get_issued_checkout,
+    dollars_to_minor_units,
     ERR_INVALID_CREDENTIAL,
     ERR_INVALID_MANDATE,
     ERR_UNRESOLVED_CONSTRAINT,
@@ -117,11 +118,19 @@ AP2_SELLER_MCP_TOOLS = [
                 },
                 "monthly_budget_cap": {
                     "type": "number",
-                    "description": "Strict maximum monthly budget cap authorized by the buyer mandate",
+                    "description": "Strict maximum monthly budget cap authorized by the buyer mandate (in USD, or supply monthly_budget_cap_cents in integer cents)",
+                },
+                "monthly_budget_cap_cents": {
+                    "type": "integer",
+                    "description": "Strict maximum monthly budget cap in integer cents (e.g. 6000 for $60.00)",
                 },
                 "proposed_price": {
                     "type": "number",
                     "description": "Optional buyer-proposed target monthly price for counter-negotiation",
+                },
+                "proposed_price_cents": {
+                    "type": "integer",
+                    "description": "Optional buyer-proposed target monthly price in integer cents",
                 },
                 "recurrence": {
                     "type": "string",
@@ -153,7 +162,8 @@ AP2_SELLER_MCP_TOOLS = [
             "required": ["buyer_agent_id", "amount", "recurrence", "category", "monthly_budget_cap"],
             "properties": {
                 "buyer_agent_id": {"type": "string", "description": "Unique ID of the Buyer Agent"},
-                "amount": {"type": "number", "description": "Proposed asking price per billing cycle"},
+                "amount": {"type": "number", "description": "Proposed asking price per billing cycle (in USD, or supply amount_cents)"},
+                "amount_cents": {"type": "integer", "description": "Proposed asking price in integer cents"},
                 "recurrence": {
                     "type": "string",
                     "enum": ["one_time", "monthly", "annual"],
@@ -164,6 +174,10 @@ AP2_SELLER_MCP_TOOLS = [
                     "type": "number",
                     "description": "Strict maximum monthly budget authorized by the buyer mandate",
                 },
+                "monthly_budget_cap_cents": {
+                    "type": "integer",
+                    "description": "Strict maximum monthly budget in integer cents",
+                },
             },
         },
     },
@@ -172,7 +186,7 @@ AP2_SELLER_MCP_TOOLS = [
         "description": "Verifies AP2 v0.2 Mandate Chains (Checkout + Payment SD-JWTs) signed by the buyer wallet and creates the subscription. Returns merchant-signed Checkout Receipt and Payment Receipt.",
         "input_schema": {
             "type": "object",
-            "required": ["buyer_email"],
+            "required": ["buyer_email", "checkout_mandate_chain", "payment_mandate_chain"],
             "properties": {
                 "checkout_mandate_chain": {
                     "type": "string",
@@ -200,7 +214,11 @@ AP2_SELLER_MCP_TOOLS = [
                 },
                 "agreed_monthly_rate": {
                     "type": "number",
-                    "description": "Optional if offer_id is provided. Agreed monthly subscription rate.",
+                    "description": "Optional if offer_id is provided. Agreed monthly subscription rate in USD.",
+                },
+                "agreed_monthly_rate_cents": {
+                    "type": "integer",
+                    "description": "Optional if offer_id is provided. Agreed monthly subscription rate in integer cents.",
                 },
                 "mandate_proof_hash": {
                     "type": "string",
@@ -227,6 +245,7 @@ AP2_SELLER_MCP_TOOLS = [
         "description": "Executes downline multi-app back-office action chain into accounting and task management systems.",
         "input_schema": {
             "type": "object",
+            "required": ["subscription_id"],
             "properties": {
                 "subscription_id": {"type": "string", "description": "PayPal subscription ID to onboard (looks up subscription details if fee/endpoint omitted)"},
                 "workflow_type": {"type": "string", "default": "a2a_onboarding"},
@@ -235,10 +254,10 @@ AP2_SELLER_MCP_TOOLS = [
                 "node_endpoint": {"type": "string"},
                 "service_vertical": {"type": "string"},
                 "monthly_subscription_fee": {"type": "number"},
+                "monthly_subscription_fee_cents": {"type": "integer"},
                 "paypal_subscription_id": {"type": "string"},
                 "buyer_email": {"type": "string"},
                 "mandate_proof_hash": {"type": "string"},
-                "webhook_url": {"type": "string"},
             },
         },
     },
@@ -619,7 +638,13 @@ class SellerAgent:
                 "subscription_id": active_sub_id,
                 "active_subscription_id": active_sub_id,
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
+                "monthly_budget_cap_cents": dollars_to_minor_units(monthly_budget_cap),
                 "agreed_monthly_rate": active_sub.get("agreed_monthly_rate"),
+                "agreed_monthly_rate_cents": (
+                    dollars_to_minor_units(active_sub["agreed_monthly_rate"])
+                    if active_sub.get("agreed_monthly_rate") is not None
+                    else None
+                ),
                 "reason": (
                     f"Buyer '{email}' is already actively subscribed to '{tier_id}' "
                     f"(Subscription: {active_sub_id}). No new offer or subscription required."
@@ -653,6 +678,13 @@ class SellerAgent:
                     error=ERR_INVALID_MANDATE,
                     error_description=err_desc,
                 )
+                req_cents = dollars_to_minor_units(standard_price)
+                cap_cents = dollars_to_minor_units(monthly_budget_cap)
+                rem_dollars = ledger.get_remaining_budget(
+                    agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email
+                )
+                rem_cents = dollars_to_minor_units(max(0.0, rem_dollars))
+                shortfall_cents = max(0, req_cents - rem_cents)
                 rejection = {
                     "status": "REJECTED",
                     "approved": False,
@@ -660,7 +692,20 @@ class SellerAgent:
                     "tier_id": tier_id,
                     "error": "BUDGET_EXHAUSTED",
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
+                    "monthly_budget_cap_cents": cap_cents,
+                    "monthly_cap_remaining_cents": rem_cents,
                     "reason": err_desc,
+                    "escalation": {
+                        "type": "human_step_up_required",
+                        "action": "increase_spending_limits",
+                        "requested_tier_id": tier_id,
+                        "requested_amount_cents": req_cents,
+                        "monthly_budget_cap_cents": cap_cents,
+                        "monthly_cap_remaining_cents": rem_cents,
+                        "shortfall_cents": shortfall_cents,
+                        "violations": [err_desc],
+                        "message": err_desc,
+                    },
                     "checkout_receipt": chk_receipt,
                     "payment_receipt": pay_receipt,
                 }
@@ -686,6 +731,7 @@ class SellerAgent:
                         "offer_id": issued["offer_id"],
                         "tier_id": tier_id,
                         "agreed_monthly_rate": standard_price,
+                        "agreed_monthly_rate_cents": dollars_to_minor_units(standard_price),
                         "buyer_email": email,
                         "checkout_mandate_chain": "<from sign_checkout>",
                         "payment_mandate_chain": "<from sign_checkout>",
@@ -701,9 +747,13 @@ class SellerAgent:
                 "tier_id": tier_id,
                 "requested_tier_id": tier_id,
                 "agreed_monthly_rate": standard_price,
+                "agreed_monthly_rate_cents": dollars_to_minor_units(standard_price),
                 "price": standard_price,
+                "price_cents": dollars_to_minor_units(standard_price),
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
+                "monthly_budget_cap_cents": dollars_to_minor_units(monthly_budget_cap),
                 "monthly_cap_remaining": round(monthly_budget_cap - standard_price, 2),
+                "monthly_cap_remaining_cents": dollars_to_minor_units(max(0.0, monthly_budget_cap - standard_price)),
                 "mandate_proof_hash": issued["hash"],
                 "ap2_intent_mandate": issued["ap2_mandate"],
                 "ap2_cart_mandate": issued["ap2_cart_mandate"],
@@ -756,6 +806,9 @@ class SellerAgent:
                     error=ERR_INVALID_MANDATE,
                     error_description=err_desc,
                 )
+                req_cents = dollars_to_minor_units(standard_price)
+                cap_cents = dollars_to_minor_units(monthly_budget_cap)
+                shortfall_cents = max(0, req_cents - cap_cents)
                 return {
                     "status": "NO_BETTER_OFFER",
                     "approved": False,
@@ -766,7 +819,18 @@ class SellerAgent:
                     "active_subscription_id": active_sub_id,
                     "current_tier_id": active_sub.get("tier_id"),
                     "monthly_budget_cap": round(monthly_budget_cap, 2),
+                    "monthly_budget_cap_cents": cap_cents,
                     "reason": err_desc,
+                    "escalation": {
+                        "type": "human_step_up_required",
+                        "action": "increase_spending_limits",
+                        "requested_tier_id": tier_id,
+                        "requested_amount_cents": req_cents,
+                        "monthly_budget_cap_cents": cap_cents,
+                        "shortfall_cents": shortfall_cents,
+                        "violations": [err_desc],
+                        "message": err_desc,
+                    },
                     "checkout_receipt": chk_receipt,
                     "payment_receipt": pay_receipt,
                 }
@@ -799,6 +863,7 @@ class SellerAgent:
                         "offer_id": issued["offer_id"],
                         "tier_id": down_tier_id,
                         "agreed_monthly_rate": 49.99,
+                        "agreed_monthly_rate_cents": 4999,
                         "buyer_email": email,
                         "checkout_mandate_chain": "<from sign_checkout>",
                         "payment_mandate_chain": "<from sign_checkout>",
@@ -838,11 +903,14 @@ class SellerAgent:
                 "tier_id": down_tier_id,
                 "requested_tier_id": tier_id,
                 "agreed_monthly_rate": 49.99,
+                "agreed_monthly_rate_cents": 4999,
                 "price": 49.99,
+                "price_cents": 4999,
                 "counter_offer_available": True,
                 "counter_offer_tier": down_tier_title,
                 "counter_offer_tier_id": down_tier_id,
                 "counter_offer_amount": 49.99,
+                "counter_offer_amount_cents": 4999,
                 "counter_offer_mandate_hash": down_hash,
                 "mandate_proof_hash": down_hash,
                 "ap2_intent_mandate": issued["ap2_mandate"],
@@ -855,7 +923,9 @@ class SellerAgent:
                 "counter_offer_checkout_hash": down_hash,
                 "offer_expires_at": issued["offer_expires_at"],
                 "monthly_budget_cap": round(monthly_budget_cap, 2),
+                "monthly_budget_cap_cents": dollars_to_minor_units(monthly_budget_cap),
                 "monthly_cap_remaining": remaining_after_down,
+                "monthly_cap_remaining_cents": dollars_to_minor_units(max(0.0, remaining_after_down)),
                 "next_action": next_action,
                 "reason": counter_reason,
             }
@@ -881,6 +951,11 @@ class SellerAgent:
             error=ERR_INVALID_MANDATE,
             error_description=err_desc,
         )
+        req_cents = dollars_to_minor_units(standard_price)
+        min_viable_cents = 4999
+        cap_cents = dollars_to_minor_units(monthly_budget_cap)
+        rem_dollars = ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email)
+        rem_cents = dollars_to_minor_units(max(0.0, rem_dollars))
         rejection = {
             "status": "REJECTED",
             "approved": False,
@@ -889,8 +964,24 @@ class SellerAgent:
             "error": "BUDGET_EXHAUSTED",
             "counter_offer_available": False,
             "monthly_budget_cap": round(monthly_budget_cap, 2),
-            "monthly_cap_remaining": round(ledger.get_remaining_budget(agent_id=buyer_agent_id, cap=monthly_budget_cap, contractor_email=email), 2),
+            "monthly_budget_cap_cents": cap_cents,
+            "monthly_cap_remaining": round(rem_dollars, 2),
+            "monthly_cap_remaining_cents": rem_cents,
             "reason": err_desc,
+            "escalation": {
+                "type": "human_step_up_required",
+                "action": "increase_spending_limits",
+                "requested_tier_id": tier_id,
+                "requested_amount_cents": req_cents,
+                "minimum_viable_tier_id": "ap2-batch",
+                "minimum_viable_amount_cents": min_viable_cents,
+                "monthly_budget_cap_cents": cap_cents,
+                "monthly_cap_remaining_cents": rem_cents,
+                "shortfall_cents": max(0, req_cents - cap_cents),
+                "minimum_viable_shortfall_cents": max(0, min_viable_cents - cap_cents),
+                "violations": [err_desc],
+                "message": err_desc,
+            },
             "checkout_receipt": chk_receipt,
             "payment_receipt": pay_receipt,
         }
@@ -972,6 +1063,7 @@ class SellerAgent:
 
         chk_jwt = checkout_jwt
         expected_nonce = kwargs.get("nonce")
+        auth_lookup: Optional[Dict[str, Any]] = None
         if offer_id:
             auth_lookup = get_authorized_mandate(offer_id)
             if auth_lookup:
@@ -987,7 +1079,7 @@ class SellerAgent:
             clear_stored_receipt,
         )
         from ..database import (
-            get_open_mandate_settlement_totals,
+            get_open_mandate_total_usage,
             is_mandate_revoked,
             acquire_purchase_lease,
             release_purchase_lease,
@@ -996,12 +1088,11 @@ class SellerAgent:
         from ap2.sdk.constraints import MandateContext
 
         # Identify if this is a candidate replay of an already completed subscription
-        computed_chk_hash = None
-        if chk_jwt:
-            try:
-                computed_chk_hash = compute_checkout_hash(chk_jwt)
-            except Exception:
-                pass
+        computed_chk_hash = (
+            compute_checkout_hash(chk_jwt)
+            if isinstance(chk_jwt, str) and chk_jwt.strip()
+            else None
+        )
 
         candidate_replay_sub = None
         for k in (offer_id, mandate_proof_hash, computed_chk_hash):
@@ -1015,7 +1106,7 @@ class SellerAgent:
             if isinstance(candidate_replay_sub, dict)
             else None
         )
-        tot_amt, tot_uses = get_open_mandate_settlement_totals(
+        tot_amt, tot_uses = get_open_mandate_total_usage(
             open_pay_hash, exclude_subscription_id=exclude_sub_id
         )
         settlement_ctx = MandateContext(total_amount=tot_amt, total_uses=tot_uses)
@@ -1034,7 +1125,7 @@ class SellerAgent:
             err_code = ap2_verify_res.get("error", ERR_INVALID_MANDATE)
             err_desc = ap2_verify_res.get("error_description", "Mandate chain verification failed")
             logger.warning(f"[AP2_VERIFIER] Purchase rejected: {err_code} - {err_desc}")
-            return {
+            rej_out: Dict[str, Any] = {
                 "status": "REJECTED",
                 "error": err_code,
                 "reason": err_desc,
@@ -1042,10 +1133,16 @@ class SellerAgent:
                 "checkout_receipt": ap2_verify_res.get("checkout_receipt"),
                 "payment_receipt": ap2_verify_res.get("payment_receipt"),
             }
+            if ap2_verify_res.get("escalation"):
+                rej_out["escalation"] = ap2_verify_res["escalation"]
+            return rej_out
 
         verified_tier = ap2_verify_res.get("tier_id")
         verified_price = ap2_verify_res.get("monthly_price")
         checkout_hash = ap2_verify_res.get("checkout_hash")
+        verified_buyer_email = ap2_verify_res.get("verified_buyer_email")
+        if not contractor_email and verified_buyer_email:
+            contractor_email = verified_buyer_email
         closed_pay_obj = ap2_verify_res.get("closed_payment_mandate")
         closed_pay_tx_id = getattr(closed_pay_obj, "transaction_id", None) if closed_pay_obj else None
 
@@ -1078,7 +1175,7 @@ class SellerAgent:
             return {**candidate_replay_sub, "idempotent_replay": True}
 
         if not mandate_proof_hash and offer_id:
-            auth_entry_lookup = get_authorized_mandate(offer_id)
+            auth_entry_lookup = auth_lookup or get_authorized_mandate(offer_id)
             if auth_entry_lookup:
                 mandate_proof_hash = auth_entry_lookup.get("mandate_proof_hash") or auth_entry_lookup.get("hash")
         mandate_proof_hash = mandate_proof_hash or checkout_hash
@@ -1116,6 +1213,37 @@ class SellerAgent:
                 ret.update(extra)
             return ret
 
+        # Verify offer_id binding against verified checkout_hash and email
+        if offer_id and auth_lookup:
+            expected_hashes = {
+                str(h).strip()
+                for h in (
+                    auth_lookup.get("checkout_hash"),
+                    auth_lookup.get("counter_checkout_hash"),
+                    auth_lookup.get("mandate_proof_hash"),
+                    auth_lookup.get("proof_hash"),
+                    auth_lookup.get("hash"),
+                )
+                if h
+            }
+            if expected_hashes and checkout_hash and str(checkout_hash).strip() not in expected_hashes:
+                desc = (
+                    f"OFFER_MISMATCH_DETECTED: offer_id '{offer_id}' does not match "
+                    f"the checkout mandate hash '{checkout_hash}'."
+                )
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "OFFER_MISMATCH_DETECTED")
+            auth_email = (auth_lookup.get("contractor_email") or auth_lookup.get("buyer_email") or "").strip().lower()
+            if auth_email and contractor_email and auth_email != contractor_email.strip().lower():
+                desc = (
+                    f"IDENTITY_MISMATCH_DETECTED: Offer '{offer_id}' is bound to '{auth_email}', "
+                    f"cannot be redeemed by '{contractor_email.strip().lower()}'."
+                )
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "MANDATE_SECURITY_BREACH")
+            if auth_email and not contractor_email:
+                contractor_email = auth_email
+
         norm_email = contractor_email.strip().lower() if contractor_email else None
         open_pay_hash = ap2_verify_res.get("open_payment_mandate_hash") or open_pay_hash
         lease_holder = acquire_purchase_lease(
@@ -1130,7 +1258,7 @@ class SellerAgent:
 
         try:
             # Re-read the open-mandate settlement totals under the lease and compare with the pre-verification snapshot
-            post_lease_amt, post_lease_uses = get_open_mandate_settlement_totals(
+            post_lease_amt, post_lease_uses = get_open_mandate_total_usage(
                 open_pay_hash, exclude_subscription_id=exclude_sub_id
             )
             if (post_lease_amt, post_lease_uses) != (tot_amt, tot_uses):
@@ -1165,6 +1293,17 @@ class SellerAgent:
             verified_pay_receipt = ap2_verify_res.get("payment_receipt")
 
             auth = get_authorized_mandate(offer_id or mandate_proof_hash) or {}
+            auth_bound_email = (auth.get("contractor_email") or auth.get("buyer_email") or "").strip().lower()
+            if auth_bound_email and norm_email and auth_bound_email != norm_email:
+                desc = (
+                    f"IDENTITY_MISMATCH_DETECTED: Mandate is bound to '{auth_bound_email}', "
+                    f"cannot be redeemed by '{norm_email}'."
+                )
+                logger.warning(f"[SECURITY] {desc}")
+                return _reject_purchase(desc, "MANDATE_SECURITY_BREACH")
+            if auth_bound_email and not norm_email:
+                contractor_email = auth_bound_email
+                norm_email = auth_bound_email
 
             buyer_id = auth.get("buyer_agent_id", "unknown")
 
@@ -1199,13 +1338,30 @@ class SellerAgent:
                     f"Purchase rate ${agreed_monthly_rate:.2f}/mo exceeds available monthly budget of "
                     f"${effective_available:.2f} (budget cap: ${cap:.2f})."
                 )
+                req_cents = dollars_to_minor_units(agreed_monthly_rate)
+                cap_cents = dollars_to_minor_units(cap)
+                rem_cents = dollars_to_minor_units(max(0.0, remaining_before))
+                avail_cents = dollars_to_minor_units(max(0.0, effective_available))
                 return _reject_purchase(
                     desc,
                     "BUDGET_EXHAUSTED",
                     extra={
                         "monthly_budget_cap": round(cap, 2),
+                        "monthly_budget_cap_cents": cap_cents,
                         "monthly_cap_remaining": round(remaining_before, 2),
+                        "monthly_cap_remaining_cents": rem_cents,
                         "active_subscription_id": old_sub_id,
+                        "escalation": {
+                            "type": "human_step_up_required",
+                            "action": "increase_spending_limits",
+                            "requested_tier_id": tier_id,
+                            "requested_amount_cents": req_cents,
+                            "monthly_budget_cap_cents": cap_cents,
+                            "monthly_cap_remaining_cents": rem_cents,
+                            "shortfall_cents": max(0, req_cents - avail_cents),
+                            "violations": [desc],
+                            "message": desc,
+                        },
                     },
                 )
 
@@ -1318,7 +1474,6 @@ class SellerAgent:
             # Record open payment mandate settlement upon successful purchase
             if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
                 from ..database import record_open_mandate_settlement
-                from ..services.ap2_service import dollars_to_minor_units
                 amount_cents = dollars_to_minor_units(agreed_monthly_rate)
                 record_open_mandate_settlement(
                     mandate_hash=open_pay_hash,
@@ -1420,8 +1575,11 @@ class SellerAgent:
                 "payment_method": "paypal_vault_mit",
                 "tier_id": tier_id,
                 "agreed_monthly_rate": round(agreed_monthly_rate, 2),
+                "agreed_monthly_rate_cents": dollars_to_minor_units(agreed_monthly_rate),
                 "monthly_budget_cap": round(cap, 2),
+                "monthly_budget_cap_cents": dollars_to_minor_units(cap),
                 "monthly_cap_remaining": round(remaining_budget, 2),
+                "monthly_cap_remaining_cents": dollars_to_minor_units(max(0.0, remaining_budget)),
                 "billing_cycle": "monthly",
                 "billing_cycles": billing_cycles,
                 "currency": "USD",

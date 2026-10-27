@@ -60,7 +60,7 @@ The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the test
 ### 3. Run the Buyer Agent CLI
 Simulate a buyer agent negotiating and provisioning a compute node under owner-signed limits:
 ```bash
-python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway
+python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway --mint-owner-limits
 ```
 By default this is a scripted, offline buyer (M-015). Pass `--provider` and `--model` to drive it with a real LLM.
 
@@ -389,7 +389,7 @@ To maintain absolute security auditability, the codebase enforces strict demarca
 
 - **Cryptographic Core:** Production-ready AP2 SD-JWT validation, key enrollment challenge-response flows, and isolated wallet processes.
 - **Simulation Presentation:** The operations deck displays seeded demo subscriptions (14 rows, 13 active, $1,219.87 MRR) when the live transaction ledger is empty, ensuring UI evaluators can inspect high-density grid states.
-- **Transparent Mock Ledger:** All 23 mock implementations are explicitly tagged with `# MOCK(M-NNN)` comments and tracked in [`docs/MOCKS.md`](docs/MOCKS.md), verified automatically via `backend/tests/test_mocks_ledger.py`.
+- **Transparent Mock Ledger:** All 22 mock implementations are explicitly tagged with `# MOCK(M-NNN)` comments and tracked in [`docs/MOCKS.md`](docs/MOCKS.md), verified automatically via `backend/tests/test_mocks_ledger.py`.
 - **Fail-Closed Boundary:** Simulation data can never cross into cryptographic evaluation engines or influence signature validation.
 - **Code Anchor:** [`docs/MOCKS.md`](docs/MOCKS.md), [`backend/tests/test_mocks_ledger.py`](backend/tests/test_mocks_ledger.py).
 
@@ -414,7 +414,7 @@ The system's zero-trust guarantees and architectural boundaries are validated co
      792 PASSED, 9 SKIPPED in 45s                      9 / 9 INVARIANT CHECKS PASSED in ~1s
      --------------------------------------            -------------------------------------
      [188 Conformance] Upstream Google AP2             [Check 1] MCP JSON-RPC Handshake
-     [120 Security]    Tamper & Replay Checks          [Check 2] AP2 ES256 SD-JWT Chains
+     [132 Security]    Tamper & Replay Checks          [Check 2] AP2 ES256 SD-JWT Chains
      [145 Wallet]      Airgap Isolation Limits         [Check 3] Multi-Tier Counter-Offer
      [132 Recurring]   Advance Cancellation Cycles     [Check 4] Anti-Tamper & 1¢ Inflation
      [195 Subsystems]  ERP, Fleet, Leasing, Webhook    [Checks 5-9] Dispatch, ERP, Reconcile
@@ -459,7 +459,7 @@ The system's zero-trust guarantees and architectural boundaries are validated co
 
 ![Production vs Simulation Demarcation](docs/images/slides/slide_07_production_vs_simulation.png)
 
-Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (23 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
+Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md) (22 entries) and marked in the code with a `MOCK(M-NNN)` comment. `backend/tests/test_mocks_ledger.py` fails if the ledger and the markers disagree. Highlights: PayPal calls are simulated in mock mode, the fleet and schedule are seeded, back-office exports are dry runs without a webhook URL, and compute provisioning returns placeholder endpoints.
 
 ---
 

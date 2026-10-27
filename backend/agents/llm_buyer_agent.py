@@ -1105,6 +1105,9 @@ def mint_demo_owner_limits_to_file(
         monthly_budget_cap=budget,
         allowed_tiers=allowed_tiers or ["ap2-batch", "ap2-gateway", "ap2-cluster"],
     )
+    parent_dir = os.path.dirname(os.path.abspath(filepath))
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
     return res

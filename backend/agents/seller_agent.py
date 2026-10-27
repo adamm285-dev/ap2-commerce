@@ -1808,7 +1808,8 @@ class SellerAgent:
                     amount_cents=amount_cents,
                 )
 
-                # Keep the owner-signed mandate so every PayPal renewal can be checked against it
+            if ap2_verify_res and sub_status in ("ACTIVE", "APPROVAL_PENDING"):
+                # Keep the owner-signed mandate so every PayPal renewal and activation can be checked against it
                 from ..services.recurring_mandate_service import register_recurring_mandate
                 closed_pay = ap2_verify_res["closed_payment_mandate"]
                 if norm_email:
@@ -1820,6 +1821,9 @@ class SellerAgent:
                         amount_cents=closed_pay.payment_amount.amount,
                         currency=closed_pay.payment_amount.currency,
                     )
+                    if sub_status != "ACTIVE":
+                        from ..database import set_recurring_mandate_status
+                        set_recurring_mandate_status(sub_id, sub_status)
                 else:
                     logger.warning(f"[RECURRING] Subscription {sub_id} has no buyer email; its renewals will be suspended.")
 
@@ -1911,6 +1915,8 @@ class SellerAgent:
                 "billing_cycles": billing_cycles,
                 "currency": "USD",
                 "mandate_proof_hash": mandate_proof_hash,
+                "checkout_hash": checkout_hash,
+                "open_payment_mandate_hash": open_pay_hash,
                 "traceable_proof": traceable_proof,
                 "subscriber_country_code": paypal_result.get("subscriber_country_code", "US"),
                 "paypal_vault_status": vault_status,
@@ -2114,8 +2120,18 @@ class SellerAgent:
             return {
                 "status": "REJECTED",
                 "error": "IDENTITY_MISMATCH_DETECTED",
-                "reason": f"Subscription '{subscription_id}' belongs to '{owner_email}', cannot be provisioned for '{buyer_email}'.",
+                "reason": f"Subscription '{subscription_id}' does not belong to '{buyer_email}'. Identity mismatch detected.",
             }
+
+        from ..database import is_mandate_revoked
+        for h_key in ("open_payment_mandate_hash", "mandate_proof_hash", "checkout_hash", "offer_id"):
+            h_val = (sub.get(h_key) or "").strip()
+            if h_val and is_mandate_revoked(h_val):
+                return {
+                    "status": "REJECTED",
+                    "error": "MANDATE_REVOKED",
+                    "reason": f"Subscription '{subscription_id}' cannot be provisioned because its underlying mandate has been revoked.",
+                }
 
         sub_status = (sub.get("status") or "").upper()
         if sub_status == "APPROVAL_PENDING":
@@ -2239,6 +2255,13 @@ class SellerAgent:
                 "reason": "Cannot dispatch back-office automation: subscription_id is required.",
             }
 
+        if not zapier_mcp_dispatcher.mock_mode or not getattr(settings, "mock_external_apis", False):
+            return {
+                "status": "REJECTED",
+                "error": "ADMIN_AUTH_REQUIRED",
+                "reason": "Live back-office dispatch requires administrative authorization via the REST API.",
+            }
+
         sub = _COMPLETED_SUBSCRIPTIONS.get(target_sub_id)
         if not sub:
             from ..database import get_subscription
@@ -2248,6 +2271,23 @@ class SellerAgent:
                 "status": "REJECTED",
                 "error": "SUBSCRIPTION_NOT_FOUND",
                 "reason": f"Cannot dispatch back-office automation: Subscription '{target_sub_id}' was not found.",
+            }
+
+        sub_status = (sub.get("status") or "").upper()
+        if sub_status not in ("ACTIVE", "ACTIVE_STREAMING", "PROVISIONED"):
+            return {
+                "status": "REJECTED",
+                "error": "SUBSCRIPTION_NOT_ACTIVE",
+                "reason": f"Cannot dispatch back-office automation: Subscription '{target_sub_id}' is not active (status: {sub_status or 'UNKNOWN'}).",
+            }
+
+        stored_email = (sub.get("buyer_email") or sub.get("contractor_email") or "").strip().lower()
+        caller_email = (buyer_email or contractor_email or "").strip().lower()
+        if caller_email and stored_email and caller_email != stored_email:
+            return {
+                "status": "REJECTED",
+                "error": "IDENTITY_MISMATCH_DETECTED",
+                "reason": f"Subscription '{target_sub_id}' does not belong to '{caller_email}'.",
             }
 
         sub_name = (
@@ -2304,6 +2344,16 @@ class SellerAgent:
         for key in ("webhookHeaders", "webhook_headers"):
             if key in dump and isinstance(dump[key], dict):
                 dump[key] = {k: v for k, v in dump[key].items() if k.lower() != "x-ap2-signature"}
+        if not caller_email and stored_email:
+            masked_e = _mask_email(stored_email)
+            for ep_key in ("erpPayload", "erp_payload"):
+                if isinstance(dump.get(ep_key), dict):
+                    ep = dict(dump[ep_key])
+                    if "contractor_email" in ep:
+                        ep["contractor_email"] = masked_e
+                    if "contractorEmail" in ep:
+                        ep["contractorEmail"] = masked_e
+                    dump[ep_key] = ep
         return dump
 
 

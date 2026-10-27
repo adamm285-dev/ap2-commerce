@@ -39,7 +39,7 @@ def is_url_permitted(url: str) -> bool:
     Blocks private network probing (RFC 1918, link-local, loopback) and
     cloud metadata endpoints (169.254.169.254).
     Allows recognized automation webhook domains (Zapier, Make, IFTTT, Webhook.site, Pipedream)
-    or localhost in local test/mock mode.
+    or testserver in local test/mock mode.
     """
     if not url or not isinstance(url, str):
         return False
@@ -62,19 +62,18 @@ def is_url_permitted(url: str) -> bool:
     # 2. Check if hostname is an IP address
     try:
         ip = ipaddress.ip_address(hostname)
-        # If it's an IP: check if private / reserved / loopback / link-local / multicast
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            # MOCK(M-011): mock mode allows loopback, localhost and mock-only domains
-            # In test/mock mode, allow 127.0.0.1 or ::1 for local test harnesses
-            if getattr(settings, "mock_external_apis", False) and ip.is_loopback:
-                return True
+        # If it's an IP: block private / reserved / loopback / link-local / multicast / unspecified
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
             return False
     except ValueError:
         # Not an IP literal; host is a domain name
         pass
 
-    # 3. Localhost in test/mock mode
-    if hostname in ("localhost", "testserver"):
+    # 3. Localhost is blocked; in-process testserver allowed in test/mock mode
+    # MOCK(M-011): mock mode allows testserver and mock-only domains
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return False
+    if hostname == "testserver":
         return getattr(settings, "mock_external_apis", False)
 
     # 4. Whitelist check for allowed webhook domains
@@ -181,30 +180,58 @@ class BackofficeWebhookDispatcher:
                 "error": "URL target blocked by SSRF security policy (unauthorized domain or private IP range)",
             }
 
-        # Live HTTP POST dispatch
+        # Rule 9: No live network calls when MOCK_EXTERNAL_APIS=true
+        if getattr(settings, "mock_external_apis", False):
+            logger.info(
+                f"[Webhook Dispatcher] Mock-mode simulated dispatch to {target_url} (delivery: {delivery_id}, 0 network calls)"
+            )
+            return {
+                "dispatched": True,
+                "dry_run": True,
+                "delivery_id": delivery_id,
+                "timestamp": timestamp,
+                "target_url": target_url,
+                "event_type": event_type,
+                "headers": headers,
+                "status_code": 200,
+                "response_body": '{"status":"mock_simulated"}',
+                "error": None,
+            }
+
+        # Live HTTP POST dispatch (bounded response read, redirects disabled)
         logger.info(f"[Webhook Dispatcher] Firing live payload to {target_url} (delivery: {delivery_id})")
         try:
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                res = await client.post(
+            async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as client:
+                async with client.stream(
+                    "POST",
                     target_url,
                     content=payload_bytes,
                     headers=headers,
-                )
-                logger.info(
-                    f"[Webhook Dispatcher] Live dispatch to {target_url} returned HTTP {res.status_code}"
-                )
-                return {
-                    "dispatched": True,
-                    "dry_run": False,
-                    "delivery_id": delivery_id,
-                    "timestamp": timestamp,
-                    "target_url": target_url,
-                    "event_type": event_type,
-                    "headers": headers,
-                    "status_code": res.status_code,
-                    "response_body": res.text[:500] if res.text else "",
-                    "error": None,
-                }
+                ) as res:
+                    chunks = []
+                    total_read = 0
+                    async for chunk in res.aiter_bytes():
+                        remaining = 4096 - total_read
+                        if remaining <= 0:
+                            break
+                        chunks.append(chunk[:remaining])
+                        total_read += min(len(chunk), remaining)
+                    body_text = b"".join(chunks).decode("utf-8", errors="replace")
+                    logger.info(
+                        f"[Webhook Dispatcher] Live dispatch to {target_url} returned HTTP {res.status_code}"
+                    )
+                    return {
+                        "dispatched": True,
+                        "dry_run": False,
+                        "delivery_id": delivery_id,
+                        "timestamp": timestamp,
+                        "target_url": target_url,
+                        "event_type": event_type,
+                        "headers": headers,
+                        "status_code": res.status_code,
+                        "response_body": body_text[:500] if body_text else "",
+                        "error": None,
+                    }
         except Exception as e:
             logger.error(f"[Webhook Dispatcher] Error firing live webhook to {target_url}: {e}")
             return {

@@ -23,11 +23,17 @@ logger = logging.getLogger("a2a_database")
 
 RESERVED_BUYER_KEY_IDS: Set[str] = {
     "ap2-seller-ed25519-v1",
+    "ap2-seller-node",
+    "ap2-merchant-key-1",
     "ap2-buyer-ed25519-v1",
     "buyer-agent-01",
     "buyer-agent-001",
     "claude-desktop-buyer",
     "test-agent-001",
+    "demo-human-trusted-surface",
+    "demo-user-key",
+    "demo-autonomous-buyer-agent",
+    "demo-agent-key",
 }
 
 _DEFAULT_BUYER_KIDS: Set[str] = {
@@ -1333,8 +1339,9 @@ def get_open_mandate_total_usage(
 ) -> Tuple[int, int]:
     """
     Returns (total_amount_cents, total_uses) charged under an open payment mandate:
-    purchase-time settlements plus every later PayPal charge recorded for it. INITIAL charges
-    are excluded because the purchase-time settlement already counts them.
+    purchase-time settlements (plus pending APPROVAL_PENDING reservations) plus every later
+    PayPal charge recorded for it. INITIAL charges are excluded because the purchase-time
+    settlement already counts them.
     """
     if not mandate_hash:
         raise ValueError("mandate_hash is required to compute mandate usage.")
@@ -1346,12 +1353,35 @@ def get_open_mandate_total_usage(
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
-            "SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, COUNT(*) AS total_uses "
+            "SELECT COALESCE(SUM(amount_cents), 0) AS total_amount, "
+            "COALESCE(SUM(CASE WHEN amount_cents > 0 AND status != 'REFUNDED' THEN 1 ELSE 0 END), 0) AS total_uses "
             "FROM recurring_charges WHERE mandate_hash = ? AND status != 'INITIAL'",
             (mandate_hash.strip(),),
         )
         row = cur.fetchone() or {}
-        return settled_cents + int(row.get("total_amount") or 0), settled_uses + int(row.get("total_uses") or 0)
+        if exclude_subscription_id:
+            pending_cur = conn.execute(
+                "SELECT COALESCE(SUM(agreed_amount_cents), 0) AS pending_amount, COUNT(*) AS pending_uses "
+                "FROM recurring_mandates WHERE mandate_hash = ? AND status = 'APPROVAL_PENDING' "
+                "AND subscription_id != ? AND subscription_id NOT IN ("
+                "SELECT subscription_id FROM open_mandate_settlements WHERE mandate_hash = ?"
+                ")",
+                (mandate_hash.strip(), exclude_subscription_id.strip(), mandate_hash.strip()),
+            )
+        else:
+            pending_cur = conn.execute(
+                "SELECT COALESCE(SUM(agreed_amount_cents), 0) AS pending_amount, COUNT(*) AS pending_uses "
+                "FROM recurring_mandates WHERE mandate_hash = ? AND status = 'APPROVAL_PENDING' "
+                "AND subscription_id NOT IN ("
+                "SELECT subscription_id FROM open_mandate_settlements WHERE mandate_hash = ?"
+                ")",
+                (mandate_hash.strip(), mandate_hash.strip()),
+            )
+        pending_row = pending_cur.fetchone() or {}
+        return (
+            settled_cents + int(row.get("total_amount") or 0) + int(pending_row.get("pending_amount") or 0),
+            settled_uses + int(row.get("total_uses") or 0) + int(pending_row.get("pending_uses") or 0),
+        )
     finally:
         conn.close()
 
@@ -2259,8 +2289,14 @@ def reset_all_data(db_path: Optional[Path] = None) -> None:
 # --- Territory Dispatch Slot Operations ---
 
 def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = None) -> None:
-    """Inserts or replaces a locked territory appointment slot in SQLite."""
-    slot_id = slot_data.get("slot_id") or uuid.uuid4().hex[:12]
+    """Inserts or replaces a locked territory appointment slot in SQLite (bounded retention)."""
+    import hashlib
+    job_val = slot_data.get("job_id") or slot_data.get("jobId")
+    slot_id = slot_data.get("slot_id") or (
+        f"slot_{hashlib.sha256(str(job_val).strip().encode('utf-8')).hexdigest()[:12]}"
+        if job_val and str(job_val).strip()
+        else uuid.uuid4().hex[:12]
+    )
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     conn = get_connection(db_path)
     try:
@@ -2275,7 +2311,7 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
                 """,
                 (
                     slot_id,
-                    slot_data.get("job_id") or slot_data.get("jobId"),
+                    job_val,
                     slot_data.get("contractor_id", "buyer_agent_alpha_01"),
                     slot_data.get("territory_zone", "Zone 1 - US East"),
                     slot_data.get("slot_start_iso", "2026-10-02 14:00"),
@@ -2287,16 +2323,24 @@ def record_dispatch_slot(slot_data: Dict[str, Any], db_path: Optional[Path] = No
                     now_iso,
                 ),
             )
+            conn.execute(
+                """
+                DELETE FROM dispatch_slots
+                WHERE slot_id NOT IN (
+                    SELECT slot_id FROM dispatch_slots ORDER BY created_at DESC LIMIT 1000
+                )
+                """
+            )
     finally:
         conn.close()
 
 
 def list_dispatch_slots(db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Retrieves all locked territory appointment windows ordered by start time."""
+    """Retrieves locked territory appointment windows ordered by start time (bounded)."""
     conn = get_connection(db_path)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM dispatch_slots ORDER BY slot_start_iso ASC")
+        cur.execute("SELECT * FROM dispatch_slots ORDER BY slot_start_iso ASC LIMIT 500")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

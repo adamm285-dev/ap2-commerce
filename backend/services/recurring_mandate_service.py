@@ -204,8 +204,16 @@ def evaluate_sale(resource: Any, subscription_record: Optional[Dict[str, Any]],
     if existing:
         existing_status = existing.get("status") or ""
         extra_already: Dict[str, Any] = {"sale_id": sale_id, "subscription_id": sub_id}
+        rec_existing = get_recurring_mandate(sub_id)
+        if rec_existing and rec_existing.get("status") == "STOP_FAILED":
+            retry_action = ACTION_CANCEL if existing_status == OUT_OF_MANDATE else ACTION_SUSPEND
+            return _decision(
+                existing_status or UNVERIFIED,
+                retry_action,
+                existing.get("reason") or "RETRY_STOP_AFTER_FAILURE: previous PayPal stop failed.",
+                **extra_already,
+            )
         if existing_status in (INITIAL, VERIFIED):
-            rec_existing = get_recurring_mandate(sub_id)
             if rec_existing:
                 extra_already["renewal_receipt_jwt"] = create_renewal_receipt_jwt(
                     sale_id=sale_id,

@@ -633,44 +633,47 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     let provisionedDid: string | null = null;
     try {
       let adminKey = sessionAdminKey || (window as any).__FS_ADMIN_KEY || '';
+      if (adminKey && adminKey !== sessionAdminKey) {
+        setSessionAdminKey(adminKey);
+      }
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      let res: Response;
+      let runData: any = null;
       if (adminKey) {
         headers['X-Admin-Key'] = adminKey;
-      }
-      let res = await fetch('/api/harness/run-buyer-agent', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          contractor_name: localContractorName,
-          business_entity: localBusinessEntity,
-          trade_vertical: localTradeVertical,
-          budget_cap: localBudgetCap,
-          simulate_exhaustion: simulateExhaustion,
-        }),
-      });
-
-      if (res.status === 401) {
-        const entered = prompt('Administrative authorization required to trigger autonomous buyer harness.\nEnter ADMIN_API_KEY (retained in-memory only):');
-        if (entered) {
-          adminKey = entered.trim();
-          setSessionAdminKey(adminKey);
-          (window as any).__FS_ADMIN_KEY = adminKey;
-          headers['X-Admin-Key'] = adminKey;
-          res = await fetch('/api/harness/run-buyer-agent', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              contractor_name: localContractorName,
-              business_entity: localBusinessEntity,
-              trade_vertical: localTradeVertical,
-              budget_cap: localBudgetCap,
-              simulate_exhaustion: simulateExhaustion,
-            }),
-          });
+        res = await fetch('/api/harness/run-buyer-agent', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            contractor_name: localContractorName,
+            business_entity: localBusinessEntity,
+            trade_vertical: localTradeVertical,
+            budget_cap: localBudgetCap,
+            simulate_exhaustion: simulateExhaustion,
+          }),
+        });
+        if (res.ok) {
+          runData = await res.json();
+        }
+      } else {
+        res = await fetch('/api/seller-copilot/chat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            message: 'Approve Setup (.99/mo via PayPal)',
+            contractorName: localContractorName,
+            businessEntity: localBusinessEntity,
+            tradeVertical: localTradeVertical,
+            budgetCap: simulateExhaustion ? 30.0 : localBudgetCap,
+            simulateExhaustion: simulateExhaustion,
+          }),
+        });
+        if (res.ok) {
+          const chatData = await res.json();
+          runData = chatData?.execution_result || chatData;
         }
       }
-      if (res.ok) {
-        const runData = await res.json();
+      if (res.ok && runData) {
         const trace = Array.isArray(runData?.protocol_trace) ? runData.protocol_trace : null;
         if (!trace || trace.length === 0) {
           setLiveTrace([]);

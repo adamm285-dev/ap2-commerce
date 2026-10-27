@@ -1345,7 +1345,7 @@ _MAX_SLOT_LOCKS_PER_HOUR = 60
     response_model=DispatchLockResponse,
     tags=["Dispatch Scheduling"],
 )
-async def lock_dispatch_slot(request: DispatchLockRequest):
+async def lock_dispatch_slot(request: DispatchLockRequest, http_request: Request):
     """Atomically reserves an appointment window across territory zones with a caller-supplied transaction reference (unverified deposit reference; does not verify deposit status against PayPal)."""
     try:
         slot_start = datetime.datetime.fromisoformat(request.slot_start_iso.replace("Z", "+00:00"))
@@ -1357,13 +1357,24 @@ async def lock_dispatch_slot(request: DispatchLockRequest):
     if not (now - datetime.timedelta(days=365) <= slot_start <= now + datetime.timedelta(days=365)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="slotStartIso must fall within one year of today.")
 
-    # Public demo endpoint: cap how many slots can be locked per hour
-    cutoff = now.timestamp() - 3600
-    while _RECENT_SLOT_LOCKS and _RECENT_SLOT_LOCKS[0] < cutoff:
-        _RECENT_SLOT_LOCKS.popleft()
-    if len(_RECENT_SLOT_LOCKS) >= _MAX_SLOT_LOCKS_PER_HOUR:
+    # Public demo endpoint: cap how many slots can be locked per hour per client (and globally)
+    now_ts = now.timestamp()
+    cutoff = now_ts - 3600
+    client_host = (http_request.client.host if http_request and http_request.client else None) or "unknown"
+    while _RECENT_SLOT_LOCKS:
+        first_entry = _RECENT_SLOT_LOCKS[0]
+        first_ts = first_entry[0] if isinstance(first_entry, tuple) else float(first_entry)
+        if first_ts < cutoff:
+            _RECENT_SLOT_LOCKS.popleft()
+        else:
+            break
+    client_count = sum(
+        1 for entry in _RECENT_SLOT_LOCKS
+        if (entry[1] if isinstance(entry, tuple) else "testclient") == client_host
+    )
+    if client_count >= _MAX_SLOT_LOCKS_PER_HOUR or len(_RECENT_SLOT_LOCKS) >= _MAX_SLOT_LOCKS_PER_HOUR * 16:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Dispatch slot lock rate exceeded; try again later.")
-    _RECENT_SLOT_LOCKS.append(now.timestamp())
+    _RECENT_SLOT_LOCKS.append((now_ts, client_host))
     zone_cluster_map = {
         "Zone 1 - US-East": "Cluster Alpha - High-Throughput Batch Worker",
         "Zone 2 - US-Central": "Cluster Beta - Dedicated AI Service Gateway",
@@ -1543,19 +1554,26 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     """
     import time
 
+    clean_kid = (request.kid or "").strip()
+    if not clean_kid or len(clean_kid) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"status": "REJECTED", "error": "INVALID_KEY_ID", "reason": "A valid key ID (minimum 3 non-whitespace characters) is required."},
+        )
+
     # 0. System-reserved key ID protection
-    if request.kid in RESERVED_BUYER_KEY_IDS:
+    if clean_kid in RESERVED_BUYER_KEY_IDS or clean_kid == (settings.ap2_merchant_key_id or "").strip():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"status": "REJECTED", "error": "RESERVED_KEY_ID", "reason": f"Key ID '{request.kid}' is reserved by the system and cannot be registered or modified."},
+            detail={"status": "REJECTED", "error": "RESERVED_KEY_ID", "reason": f"Key ID '{clean_kid}' is reserved by the system and cannot be registered or modified."},
         )
 
     # 0.5 Check for key ID collision / unauthorized overwrite
-    existing_pub = get_buyer_key(request.kid) or REGISTERED_BUYER_KEYS.get(request.kid)
+    existing_pub = get_buyer_key(clean_kid) or REGISTERED_BUYER_KEYS.get(clean_kid)
     if existing_pub:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"status": "REJECTED", "error": "KEY_ALREADY_EXISTS", "reason": f"Key ID '{request.kid}' is already registered. Overwriting keys is strictly prohibited."},
+            detail={"status": "REJECTED", "error": "KEY_ALREADY_EXISTS", "reason": f"Key ID '{clean_kid}' is already registered. Overwriting keys is strictly prohibited."},
         )
 
     # 1. Validate challenge issuance and freshness (strictly single-use)
@@ -1673,7 +1691,7 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     # 4. Register key in SQLite WAL persistence (Strict collision check: 409 Conflict)
     try:
         register_buyer_key(
-            kid=request.kid,
+            kid=clean_kid,
             public_key_hex=stored_pub_key,
             contractor_email=norm_email,
             business_name=request.business_entity,
@@ -1687,7 +1705,7 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
         if "KEY_ALREADY_EXISTS" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={"status": "REJECTED", "error": "KEY_ALREADY_EXISTS", "reason": f"Key ID '{request.kid}' is already registered. Overwriting keys is strictly prohibited."},
+                detail={"status": "REJECTED", "error": "KEY_ALREADY_EXISTS", "reason": f"Key ID '{clean_kid}' is already registered. Overwriting keys is strictly prohibited."},
             )
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1704,13 +1722,13 @@ async def register_buyer_key_endpoint(request: BuyerKeyRegistrationRequest):
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return BuyerKeyRegistrationResponse(
         status="REGISTERED",
-        kid=request.kid,
+        kid=clean_kid,
         publicKeyHex=stored_pub_key,
         contractorEmail=norm_email,
         businessEntity=request.business_entity,
         registeredAt=now_iso,
         verified=True,
-        message=f"Autonomous buyer key '{request.kid}' verified and registered in AP2 Autonomous Node network.",
+        message=f"Autonomous buyer key '{clean_kid}' verified and registered in AP2 Autonomous Node network.",
         identity_attested=identity_attested,
         payer_id=payer_id,
         identity_provider=identity_provider,
@@ -2042,6 +2060,25 @@ async def simulate_paypal_approval(subscription_id: str, request: Request):
             v["vault_customer_present"] = False
             v["next_action"] = sub_record["next_action"]
 
+    from .database import (
+        get_recurring_mandate,
+        record_open_mandate_settlement,
+        save_subscription,
+        set_recurring_mandate_status,
+    )
+    save_subscription(sub_record)
+    set_recurring_mandate_status(sub_id, "ACTIVE")
+    rec_mandate = get_recurring_mandate(sub_id)
+    mandate_hash = (
+        sub_record.get("open_payment_mandate_hash")
+        or (rec_mandate.get("mandate_hash") if isinstance(rec_mandate, dict) else None)
+        or sub_record.get("mandate_proof_hash")
+    )
+    rate = float(sub_record.get("agreed_monthly_rate") or 0.0)
+    rate_cents = int(round(rate * 100))
+    if mandate_hash and rate_cents > 0:
+        record_open_mandate_settlement(mandate_hash, sub_id, rate_cents)
+
     logger.info(f"[PayPal Sandbox] Successfully simulated buyer approval for {sub_id}. Status -> ACTIVE.")
     return {
         "status": "ACTIVE",
@@ -2112,6 +2149,33 @@ def _apply_subscription_stop(sub_id: str, new_status: str, fallback_email: Optio
         delete_open_mandate_settlement(sub_id)
 
 
+def _is_subscription_terminally_revoked_or_cancelled(
+    sub_id: str,
+    sub_record: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Returns True if the subscription or its underlying mandate has been revoked or terminally stopped."""
+    from .database import get_recurring_mandate, get_subscription, is_mandate_revoked
+
+    rec_sub = sub_record if isinstance(sub_record, dict) else get_subscription(sub_id)
+    rec_mandate = get_recurring_mandate(sub_id)
+    if isinstance(rec_sub, dict):
+        if rec_sub.get("status") in ("CANCELLED", "EXPIRED", "DENIED", "REPLACED"):
+            return True
+        for h_key in ("open_payment_mandate_hash", "mandate_proof_hash", "checkout_hash", "offer_id"):
+            h_val = (rec_sub.get(h_key) or "").strip()
+            if h_val and is_mandate_revoked(h_val):
+                return True
+    if isinstance(rec_mandate, dict):
+        if rec_mandate.get("status") in ("CANCELLED", "STOP_FAILED"):
+            return True
+        m_hash = (rec_mandate.get("mandate_hash") or "").strip()
+        if m_hash and is_mandate_revoked(m_hash):
+            return True
+    if sub_id and len(sub_id.strip()) >= 16 and is_mandate_revoked(sub_id.strip()):
+        return True
+    return False
+
+
 def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = None) -> None:
     """Restores a suspended subscription back to ACTIVE and reconciles the buyer's ledger."""
     from .agents.seller_agent import (
@@ -2119,9 +2183,21 @@ def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = 
         _ACTIVE_CONTRACTOR_SUBSCRIPTIONS,
         reconcile_contractor_ledger,
     )
-    from .database import get_subscription, save_subscription, set_recurring_mandate_status
+    from .database import (
+        get_recurring_mandate,
+        get_subscription,
+        record_open_mandate_settlement,
+        save_subscription,
+        set_recurring_mandate_status,
+    )
+
+    existing_sub = _COMPLETED_SUBSCRIPTIONS.get(sub_id) or get_subscription(sub_id)
+    if _is_subscription_terminally_revoked_or_cancelled(sub_id, existing_sub):
+        logger.warning(f"[SECURITY] Refusing to reactivate revoked or terminally cancelled subscription {sub_id}.")
+        return
 
     email = None
+    sub_record = None
     if sub_id in _COMPLETED_SUBSCRIPTIONS:
         sub_record = _COMPLETED_SUBSCRIPTIONS[sub_id]
         sub_record["status"] = "ACTIVE"
@@ -2150,8 +2226,20 @@ def _apply_subscription_reactivate(sub_id: str, fallback_email: Optional[str] = 
             db_sub["status"] = "ACTIVE"
             db_sub["node_status"] = "ACTIVE"
             save_subscription(db_sub)
+            sub_record = db_sub
 
     set_recurring_mandate_status(sub_id, "ACTIVE")
+    if isinstance(sub_record, dict):
+        rec_mandate = get_recurring_mandate(sub_id)
+        mandate_hash = (
+            sub_record.get("open_payment_mandate_hash")
+            or (rec_mandate.get("mandate_hash") if isinstance(rec_mandate, dict) else None)
+            or sub_record.get("mandate_proof_hash")
+        )
+        rate = float(sub_record.get("agreed_monthly_rate") or 0.0)
+        rate_cents = int(round(rate * 100))
+        if mandate_hash and rate_cents > 0:
+            record_open_mandate_settlement(mandate_hash, sub_id, rate_cents)
 
     if email:
         reconcile_contractor_ledger(email)
@@ -2176,6 +2264,7 @@ async def _enforce_recurring_mandate(resource: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"[RECURRING] Failed to {paypal_action} subscription {sub_id}: {e}")
         set_recurring_mandate_status(sub_id, "STOP_FAILED", f"{paypal_action} failed: {e}")
+        _apply_subscription_stop(sub_id, new_status)
         decision["action_result"] = "FAILED"
         return decision
     set_recurring_mandate_status(sub_id, new_status, decision["reason"])
@@ -2260,6 +2349,12 @@ async def paypal_webhook_receiver(request: Request):
                 _COMPLETED_SUBSCRIPTIONS[sub_id] = db_sub
                 sub_record = db_sub
 
+        if sub_record and _is_subscription_terminally_revoked_or_cancelled(sub_id, sub_record):
+            logger.warning(
+                f"[SECURITY] Refusing to activate revoked or terminally cancelled subscription {sub_id} on {event_type}."
+            )
+            sub_record = None
+
         if sub_record:
             sub_record["status"] = "ACTIVE"
             sub_record["paypal_vault_status"] = "VAULT_BOUND"
@@ -2299,7 +2394,13 @@ async def paypal_webhook_receiver(request: Request):
             save_subscription(sub_record)
             set_recurring_mandate_status(sub_id, "ACTIVE")
 
-            mandate_hash = sub_record.get("mandate_proof_hash")
+            from .database import get_recurring_mandate
+            rec_mandate = get_recurring_mandate(sub_id)
+            mandate_hash = (
+                sub_record.get("open_payment_mandate_hash")
+                or (rec_mandate.get("mandate_hash") if isinstance(rec_mandate, dict) else None)
+                or sub_record.get("mandate_proof_hash")
+            )
             rate = float(sub_record.get("agreed_monthly_rate") or 0.0)
             rate_cents = int(round(rate * 100))
             if mandate_hash and rate_cents > 0:
@@ -2380,12 +2481,30 @@ async def paypal_webhook_receiver(request: Request):
         )
 
         refund_cents = int(round(refund_amount * 100))
-        if sub_id and parent_charge:
+        if (
+            sub_id
+            and parent_charge
+            and parent_charge.get("status") in ("INITIAL", "VERIFIED")
+            and int(parent_charge.get("amount_cents") or 0) > 0
+        ):
             mandate_hash = parent_charge.get("mandate_hash") or (sub_record.get("mandate_proof_hash") if isinstance(sub_record, dict) else None)
             if mandate_hash and mandate_hash != "unknown_hash":
+                from .database import list_subscription_recurring_charges
                 parent_cents = max(0, int(parent_charge.get("amount_cents") or 0))
-                capped_refund_cents = min(refund_cents, parent_cents)
+                existing_sub_charges = list_subscription_recurring_charges(sub_id)
+                sale_tag = f"[sale:{sale_id}]" if sale_id else ""
+                already_refunded_for_sale = sum(
+                    abs(int(c.get("amount_cents") or 0))
+                    for c in existing_sub_charges
+                    if c.get("status") == "REFUNDED"
+                    and int(c.get("amount_cents") or 0) < 0
+                    and (not sale_tag or sale_tag in str(c.get("reason") or ""))
+                )
+                remaining_refundable_cents = max(0, parent_cents - already_refunded_for_sale)
+                capped_refund_cents = min(max(0, refund_cents), remaining_refundable_cents)
                 if capped_refund_cents > 0:
+                    base_reason = resource.get("reason_code") or "Refund processed"
+                    tagged_reason = f"{base_reason} {sale_tag}".strip()
                     record_recurring_charge(
                         sale_id=refund_id,
                         subscription_id=sub_id,
@@ -2393,7 +2512,7 @@ async def paypal_webhook_receiver(request: Request):
                         amount_cents=-capped_refund_cents,
                         currency=amount_info.get("currency") or "USD",
                         status="REFUNDED",
-                        reason=resource.get("reason_code") or "Refund processed",
+                        reason=tagged_reason,
                         charged_at=resource.get("create_time") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     )
 
@@ -2413,7 +2532,8 @@ async def paypal_webhook_receiver(request: Request):
         # Recurring charge: check it against the owner's AP2 mandate (signature already verified above)
         recurring_check = await _enforce_recurring_mandate(body.get("resource", {}))
 
-    _PROCESSED_WEBHOOK_IDS.add(event_id)
+    if not (isinstance(recurring_check, dict) and recurring_check.get("action_result") == "FAILED"):
+        _PROCESSED_WEBHOOK_IDS.add(event_id)
     response = {
         "status": "received",
         "event_type": event_type,

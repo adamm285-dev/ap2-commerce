@@ -22,20 +22,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..database import (
+    PURCHASE_LEASE_TTL_SECONDS,
+    acquire_purchase_lease,
     get_buyer_identity,
     get_buyer_key,
     get_direct_charge,
     get_open_mandate_settlement_totals,
+    get_open_mandate_total_usage,
     get_vault_payment_source,
     is_direct_charge_replayed,
     is_mandate_revoked,
     list_direct_charges,
     record_direct_charge,
     record_open_mandate_settlement,
+    release_purchase_lease,
 )
 from ap2.sdk.constraints import MandateContext
 from .ap2_service import (
     AP2_MERCHANT_ID,
+    clear_stored_receipt,
     compute_open_payment_mandate_hash,
     verify_ap2_chains,
 )
@@ -109,8 +114,15 @@ class Ap2GatewayService:
             if identity and identity.get("identity_attested"):
                 payer_id = identity.get("payer_id")
 
-        # 1.1 Verify that buyer_key_id matches mandate root key ID (Defend against Key ID substitution)
-        root_kid = extract_token_root_kid(payment_mandate_jwt) or extract_token_root_kid(cart_mandate_jwt)
+        # 1.1 Verify that buyer_key_id and both mandate chains share the same root key ID (Defend against Key ID substitution & splicing)
+        pay_root_kid = extract_token_root_kid(payment_mandate_jwt)
+        chk_root_kid = extract_token_root_kid(cart_mandate_jwt)
+        if pay_root_kid and chk_root_kid and pay_root_kid.strip() != chk_root_kid.strip():
+            raise ValueError(
+                f"CROSS_CHAIN_KEY_MISMATCH: Checkout mandate root key ID '{chk_root_kid}' "
+                f"does not match payment mandate root key ID '{pay_root_kid}'."
+            )
+        root_kid = pay_root_kid or chk_root_kid
         if buyer_key_id and root_kid and buyer_key_id.strip() != root_kid:
             raise ValueError(
                 f"BUYER_KEY_MISMATCH: Provided buyer_key_id '{buyer_key_id}' does not match mandate root key ID '{root_kid}'."
@@ -141,7 +153,7 @@ class Ap2GatewayService:
 
         # 1.5 Cumulative settlement & budget context tracking (Rule 1 & Rule 6)
         open_pay_hash = compute_open_payment_mandate_hash(payment_mandate_jwt)
-        used_cents, used_count = get_open_mandate_settlement_totals(open_pay_hash, db_path=db_path)
+        used_cents, used_count = get_open_mandate_total_usage(open_pay_hash, db_path=db_path)
         mandate_ctx = MandateContext(total_amount=used_cents, total_uses=used_count)
 
         # 2. Cryptographic mandate verification (Verify first: Rule 1)
@@ -206,8 +218,14 @@ class Ap2GatewayService:
 
         # 6. Verify that the signed instrument is registered to the verified mandate root owner key
         verified_pay_root_kid = res.get("payment_root_kid")
+        verified_chk_root_kid = res.get("checkout_root_kid")
         if not verified_pay_root_kid:
             raise ValueError("UNAUTHORIZED_PAYMENT_SOURCE: Cannot determine root key ID of verified payment mandate.")
+        if verified_chk_root_kid and verified_chk_root_kid.strip() != verified_pay_root_kid.strip():
+            raise ValueError(
+                f"CROSS_CHAIN_KEY_MISMATCH: Checkout mandate root key '{verified_chk_root_kid}' "
+                f"does not match payment mandate root key '{verified_pay_root_kid}'."
+            )
 
         # Ensure the verified root kid is registered in the key registry
         if not get_buyer_key(verified_pay_root_kid, db_path=db_path):
@@ -227,112 +245,153 @@ class Ap2GatewayService:
             )
 
         source_id = signed_instrument_id
+        closed_pay_tx_id = getattr(closed_pay, "transaction_id", None) if closed_pay else None
+        verified_buyer_email = res.get("verified_buyer_email")
+
+        def _cleanup_unsettled_receipts() -> None:
+            if not is_direct_charge_replayed(mandate_id=order_id, checkout_hash=chk_hash, receipt_jwt=merchant_receipt_jwt, db_path=db_path):
+                if chk_hash:
+                    clear_stored_receipt(chk_hash)
+                if closed_pay_tx_id:
+                    clear_stored_receipt(closed_pay_tx_id)
 
         with _DIRECT_CHARGE_LOCK:
-            if is_mandate_revoked(chk_hash, db_path=db_path) or is_mandate_revoked(open_pay_hash, db_path=db_path) or is_mandate_revoked(order_id, db_path=db_path):
-                raise ValueError("MANDATE_REVOKED: This mandate has been cryptographically revoked by the owner.")
-
-            if is_direct_charge_replayed(mandate_id=order_id, checkout_hash=chk_hash, receipt_jwt=merchant_receipt_jwt, db_path=db_path):
-                raise ValueError(f"REPLAY_DETECTED: Mandate '{order_id}' has already been captured and settled.")
-
-            charge_id = f"chg_{uuid.uuid4().hex[:12]}"
-
-            # Call PayPal service to capture the payment against the verified instrument
-            pay_res = paypal_service.capture_direct_payment(
-                payment_source_id=source_id,
-                amount_cents=amount_cents,
-                currency="USD",
-                custom_id=order_id,
+            lease_holder = acquire_purchase_lease(
+                open_mandate_hash=open_pay_hash,
+                buyer_email=verified_buyer_email,
+                ttl_seconds=PURCHASE_LEASE_TTL_SECONDS,
+                db_path=db_path,
             )
-            paypal_capture_id = pay_res.get("capture_id") if isinstance(pay_res, dict) else None
-            if not paypal_capture_id or pay_res.get("status") != "COMPLETED":
-                raise RuntimeError(
-                    "CAPTURE_FAILED: Direct charge cannot be settled: PayPal did not issue a valid capture ID."
+            if not lease_holder:
+                _cleanup_unsettled_receipts()
+                raise ValueError(
+                    "PURCHASE_IN_PROGRESS: Another purchase or direct charge for this mandate is currently in flight; retry after it settles."
                 )
 
-            # MOCK(M-011): authentic QuickBooks Online v3 Purchase payload generated in memory, not delivered
-            qbo_purchase_id = f"QBO-PUR-{uuid.uuid4().hex[:6].upper()}"
-            qbo_doc = f"AP2-DIR-{charge_id[-6:].upper()}"
-            now_date = datetime.datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            try:
+                if is_mandate_revoked(chk_hash, db_path=db_path) or is_mandate_revoked(open_pay_hash, db_path=db_path) or is_mandate_revoked(order_id, db_path=db_path):
+                    _cleanup_unsettled_receipts()
+                    raise ValueError("MANDATE_REVOKED: This mandate has been cryptographically revoked by the owner.")
 
-            qbo_payload = {
-                "Purchase": {
-                    "PaymentType": "CreditCard",
-                    "AccountRef": {
-                        "value": "99",
-                        "name": "PayPal Clearing Account",
-                    },
-                    "EntityRef": {
-                        "value": "101",
-                        "name": "AP2 Autonomous Node Network Inc.",
-                        "type": "Vendor",
-                    },
-                    "TxnDate": now_date,
-                    "DocNumber": qbo_doc,
-                    "TotalAmt": round(amount_cents / 100.0, 2),
-                    "CurrencyRef": {
-                        "value": "USD",
-                        "name": "United States Dollar",
-                    },
-                    "PrivateNote": (
-                        f"AP2 Native Direct Rail Gateway Charge.\n"
-                        f"Charge ID: {charge_id}\n"
-                        f"Mandate ID: {order_id}\n"
-                        f"Buyer Key: {buyer_key_id or 'anonymous'}\n"
-                        f"PayPal Capture ID: {paypal_capture_id}\n"
-                        f"Settled Amount: {amount_formatted}"
-                    ),
-                    "GlobalTaxCalculation": "NotApplicable",
-                    "Line": [
-                        {
-                            "Id": "1",
-                            "LineNum": 1,
-                            "Amount": round(amount_cents / 100.0, 2),
-                            "DetailType": "AccountBasedExpenseLineDetail",
-                            "AccountBasedExpenseLineDetail": {
-                                "AccountRef": {
-                                    "value": "6300",
-                                    "name": "Dues & Subscriptions: Software & SaaS",
-                                }
-                            },
-                            "Description": f"AP2 Autonomous Gateway Direct Charge ({tier_id})",
-                        }
-                    ],
+                if is_direct_charge_replayed(mandate_id=order_id, checkout_hash=chk_hash, receipt_jwt=merchant_receipt_jwt, db_path=db_path):
+                    raise ValueError(f"REPLAY_DETECTED: Mandate '{order_id}' has already been captured and settled.")
+
+                post_used_cents, post_used_count = get_open_mandate_total_usage(open_pay_hash, db_path=db_path)
+                if (post_used_cents, post_used_count) != (used_cents, used_count):
+                    reverify = verify_ap2_chains(
+                        checkout_mandate_token=cart_mandate_jwt,
+                        payment_mandate_token=payment_mandate_jwt,
+                        checkout_jwt=checkout_jwt,
+                        expected_aud=AP2_MERCHANT_ID,
+                        enforce_replay_defense=False,
+                        mandate_context=MandateContext(total_amount=post_used_cents, total_uses=post_used_count),
+                    )
+                    if not reverify.get("valid"):
+                        _cleanup_unsettled_receipts()
+                        err_msg = reverify.get("error_description") or reverify.get("error") or "Mandate verification failed under updated usage."
+                        raise ValueError(f"INVALID_MANDATE: {err_msg}")
+
+                charge_id = f"chg_{uuid.uuid4().hex[:12]}"
+
+                # Call PayPal service to capture the payment against the verified instrument
+                pay_res = paypal_service.capture_direct_payment(
+                    payment_source_id=source_id,
+                    amount_cents=amount_cents,
+                    currency="USD",
+                    custom_id=order_id,
+                )
+                paypal_capture_id = pay_res.get("capture_id") if isinstance(pay_res, dict) else None
+                if not paypal_capture_id or pay_res.get("status") != "COMPLETED":
+                    _cleanup_unsettled_receipts()
+                    raise RuntimeError(
+                        "CAPTURE_FAILED: Direct charge cannot be settled: PayPal did not issue a valid capture ID."
+                    )
+
+                # MOCK(M-011): authentic QuickBooks Online v3 Purchase payload generated in memory, not delivered
+                qbo_purchase_id = f"QBO-PUR-{uuid.uuid4().hex[:6].upper()}"
+                qbo_doc = f"AP2-DIR-{charge_id[-6:].upper()}"
+                now_date = datetime.datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                qbo_payload = {
+                    "Purchase": {
+                        "PaymentType": "CreditCard",
+                        "AccountRef": {
+                            "value": "99",
+                            "name": "PayPal Clearing Account",
+                        },
+                        "EntityRef": {
+                            "value": "101",
+                            "name": "AP2 Autonomous Node Network Inc.",
+                            "type": "Vendor",
+                        },
+                        "TxnDate": now_date,
+                        "DocNumber": qbo_doc,
+                        "TotalAmt": round(amount_cents / 100.0, 2),
+                        "CurrencyRef": {
+                            "value": "USD",
+                            "name": "United States Dollar",
+                        },
+                        "PrivateNote": (
+                            f"AP2 Native Direct Rail Gateway Charge.\n"
+                            f"Charge ID: {charge_id}\n"
+                            f"Mandate ID: {order_id}\n"
+                            f"Buyer Key: {buyer_key_id or 'anonymous'}\n"
+                            f"PayPal Capture ID: {paypal_capture_id}\n"
+                            f"Settled Amount: {amount_formatted}"
+                        ),
+                        "GlobalTaxCalculation": "NotApplicable",
+                        "Line": [
+                            {
+                                "Id": "1",
+                                "LineNum": 1,
+                                "Amount": round(amount_cents / 100.0, 2),
+                                "DetailType": "AccountBasedExpenseLineDetail",
+                                "AccountBasedExpenseLineDetail": {
+                                    "AccountRef": {
+                                        "value": "6300",
+                                        "name": "Dues & Subscriptions: Software & SaaS",
+                                    }
+                                },
+                                "Description": f"AP2 Autonomous Gateway Direct Charge ({tier_id})",
+                            }
+                        ],
+                    }
                 }
-            }
 
-            # 7. Record direct charge in SQLite WAL persistence
-            charge_record = record_direct_charge(
-                charge_data={
-                    "charge_id": charge_id,
-                    "mandate_id": order_id,
-                    "buyer_key_id": effective_kid or "anonymous",
-                    "amount_cents": amount_cents,
-                    "currency": "USD",
-                    "payee_id": AP2_MERCHANT_ID,
-                    "payment_source_id": source_id,
-                    "paypal_capture_id": paypal_capture_id,
-                    "status": "CAPTURED",
-                    "merchant_receipt_jwt": merchant_receipt_jwt,
-                    "qbo_purchase_id": qbo_purchase_id,
-                    "qbo_payload": qbo_payload,
-                    "metadata": metadata or {},
-                },
-                db_path=db_path,
-            )
+                # 7. Record direct charge in SQLite WAL persistence
+                charge_record = record_direct_charge(
+                    charge_data={
+                        "charge_id": charge_id,
+                        "mandate_id": order_id,
+                        "buyer_key_id": effective_kid or "anonymous",
+                        "amount_cents": amount_cents,
+                        "currency": "USD",
+                        "payee_id": AP2_MERCHANT_ID,
+                        "payment_source_id": source_id,
+                        "paypal_capture_id": paypal_capture_id,
+                        "status": "CAPTURED",
+                        "merchant_receipt_jwt": merchant_receipt_jwt,
+                        "qbo_purchase_id": qbo_purchase_id,
+                        "qbo_payload": qbo_payload,
+                        "metadata": metadata or {},
+                    },
+                    db_path=db_path,
+                )
 
-            # 8. Record open mandate settlement for cumulative budget tracking (Rule 1 & Rule 6)
-            record_open_mandate_settlement(
-                mandate_hash=open_pay_hash,
-                subscription_id=charge_id,
-                amount_cents=amount_cents,
-                db_path=db_path,
-            )
+                # 8. Record open mandate settlement for cumulative budget tracking (Rule 1 & Rule 6)
+                record_open_mandate_settlement(
+                    mandate_hash=open_pay_hash,
+                    subscription_id=charge_id,
+                    amount_cents=amount_cents,
+                    db_path=db_path,
+                )
 
-            logger.info(
-                f"[AP2 Gateway] Direct charge '{charge_id}' settled: {amount_formatted} "
-                f"(PayPal Capture: {paypal_capture_id}, QBO: {qbo_purchase_id})"
-            )
+                logger.info(
+                    f"[AP2 Gateway] Direct charge '{charge_id}' settled: {amount_formatted} "
+                    f"(PayPal Capture: {paypal_capture_id}, QBO: {qbo_purchase_id})"
+                )
+            finally:
+                release_purchase_lease(lease_holder, db_path=db_path)
 
         return {
             "charge_id": charge_id,

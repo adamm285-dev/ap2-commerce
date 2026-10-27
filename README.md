@@ -10,7 +10,7 @@
 [![AG Studio: v3.0.0](https://img.shields.io/badge/AG%20Studio-v3.0.0-blue.svg)](https://www.ag-grid.com/studio/react/)
 [![PayPal Agent Toolkit](https://img.shields.io/badge/PayPal-Agent%20Toolkit-003087.svg)](https://github.com/paypal/AI-Toolkit)
 [![OpenAPI 3.1.0](https://img.shields.io/badge/OpenAPI-3.1.0-green.svg)](openapi.yaml)
-[![Tests: 780 Passed](https://img.shields.io/badge/Tests-780%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
+[![Tests: 792 Passed](https://img.shields.io/badge/Tests-792%20Passed%2C%209%20Skipped-brightgreen.svg)](backend/tests/)
 [![Judge Audit: 9/9 Passed](https://img.shields.io/badge/Judge%20Audit-9%2F9%20Passed-brightgreen.svg)](scripts/judge_audit_harness.py)
 
 ---
@@ -39,7 +39,8 @@ Configure the local mock environment, install dependencies, and launch the front
 cp .env.example .env
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 npm install
-npm run dev
+python -m backend.server   # Terminal 1: FastAPI + MCP Seller Node
+npm run dev                # Terminal 2: React 19 Operations Deck
 ```
 
 ### 1. One-Click Judge Audit (No API Keys)
@@ -52,7 +53,7 @@ python scripts/judge_audit_harness.py
 ### 2. Run the Full Automated Test Suite
 ```bash
 python -m pytest backend/tests -q -n 4
-# 780 passed, 9 skipped in ~45s (188 tests from Google's AP2 SDK + 592 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
+# 792 passed, 9 skipped in ~45s (188 tests from Google's AP2 SDK + 604 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in Google's AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
 
@@ -127,7 +128,7 @@ The following architectural walkthrough details the 8 foundational pillars of th
 | **05** | **Negotiation & Anti-Tamper Logic** | Sub-budget multi-tier counter-offers; 1¢ tamper / payee modification triggers dual error receipts | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Bridging to Back-Office Reality** | AG Studio v3.0.0 & AG Grid ledger, Bryntum Scheduler Pro, and automated QuickBooks GL 6300 bills | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
 | **07** | **Production vs. Simulation** | Explicit demarcation between live cryptographic verification and seeded UI presentation layers | `docs/MOCKS.md`, `backend/tests/test_mocks_ledger.py` |
-| **08** | **Empirical Verification** | 780 passed tests (188 SDK + 592 project); 9/9 Judge Audit invariant checks in ~1s | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
+| **08** | **Empirical Verification** | 792 passed tests (188 SDK + 604 project); 9/9 Judge Audit invariant checks in ~1s | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
 
@@ -410,7 +411,7 @@ The system's zero-trust guarantees and architectural boundaries are validated co
 +---------------------------------------------------------------------------------------+
      python -m pytest backend/tests -q -n 4            python scripts/judge_audit_harness.py
      ======================================            =====================================
-     780 PASSED, 9 SKIPPED in 45s                      9 / 9 INVARIANT CHECKS PASSED in ~1s
+     792 PASSED, 9 SKIPPED in 45s                      9 / 9 INVARIANT CHECKS PASSED in ~1s
      --------------------------------------            -------------------------------------
      [188 Conformance] Upstream Google AP2             [Check 1] MCP JSON-RPC Handshake
      [120 Security]    Tamper & Replay Checks          [Check 2] AP2 ES256 SD-JWT Chains
@@ -419,13 +420,13 @@ The system's zero-trust guarantees and architectural boundaries are validated co
      [195 Subsystems]  ERP, Fleet, Leasing, Webhook    [Checks 5-9] Dispatch, ERP, Reconcile
 ```
 
-- **Full Test Suite:** **780 passed, 9 skipped** across upstream conformance, security regression, buyer wallet isolation, and recurring lifecycle suites (`python -m pytest backend/tests -q -n 4`).
+- **Full Test Suite:** **792 passed, 9 skipped** across upstream conformance, security regression, buyer wallet isolation, and recurring lifecycle suites (`python -m pytest backend/tests -q -n 4`).
 - **Upstream FIDO Conformance:** 188 byte-identical tests from Google's AP2 SDK validate full spec compliance (`backend/tests/conformance/`).
 - **One-Click Judge Audit Harness:** `python scripts/judge_audit_harness.py` validates all **9 foundational security and operational invariants** in ~1 second against an isolated temporary database with zero external credentials required.
 - **Code Anchor:** [`scripts/judge_audit_harness.py`](scripts/judge_audit_harness.py), [`backend/tests/`](backend/tests/).
 
 > [!IMPORTANT]
-> **[EMPIRICAL PROOF — Sub-Second Invariant Validation]:** 100% pass rate on the exhaustive test suite (780 passed, 9 skipped), with the 9/9 Judge Audit Checks completing in sub-second runtime. The zero-trust constraints hold.
+> **[EMPIRICAL PROOF — Sub-Second Invariant Validation]:** 100% pass rate on the exhaustive test suite (792 passed, 9 skipped), with the 9/9 Judge Audit Checks completing in sub-second runtime. The zero-trust constraints hold.
 
 ---
 

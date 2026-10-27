@@ -21,11 +21,23 @@ from jwcrypto.jwk import JWK
 from pydantic import ValidationError
 
 from ap2.sdk.checkout_mandate_chain import CheckoutMandateChain
+from ap2.sdk.generated.checkout_mandate import CheckoutMandate
 from ap2.sdk.generated.checkout_receipt import (
     CheckoutReceipt,
     CheckoutReceiptError,
     CheckoutReceiptSuccess,
 )
+from ap2.sdk.generated.open_checkout_mandate import (
+    AllowedMerchants,
+    OpenCheckoutMandate,
+)
+from ap2.sdk.generated.open_payment_mandate import (
+    AllowedPayees,
+    AmountRange,
+    Budget,
+    OpenPaymentMandate,
+)
+from ap2.sdk.generated.payment_mandate import PaymentMandate
 from ap2.sdk.generated.payment_receipt import (
     PaymentReceipt,
     PaymentReceiptError,
@@ -37,6 +49,7 @@ from ap2.sdk.generated.types.item import Item
 from ap2.sdk.generated.types.line_item import LineItem
 from ap2.sdk.generated.types.link import Link
 from ap2.sdk.generated.types.merchant import Merchant
+from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
 from ap2.sdk.generated.types.total import Total
 from ap2.sdk.jwt_helper import create_jwt, verify_jwt
 from ap2.sdk.mandate import MandateClient
@@ -478,12 +491,18 @@ def resolve_root_public_key(
         return override_key
 
     header = parsed_token.header if hasattr(parsed_token, "header") else getattr(parsed_token, "jwt_header", {})
-    kid = header.get("kid")
+    raw_kid = header.get("kid")
+    kid = raw_kid.strip() if isinstance(raw_kid, str) else raw_kid
 
     # Invariant 1: Agent keys sign only closed mandates; never accept as root
     demo_agent = get_demo_agent_key()
     if kid and kid in (demo_agent.kid, "demo-autonomous-buyer-agent", "demo-agent-key"):
         raise ValueError("INVALID_ROOT_KEY: Agent keys sign only closed mandates, never root open mandates.")
+
+    # Invariant 1b: Seller / merchant keys are never valid buyer root keys
+    merchant_kid = (getattr(settings, "ap2_merchant_key_id", None) or "ap2-merchant-key-1").strip()
+    if kid and kid in ("ap2-seller-ed25519-v1", "ap2-seller-node", "ap2-merchant-key-1", merchant_kid):
+        raise ValueError("INVALID_ROOT_KEY: Merchant or seller keys cannot sign buyer open mandates.")
 
     # Invariant 2: Never inspect or trust self-asserted "jwk" in header
 
@@ -563,6 +582,43 @@ def extract_checkout_jwt_from_chain(checkout_mandate_token: str) -> Optional[str
         except Exception:
             return None
     return None
+
+
+def _extract_jwk_public_tuple(jwk_like: Any) -> Optional[Tuple[str, str, str, str]]:
+    """Extracts a canonical (kty, crv, x, y) public-key tuple from a JWK or Pydantic JWK model."""
+    if jwk_like is None:
+        return None
+    if isinstance(jwk_like, JWK):
+        try:
+            d = json.loads(jwk_like.export_public())
+        except Exception:
+            return None
+    elif hasattr(jwk_like, "model_dump"):
+        d = jwk_like.model_dump(exclude_none=True)
+    elif isinstance(jwk_like, dict):
+        d = jwk_like
+    else:
+        return None
+    kty = str(d.get("kty") or "").strip().upper()
+    crv = str(d.get("crv") or "").strip().upper()
+    x = str(d.get("x") or "").strip()
+    y = str(d.get("y") or "").strip()
+    if not kty or not x:
+        return None
+    return (kty, crv, x, y)
+
+
+def _extract_cnf_public_tuple(open_mandate: Any) -> Optional[Tuple[str, str, str, str]]:
+    """Extracts the delegated holder public-key tuple from an OpenMandate.cnf claim."""
+    cnf = getattr(open_mandate, "cnf", None)
+    if cnf is None and isinstance(open_mandate, dict):
+        cnf = open_mandate.get("cnf")
+    if cnf is None:
+        return None
+    jwk_obj = getattr(cnf, "jwk", None)
+    if jwk_obj is None and isinstance(cnf, dict):
+        jwk_obj = cnf.get("jwk")
+    return _extract_jwk_public_tuple(jwk_obj)
 
 
 def verify_ap2_chains(
@@ -710,11 +766,13 @@ def verify_ap2_chains(
 
         # Step 2: Verify Checkout Mandate chain
         verified_checkout_root_kid: Optional[str] = None
+        resolved_checkout_root_jwk: Optional[JWK] = None
         def checkout_root_provider(t: common.ParsedToken) -> JWK:
-            nonlocal verified_checkout_root_kid, effective_email
+            nonlocal verified_checkout_root_kid, resolved_checkout_root_jwk, effective_email
             header = t.header if hasattr(t, "header") else getattr(t, "jwt_header", {})
             verified_checkout_root_kid = header.get("kid")
             resolved_key = resolve_root_public_key(t, override_key=user_public_key, buyer_email=caller_email)
+            resolved_checkout_root_jwk = resolved_key
             if verified_checkout_root_kid and user_public_key is None:
                 reg_email = get_buyer_key_email(verified_checkout_root_kid)
                 if reg_email and reg_email.strip():
@@ -832,11 +890,13 @@ def verify_ap2_chains(
 
         # Step 3: Verify Payment Mandate chain
         verified_payment_root_kid: Optional[str] = None
+        resolved_payment_root_jwk: Optional[JWK] = None
         def payment_root_provider(t: common.ParsedToken) -> JWK:
-            nonlocal verified_payment_root_kid, effective_email
+            nonlocal verified_payment_root_kid, resolved_payment_root_jwk, effective_email
             header = t.header if hasattr(t, "header") else getattr(t, "jwt_header", {})
             verified_payment_root_kid = header.get("kid")
             resolved_key = resolve_root_public_key(t, override_key=user_public_key, buyer_email=effective_email)
+            resolved_payment_root_jwk = resolved_key
             if not effective_email and verified_payment_root_kid and user_public_key is None:
                 reg_email = get_buyer_key_email(verified_payment_root_kid)
                 if reg_email and reg_email.strip():
@@ -918,12 +978,12 @@ def verify_ap2_chains(
                 budget_limit_cents = 0
                 max_occurrences = None
                 for c in (payment_chain.open_mandate.constraints or []):
-                    vct_val = getattr(c, "vct", None) or (c.get("vct") if isinstance(c, dict) else "")
-                    if "amount_range" in str(vct_val) or hasattr(c, "min"):
+                    c_type = getattr(c, "type", None) or getattr(c, "vct", None) or (c.get("type") or c.get("vct") if isinstance(c, dict) else "")
+                    if isinstance(c, AmountRange) or "amount_range" in str(c_type):
                         cap_cents = int(getattr(c, "max", 0) or 0)
-                    elif "budget" in str(vct_val):
+                    elif isinstance(c, Budget) or "budget" in str(c_type):
                         budget_limit_cents = int(round(float(getattr(c, "max", 0) or 0) * 100))
-                    elif "recurrence" in str(vct_val) or hasattr(c, "max_occurrences"):
+                    elif "recurrence" in str(c_type) or hasattr(c, "max_occurrences"):
                         max_occurrences = getattr(c, "max_occurrences", None)
                 used_cents = int(ctx.total_amount or 0)
                 used_count = int(ctx.total_uses or 0)
@@ -977,6 +1037,69 @@ def verify_ap2_chains(
                 "error_description": detail,
                 "checkout_receipt": err_chk_receipt,
                 "payment_receipt": err_receipt,
+            }
+
+        # Step 3.5: Cross-Chain Root Key and Holder Confirmation Key (cnf) Binding
+        norm_chk_kid = (verified_checkout_root_kid or "").strip()
+        norm_pay_kid = (verified_payment_root_kid or "").strip()
+        chk_root_pub = _extract_jwk_public_tuple(resolved_checkout_root_jwk)
+        pay_root_pub = _extract_jwk_public_tuple(resolved_payment_root_jwk)
+        if norm_chk_kid != norm_pay_kid or not chk_root_pub or chk_root_pub != pay_root_pub:
+            msg = (
+                f"CROSS_CHAIN_KEY_MISMATCH: Checkout mandate root key ('{norm_chk_kid}') "
+                f"does not match payment mandate root key ('{norm_pay_kid}')."
+            )
+            logger.warning(f"[AP2_VERIFIER] {msg}")
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=checkout_chain.closed_mandate.checkout_hash,
+                status="Error",
+                error=ERR_INVALID_CREDENTIAL,
+                error_description=msg,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=payment_chain.closed_mandate.transaction_id,
+                status="Error",
+                error=ERR_INVALID_CREDENTIAL,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_CREDENTIAL,
+                "error_description": msg,
+                "checkout_receipt": err_chk_receipt,
+                "payment_receipt": err_pay_receipt,
+            }
+
+        chk_holder_pub = _extract_cnf_public_tuple(checkout_chain.open_mandate)
+        pay_holder_pub = _extract_cnf_public_tuple(payment_chain.open_mandate)
+        if not chk_holder_pub or not pay_holder_pub or chk_holder_pub != pay_holder_pub:
+            msg = (
+                "CROSS_CHAIN_CNF_MISMATCH: Checkout mandate holder confirmation key (cnf) "
+                "does not match payment mandate holder confirmation key."
+            )
+            logger.warning(f"[AP2_VERIFIER] {msg}")
+            err_chk_receipt = create_checkout_receipt_jwt(
+                order_id=order_id,
+                closed_mandate_reference=checkout_chain.closed_mandate.checkout_hash,
+                status="Error",
+                error=ERR_INVALID_CREDENTIAL,
+                error_description=msg,
+            )
+            err_pay_receipt = create_payment_receipt_jwt(
+                payment_id=f"err_{uuid.uuid4().hex[:8]}",
+                closed_mandate_reference=payment_chain.closed_mandate.transaction_id,
+                status="Error",
+                error=ERR_INVALID_CREDENTIAL,
+                error_description=msg,
+            )
+            return {
+                "valid": False,
+                "error": ERR_INVALID_CREDENTIAL,
+                "error_description": msg,
+                "checkout_receipt": err_chk_receipt,
+                "payment_receipt": err_pay_receipt,
             }
 
         # Step 4: Closed-Mandate Integrity Checks against Merchant Checkout
@@ -1113,12 +1236,17 @@ def verify_ap2_chains(
         authoritative_budget_cap: Optional[float] = None
         if payment_chain.open_mandate and hasattr(payment_chain.open_mandate, "constraints"):
             for c in (payment_chain.open_mandate.constraints or []):
-                if hasattr(c, "max") and getattr(c, "max") is not None:
-                    authoritative_budget_cap = minor_units_to_dollars(c.max)
-                    break
-                elif isinstance(c, dict) and "max" in c:
-                    authoritative_budget_cap = minor_units_to_dollars(c["max"])
-                    break
+                c_type = getattr(c, "type", None) or getattr(c, "vct", None) or (c.get("type") or c.get("vct") if isinstance(c, dict) else "")
+                c_max = getattr(c, "max", None) if not isinstance(c, dict) else c.get("max")
+                if c_max is None:
+                    continue
+                if isinstance(c, AmountRange) or "amount_range" in str(c_type):
+                    cap_val = minor_units_to_dollars(int(c_max))
+                elif isinstance(c, Budget) or "budget" in str(c_type):
+                    cap_val = round(float(c_max), 2)
+                else:
+                    continue
+                authoritative_budget_cap = cap_val if authoritative_budget_cap is None else min(authoritative_budget_cap, cap_val)
 
         # Step 7: Generate authentic merchant-signed Success receipts
         payment_id = f"pay_{uuid.uuid4().hex[:12]}"

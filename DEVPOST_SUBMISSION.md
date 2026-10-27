@@ -102,7 +102,7 @@ When an AI agent buys cloud compute, four problems show up:
 | **04** | **Recurring Billing & Renewal Enforcement** | Webhook re-verification, plus advance cancellation before the payment count, budget or term runs out | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
 | **05** | **Counter-Offers & Anti-Tamper** | Counter-offer to the $49.99 Batch Worker; 1¢ inflation rejected with `invalid_mandate` | `backend/services/ap2_service.py`, `backend/wallet/wallet.py` |
 | **06** | **Demo Fleet Operations (Seeded Data)** | AG Studio v3.0.0 (`EnterpriseFleetLedger.tsx`), Bryntum Scheduler and QuickBooks GL 6300 payloads over seeded demo data | `src/components/EnterpriseFleetLedger.tsx`, `backend/services/backoffice/qbo_exporter.py` |
-| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 23 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
+| **07** | **The Production Gap Report** | Disk keys, in-memory replay caches, no revocation, no native AP2 rail, renewal edge cases, 22 declared mocks | `backend/services/ap2_keys.py`, `docs/MOCKS.md` |
 | **08** | **Empirical Verification** | `690 passed, 9 skipped, 4 warnings in 44.47s` (188 SDK + 502 project); 9/9 judge checks in about a second | `pytest backend/tests/ -q -n 4`, `scripts/judge_audit_harness.py` |
 
 ---
@@ -134,7 +134,7 @@ python scripts/judge_audit_harness.py
 ```bash
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 python -m pytest backend/tests -q -n 4
-# 780 passed, 9 skipped in ~45s (188 Google AP2 SDK tests, byte-identical to upstream, + 592 project tests;
+# 792 passed, 9 skipped in ~65s (188 Google AP2 SDK tests, byte-identical to upstream, + 604 project tests;
 # the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
 
@@ -143,7 +143,7 @@ python -m pytest backend/tests -q -n 4
 python scripts/check_mocks.py
 # docs/MOCKS.md matches the MOCK markers in the code.
 ```
-`docs/MOCKS.md` declares all 23 stand-ins for real behavior, and `backend/tests/test_mocks_ledger.py` fails if the ledger and the code disagree.
+`docs/MOCKS.md` declares all 22 stand-ins for real behavior, and `backend/tests/test_mocks_ledger.py` fails if the ledger and the code disagree.
 
 ---
 

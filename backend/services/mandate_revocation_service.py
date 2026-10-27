@@ -355,8 +355,9 @@ async def revoke_mandate(
                 p_hash = (s_data.get("mandate_proof_hash") or "").strip()
                 chk_h = (s_data.get("checkout_hash") or "").strip()
                 off_id = (s_data.get("offer_id") or "").strip()
+                open_pay_h = (s_data.get("open_payment_mandate_hash") or "").strip()
                 sub_id_str = str(s_data.get("subscription_id") or s_id).strip()
-                if clean_hash in (p_hash, chk_h, off_id, s_id, sub_id_str):
+                if clean_hash in (p_hash, chk_h, off_id, open_pay_h, s_id, sub_id_str):
                     target_email = (s_data.get("contractor_email") or "").strip().lower() or None
                     target_created_at = s_data.get("created_at")
                     target_kid = None
@@ -399,29 +400,80 @@ async def revoke_mandate(
         db_path=db_path,
     )
 
-    # 3. Locate bound subscriptions and auto-cancel them
+    # 3. Locate bound subscriptions and linked mandate hashes; tombstone linked hashes and auto-cancel subscriptions
     from ..agents.seller_agent import _COMPLETED_SUBSCRIPTIONS
+    from ..database import get_recurring_mandate
     from ..server import _apply_subscription_stop
 
     cancelled_subs: List[str] = []
     seen_sub_ids: set[str] = set()
+    linked_hashes: set[str] = set()
+
+    # Check SQLite recurring_mandates and subscriptions for direct matches that may not be loaded in memory
+    conn = get_connection(db_path)
+    db_matched_sub_ids: set[str] = set()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT subscription_id, mandate_hash FROM recurring_mandates WHERE mandate_hash = ? OR subscription_id = ?",
+            (clean_hash, clean_hash),
+        )
+        for r_row in cur.fetchall():
+            r_sub_id = (r_row.get("subscription_id") or "").strip()
+            r_m_hash = (r_row.get("mandate_hash") or "").strip()
+            if r_sub_id:
+                db_matched_sub_ids.add(r_sub_id)
+            if r_m_hash and len(r_m_hash) >= 16:
+                linked_hashes.add(r_m_hash)
+        cur.execute(
+            "SELECT subscription_id, mandate_proof_hash, offer_id, raw_details_json FROM subscriptions "
+            "WHERE mandate_proof_hash = ? OR subscription_id = ? OR offer_id = ?",
+            (clean_hash, clean_hash, clean_hash),
+        )
+        for s_row in cur.fetchall():
+            s_sub_id = (s_row.get("subscription_id") or "").strip()
+            if s_sub_id:
+                db_matched_sub_ids.add(s_sub_id)
+            for cand in (s_row.get("mandate_proof_hash"), s_row.get("offer_id")):
+                if cand and isinstance(cand, str) and len(cand.strip()) >= 16:
+                    linked_hashes.add(cand.strip())
+    finally:
+        conn.close()
 
     # Check in-memory / SQLite proxy subscriptions
-    for sub_id, sub in list(_COMPLETED_SUBSCRIPTIONS.items()):
+    candidate_items = list(_COMPLETED_SUBSCRIPTIONS.items())
+    for db_sid in db_matched_sub_ids:
+        if db_sid not in _COMPLETED_SUBSCRIPTIONS:
+            from ..database import get_subscription
+            db_sub_obj = get_subscription(db_sid, db_path=db_path)
+            if isinstance(db_sub_obj, dict):
+                candidate_items.append((db_sid, db_sub_obj))
+
+    for sub_id, sub in candidate_items:
         if not isinstance(sub, dict):
             continue
-        real_sub_id = sub.get("subscription_id") or sub_id
+        real_sub_id = str(sub.get("subscription_id") or sub_id).strip()
         if real_sub_id in seen_sub_ids:
             continue
 
         sub_proof = (sub.get("mandate_proof_hash") or "").strip()
         sub_chk = (sub.get("checkout_hash") or "").strip()
         sub_offer = (sub.get("offer_id") or "").strip()
+        sub_open_pay = (sub.get("open_payment_mandate_hash") or "").strip()
+        rec_row = get_recurring_mandate(real_sub_id, db_path=db_path) if real_sub_id else None
+        rec_hash = (rec_row.get("mandate_hash") or "").strip() if isinstance(rec_row, dict) else ""
 
         # Exact matching only (Rule 1 & Rule 2: never prefix match)
-        if clean_hash in (sub_proof, sub_chk, sub_offer):
+        if (
+            clean_hash in (sub_proof, sub_chk, sub_offer, sub_open_pay, rec_hash, real_sub_id)
+            or real_sub_id in db_matched_sub_ids
+        ):
             seen_sub_ids.add(real_sub_id)
-            if sub.get("status") in ("ACTIVE", "APPROVAL_PENDING"):
+            for cand_h in (sub_proof, sub_chk, sub_offer, sub_open_pay, rec_hash):
+                if cand_h and len(cand_h) >= 16:
+                    linked_hashes.add(cand_h)
+            sub_status = sub.get("status") or (rec_row.get("status") if isinstance(rec_row, dict) else None)
+            if sub_status in ("ACTIVE", "APPROVAL_PENDING"):
                 try:
                     await paypal_service.stop_subscription(
                         real_sub_id,
@@ -435,6 +487,17 @@ async def revoke_mandate(
                 _apply_subscription_stop(real_sub_id, "CANCELLED")
                 cancelled_subs.append(real_sub_id)
                 logger.info(f"[REVOCATION] Auto-cancelled subscription {real_sub_id} bound to revoked mandate {clean_hash}")
+
+    for linked_h in linked_hashes:
+        if linked_h != clean_hash and not is_mandate_revoked(linked_h, db_path=db_path):
+            record_mandate_revocation(
+                mandate_proof_hash=linked_h,
+                revoked_by_kid=clean_kid,
+                reason=clean_reason,
+                signature_hex=signature.strip(),
+                revoked_at=now_iso,
+                db_path=db_path,
+            )
 
     return {
         "status": "REVOKED",

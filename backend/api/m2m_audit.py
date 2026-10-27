@@ -63,20 +63,28 @@ def get_latest_artifacts() -> Dict[str, Any]:
 @router.get("/payloads/latest")
 async def get_latest_payloads(request: Request) -> Dict[str, Any]:
     """Returns the latest M2M autonomous transaction artifacts for in-UI inspection."""
+    is_admin = _has_admin_key(request)
+    if not getattr(settings, "mock_external_apis", False) and not is_admin:
+        raise HTTPException(
+            status_code=401,
+            detail="Admin authorization required to inspect M2M audit payloads in live mode.",
+        )
     if not _LATEST_M2M_RUN:
         raise HTTPException(
             status_code=404,
             detail="No M2M transaction executed yet. Run the Buyer Agent harness or approve Copilot proposal first.",
         )
-    if _has_admin_key(request):
+    if is_admin:
         return _LATEST_M2M_RUN
 
-    # Mask sensitive webhook HMAC signature for non-admin callers
+    # Mask sensitive webhook HMAC signature and response bodies for non-admin callers
     sanitized = dict(_LATEST_M2M_RUN)
     sanitized["hmac_signature"] = None
     if "webhook_meta" in sanitized and isinstance(sanitized["webhook_meta"], dict):
         wm = dict(sanitized["webhook_meta"])
         wm["signature"] = None
+        wm["response_body"] = None
+        wm["target_url"] = None
         if "headers" in wm and isinstance(wm["headers"], dict):
             hdrs = dict(wm["headers"])
             hdrs.pop("X-AP2-Signature", None)

@@ -196,11 +196,18 @@ class PayPalOidcService:
                     f"NONCE_MISMATCH: Token nonce '{token_nonce}' does not match expected challenge nonce '{expected_nonce}'."
                 )
 
-        # 6. Audience verification if requested
+        # 6. Audience verification (Fail closed on missing or mismatched audience)
+        token_aud = claims.get("aud")
+        if not token_aud or not isinstance(token_aud, str) or not token_aud.strip():
+            raise ValueError("MISSING_AUDIENCE: Token missing valid 'aud' claim.")
+        configured_client_id = (getattr(settings, "paypal_client_id", None) or "").strip()
         if expected_client_id:
-            token_aud = claims.get("aud")
-            if token_aud != expected_client_id:
-                raise ValueError(f"AUDIENCE_MISMATCH: Token audience '{token_aud}' does not match '{expected_client_id}'.")
+            allowed_audiences = {expected_client_id.strip()}
+        else:
+            allowed_audiences = {a for a in (configured_client_id, "demo-paypal-client-id") if a}
+        if token_aud.strip() not in allowed_audiences:
+            target_aud = expected_client_id or configured_client_id or "demo-paypal-client-id"
+            raise ValueError(f"AUDIENCE_MISMATCH: Token audience '{token_aud}' does not match '{target_aud}'.")
 
         logger.info(
             f"[PayPal OIDC] Successfully verified identity attestation for Payer ID '{sub}' ({email})"

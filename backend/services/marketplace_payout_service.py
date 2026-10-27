@@ -186,7 +186,7 @@ class MarketplacePayoutService:
                 active_subs = [s for s in active_subs if s["subscription_id"] in target_set]
 
             # Deduplicate: check existing payout items for this cycle to prevent double disbursements
-            existing_items = list_payout_items(db_path=db_path)
+            existing_items = list_payout_items(limit=1_000_000, db_path=db_path)
             disbursed_sub_ids_this_cycle: Set[str] = set()
 
             for item in existing_items:

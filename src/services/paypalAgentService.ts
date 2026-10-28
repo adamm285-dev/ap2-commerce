@@ -603,10 +603,15 @@ export async function fetchFleetLedgerData(): Promise<FleetLedgerResponse> {
     const res = await fetch('/api/fleet/ledger?profile=ap2');
     if (res.ok) {
       const data = await res.json();
+      const rawTxns: A2aTransaction[] = Array.isArray(data.transactions) ? data.transactions : [];
+      const transactions = rawTxns.map((t) => ({
+        ...t,
+        status: t.status === 'ACTIVE' ? 'ACTIVE_STREAMING' : t.status,
+      }));
       return {
-        transactions: Array.isArray(data.transactions) ? data.transactions : [],
+        transactions,
         simulatedFleetNotice: data.simulated_fleet_notice,
-        count: data.count ?? (Array.isArray(data.transactions) ? data.transactions.length : 0),
+        count: data.count ?? transactions.length,
       };
     }
   } catch (err) {

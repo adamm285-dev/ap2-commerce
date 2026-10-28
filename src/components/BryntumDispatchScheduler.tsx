@@ -1424,7 +1424,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
     if (!schedulerRef.current) return;
     setIsCallingApi(true);
 
-    const buyerEmail = 'merchant@example.com';
+    const buyerEmail = `node01-gateway-${Date.now().toString(36)}@example.com`;
     const tierId = 'ap2-gateway';
     const agreedRate = CATALOG_PLANS[1].price;
     const planName = CATALOG_PLANS[1].name;

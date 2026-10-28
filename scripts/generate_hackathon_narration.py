@@ -1,10 +1,11 @@
 """
 Generates high-fidelity, single-pass studio voiceover narration for the AP2 Autonomous Commerce
-PayPal AI Hackathon demo video (~2m45s) using Google's dedicated Gemini 3.8 Flash TTS model
-(`gemini-3.8-flash-tts` via `/v1beta/interactions`) with the `Sulafat` voice.
+PayPal AI Hackathon demo video (~3m) using Google's dedicated Gemini 3.8 Flash TTS model
+(`gemini-3.8-flash-tts` via `/v1beta/interactions`) with the `Achird` voice.
 
 Synthesizes all 5 acts in a single continuous pass at a uniform, natural 1.0x cadence with
-zero `atempo` time-stretching.
+zero `atempo` time-stretching, and masters the output with -4.0dB headroom, 6.5kHz de-essing,
+and 48kHz stereo soft-limiting to eliminate any inter-sample or AAC peak distortion.
 """
 
 import base64
@@ -75,7 +76,7 @@ def main() -> None:
 
     full_transcript = " <short pause> ".join(ACT_PARAGRAPHS)
     print("=======================================================")
-    print("🎙️ Synthesizing Single-Pass Studio Narration (gemini-3.8-flash-tts)")
+    print("🎙️ Synthesizing Single-Pass Studio Narration (gemini-3.8-flash-tts — Achird)")
     print(f"   Target Directory: {OUTPUT_DIR}")
     print("=======================================================")
 
@@ -99,8 +100,8 @@ def main() -> None:
                                 {
                                     "type": "speech_metadata",
                                     "style": (
-                                        "steady, warm, articulate technical founder narrating "
-                                        "a product walkthrough at a consistent, natural pace"
+                                        "friendly, natural, smooth conversational product presenter "
+                                        "with soft studio warmth at a consistent, steady pace"
                                     ),
                                 }
                             ],
@@ -109,7 +110,7 @@ def main() -> None:
                 }
             ],
             "response_format": {"type": "audio"},
-            "generation_config": {"speech_config": [{"voice": "Sulafat"}]},
+            "generation_config": {"speech_config": [{"voice": "Achird"}]},
         },
         timeout=240.0,
     )
@@ -117,19 +118,40 @@ def main() -> None:
     payload = response.json()
     wav_bytes = base64.b64decode(payload["steps"][0]["content"][0]["data"])
 
+    raw_wav_path = OUTPUT_DIR / "master_narration_achird_raw.wav"
     wav_path = OUTPUT_DIR / "master_narration_120s.wav"
     mp3_path = OUTPUT_DIR / "master_narration_2min.mp3"
-    wav_path.write_bytes(wav_bytes)
+    raw_wav_path.write_bytes(wav_bytes)
 
     with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
         duration_s = round(wf.getnframes() / wf.getframerate(), 2)
+
+    # Master audio: -4.0dB headroom, 75Hz highpass, 6.5kHz de-ess, 48kHz stereo, soft limiter
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(raw_wav_path),
+            "-af",
+            "volume=-4.0dB,highpass=f=75,treble=g=-2.0:f=6500,aresample=48000,pan=stereo|c0=c0|c1=c0,alimiter=limit=0.75:attack=5:release=50",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            str(wav_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    raw_wav_path.unlink(missing_ok=True)
 
     subprocess.run(
         ["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame", "-b:a", "192k", str(mp3_path)],
         check=True,
         capture_output=True,
     )
-    print(f"✅ Rendered {wav_path.name} ({duration_s}s at pure 1.0x speed) & {mp3_path.name}")
+    print(f"✅ Rendered & Mastered {wav_path.name} ({duration_s}s at pure 1.0x speed, Achird 48kHz stereo) & {mp3_path.name}")
 
 
 if __name__ == "__main__":

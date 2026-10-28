@@ -4,7 +4,7 @@
 > **Target Event:** PayPal AI Hackathon 2026  
 > **Live Demo URL:** `https://ap2-commerce.fieldsmith.pro/`  
 > **Final Video File:** `media/hackathon_demo/AP2_Autonomous_Commerce_Demo_2Min.mp4` (`1920x1080` @ 30fps, H.264 + 24kHz AAC)  
-> **Narration Model:** Single-pass `gemini-3.8-flash-tts` studio voice (`Puck`, pure `1.0x` natural cadence via `scripts/generate_hackathon_narration.py`)  
+> **Narration Model:** Single-pass `gemini-3.8-flash-tts` studio voice (`Achird`, pure `1.0x` natural cadence + `48 kHz` stereo `-1.9 dBFS` true-peak mastering via `scripts/generate_hackathon_narration.py`)  
 > **Structure:** 5 Detailed Acts covering all 6 prize tracks + live terminal proof so judges see the complete 4-station 3D animations, the interactive operations deck, the populated 4-step AP2 Execution Trace, and the real cryptographic/test execution underneath.
 
 ---

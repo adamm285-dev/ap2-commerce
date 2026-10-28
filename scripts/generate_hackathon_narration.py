@@ -1,11 +1,10 @@
 """
 Generates high-fidelity, single-pass studio voiceover narration for the AP2 Autonomous Commerce
-PayPal AI Hackathon demo video using Google's dedicated Gemini 3.8 Flash TTS model
+PayPal AI Hackathon demo video (~2m45s) using Google's dedicated Gemini 3.8 Flash TTS model
 (`gemini-3.8-flash-tts` via `/v1beta/interactions`) with the `Sulafat` voice.
 
-Unlike conversational Live API WebSocket sessions (which vary speaking speed and tone across turns),
-`gemini-3.8-flash-tts` synthesizes the entire 5-act script in a single continuous pass at a uniform,
-natural 1.0x cadence (`~119.7s` total duration, zero `atempo` time-stretching).
+Synthesizes all 5 acts in a single continuous pass at a uniform, natural 1.0x cadence with
+zero `atempo` time-stretching.
 """
 
 import base64
@@ -27,34 +26,44 @@ ACT_PARAGRAPHS = [
     (
         "When an autonomous AI agent buys cloud compute, handing the model your private payment keys "
         "is a serious security risk. A single prompt injection can drain your account. "
-        "A P 2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments Protocol. "
-        "Here on our Trusted Surface, the human owner signs cryptographic spending limits while keeping "
-        "private keys isolated inside a separate Buyer Wallet M C P server."
+        "AP2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments Protocol, "
+        "now under the FIDO Alliance. First, on our Trusted Surface, the human owner signs a sixty-dollar "
+        "cryptographic spending limit and forwards the open mandates to the agent. "
+        "Now watch the 3D pipeline as our buyer agent bargains down from a seventy-nine ninety-nine gateway "
+        "to a forty-nine ninety-nine Batch Worker that fits the owner's rule. "
+        "And if a prompt-injected agent lies and claims a two-hundred-dollar budget, the isolated Buyer Wallet "
+        "M C P server blocks the signature before any money can move."
     ),
     (
-        "On the Setup console, our buyer agent acts as an untrusted courier over Model Context Protocol. "
-        "When a request exceeds a sixty-dollar cap, the seller counter-offers a forty-nine ninety-nine Batch Worker. "
-        "Under a one-hundred-dollar cap, it settles the seventy-nine ninety-nine Service Gateway via PayPal Subscriptions. "
-        "Every renewal is re-verified against the owner's mandate, and in our Anti-Tamper Verifier, "
-        "even a one-cent price change is rejected."
+        "Switching to the Setup console, let's run an autonomous AP2 negotiation under a one-hundred-dollar cap. "
+        "The seller verifies the mandate policy at seventy-nine ninety-nine a month and settles the recurring "
+        "subscription through PayPal Subscriptions and the PayPal Agent Toolkit. "
+        "In the right-hand inspector, we can audit the full ES256 SD-JWT execution trace and merchant receipts. "
+        "Next, in the Anti-Tamper Verifier, if an attacker inflates the signed payload by even one cent, "
+        "live signature re-verification immediately rejects the transaction with a 401 signature mismatch."
     ),
     (
-        "In the operations deck, A G Studio version three and A G Grid power the fleet ledger, "
-        "letting operators switch between Mission Control, Executive View, and the Drag and Drop Editor "
-        "across fourteen seeded nodes. Switching to Workloads, Bryntum Scheduler maps regional compute shifts, "
-        "and once PayPal confirms settlement, the node transitions in place from awaiting payment to active."
+        "In the operations deck, A G Studio version three and A G Grid power the enterprise fleet ledger "
+        "across fourteen seeded nodes, reconciling twelve hundred nineteen dollars in monthly recurring revenue. "
+        "Operators can filter active subscriptions and switch seamlessly between Mission Control, Executive View, "
+        "and the Drag and Drop Editor. "
+        "Switching to Workloads, Bryntum Scheduler maps regional compute shifts across five worker clusters. "
+        "As soon as PayPal confirms settlement, the pending compute node transitions in place from amber "
+        "awaiting payment to active, and dispatches live workload tasks across the timeline."
     ),
     (
-        "Once settled, our Zapier M C P bridge dispatches a signed QuickBooks Online version three expense payload "
-        "mapped to General Ledger Account sixty-three hundred, and schedules node health checks automatically. "
-        "Meanwhile, our Open A P I three point one contract and A P I Matic configuration generate SDKs "
-        "for buyer key enrollment."
+        "On the M C P tab, running the subscription chain triggers our Zapier back-office bridge. "
+        "In the Wire and Schema Inspector, you can inspect the QuickBooks Online version three expense payload "
+        "mapped to General Ledger Account sixty-three hundred, the CloudEvents JSON-RPC frame, and the "
+        "HMAC-SHA256 signed webhook envelope, alongside our OpenAPI three point one contract and APIMatic SDKs."
     ),
     (
-        "Everything is empirically verifiable in one command. Running our Judge Audit Harness verifies "
-        "all nine cryptographic and operational invariants in under one second, backed by seven hundred ninety-two "
-        "passing tests, including all one hundred eighty-eight Google A P 2 conformance tests. "
-        "This is A P 2 Autonomous Commerce, built for the PayPal A I Hackathon."
+        "Finally, everything is empirically verifiable in a single command. "
+        "Running our Judge Audit Harness executes all nine cryptographic and operational invariant checks "
+        "in under one second, while our standalone buyer agent CLI negotiates and settles end to end. "
+        "The system is backed by seven hundred ninety-two passing automated tests, including all "
+        "one hundred eighty-eight upstream Google AP2 SDK conformance tests and a transparent twenty-two-entry "
+        "mock ledger. This is AP2 Autonomous Commerce, built for the PayPal AI Hackathon."
     ),
 ]
 
@@ -102,7 +111,7 @@ def main() -> None:
             "response_format": {"type": "audio"},
             "generation_config": {"speech_config": [{"voice": "Sulafat"}]},
         },
-        timeout=180.0,
+        timeout=240.0,
     )
     response.raise_for_status()
     payload = response.json()

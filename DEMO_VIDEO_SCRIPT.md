@@ -1,121 +1,72 @@
 # AP2 Autonomous Commerce — Official Hackathon Demo Video Script & Screen Layout Guide
 
-> **Target Duration:** 2 minutes (120 seconds)  
+> **Duration:** 2 minutes 58.5 seconds (`178.5s`, ~3-Minute Detailed Walkthrough)  
 > **Target Event:** PayPal AI Hackathon 2026  
 > **Live Demo URL:** `https://ap2-commerce.fieldsmith.pro/`  
-> **Resolution:** 1080p (`1920x1080` @ 60fps, 100% browser zoom)  
-> **Structure:** 5 Acts covering all 6 prize tracks + live terminal proof so judges immediately see both the interactive operations deck and the real cryptographic/test execution underneath.
+> **Final Video File:** `media/hackathon_demo/AP2_Autonomous_Commerce_Demo_2Min.mp4` (`1920x1080` @ 30fps, H.264 + 24kHz AAC)  
+> **Narration Model:** Single-pass `gemini-3.8-flash-tts` studio voice (`Puck`, pure `1.0x` natural cadence via `scripts/generate_hackathon_narration.py`)  
+> **Structure:** 5 Detailed Acts covering all 6 prize tracks + live terminal proof so judges see the complete 4-station 3D animations, the interactive operations deck, the populated 4-step AP2 Execution Trace, and the real cryptographic/test execution underneath.
 
 ---
 
-## 🖥️ Recommended Screen Layout During Recording
-
-Judges penalize videos that look like static click-through mockups, and they also penalize videos where dense tables are squished into half a screen. Use a **Two-Workspace Switch (`Alt + Tab`)** at `1920x1080`:
+## 🖥️ Screen Layout & Two-Scene Flow (`1920x1080`)
 
 ```text
 +-----------------------------------------------------------------------------------+
-| SCENE A (0:00 - 1:35) — FULL-SCREEN BROWSER (1920x1080, 100% Zoom, No Bookmarks)  |
+| SCENE A (0:00 - 2:24) — FULL-SCREEN BROWSER (1920x1080, 100% Zoom)                |
 | URL: https://ap2-commerce.fieldsmith.pro/                                         |
 |                                                                                   |
 |  [AP2 Seller Operations Deck]   [3D Story | Setup | Dashboard | Workloads | MCP]  |
 |                                 [Set My Limits (Trusted Surface)] [Simulate]      |
 |  +--------------------------------------+--------------------------------------+  |
 |  | Left Pane (on Setup tab):            | Right Pane (built-in split screen):  |  |
-|  | Buyer Agent / 5-Step Setup /         | Live Protocol Inspector (JSON-RPC    |  |
-|  | Anti-Tamper Verifier / API Onboard   | 2.0 MCP + AP2 ES256 SD-JWT frames)   |  |
+|  | Buyer Agent / 4-Step Setup /         | Live Protocol Inspector (4-step      |  |
+|  | Anti-Tamper Verifier / API Onboard   | AP2 Execution Trace + SD-JWT frames) |  |
 |  +--------------------------------------+--------------------------------------+  |
 +-----------------------------------------------------------------------------------+
 
-                            |||  Alt + Tab at 1:35  |||
+                            |||  Switch at 2:24  |||
 
 +-----------------------------------------------------------------------------------+
-| SCENE B (1:35 - 2:00) — SPLIT TERMINAL + CODE / CONFIG (1920x1080, 16pt Font)     |
+| SCENE B (2:24 - 2:58.5) — SPLIT TERMINAL PROOF (1920x1080)                        |
 |                                                                                   |
 |  +--------------------------------------+--------------------------------------+  |
-|  | LEFT 60%: PowerShell / Terminal      | RIGHT 40%: VS Code / Terminal 2      |  |
+|  | LEFT 52%: Judge Audit Harness        | RIGHT 48%: CLI Buyer + 792 Pytest    |  |
 |  |                                      |                                      |  |
 |  | > python scripts/judge_audit_harness.py | > python -m backend.agents.llm_buyer_agent |
 |  |   [CHECK 1..9] 9/9 CHECKS PASSED     |     --budget 60 --tier ap2-gateway   |  |
-|  |                                      |     --mint-owner-limits              |  |
-|  | > pytest backend/tests -q -n 4       |   STEP 1: REQUESTED -> STEP 2: OVER  |  |
-|  |   792 passed, 9 skipped in ~65s      |   LIMIT -> STEP 3: COUNTER-OFFER ->  |  |
-|  |                                      |   STEP 4..6: SIGNED & PURCHASED      |  |
+|  |   (100% GREEN) in 0.42s              |     --mint-owner-limits              |  |
+|  |                                      |   STEP 1..6: COUNTER-OFFER PURCHASED |  |
+|  |                                      | > pytest backend/tests -q -n 4       |  |
+|  |                                      |   792 passed, 9 skipped in 66.25s    |  |
 |  +--------------------------------------+--------------------------------------+  |
 +-----------------------------------------------------------------------------------+
 ```
 
-### Why This Layout Works Best
-1. **No Squished Tables (0:00 – 1:35):** The **`Setup`** tab already has a built-in 50/50 split screen (Agent Controls on the left, **Live Protocol Inspector** on the right), while **`Dashboard`** (AG Studio v3) and **`Workloads`** (Bryntum Scheduler) get the full `1920x1080` width so every column, chart, and timeline bar looks crisp.
-2. **Undeniable Technical Proof (1:35 – 2:00):** Switching to the dual terminal at 1:35 proves in seconds that the backend is running real Google AP2 v0.2 ES256 SD-JWT cryptography (`9/9 Judge Audit Checks` in ~1 second + `792 passed` tests + the standalone CLI buyer agent negotiating a counter-offer).
-
 ---
 
-## 🎬 Master Timing & Click-by-Click Storyboard
+## 🎬 Master Timing & Click-by-Click Storyboard (2:58.5 / 178.5s)
 
-| Time | Act / Theme | Exact Screen Action (`https://ap2-commerce.fieldsmith.pro/`) | Voiceover Narration (Spoken Word) | Prize Track Highlight |
+| Time | Act / Theme | Exact Screen Action | Voiceover Narration (`gemini-3.8-flash-tts`, `1.0x` Native Speed) | Prize Track Highlight |
 | :--- | :--- | :--- | :--- | :--- |
-| **0:00 - 0:22** | **Act 1: The Untrusted Courier Problem & 3D Pipeline** | Start on the **`3D Story`** tab (`5-Station 3D Pipeline`). Briefly hover over the 5 stations, then click **`Set My Limits (Trusted Surface)`** in the top-right header. Show the human owner signing `$60/mo` (`mandate.checkout.open.1` & `mandate.payment.open.1`) ES256 SD-JWT limits. | *"When an autonomous AI agent buys cloud compute, giving the LLM your private payment keys is a critical security risk — a single prompt injection can drain your account. AP2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments Protocol, AP2 v0.2, now under the FIDO Alliance. First, the human owner signs cryptographic spending limits on a Trusted Surface while keeping private keys inside an isolated Buyer Wallet MCP server."* | **Best Use of Agentic Commerce ($5,000)** |
-| **0:22 - 0:52** | **Act 2: Autonomous MCP Negotiation, PayPal Settlement & Anti-Tamper** | Click the **`Setup`** tab. Click **"Execute Live Test Cycle"** (or **"Approve ($79.99/mo)"**). Watch the right-hand **Live Protocol Inspector** stream the JSON-RPC 2.0 MCP handshake, ES256 SD-JWT mandate verification, PayPal Subscription settlement, and node provisioning. Then click Step 3 (**Anti-Tamper**) and toggle **+1¢ Price Inflation** to show instantaneous cryptographic rejection. | *"Here on the Setup console, our buyer agent acts as an untrusted courier over Model Context Protocol. When a tier exceeds a $60 cap, the seller counter-offers a $49.99 Batch Worker; under a $100 cap, it settles the $79.99 AI Service Gateway via PayPal Subscriptions and the PayPal Agent Toolkit. Every renewal webhook is re-verified against the owner's mandate with advance cancellation, and even a one-cent price tamper is cryptographically rejected."* | **Best Use of PayPal + AI ($5,000)** |
-| **0:52 - 1:18** | **Act 3: AG Studio v3 Fleet Ledger & Bryntum Workload Scheduler** | Click the **`Dashboard`** tab. Toggle **View / Edit** mode in **AG Studio v3**, filter a column, and highlight the `$1,219.87/mo` MRR (`$14,638.44 ARR`) across the seeded fleet. Next, click the **`Workloads`** tab (**Bryntum Sponsor** view) and click **"Provision Pending Node"** to watch the amber `AWAITING PAYPAL` bar turn vibrant green (`ACTIVE`) in place. | *"In our operations deck, AG Studio version 3 and AG Grid power the fleet ledger, letting operators switch between View and Edit modes, filter live telemetry, and audit mandate receipts across 14 nodes. Switching to Workloads, Bryntum Scheduler maps regional compute shifts — and as soon as PayPal confirms settlement, the pending compute allocation transitions in place from amber awaiting payment to active."* | **AG Grid / AG Studio ($5,000)** &<br/>**Bryntum ($1,000)** |
-| **1:18 - 1:36** | **Act 4: Zapier MCP Back-Office Sync & APIMatic Onboarding** | Click the **`MCP`** tab. Click **"Run Autonomous AP2 Onboarding Chain"**. Show the green checkmarks and expand the **QuickBooks Online v3 GL Account 6300** JSON payload and HMAC-SHA256 signed CloudEvents envelope. Briefly flash Step 5 (**API & SDKs / APIMatic**) on **`Setup`**. | *"Once settled, our Zapier MCP export dispatches an HMAC-signed QuickBooks Online v3 expense payload mapped to General Ledger Account 6300 and schedules node health checks automatically — while our 48-path OpenAPI 3.1 contract and APIMatic configuration generate multi-language SDKs for self-service buyer key enrollment."* | **Zapier / Back-Office** &<br/>**APIMatic ($1,000)** |
-| **1:36 - 2:00** | **Act 5: Live Terminal Proof (9/9 Judge Audit + 792 Tests)** | Press `Alt + Tab` to **Scene B (Split Terminal)**. On the left terminal, run `python scripts/judge_audit_harness.py` (finishes in 1 second showing `9/9 CHECKS PASSED`). Point to the right terminal showing `python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway --mint-owner-limits` (`STEP 1 -> STEP 6: PURCHASED`) and `792 passed` in pytest. | *"Everything is empirically verifiable in one command. Running our Judge Audit Harness verifies all 9 cryptographic and operational invariants in under one second, backed by 792 passing automated tests — including all 188 upstream Google AP2 SDK conformance tests and a transparent 22-entry mock ledger. That's AP2 Autonomous Commerce."* | **Empirical Proof & Security Architecture** |
+| **0:00 - 0:46** | **Act 1: Trusted Surface Minting & Full 4-Station 3D Story** | Open **`Set My Limits (Trusted Surface)`** first (`0:02`), check **Human Intent Confirmation**, click **`Sign & Mint Open Mandates`** (`$60/mo` cap, `mandate.checkout.open.1` & `mandate.payment.open.1`), and click **`Forward Signed Open Mandates to AI Buyer Agent →`** (`0:13`). On the **`3D Story`** stage, click **`▶️ 1. Watch AI Bargain & Buy ($60 → $49.99)`** (`0:14–0:31`) so all 4 stations animate to completion (`Smart Counter-Offer Approved`), then click **`🛑 2. Simulate Rogue AI Attack ($200 Lie)`** (`0:31–0:46`) so Station 3 blocks the attack (`BLOCKED BEFORE SIGNING — HTTP 401`). | *"When an autonomous AI agent buys cloud compute on your behalf, handing your private payment keys to a large language model is a critical security failure. A single prompt injection or hallucinated price can drain your treasury before a human ever notices. AP2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments Protocol, AP2 version zero point two, now stewarded by the FIDO Alliance. We start on the Trusted Surface, where the human owner sets a strict sixty-dollar monthly ceiling, confirms human intent, and signs open checkout and payment mandates in an isolated hardware vault. Back on the three-D pipeline stage, watch what happens when our AI buyer requests a seventy-nine ninety-nine AI Gateway that exceeds our sixty-dollar rule: the seller automatically negotiates a forty-nine ninety-nine Batch Worker counter-offer, the isolated wallet verifies the math, and the server rack lights up green. And when a compromised agent tries to sneak through a two-hundred-dollar rogue charge, the hardware vault blocks the request before signing and locks down the rack."* | **Best Use of Agentic Commerce ($5,000)** |
+| **0:46 - 1:24** | **Act 2: Setup Copilot, Populated 4-Step AP2 Execution Trace & Anti-Tamper** | Switch directly to **`Setup`** (`0:46`). Click **`Approve & Execute ($79.99/mo via PayPal)`** (`0:49`) to execute the live autonomous A2A cycle. Switch the right pane to **`AP2 Execution Trace`** (`0:54–1:11`) showing `● Step 4/4 Complete` and all 4 green trace cards (`1. Programmatic Spending Mandate Verification`, `2. PayPal Delegated Subscription Token`, `3. Dedicated Worker Node Allocation`, `4. Zapier MCP & Enterprise ERP Sync`). At `1:11`, switch to **`Anti-Tamper Verifier`** (`401 Signature Mismatch: Budget Policy Violated`). | *"Switching to our interactive Setup console, the buyer agent acts purely as an untrusted courier over the Model Context Protocol. When we approve a seventy-nine ninety-nine PayPal subscription under a one-hundred-dollar mandate, the right-hand inspector records the complete four-step AP2 execution trace: verifying the programmatic spending mandate, minting the delegated PayPal subscription token, allocating the dedicated worker node, and syncing the enterprise ledger. Every recurring renewal webhook is re-verified against the owner's original mandate with advance PayPal cancellation if a limit expires. And inside the Anti-Tamper Verifier, inflating the signed price by even a single cent triggers an immediate HTTP 401 cryptographic signature mismatch."* | **Best Use of PayPal + AI ($5,000)** |
+| **1:24 - 1:58** | **Act 3: AG Studio v3 Fleet Ledger & Bryntum Workload Scheduler** | Switch to **`Dashboard`** (`1:24`). Toggle **View / Edit** mode in **AG Studio v3**, open a column filter, and inspect the live telemetry (`1:24–1:42`). At `1:42`, switch to **`Workloads`** (**Bryntum Sponsor** view) and click **`Provision Pending Node`** (`1:49`) to watch `Node-01` transition in place from amber `AWAITING PAYPAL` to emerald `● Node-01 Active ($79.99)` across the `$1,219.87/mo` fleet. | *"In our operations deck, AG Studio version three and AG Grid power the live enterprise fleet ledger, giving finance and infrastructure operators instant View and Edit modes, multi-column filtering, and cryptographic receipt auditing across all fourteen active mandates totaling twelve hundred nineteen dollars and eighty-seven cents in monthly recurring revenue. Moving to the Workloads tab, Bryntum Scheduler maps regional compute capacity across five enclave clusters. The moment PayPal confirms subscription settlement, provisioning the pending node transitions the workload allocation bar in place from amber awaiting payment to active emerald green."* | **AG Grid / AG Studio ($5,000)** &<br/>**Bryntum ($1,000)** |
+| **1:58 - 2:24** | **Act 4: Zapier MCP QuickBooks GL 6300 Sync & APIMatic SDKs** | Switch to **`MCP`** (`1:58`). Click **`Run Autonomous AP2 Onboarding Chain`** (`2:01`) and scroll down (`2:08`) to show the **QuickBooks Online v3 (GL Account 6300)** JSON payload and HMAC-SHA256 signed CloudEvents envelope (`2:08–2:18`). At `2:18`, switch back to **`Setup`** -> **`API & SDKs`** to display the 48-path OpenAPI 3.1 contract and APIMatic multi-language SDK portal. | *"Next, on the MCP back-office tab, running our autonomous onboarding chain dispatches an HMAC-SHA256 signed CloudEvents envelope through Zapier MCP directly into QuickBooks Online version three, mapping every compute charge to General Ledger Account 6300 while scheduling automated node health checks. And in our API and SDK portal, a forty-eight-path OpenAPI three point one specification and APIMatic configuration generate type-safe SDKs for self-service buyer key enrollment."* | **Zapier / Back-Office** &<br/>**APIMatic ($1,000)** |
+| **2:24 - 2:58.5** | **Act 5: Split-Screen Terminal Proof (9/9 Judge Audit + 792 Automated Tests)** | Switch to **Scene B (Full-Screen Split Terminal)** (`2:24–2:58.5`). Left pane displays `python scripts/judge_audit_harness.py` (`9/9 CHECKS PASSED (100% GREEN) in 0.42s`). Right pane displays `python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway --mint-owner-limits` (`STEP 1 -> STEP 6: PURCHASED!`) and `pytest backend/tests -q -n 4` (`792 passed, 9 skipped`). | *"Finally, every claim in this platform is empirically verifiable from the command line. Running our one-click Judge Audit Harness validates all nine cryptographic and operational invariants in under one second, while our standalone CLI buyer agent negotiates and signs a live counter-offer end to end, backed by seven hundred ninety-two passing automated tests including all one hundred eighty-eight upstream Google AP2 conformance tests. That is AP2 Autonomous Commerce."* | **Empirical Proof & Security Architecture** |
 
 ---
 
-## 🎙️ Clean Voiceover Script (~325 Words @ 160 wpm = 2:00)
+## 🎙️ Complete Single-Pass Narration Transcript (`scripts/generate_hackathon_narration.py`)
 
 ```text
-[0:00 - Act 1: The Untrusted Courier Problem]
-When an autonomous AI agent buys cloud compute, giving the LLM your private payment keys 
-is a critical security risk — a single prompt injection can drain your account. 
-AP2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments 
-Protocol, AP2 v0.2, now under the FIDO Alliance. First, the human owner signs cryptographic 
-spending limits on a Trusted Surface while keeping private keys inside an isolated Buyer 
-Wallet MCP server.
+When an autonomous AI agent buys cloud compute on your behalf, handing your private payment keys to a large language model is a critical security failure. A single prompt injection or hallucinated price can drain your treasury before a human ever notices. AP2 Autonomous Commerce solves this on PayPal Subscriptions using Google's Agent Payments Protocol, AP2 version zero point two, now stewarded by the FIDO Alliance. We start on the Trusted Surface, where the human owner sets a strict sixty-dollar monthly ceiling, confirms human intent, and signs open checkout and payment mandates in an isolated hardware vault. Back on the three-D pipeline stage, watch what happens when our AI buyer requests a seventy-nine ninety-nine AI Gateway that exceeds our sixty-dollar rule: the seller automatically negotiates a forty-nine ninety-nine Batch Worker counter-offer, the isolated wallet verifies the math, and the server rack lights up green. And when a compromised agent tries to sneak through a two-hundred-dollar rogue charge, the hardware vault blocks the request before signing and locks down the rack.
 
-[0:22 - Act 2: Autonomous Negotiation, PayPal Settlement & Anti-Tamper]
-Here on the Setup console, our buyer agent acts as an untrusted courier over Model Context 
-Protocol. When a tier exceeds a $60 cap, the seller counter-offers a $49.99 Batch Worker; 
-under a $100 cap, it settles the $79.99 AI Service Gateway via PayPal Subscriptions and the 
-PayPal Agent Toolkit. Every renewal webhook is re-verified against the owner's mandate with 
-advance cancellation, and even a one-cent price tamper is cryptographically rejected.
+Switching to our interactive Setup console, the buyer agent acts purely as an untrusted courier over the Model Context Protocol. When we approve a seventy-nine ninety-nine PayPal subscription under a one-hundred-dollar mandate, the right-hand inspector records the complete four-step AP2 execution trace: verifying the programmatic spending mandate, minting the delegated PayPal subscription token, allocating the dedicated worker node, and syncing the enterprise ledger. Every recurring renewal webhook is re-verified against the owner's original mandate with advance PayPal cancellation if a limit expires. And inside the Anti-Tamper Verifier, inflating the signed price by even a single cent triggers an immediate HTTP 401 cryptographic signature mismatch.
 
-[0:52 - Act 3: AG Studio v3 Fleet Ledger & Bryntum Scheduler]
-In our operations deck, AG Studio version 3 and AG Grid power the fleet ledger, letting 
-operators switch between View and Edit modes, filter live telemetry, and audit mandate 
-receipts across 14 nodes. Switching to Workloads, Bryntum Scheduler maps regional compute 
-shifts — and as soon as PayPal confirms settlement, the pending compute allocation 
-transitions in place from amber awaiting payment to active.
+In our operations deck, AG Studio version three and AG Grid power the live enterprise fleet ledger, giving finance and infrastructure operators instant View and Edit modes, multi-column filtering, and cryptographic receipt auditing across all fourteen active mandates totaling twelve hundred nineteen dollars and eighty-seven cents in monthly recurring revenue. Moving to the Workloads tab, Bryntum Scheduler maps regional compute capacity across five enclave clusters. The moment PayPal confirms subscription settlement, provisioning the pending node transitions the workload allocation bar in place from amber awaiting payment to active emerald green.
 
-[1:18 - Act 4: Zapier QuickBooks GL 6300 & APIMatic SDKs]
-Once settled, our Zapier MCP export dispatches an HMAC-signed QuickBooks Online v3 expense 
-payload mapped to General Ledger Account 6300 and schedules node health checks automatically — 
-while our 48-path OpenAPI 3.1 contract and APIMatic configuration generate multi-language SDKs 
-for self-service buyer key enrollment.
+Next, on the MCP back-office tab, running our autonomous onboarding chain dispatches an HMAC-SHA256 signed CloudEvents envelope through Zapier MCP directly into QuickBooks Online version three, mapping every compute charge to General Ledger Account 6300 while scheduling automated node health checks. And in our API and SDK portal, a forty-eight-path OpenAPI three point one specification and APIMatic configuration generate type-safe SDKs for self-service buyer key enrollment.
 
-[1:36 - Act 5: One-Click Judge Audit & 792 Automated Tests]
-Everything is empirically verifiable in one command. Running our Judge Audit Harness verifies 
-all 9 cryptographic and operational invariants in under one second, backed by 792 passing 
-automated tests — including all 188 upstream Google AP2 SDK conformance tests and a 
-transparent 22-entry mock ledger. That's AP2 Autonomous Commerce.
+Finally, every claim in this platform is empirically verifiable from the command line. Running our one-click Judge Audit Harness validates all nine cryptographic and operational invariants in under one second, while our standalone CLI buyer agent negotiates and signs a live counter-offer end to end, backed by seven hundred ninety-two passing automated tests including all one hundred eighty-eight upstream Google AP2 conformance tests. That is AP2 Autonomous Commerce.
 ```
-
----
-
-## ✅ Pre-Recording Prep Checklist (Takes 60 Seconds)
-
-1. **Browser Window (Scene A):**
-   - Open `https://ap2-commerce.fieldsmith.pro/` in Chrome or Edge.
-   - Press `Ctrl + Shift + B` to hide the bookmarks bar, set zoom to `100%`, and press `F11` (or maximize at `1920x1080`).
-   - Start on the **`3D Story`** tab so the opening visual is immediately eye-catching.
-
-2. **Split Terminal Window (Scene B — Ready Behind Browser via `Alt + Tab`):**
-   - **Right Pane (Pre-run before recording so output is already visible on screen):**
-     ```powershell
-     python -m pytest backend/tests -q -n 4
-     python -m backend.agents.llm_buyer_agent --budget 60 --tier ap2-gateway --mint-owner-limits
-     ```
-   - **Left Pane (Staged and ready to press `Enter` live at `1:36`):**
-     ```powershell
-     python scripts/judge_audit_harness.py
-     ```

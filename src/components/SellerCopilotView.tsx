@@ -1193,6 +1193,39 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
     const lower = textToSend.toLowerCase().trim();
 
     try {
+      if (lower.includes('approve') || lower.includes('execute') || lower.includes('settlement')) {
+        const provisionedDid = await triggerTestCycle();
+        if (!provisionedDid) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now() + 1}`,
+              sender: 'copilot',
+              text: `⚠️ **The test run did not complete.**\n\nThe backend didn't return a provisioned node, so nothing was purchased or settled. Check that the backend is running and the admin key is set, then try again.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            },
+          ]);
+          setIsLoading(false);
+          return;
+        }
+        const execReply: ChatMessage = {
+          id: `msg-${Date.now() + 1}`,
+          sender: 'copilot',
+          text: `🎉 **AP2 Autonomous Settlement & Fulfillment Complete!**\n\nThe seller verified the AP2 mandate chain and provisioned the node:\n\n• **Buyer Agent**: \`${localContractorName}\`\n• **Principal Entity**: \`${localBusinessEntity}\`\n• **Assigned Endpoint**: \`${provisionedDid}\`\n• **PayPal Subscription**: Active recurring subscription\n• **AP2 Mandate Chain**: Verified by the seller (ES256)\n• **Back-Office Export**: QuickBooks Online GL 6300 payload generated (dry run unless a webhook is configured)\n\nThe contract is live! View the mutated row in the **Settlement Ledger & BI** (AG Grid) or **Worker Node Scheduler** (Bryntum).`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          phase: 'COMPLETED',
+          suggestedActions: [
+            'Inspect Cryptographic Trace in Right Pane',
+            'View in Settlement Ledger (AG Grid)',
+            'View in Worker Node Scheduler (Bryntum)',
+            'Back-Office Payloads',
+          ],
+        };
+        setMessages((prev) => [...prev, execReply]);
+        setIsLoading(false);
+        return;
+      }
+
       // Direct Onboarding Step Routing (Checked FIRST so step navigation is never intercepted by generic commands)
       if (
         lower.includes('step 1') ||

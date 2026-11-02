@@ -340,10 +340,11 @@ async def test_adversarial_marketplace_payout_cycle_id_injection():
             )
 
     # Valid cycle identifier succeeds
+    current_cycle = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
     seed_fleet_subscriptions_if_empty()
     valid_res = await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=current_cycle,
         dry_run=True,
     )
     assert valid_res["status"] == "DRY_RUN"
-    assert valid_res["cycle_id"] == "2026-10"
+    assert valid_res["cycle_id"] == current_cycle

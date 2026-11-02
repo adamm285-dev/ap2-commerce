@@ -11,8 +11,11 @@ Verifies:
 6. Marketplace revenue summary, settlement ledger, and REST API endpoints.
 """
 
+import datetime
 import pytest
 from fastapi.testclient import TestClient
+
+CURRENT_CYCLE = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
 from backend.server import app
 from backend.config import settings
 from backend.services.marketplace_payout_service import (
@@ -179,7 +182,7 @@ async def test_execute_fleet_payout_batch_mock_mode():
     save_subscription(sub_data)
 
     res = await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=CURRENT_CYCLE,
         subscription_ids=["I-TEST-PAYOUT-SUB-01"],
         dry_run=False,
     )
@@ -225,7 +228,7 @@ async def test_payout_batch_deduplication_idempotency():
 
     # First run: settles
     res1 = await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=CURRENT_CYCLE,
         subscription_ids=["I-TEST-IDEM-01"],
     )
     assert res1["status"] == "SUCCESS"
@@ -233,7 +236,7 @@ async def test_payout_batch_deduplication_idempotency():
 
     # Second run without explicit override: detects already settled, returns IDEMPOTENT_NOOP
     res2 = await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=CURRENT_CYCLE,
     )
     # The subscription was already disbursed, so no new items for it
     disbursed_ids = [d["subscription_id"] for d in res2.get("disbursements", [])]
@@ -253,7 +256,7 @@ async def test_payout_dry_run_mode():
     save_subscription(sub_data)
 
     res = await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=CURRENT_CYCLE,
         subscription_ids=["I-TEST-DRYRUN-01"],
         dry_run=True,
     )
@@ -281,7 +284,7 @@ async def test_marketplace_revenue_summary_and_settlement_ledger():
     save_subscription(sub_data)
 
     await marketplace_payout_service.execute_fleet_payout_batch(
-        cycle_id="2026-10",
+        cycle_id=CURRENT_CYCLE,
         subscription_ids=["I-TEST-SUMM-01"],
     )
 
@@ -354,7 +357,7 @@ def test_marketplace_rest_endpoints():
     save_subscription(sub_data)
 
     payout_req = {
-        "cycle_id": "2026-10",
+        "cycle_id": CURRENT_CYCLE,
         "subscription_ids": ["I-API-TEST-SUB-01"],
         "dry_run": False,
     }

@@ -998,7 +998,7 @@ export function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>Mode:</span>
-                  <span style={{ color: '#34d399', fontWeight: 700 }}>Live Sandbox API</span>
+                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>UI Walkthrough &bull; Mock Mode (M-009)</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ color: '#64748b', fontWeight: 600 }}>MRR:</span>

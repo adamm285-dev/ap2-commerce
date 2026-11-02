@@ -263,7 +263,7 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
         stepIndex: 1,
         autoPlaying: startPlaying,
         headline: startPlaying
-          ? 'Step 1 → 4: AI Haggling $79.99 down to $49.99/mo in Live Sandbox...'
+          ? 'Step 1 → 4: AI Haggling $79.99 down to $49.99/mo in AP2 Walkthrough...'
           : 'Ready to Launch: Click "Play 3D Story Flow" to Watch AI Bargain & Buy ($60 → $49.99/mo)',
         plainEnglishSummary:
           'Watch the 4 steps in order: Server lights start OFF → AI Drone flies to Gate → Gate scans once in Step 3 → Server lights power ON in Step 4 & receipt flows back!',
@@ -2245,8 +2245,8 @@ export const Ap2ThreeDStoryView: React.FC<Ap2ThreeDStoryViewProps> = ({
             }}
           >
             {isHappy
-              ? '✅ Live Sandbox Verdict — PayPal Settlement & Compute Provisioned'
-              : '🛑 Live Sandbox Verdict — Blocked Before Signing (Zero Funds Moved)'}
+              ? '✅ AP2 Protocol Verdict: Counter-Offer Accepted & Simulated Sub Settled (M-002)'
+              : '🛑 AP2 Protocol Verdict: Blocked Before Signing (Zero Funds Moved)'}
           </div>
           <p style={{ margin: 0, fontSize: '0.87rem', lineHeight: 1.5, color: '#e2e8f0' }}>
             {story.plainEnglishSummary}

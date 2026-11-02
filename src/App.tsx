@@ -225,6 +225,7 @@ export function App() {
   // Hydrate fleet transactions and verify initial state from SQLite backend with periodic background polling
   useEffect(() => {
     let mounted = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     async function loadInitialFleet() {
       const res = await fetchFleetLedgerData();
       if (mounted) {
@@ -235,22 +236,23 @@ export function App() {
         if (pendingEntry && pendingEntry.status === 'ACTIVE_STREAMING') {
           setIsPendingDepositLocked(true);
         }
+        if (res.transactions.length > 0 || res.simulatedFleetNotice) {
+          intervalId = setInterval(async () => {
+            if (!mounted) return;
+            const nextRes = await fetchFleetLedgerData();
+            if (mounted) {
+              setSimulatedFleetNotice(nextRes.simulatedFleetNotice || null);
+              setTransactions(nextRes.transactions);
+            }
+          }, 10000);
+        }
       }
     }
     loadInitialFleet();
 
-    const intervalId = setInterval(async () => {
-      if (!mounted) return;
-      const res = await fetchFleetLedgerData();
-      if (mounted) {
-        setSimulatedFleetNotice(res.simulatedFleetNotice || null);
-        setTransactions(res.transactions);
-      }
-    }, 10000);
-
     return () => {
       mounted = false;
-      clearInterval(intervalId);
+      if (intervalId) clearInterval(intervalId);
     };
   }, []);
 

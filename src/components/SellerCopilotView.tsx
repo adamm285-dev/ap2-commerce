@@ -537,7 +537,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     try {
       eventSource = new EventSource('/api/mcp/sse');
       eventSource.onopen = () => setIsSseConnected(true);
-      eventSource.onerror = () => setIsSseConnected(false);
+      eventSource.onerror = () => { setIsSseConnected(false); if (eventSource) eventSource.close(); };
       eventSource.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data);
@@ -818,12 +818,12 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const replyMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'copilot',
-      text: `✅ **Applied Company Profile, Support Email & ${capsToApply.length} Catalog Tiers to Node Settings & catalog.json!**\n\n• **Company Legal Name**: \`${trimmedCompany}\`\n• **Support / Operations Email**: \`${trimmedEmail}\`\n• **Primary Capability**: \`${trimmedService}\`\n\n📦 **Machine-to-Machine Service Catalog (${capsToApply.length} Tiers Configured & Live)**:\n${catalogList}\n\nI have saved this to your node configuration and updated \`service_catalog.json\`. You can see your updated catalog live in **Tab 1: Profile & Service Catalog** on the right! You can customize or add more tiers anytime.\n\n👉 **Ready for Step 2?** Click the button below to generate your RFC 8032 Ed25519 signing keys and configure anti-tamper security:`,
+      text: `✅ **Applied Company Profile, Support Email & ${capsToApply.length} Catalog Tiers to Node Settings & catalog.json!**\n\n• **Company Legal Name**: \`${trimmedCompany}\`\n• **Support / Operations Email**: \`${trimmedEmail}\`\n• **Primary Capability**: \`${trimmedService}\`\n\n📦 **Machine-to-Machine Service Catalog (${capsToApply.length} Tiers Configured & Live)**:\n${catalogList}\n\nI have saved this to your node configuration and updated \`service_catalog.json\`. You can see your updated catalog live in **Tab 1: Profile & Service Catalog** on the right! You can customize or add more tiers anytime.\n\n👉 **Ready for Step 2?** Click the button below to generate your AP2 v0.2 ES256 (P-256) signing keys and configure anti-tamper security:`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
         step: 2,
-        label: '➡️ Proceed to Step 2: Configure Ed25519 Keys & Anti-Tamper',
+        label: '➡️ Proceed to Step 2: Configure ES256 Keys & Anti-Tamper',
       },
       suggestedActions: [],
     };
@@ -855,7 +855,7 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     const replyMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'copilot',
-      text: `🔑 **RFC 8032 Ed25519 Keypair Generated & Applied!**\n\n• **Public Key (Hex)**: \`0x${newPubKey.substring(0, 24)}...\`\n• **Private Key (Hex)**: Saved securely to node memory\n• **HMAC Secret Token**: \`${newSecret.substring(0, 16)}...\`\n\nYour cryptographic keypair is now configured in **Tab 2** on the right. The seller node will reject any modified prices or forged nonces with **HTTP 401 SIGNATURE_MISMATCH**.\n\n👉 **Ready for Step 3?** Click the button below to connect your PayPal merchant rails:`,
+      text: `🔑 **AP2 v0.2 ES256 (P-256) Keypair Generated & Applied!**\n\n• **Public Key (Hex)**: \`0x${newPubKey.substring(0, 24)}...\`\n• **Private Key (Hex)**: Saved securely to node memory\n• **HMAC Secret Token**: \`${newSecret.substring(0, 16)}...\`\n\nYour cryptographic keypair is now configured in **Tab 2** on the right. The seller node will reject any modified prices or forged nonces with **HTTP 401 SIGNATURE_MISMATCH**.\n\n👉 **Ready for Step 3?** Click the button below to connect your PayPal merchant rails:`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       phase: 'IDLE',
       nextStepAction: {
@@ -1032,14 +1032,14 @@ When an incoming buyer agent has a spending mandate below your primary tier (e.g
       suggestedActions = [];
     } else if (stepNum === 2) {
       setSettingsTabOverride('crypto');
-      title = 'Step 02: RFC 8032 Ed25519 Cryptographic Keys & Anti-Tamper';
-      content = `🛡️ **Step 02: RFC 8032 Ed25519 Cryptographic Keys & Anti-Tamper Security**
+      title = 'Step 02: AP2 v0.2 ES256 (P-256) Cryptographic Keys & Anti-Tamper';
+      content = `🛡️ **Step 02: AP2 v0.2 ES256 (P-256) Cryptographic Keys & Anti-Tamper Security**
 
-👉 **I have brought up Tab 2 (Ed25519 Keys & Anti-Tamper) in the right pane for you.**
-You can inspect your public/private keys and anti-tamper security mode directly on the right, or click below and I will generate a cryptographically valid RFC 8032 keypair for you.
+👉 **I have brought up Tab 2 (ES256 Keys & Anti-Tamper) in the right pane for you.**
+You can inspect your public/private keys and anti-tamper security mode directly on the right, or click below and I will generate a cryptographically valid ES256 (P-256) keypair for you.
 
 The AP2 protocol guarantees mathematical non-repudiation and buyer spending policy enforcement without human financial liability:
-1. **Buyer Agent Signs**: The buyer agent signs intent mandates using its private Ed25519 key.
+1. **Buyer Wallet Signs**: The isolated buyer wallet signs closed mandates using its ES256 (P-256) key bound in \`cnf.jwk\`.
 2. **Seller Agent Verifies**: The seller agent verifies signatures using the buyer's public key. The seller holds zero private signing keys, preventing merchant signature forgery.
 
 **Generate Your Keypair**:
@@ -1057,7 +1057,7 @@ A2A_MANDATE_SECRET=your_hmac_secret_token
 🔒 **Anti-Tamper Circuit Breaker**:
 Any tampering with price (+1¢ inflation), timestamp drift (>300s), or altered principal entity causes an immediate fail-closed rejection: \`HTTP 401 SIGNATURE_MISMATCH\`.
 
-**🤖 Quick Setup Assistant**: You can inspect Tab 2 on the right, or click below and I'll generate and save an RFC 8032 keypair for you:`;
+**🤖 Quick Setup Assistant**: You can inspect Tab 2 on the right, or click below and I'll generate and save an ES256 (P-256) keypair for you:`;
       suggestedActions = [];
     } else if (stepNum === 3) {
       setSettingsTabOverride('paypal');
@@ -1420,7 +1420,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const matchReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `✅ **AP2 Spending Mandate Verification (Direct Match)**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$100.00/mo\`\n• **Policy Verification**: \`$79.99 <= $100.00\` — **MANDATE APPROVED**\n• **Remaining Budget Headroom**: \`$20.01/mo\`\n• **Cryptographic Attestation**: Ed25519 signature verified across canonical JSON intent payload.\n• **Settlement Rail**: PayPal Vault Recurring MIT Agreement.\n\nReady to execute autonomous settlement:`,
+          text: `✅ **AP2 Spending Mandate Verification (Direct Match)**\n\n• **Target Capability**: Dedicated AI Service Gateway (\`$79.99/mo\`)\n• **Buyer Spending Mandate Cap**: \`$100.00/mo\`\n• **Policy Verification**: \`$79.99 <= $100.00\` — **MANDATE APPROVED**\n• **Remaining Budget Headroom**: \`$20.01/mo\`\n• **Cryptographic Attestation**: ES256 SD-JWT mandate chain verified (\`cnf.jwk\` holder-bound).\n• **Settlement Rail**: PayPal Subscriptions REST API (\`/v1/billing/subscriptions\`).\n\nReady to execute autonomous settlement:`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'PROPOSAL',
           proposal: {
@@ -1631,7 +1631,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
 I can guide you through every step of getting your autonomous seller node online, or automatically fill in the configuration for you:
 
 • **Step 01**: Service Catalog & Pricing (\`catalog.json\`)
-• **Step 02**: RFC 8032 Ed25519 Keys & Anti-Tamper Verification
+• **Step 02**: AP2 v0.2 ES256 (P-256) Keys & Anti-Tamper Verification
 • **Step 03**: PayPal Subscriptions & Vault MIT Recurring Billing
 • **Step 04**: QuickBooks Online (GL 6300) & Zapier CloudEvents
 • **Step 05**: MCP Daemon (port 8001) & Live Buyer Simulation
@@ -1641,7 +1641,7 @@ You can speak any step (e.g. *"Step 1"*, *"Generate keys"*, *"Connect PayPal"*) 
           phase: 'IDLE',
           suggestedActions: [
             'Step 1: How do I configure my services & pricing?',
-            'Step 2: How do I set up Ed25519 keys & anti-tamper?',
+            'Step 2: How do I set up ES256 keys & anti-tamper?',
             'Step 3: How do I connect PayPal merchant billing?',
             'Step 4: How do I bridge QuickBooks & Zapier ERP?',
             '🚀 Switch to Live Buyer Agent Simulator',
@@ -1662,7 +1662,7 @@ You can speak any step (e.g. *"Step 1"*, *"Generate keys"*, *"Connect PayPal"*) 
 I am currently in **Seller Node Onboarding Mode**. I can assist you with configuring any part of your node:
 
 • **Step 01**: Company profile, support email, and 3 service tiers in \`catalog.json\`.
-• **Step 02**: RFC 8032 Ed25519 keys and anti-tamper security.
+• **Step 02**: AP2 v0.2 ES256 (P-256) keys and anti-tamper security.
 • **Step 03**: PayPal merchant billing via Vault MIT.
 • **Step 04**: QuickBooks Online & Zapier EventBus webhooks.
 • **Step 05**: MCP daemon and live buyer agent testing.
@@ -1672,7 +1672,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
           phase: 'IDLE',
           suggestedActions: [
             'Step 1: How do I configure my services & pricing?',
-            'Step 2: How do I set up Ed25519 keys & anti-tamper?',
+            'Step 2: How do I set up ES256 keys & anti-tamper?',
             'Step 3: How do I connect PayPal merchant billing?',
             'Step 4: How do I bridge QuickBooks & Zapier ERP?',
             '🚀 Switch to Live Buyer Agent Simulator',
@@ -1871,11 +1871,11 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '10px', fontWeight: 800, color: '#a855f7', letterSpacing: '0.05em' }}>STEP 02</span>
               <span style={{ fontSize: '9px', fontWeight: 700, backgroundColor: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', padding: '1px 5px', borderRadius: '3px' }}>
-                .env / RFC 8032
+                .env / ES256 (P-256)
               </span>
             </div>
             <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
-              Configure Ed25519 Keys
+              Configure ES256 Keys
             </div>
             <p style={{ fontSize: '10px', color: '#94a3b8', margin: 0, lineHeight: 1.35 }}>
               Bind seller public keys for non-repudiation. Auto-quarantine any tampered prices or forged nonces with HTTP 401.
@@ -2755,11 +2755,11 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <Key size={15} color="#c084fc" />
                             <span style={{ fontWeight: 700, color: '#c084fc', fontSize: '13px' }}>
-                              🤖 I can generate your Ed25519 keypair and configure anti-tamper for you:
+                              🤖 I can generate your ES256 (P-256) keypair and configure anti-tamper for you:
                             </span>
                           </div>
                           <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px', lineHeight: 1.4 }}>
-                            Clicking below creates a cryptographically verified RFC 8032 keypair and updates your node settings and <code>.env</code> file in real time.
+                            Clicking below creates a cryptographically verified ES256 (P-256) keypair and updates your node settings and <code>.env</code> file in real time.
                           </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
@@ -2781,7 +2781,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
                                 boxShadow: '0 2px 8px rgba(147, 51, 234, 0.4)',
                               }}
                             >
-                              <Key size={14} /> Let Agent Generate &amp; Apply RFC 8032 Keys
+                              <Key size={14} /> Let Agent Generate &amp; Apply ES256 Keys
                             </button>
                           </div>
                         </div>

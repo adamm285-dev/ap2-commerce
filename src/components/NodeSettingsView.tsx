@@ -244,7 +244,7 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
           publicKeyHex: pubHex,
         }));
 
-        setSaveBanner('🔑 New RFC 8032 Ed25519 Keypair Generated! (Retained in-memory only)');
+        setSaveBanner('🔑 New AP2 v0.2 ES256 (P-256) Keypair Generated! (Retained in-memory only)');
         setTimeout(() => setSaveBanner(null), 4000);
         return;
       }
@@ -356,7 +356,7 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
         llms_txt: `http://127.0.0.1:${settings.mcpPort}/llms.txt`,
       },
       cryptography: {
-        algorithm: 'RFC 8032 Ed25519',
+        algorithm: 'ES256 (ECDSA P-256 / SHA-256)',
         public_key: settings.publicKeyHex,
         anti_tamper_circuit_breaker: settings.antiTamperMode === 'strict' ? 'FAIL_CLOSED_HTTP_401' : 'WARN_ONLY',
       },
@@ -397,7 +397,7 @@ A2A_TRADE_VERTICAL="${escapeEnv(settings.tradeVertical)}"
 FAST_MCP_PORT=${Number(settings.mcpPort) || 8001}
 FAST_MCP_PATH="${escapeEnv(settings.mcpPath)}"
 
-# 2. Cryptographic Identity (RFC 8032 Ed25519)
+# 2. Cryptographic Identity (AP2 v0.2 ES256 / P-256)
 A2A_PUBLIC_KEY="${escapeEnv(settings.publicKeyHex)}"
 A2A_PRIVATE_KEY="${escapeEnv(settings.privateKeyHex)}"
 A2A_MANDATE_SECRET="${escapeEnv(settings.mandateHmacSecret)}"
@@ -549,7 +549,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
       >
         {[
           { key: 'catalog', label: '1. Profile & Catalog', icon: Layers },
-          { key: 'crypto', label: '2. Ed25519 Keys', icon: Key },
+          { key: 'crypto', label: '2. ES256 Keys', icon: Key },
           { key: 'paypal', label: '3. PayPal Rails', icon: CreditCard },
           { key: 'erp', label: '4. QuickBooks & CRM', icon: Globe },
           { key: 'agent_card', label: '5. MCP Card', icon: FileCode },
@@ -857,7 +857,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '12px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-                RFC 8032 Ed25519 Asymmetric Keys &amp; Anti-Tamper Security
+                AP2 v0.2 ES256 (P-256) Asymmetric Keys &amp; Anti-Tamper Security
               </h3>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
                 Guarantees mathematical non-repudiation. Tampered intent mandates fail-closed with HTTP 401 Unauthorized.

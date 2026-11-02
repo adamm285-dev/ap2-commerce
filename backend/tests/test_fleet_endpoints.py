@@ -92,7 +92,7 @@ def test_get_fleet_ledger_endpoint():
     assert demo_agent is not None
     assert demo_agent["status"] == "ACTIVE_STREAMING"
     assert demo_agent["allocated_did"] == "mcp+https://gateway-01.example.com/mcp"
-    assert "Ed25519" in demo_agent["kyc_status"]
+    assert "ES256" in demo_agent["kyc_status"]
 
 
 def test_get_fleet_stats_endpoint():
@@ -226,7 +226,7 @@ def test_ap2_profile_fleet_endpoints():
         assert "AutonomousBuyerAgent-" in t["buyer_agent"]
         if t["status"] == "ACTIVE_STREAMING":
             assert t["allocated_did"].startswith("mcp+https://")
-            assert "Ed25519" in t["kyc_status"]
+            assert "ES256" in t["kyc_status"]
         else:
             assert t["status"] == "PENDING_DEPOSIT"
             assert t["allocated_did"] == "AWAITING_ENDPOINT"

@@ -830,15 +830,15 @@ I am your **Interactive Setup & Voice Copilot**. You can chat with me, speak thr
     setMessages((prev) => [...prev, replyMsg]);
   };
 
-  const handleGenerateEd25519Keypair = () => {
+  const handleGenerateEd25519Keypair = async () => {
     hasUserInteractedRef.current = true;
     const randomHex = (len: number) => {
       const bytes = new Uint8Array(len);
       crypto.getRandomValues(bytes);
       return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
     };
-    const newPrivKey = randomHex(32);
-    const newPubKey = randomHex(32);
+    const kp = (await window.crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair; const rawPub = await window.crypto.subtle.exportKey('raw', kp.publicKey); const pkcs8Priv = await window.crypto.subtle.exportKey('pkcs8', kp.privateKey); const newPrivKey = Array.from(new Uint8Array(pkcs8Priv).slice(-32), (b) => b.toString(16).padStart(2, '0')).join('');
+    const newPubKey = Array.from(new Uint8Array(rawPub), (b) => b.toString(16).padStart(2, '0')).join('');
     const newSecret = 'ap2_hmac_' + randomHex(16);
 
     const updated: NodeSettingsData = {
@@ -1044,7 +1044,7 @@ The AP2 protocol guarantees mathematical non-repudiation and buyer spending poli
 
 **Generate Your Keypair**:
 \`\`\`bash
-python -c "from cryptography.hazmat.primitives.asymmetric import ed25519; k = ed25519.Ed25519PrivateKey.generate(); print('A2A_PRIVATE_KEY=' + k.private_bytes_raw().hex()); print('A2A_PUBLIC_KEY=' + k.public_key().public_bytes_raw().hex())"
+python -c "from jwcrypto import jwk; k = jwk.JWK.generate(kty='EC', crv='P-256'); print(k.export_public())"
 \`\`\`
 
 **Add to \`.env\` in repository root**:
@@ -1452,7 +1452,7 @@ Switch to the **Live Buyer Simulator** mode below to test the entire lifecycle: 
         const tamperReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           sender: 'copilot',
-          text: `🛡️ **Adversarial Anti-Tamper Security Test: Attack Injected & Rejected!**\n\n• **Attack Vector**: +1¢ Price Inflation (\`$79.99\` → \`$80.00\` on canonical JSON)\n• **Cryptographic Verification**: Ed25519 signature mismatch across modified payload bytes\n• **Circuit Breaker Status**: 🚨 **HTTP 401 SIGNATURE_MISMATCH: Budget Policy Violated**\n• **Defense Outcome**: Transaction aborted fail-closed! No unauthorized charge could occur.\n\nI have switched the right pane to the **Anti-Tamper Verifier** showing the byte-level audit diff and the rejected verification result.`,
+          text: `🛡️ **Adversarial Anti-Tamper Security Test: Attack Injected & Rejected!**\n\n• **Attack Vector**: +1¢ Price Inflation (\`$79.99\` → \`$80.00\` on canonical JSON)\n• **Cryptographic Verification**: Signature mismatch across modified payload bytes (M-014 demo anti-tamper verifier)\n• **Circuit Breaker Status**: 🚨 **HTTP 401 SIGNATURE_MISMATCH: Budget Policy Violated**\n• **Defense Outcome**: Transaction aborted fail-closed! No unauthorized charge could occur.\n\nI have switched the right pane to the **Anti-Tamper Verifier** showing the byte-level audit diff and the rejected verification result.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           phase: 'IDLE',
           suggestedActions: [
@@ -3747,7 +3747,7 @@ I am currently in **Seller Node Onboarding Mode**. I can assist you with configu
               {/* Cryptographic Signature Banner */}
               <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#94a3b8' }}>
                 <div style={{ wordBreak: 'break-all' }}>
-                  <strong>Ed25519 Signature:</strong> <code style={{ color: '#fbbf24' }}>{tamperSignature}</code>
+                  <strong>Demo Anti-Tamper Signature (M-014):</strong> <code style={{ color: '#fbbf24' }}>{tamperSignature}</code>
                 </div>
                 <button
                   onClick={() => handleVerifyTamper()}

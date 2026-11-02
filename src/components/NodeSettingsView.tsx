@@ -41,7 +41,7 @@ export interface NodeSettingsData {
   mcpPort: number;
   mcpPath: string;
 
-  // Cryptographic Keys (RFC 8032)
+  // Cryptographic Keys (AP2 v0.2 ES256 / P-256)
   publicKeyHex: string;
   privateKeyHex: string;
   mandateHmacSecret: string;
@@ -222,12 +222,12 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
     }
   };
 
-  // Generate real RFC 8032 Ed25519 keypair via WebCrypto SubtleCrypto
+  // Generate real AP2 v0.2 ES256 (P-256) keypair via WebCrypto SubtleCrypto
   const generateNewKeypair = async () => {
     try {
       if (window?.crypto?.subtle) {
         const keyPair = (await window.crypto.subtle.generateKey(
-          { name: 'Ed25519' },
+          { name: 'ECDSA', namedCurve: 'P-256' },
           true,
           ['sign', 'verify']
         )) as CryptoKeyPair;
@@ -235,7 +235,7 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
         const pkcs8Priv = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
 
         const pubHex = Array.from(new Uint8Array(rawPub), (b) => b.toString(16).padStart(2, '0')).join('');
-        // RFC 8032 Ed25519 private seed is the trailing 32 bytes of the PKCS#8 export
+        // P-256 private scalar is the trailing 32 bytes of the PKCS#8 export
         const privHex = Array.from(new Uint8Array(pkcs8Priv).slice(-32), (b) => b.toString(16).padStart(2, '0')).join('');
 
         setSettings((prev) => ({
@@ -248,10 +248,10 @@ export function NodeSettingsView({ onSaveSettings, activeTabOverride, initialSet
         setTimeout(() => setSaveBanner(null), 4000);
         return;
       }
-      throw new Error('WebCrypto subtle Ed25519 not available');
+      throw new Error('WebCrypto subtle ECDSA P-256 not available');
     } catch (err) {
-      console.error('WebCrypto Ed25519 generation failed:', err);
-      setSaveBanner('⚠️ WebCrypto Ed25519 not supported in this browser context.');
+      console.error('WebCrypto ES256 generation failed:', err);
+      setSaveBanner('⚠️ WebCrypto ES256 not supported in this browser context.');
       setTimeout(() => setSaveBanner(null), 4000);
     }
   };
@@ -851,7 +851,7 @@ SLACK_WEBHOOK_URL="${escapeEnv(settings.slackWebhookUrl)}"
         </div>
       )}
 
-      {/* Tab 2: Cryptographic Keys (RFC 8032) */}
+      {/* Tab 2: Cryptographic Keys (AP2 v0.2 ES256) */}
       {activeSettingsTab === 'crypto' && (
         <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: '12px' }}>

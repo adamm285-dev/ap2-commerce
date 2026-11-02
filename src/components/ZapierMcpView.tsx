@@ -95,7 +95,7 @@ export function ZapierMcpView({
     clientEndpoint: 'node-cluster-02.ap2.net:8443',
     propertyAddress: '50,000 Operations Inference & Batch RAG Synthesis',
     tradeVertical: 'High-Throughput Batch Worker',
-    scopeSummary: 'Autonomous inference dispatch reserved for 50k operations batch with Ed25519 signature proof',
+    scopeSummary: 'Autonomous inference dispatch reserved for 50k operations batch with ES256 signature proof',
     territoryZone: 'Cluster Zone 2 - US East (High-Memory)',
     appointmentTime: 'Execution Latency: Sub-350ms',
     paymentAmount: 15.0,

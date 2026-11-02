@@ -278,7 +278,7 @@ export async function resetMandateLedger(buyerAgentId?: string): Promise<boolean
 
 /**
  * Seller Agent verifies PayPal Subscription token and provisions an authenticated
- * AP2 MCP node endpoint bound to the buyer's Ed25519 mandate.
+ * AP2 MCP node endpoint bound to the buyer's ES256 mandate.
  *
  * Calls FastAPI backend at POST /api/agent/provision with client-side fallback.
  */

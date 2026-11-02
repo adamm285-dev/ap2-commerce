@@ -40,7 +40,7 @@ We built **AP2 Autonomous Commerce** for those three gaps: recurring PayPal bill
 **The core rule: The model proposes; code decides.** The model never holds the signing key, the wallet enforces the cap, and the seller verifies the chain before any PayPal call.
 
 ### 1. Open Mandate Signing & Untrusted Courier Wallet (Dual-MCP Airgap)
-In the sandbox, a non-agentic owner step signs two open mandates (`mandate.checkout.open.1` and `mandate.payment.open.1`) with an ES256 key: monthly cap, annual budget, recurrence, merchant id, and allowed SKUs. The buyer agent's public key is bound in `cnf.jwk`. That owner key is a demo key and only runs when mock mode is explicit. It is the stand-in for a human trusted surface, which is the production step we have not turned on.
+In the sandbox, a non-agentic owner step signs two open mandates (`mandate.checkout.open.1` and `mandate.payment.open.1`) with an ES256 key: monthly cap, annual budget, recurrence, merchant id, and allowed SKUs. The buyer agent's public key is bound in `cnf.jwk`. In this demo the server signs that open mandate with a demo owner key (M-005); a passkey on the owner's machine is the production step.
 
 At runtime, procurement is split across two separate OS processes speaking JSON-RPC 2.0 over MCP:
 * **Seller MCP Server (`backend.mcp_server`):** Exposes 8 procurement tools (`negotiate_subscription`, `purchase_subscription`, `provision_compute_node`, `dispatch_zapier_mcp`, etc.).

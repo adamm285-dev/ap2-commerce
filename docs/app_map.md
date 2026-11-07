@@ -28,6 +28,31 @@
 - `determine-scope.md`
 - `packages.md`
 
+### `.agents/skills/ap2-procurement/`
+- `SKILL.md`
+
+### `.agents/skills/security-audit/`
+- `AI-AND-LLM.md`
+- `ATTACK-CLASSES.md`
+- `CLIENT-SIDE.md`
+- `CLOUD-AND-DEPLOYMENT.md`
+- `DATA-ISOLATION-AND-LIFECYCLE.md`
+- `DESKTOP-MOBILE-AND-LOCAL-IPC.md`
+- `HUNTING.md`
+- `MEMORY-SAFETY-AND-BINARY.md`
+- `PROTOCOLS-RPC-AND-MESSAGING.md`
+- `RECONNAISSANCE.md`
+- `RESOURCE-EXHAUSTION-AND-AVAILABILITY.md`
+- `SKILL.md`
+- `SUPPLY-CHAIN-AND-RELEASE.md`
+- `VALIDATION-AND-REPORTING.md`
+- `WEB-PROTOCOL-AND-AUTH.md`
+- `report-schema.json`
+- `validate-coverage-ledger.cjs`
+- `validate-coverage-ledger.test.cjs`
+- `validate-findings.cjs`
+- `validate-findings.test.cjs`
+
 ### `.cursor/`
 - `mcp.json`
 
@@ -60,10 +85,14 @@
 
 ### `backend/services/`
 - `__init__.py`
+- `ap2_gateway_service.py`
 - `ap2_keys.py`
 - `ap2_service.py`
 - `crypto_mandate.py`
 - `mandate_evaluator.py`
+- `mandate_revocation_service.py`
+- `marketplace_payout_service.py`
+- `paypal_oidc_service.py`
 - `paypal_service.py`
 - `plan_catalog.py`
 - `recurring_mandate_service.py`
@@ -82,7 +111,12 @@
 - `test_agent_negotiation.py`
 - `test_anti_tamper.py`
 - `test_ap2_adversarial_audit.py`
+- `test_ap2_adversarial_round2.py`
+- `test_ap2_adversarial_round3.py`
+- `test_ap2_adversarial_security.py`
 - `test_ap2_dual_mandates_and_chaining.py`
+- `test_ap2_native_rail_and_oidc.py`
+- `test_ap2_redteam_round4.py`
 - `test_ap2_security_poc_audit.py`
 - `test_ap2_stage2_merchant.py`
 - `test_ap2_stage3_commit2.py`
@@ -98,15 +132,27 @@
 - `test_live_paypal_sandbox.py`
 - `test_llm_buyer_agent.py`
 - `test_mandate_evaluator.py`
+- `test_mandate_revocation.py`
+- `test_marketplace_payouts.py`
 - `test_mcp_profiles.py`
 - `test_mcp_remote_stream.py`
 - `test_mcp_server.py`
 - `test_mocks_ledger.py`
+- `test_package2_hardening.py`
+- `test_package3_hardening.py`
+- `test_package4_hardening.py`
+- `test_package5_hardening.py`
+- `test_package6_hardening.py`
+- `test_package7_hardening.py`
+- `test_paypal_live_requests.py`
 - `test_plan_catalog.py`
 - `test_plan_resolution.py`
+- `test_purchase_concurrency.py`
 - `test_purchase_hardening.py`
 - `test_purchase_idempotency_regression.py`
+- `test_purchase_leases.py`
 - `test_recurring_mandate_renewals.py`
+- `test_security_audit_run1_fixes.py`
 - `test_security_regressions.py`
 - `test_seller_copilot.py`
 - `test_server_endpoints.py`
@@ -214,6 +260,7 @@
 
 ### `backend/wallet/`
 - `__init__.py`
+- `keystore.py`
 - `mcp_server.py`
 - `wallet.py`
 
@@ -233,8 +280,65 @@
 ### `docs/audits/`
 - `live_mcp_verification.log`
 
+### `docs/images/slides/`
+- `slide_01.png`
+- `slide_01_cryptographic_foundations.png`
+- `slide_02.png`
+- `slide_02_untrusted_courier.png`
+- `slide_03.png`
+- `slide_03_dual_mcp_airgap.png`
+- `slide_04.png`
+- `slide_04_temporal_recurring_billing.png`
+- `slide_05.png`
+- `slide_05_negotiation_anti_tamper.png`
+- `slide_06.png`
+- `slide_06_back_office_fleet.png`
+- `slide_07.png`
+- `slide_07_production_vs_simulation.png`
+- `slide_08.png`
+- `slide_08_empirical_verification.png`
+
 ### `docs/prompts/`
+- `fix-faked-results-2026-10-16.md`
+- `fix-purchase-race-2026-10-18.md`
+- `fix-toolkit-request-id-2026-10-19.md`
 - `grillme.md`
+
+### `media/hackathon_demo/`
+- `AP2_Autonomous_Commerce_Demo_2Min.mp4`
+- `act1_problem.mp3`
+- `act1_problem.wav`
+- `act2_buyer_agent.mp3`
+- `act2_buyer_agent.wav`
+- `act3_bryntum_agstudio.mp3`
+- `act3_bryntum_agstudio.wav`
+- `act4_zapier_mcp.mp3`
+- `act4_zapier_mcp.wav`
+- `act5_kyc_compute.mp3`
+- `act5_kyc_compute.wav`
+- `concat_list.txt`
+- `master_narration_120s.wav`
+- `master_narration_2min.mp3`
+- `master_narration_2min.wav`
+- `screencast_raw_1080p.mp4`
+
+### `media/hackathon_demo/devpost_gallery_3x2/`
+- `00_THUMBNAIL_AP2_Autonomous_Commerce_3x2.png`
+- `01_3D_Pipeline_PayPal_CounterOffer_Approved.png`
+- `02_3D_Pipeline_Rogue_AI_Prompt_Injection_Blocked.png`
+- `03_Trusted_Surface_ES256_Owner_Limits_Modal.png`
+- `04_Seller_Copilot_4Step_AP2_Execution_Trace.png`
+- `05_Anti_Tamper_Verifier_HTTP_401_Signature_Mismatch.png`
+- `06_Dashboard_AG_Charts_And_AG_Grid_Ledger.png`
+- `07_AG_Studio_v3_Enterprise_BI_Suite.png`
+- `08_Bryntum_Scheduler_Pending_Orange_Gateway.png`
+- `09_Bryntum_Scheduler_Provisioned_Green_Gateway.png`
+- `10_Bryntum_Scheduler_Node02_Blue_Slot_Locked.png`
+- `11_FastMCP_Mesh_QuickBooks_GL6300_CloudEvents.png`
+- `12_CLI_Smoke_Test_9of9_And_792_Pytest_Suite.png`
+- `13_Architecture_AP2_v02_Cryptographic_Foundations.png`
+- `14_Architecture_Dual_MCP_Process_Boundary_Airgap.png`
+- `15_Architecture_PayPal_Recurring_Subscription_Mandates.png`
 
 ### `public/`
 - `favicon.svg`
@@ -243,6 +347,24 @@
 
 ### `public/.well-known/`
 - `mcp.json`
+
+### `public/slides/`
+- `slide_01.png`
+- `slide_01_cryptographic_foundations.png`
+- `slide_02.png`
+- `slide_02_untrusted_courier.png`
+- `slide_03.png`
+- `slide_03_dual_mcp_airgap.png`
+- `slide_04.png`
+- `slide_04_temporal_recurring_billing.png`
+- `slide_05.png`
+- `slide_05_negotiation_anti_tamper.png`
+- `slide_06.png`
+- `slide_06_back_office_fleet.png`
+- `slide_07.png`
+- `slide_07_production_vs_simulation.png`
+- `slide_08.png`
+- `slide_08_empirical_verification.png`
 
 ### `root/`
 - `.dockerignore`
@@ -294,13 +416,24 @@
 
 ### `src/assets/`
 - `ap2_logo.jpg`
+- `ap2_stage_attack_blocked.jpg`
+- `ap2_stage_happy_path.jpg`
 - `hero.png`
+- `monument_drone_flyer_attack.png`
+- `monument_drone_flyer_happy.png`
+- `monument_drone_pad.png`
+- `monument_gate_attack.png`
+- `monument_gate_happy.png`
+- `monument_rack_happy.png`
+- `monument_rack_locked.png`
+- `monument_vault.png`
 - `react.svg`
 - `vite.svg`
 
 ### `src/components/`
 - `AdversarialTamperModal.tsx`
 - `AgStudioReportStudio.tsx`
+- `Ap2ThreeDStoryView.tsx`
 - `BryntumDispatchScheduler.tsx`
 - `EnterpriseFleetLedger.tsx`
 - `NodeSettingsView.tsx`

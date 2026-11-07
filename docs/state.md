@@ -2,21 +2,16 @@
 <!-- SPEC-001 v1.9.0 Pillar 4 | Mutability: HIGH VOLATILITY | Budget: ~300 Tokens -->
 <!-- Read on Turn 1 boot. Strictly pruned after milestone completion. -->
 
-## Active Objective
-- Complete Sprint 3 (Milestone S3-NATIVE: Identity Attestation & Native AP2 Rail Simulation) under SPEC-001 v1.9.0 towards the final PayPal AI Hackathon submission (deadline 2026-11-12 12:00 PM PST).
+## Current Objective
+- Finalize PayPal AI Hackathon 2026 submission (deadline 2026-11-12) with Sprints 1-5, red-team/security-audit remediations, and 178s Achird demo video complete.
 
-## Immediate Next Action
-- Sprint 3 Complete: PayPal OIDC identity attestation binding verified payer IDs to registered buyer keys, hardware enclave/passkey keystore abstraction (Rule 5), and native AP2 gateway charge ingestion rail (`POST /v1/ap2/gateway/charges`) with authentic QBO v3 Purchase export fully verified.
-- Prepare final hackathon presentation assets, audit documentation, and public release packaging.
+## Status & Gate Verification
+- [x] Sprints 1-5 (`S1-RESI` through `S5-SUBMISSION`) & security audits complete (`792 passed, 9 skipped`; Judge Audit 9/9; `npm run build` clean).
+- [x] Gate L: 22 active mocks in `docs/MOCKS.md` (4 retired: M-001, M-013, M-017, M-021) verified via `scripts/check_mocks.py`.
+- [x] Cross-process SQLite `purchase_leases`, deterministic `PayPal-Request-Id`, and ES256 SD-JWT UI/docs alignment verified.
 
 ## Immediate Blockers
 - None.
 
-## Active Verification Gates
-- [x] 608 passed, 9 skipped (188 SDK + 420 project); judge audit 9/9; npm run build clean.
-- [x] Gate L: 20 active mocks strictly documented in docs/MOCKS.md (M-023 added); Gate T and Gate M clean.
-- [x] Strict Rule 6 integer minor units arithmetic: zero float drift, exact penny conservation.
-- [x] PayPal OIDC identity attestation: verifies sub/payer_id, verified email, challenge nonce binding; fails closed on untrusted issuers or expired tokens.
-- [x] Native AP2 Direct Rail (`POST /v1/ap2/gateway/charges`): cryptographic ES256 SD-JWT verification, fail-closed revocation enforcement, authentic QBO v3 Purchase payload.
-- [x] Hardware Enclave Keystore Abstraction (`EnclaveKeystore`, `SoftwareEnclaveKeystore`, `PasskeyAttestationKeystore`): zero private key leakage into logs or public exports (Rule 5).
-
+## Immediate Next Action (Post-Compact)
+- Review uncommitted working-tree edits in `DEMO_VIDEO_SCRIPT.md`, `DEVPOST_SUBMISSION.md`, `README.md`, `BryntumDispatchScheduler.tsx`, and `TrustedSurfaceLimitsModal.tsx` before final package tag.

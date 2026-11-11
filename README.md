@@ -1,6 +1,6 @@
-# AP2 Autonomous Commerce &mdash; Agent Payments Protocol Operations Deck
+# AP2 Autonomous Commerce : Agent Payments Protocol Operations Deck
 
-> **Built on AP2 (Agent Payments Protocol) v0.2**, the open protocol Google created and donated to the FIDO Alliance in April 2026. It implements v0.2's Human Not Present flow from a desktop AI agent and extends v0.2 toward items on AP2's original roadmap:
+> **Built on AP2 (Agent Payments Protocol) v0.2**, stewarded by the FIDO Alliance (originated with Google and donated to the FIDO Alliance in April 2026). It implements v0.2's Human Not Present flow from a desktop AI agent and extends v0.2 toward items on AP2's original roadmap:
 > 1. **Recurring payments & subscriptions** (V1.x): monthly PayPal renewals checked against the owner's signed AP2 mandate, with advance cancellation.
 > 2. **MCP-based implementation** (V1.x): a seller MCP server plus a separate buyer-wallet MCP server, so the LLM never holds signing keys.
 > 3. **Real-time buyer–seller negotiation** (long-term vision): merchant-signed counter-offers within the buyer's budget.
@@ -53,9 +53,9 @@ python scripts/judge_audit_harness.py
 ### 2. Run the Full Automated Test Suite
 ```bash
 python -m pytest backend/tests -q -n 4
-# 792 passed, 9 skipped in ~45s (188 tests from Google's AP2 SDK + 604 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
+# 792 passed, 9 skipped in ~45s (188 upstream AP2 v0.2 SDK conformance tests + 604 project tests; the 9 skipped need live services: 4 call the PayPal sandbox, 5 probe a deployed server)
 ```
-The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in Google's AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
+The 188 SDK tests in `backend/tests/conformance/` are byte-identical to the tests in the upstream AP2 repository at the vendored commit. Tests run against temporary databases, never the development database.
 
 ### 3. Run the Buyer Agent CLI
 Simulate a buyer agent negotiating and provisioning a compute node under owner-signed limits:
@@ -92,7 +92,7 @@ This flow has been verified by launching both servers exactly as the generated c
 
 ![AP2 Autonomous Commerce Architecture Overview](docs/images/slides/slide_01_cryptographic_foundations.png)
 
-AP2 v0.2 defines open and closed Checkout and Payment Mandates as SD-JWTs signed with ES256, for both Human Present and Human Not Present flows. Google donated AP2 to the FIDO Alliance in April 2026. AP2 Autonomous Commerce implements v0.2 with Google's SDK vendored in `backend/vendor/ap2/` (two documented fixes, listed in its `NOTICE`) and extends it where v0.2 stops.
+AP2 v0.2 defines open and closed Checkout and Payment Mandates as SD-JWTs signed with ES256, for both Human Present and Human Not Present flows. Now stewarded by the FIDO Alliance, AP2 v0.2 is implemented here using the upstream SDK vendored in `backend/vendor/ap2/` (two documented fixes, listed in its `NOTICE`) and extended where v0.2 stops.
 
 The roadmap items below are quoted from AP2's original roadmap (September 2025), which was removed from the repository when v0.2 shipped.
 
@@ -105,10 +105,10 @@ The roadmap items below are quoted from AP2's original roadmap (September 2025),
 
 ### Core Innovations:
 - **Untrusted Courier Architecture (Prompt Injection Defense):** An LLM that holds signing keys can be steered by any text it reads, including the seller's own replies. Keys live in `backend.wallet.mcp_server`, a separate process. The LLM negotiates; the wallet verifies the checkout against the pinned merchant key, checks the price against the owner-signed limits, and raises `WalletRefusal` before signing if they don't fit. Tested: an agent that tells the seller its budget is $200 is refused at $79.99 because the owner signed $60 (`PAYMENT_CONSTRAINT_VIOLATION`).
-- **Renewal Verification & Advance Cancellation:** In `backend/services/recurring_mandate_service.py`, every PayPal renewal webhook (`PAYMENT.SALE.COMPLETED`) is checked against the owner's stored mandate with Google's SDK: stored-mandate integrity, registry key, email binding, expiry, limits and the agreed price. PayPal reports a sale after the money moves, so after each authorized charge the server also checks whether the next charge would be allowed, and cancels the subscription in advance when the payment count, budget or term would run out. A price change or other out-of-mandate charge is caught after it happens: violations cancel the subscription, unverifiable charges suspend it, and refunds are manual. Tested in mock mode; not yet run against the PayPal sandbox.
+- **Renewal Verification & Advance Cancellation:** In `backend/services/recurring_mandate_service.py`, every PayPal renewal webhook (`PAYMENT.SALE.COMPLETED`) is checked against the owner's stored mandate with the vendored AP2 SDK: stored-mandate integrity, registry key, email binding, expiry, limits and the agreed price. PayPal reports a sale after the money moves, so after each authorized charge the server also checks whether the next charge would be allowed, and cancels the subscription in advance when the payment count, budget or term would run out. A price change or other out-of-mandate charge is caught after it happens: violations cancel the subscription, unverifiable charges suspend it, and refunds are manual. Tested in mock mode; not yet run against the PayPal sandbox.
 - **Decoupled Purchase vs Recurring Windows:** The owner's authorization gives a 24-hour window to complete the initial checkout, while the recurring payment authority lasts 372 days (12 monthly payments).
 - **Multi-Tier Counter-Offers:** When the buyer's budget cap is below the asking price ($60 cap vs the $79.99 Dedicated AI Service Gateway), the seller agent counter-offers the best tier within budget (*High-Throughput Batch Worker at $49.99/mo*) in a merchant-signed checkout. The buyer's wallet signs it only if the price fits the owner's limits.
-- **AP2 Anti-Tamper Checks:** The purchase path verifies ES256 SD-JWT mandate chains with Google's SDK. Raising the agreed price by 1¢ ($79.99 &rarr; $80.00) or changing the payee fails with `invalid_mandate`, and the seller returns two merchant-signed error receipts (checkout and payment). To prevent concurrent checkouts from racing a mandate's budget or creating duplicate subscriptions, verified subscription purchases acquire a SQLite `purchase_leases` row keyed by open payment mandate hash and buyer email before calling PayPal (sending a deterministic `PayPal-Request-Id` derived from `checkout_hash`) and reject overlapping in-flight purchases with `PURCHASE_IN_PROGRESS`. The separate interactive anti-tamper playground (`/api/crypto/verify-tamper`) uses an Ed25519/HMAC demo signer with demo keys (M-014) and returns `401 Signature Mismatch: Budget Policy Violated`.
+- **AP2 Anti-Tamper Checks:** The purchase path verifies ES256 SD-JWT mandate chains with the vendored AP2 SDK. Raising the agreed price by 1¢ ($79.99 &rarr; $80.00) or changing the payee fails with `invalid_mandate`, and the seller returns two merchant-signed error receipts (checkout and payment). To prevent concurrent checkouts from racing a mandate's budget or creating duplicate subscriptions, verified subscription purchases acquire a SQLite `purchase_leases` row keyed by open payment mandate hash and buyer email before calling PayPal (sending a deterministic `PayPal-Request-Id` derived from `checkout_hash`) and reject overlapping in-flight purchases with `PURCHASE_IN_PROGRESS`. The separate interactive anti-tamper playground (`/api/crypto/verify-tamper`) uses an Ed25519/HMAC demo signer with demo keys (M-014) and returns `401 Signature Mismatch: Budget Policy Violated`.
 - **Self-Service Buyer Key Onboarding:** Buyer agents register Ed25519 or ES256 (P-256) public keys through a single-use challenge-response flow (`GET /api/agent/keys/challenge` & `POST /api/agent/keys/register`).
 - **Back-Office Export:** Builds QuickBooks Online v3 Purchase payloads mapped to GL account 6300 (Dues & Subscriptions: Software & SaaS) plus calendar payloads, and posts them to a configured webhook such as a Zapier catch hook. Without a webhook URL the export is a dry run (M-011).
 - **AG Studio v3.0.0 & AG Grid Community Analytics:** Fleet ledger with floating column filters, View and Edit modes, and compute analytics read from SQLite (WAL mode). The fleet it shows is seeded demo data: 14 subscriptions, 13 active, $1,219.87 MRR and $14,638.44 ARR. Those rows are labelled `Demo data` (M-009) and aren't revenue.
@@ -121,7 +121,7 @@ The following architectural walkthrough details the 8 foundational pillars of th
 
 | Slide | Title | Focus & Core Mechanism | Code Anchor |
 | :---: | :--- | :--- | :--- |
-| **01** | **Cryptographic Foundations** | Google AP2 v0.2 / FIDO Alliance ES256 SD-JWTs with Key Binding (KB-SD-JWT) | `backend/vendor/ap2/`, `backend/tests/conformance/` |
+| **01** | **Cryptographic Foundations** | FIDO Alliance AP2 v0.2 ES256 SD-JWTs with Key Binding (KB-SD-JWT) | `backend/vendor/ap2/`, `backend/tests/conformance/` |
 | **02** | **Untrusted Courier Threat Model** | Physical isolation of private signing keys from LLM execution memory | `backend/wallet/wallet.py`, `backend/tests/test_buyer_wallet.py` |
 | **03** | **Dual-MCP Zero-Trust Airgap** | Process boundary isolation: Seller MCP (`backend.mcp_server`) & Buyer Wallet (`backend.wallet.mcp_server`) | `backend/wallet/mcp_server.py`, `scripts/setup_claude_desktop_demo.py` |
 | **04** | **Temporal Recurring Billing** | 372-day recurring authority, webhook cryptographic re-verification & predictive advance cancellation | `backend/services/recurring_mandate_service.py`, `backend/server.py` |
@@ -137,7 +137,7 @@ The following architectural walkthrough details the 8 foundational pillars of th
 
 ![Slide 1: Cryptographic Foundations of Autonomous Commerce](docs/images/slides/slide_01_cryptographic_foundations.png)
 
-The system is built strictly on Google's **Agent Payments Protocol (AP2) v0.2**, donated to the **FIDO Alliance in April 2026**, eliminating four critical failure modes inherent to autonomous AI infrastructure procurement:
+The system is built strictly on the **Agent Payments Protocol (AP2) v0.2**, stewarded by the **FIDO Alliance**, eliminating four critical failure modes inherent to autonomous AI infrastructure procurement:
 1. **Untrusted Courier:** LLM private key exposure and prompt injection attacks.
 2. **Recurring Blind Spot:** Lack of renewal lifecycle enforcement and post-facto verification.
 3. **Rigid Pricing Catalogs:** Catastrophic purchase failure on minor budget cap mismatches.
@@ -160,13 +160,13 @@ The system is built strictly on Google's **Agent Payments Protocol (AP2) v0.2**,
   Hard failures on minor cap mismatch   Manual post-procurement double-entry
 ```
 
-- **FIDO Protocol Baseline:** Standardized on Google AP2 v0.2, vendored in `backend/vendor/ap2/`.
+- **FIDO Protocol Baseline:** Standardized on AP2 v0.2, vendored in `backend/vendor/ap2/`.
 - **Core Cryptographic Stack:** Enforces **ES256 Selective Disclosure JSON Web Tokens (SD-JWTs)** with **Key Binding (KB-SD-JWT)**.
 - **SDK Conformance:** Validated against **188 byte-identical upstream conformance tests** in `backend/tests/conformance/`.
 - **Targeted Failure Modes:** Resolves untrusted courier threats, recurring billing blind spots, catalog rigidity, and disconnected back-office accounting.
 
 > [!NOTE]
-> **[VERIFIED — 100% Upstream Conformance]:** Byte-identical upstream conformance to 188 Google SDK tests. Cryptographic integrity strictly mirrors the FIDO Alliance standard.
+> **[VERIFIED — 100% Upstream Conformance]:** Byte-identical upstream conformance to 188 AP2 SDK tests. Cryptographic integrity strictly mirrors the FIDO Alliance standard.
 
 ---
 
@@ -271,7 +271,7 @@ AP2 v0.2 specifies an `AgentRecurrence` constraint but lacks an active execution
 ```
 
 - **PayPal Subscriptions Rail:** Manages ongoing recurring payments for compute node leases.
-- **Webhook Re-Verification:** Every `PAYMENT.SALE.COMPLETED` webhook is re-verified against the owner's stored mandate with Google's SDK (`backend/services/recurring_mandate_service.py`), checking key registry enrollment, email binding, and pricing integrity.
+- **Webhook Re-Verification:** Every `PAYMENT.SALE.COMPLETED` webhook is re-verified against the owner's stored mandate with the vendored AP2 SDK (`backend/services/recurring_mandate_service.py`), checking key registry enrollment, email binding, and pricing integrity.
 - **Decoupled Purchase vs. Recurring Windows:** Owner authorization grants a 24-hour window for initial checkout, while recurring authority spans 372 days (12 monthly renewal cycles).
 - **Predictive Constraint Engine:** After each authorized charge, the engine calculates whether the next billing cycle will violate remaining budget or term constraints, issuing advance cancellation before non-compliant charges can settle.
 - **Code Anchor:** [`backend/services/recurring_mandate_service.py`](backend/services/recurring_mandate_service.py), [`backend/server.py`](backend/server.py).
@@ -413,7 +413,7 @@ The system's zero-trust guarantees and architectural boundaries are validated co
      ======================================            =====================================
      792 PASSED, 9 SKIPPED in 45s                      9 / 9 INVARIANT CHECKS PASSED in ~1s
      --------------------------------------            -------------------------------------
-     [188 Conformance] Upstream Google AP2             [Check 1] MCP JSON-RPC Handshake
+     [188 Conformance] Upstream AP2 v0.2 SDK           [Check 1] MCP JSON-RPC Handshake
      [132 Security]    Tamper & Replay Checks          [Check 2] AP2 ES256 SD-JWT Chains
      [145 Wallet]      Airgap Isolation Limits         [Check 3] Multi-Tier Counter-Offer
      [132 Recurring]   Advance Cancellation Cycles     [Check 4] Anti-Tamper & 1¢ Inflation
@@ -421,7 +421,7 @@ The system's zero-trust guarantees and architectural boundaries are validated co
 ```
 
 - **Full Test Suite:** **792 passed, 9 skipped** across upstream conformance, security regression, buyer wallet isolation, and recurring lifecycle suites (`python -m pytest backend/tests -q -n 4`).
-- **Upstream FIDO Conformance:** 188 byte-identical tests from Google's AP2 SDK validate full spec compliance (`backend/tests/conformance/`).
+- **Upstream FIDO Conformance:** 188 byte-identical tests from the upstream AP2 SDK validate full spec compliance (`backend/tests/conformance/`).
 - **One-Click Judge Audit Harness:** `python scripts/judge_audit_harness.py` validates all **9 foundational security and operational invariants** in ~1 second against an isolated temporary database with zero external credentials required.
 - **Code Anchor:** [`scripts/judge_audit_harness.py`](scripts/judge_audit_harness.py), [`backend/tests/`](backend/tests/).
 
@@ -471,11 +471,11 @@ Every stand-in for real behavior is declared in [`docs/MOCKS.md`](docs/MOCKS.md)
 - **Workload Scheduling:** Bryntum Scheduler 7.3.7 (`@bryntum/scheduler` trial build)
 - **API Specification:** OpenAPI 3.1.0 (`openapi.yaml` and `openapi.json`) + APIMatic SDK configuration (`apimatic.json`)
 - **Backend Core:** FastAPI + Uvicorn + Python 3.13 + Pydantic v2
-- **AP2:** Google's AP2 v0.2 SDK, vendored at commit `e1ea56db` with two documented fixes
+- **AP2:** AP2 v0.2 SDK (FIDO Alliance), vendored at commit `e1ea56db` with two documented fixes
 - **Persistence:** SQLite in WAL mode (`a2a_commerce.db`) with a 5,000 ms busy timeout
 
 ---
 
 ## 7. License
 
-Authored by Adam Murphy. Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for terms. The vendored AP2 SDK in `backend/vendor/ap2/` is Google's, also under the Apache License 2.0.
+Authored by Adam Murphy. Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for terms. The vendored AP2 SDK in `backend/vendor/ap2/` is also under the Apache License 2.0.

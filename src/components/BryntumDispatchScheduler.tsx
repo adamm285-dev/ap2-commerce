@@ -699,7 +699,7 @@ This document certifies an authentic autonomous agent-to-agent workload executio
       {
         id: 'node-1',
         name: 'Node-01: Dedicated AI Service Gateway',
-        entity: 'Google Gemini 3.8 / Flash Sub-350ms Engine',
+        entity: 'Multi-Model AI Inference Gateway (Sub-350ms)',
         trade: 'Dedicated AI Service Gateway',
         did: isDepositLocked ? 'gateway-01.ap2.example.com' : 'Awaiting Settlement',
         status: isDepositLocked ? 'ACTIVE_ENCLAVE_BOUND' : 'PENDING_SUBSCRIPTION',

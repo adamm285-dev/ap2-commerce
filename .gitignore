@@ -89,3 +89,21 @@ htmlcov/
 *.sw?
 .DS_Store
 Thumbs.db
+
+# ==========================================
+# Local Media, SDCS Memory & Internal Prompts
+# ==========================================
+media/
+docs/spine.md
+docs/state.md
+docs/decisions.md
+docs/evals.md
+docs/roadmap.md
+docs/app_map.md
+docs/wiring.yaml
+docs/sessions/
+docs/prompts/
+docs/NOTEBOOKLM_*
+.githooks/
+AGENTS.md
+.agents/skills/security-audit/

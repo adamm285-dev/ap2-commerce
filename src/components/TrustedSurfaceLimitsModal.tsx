@@ -165,7 +165,7 @@ export const TrustedSurfaceLimitsModal: React.FC<TrustedSurfaceLimitsModalProps>
                 AP2 Trusted Surface — Spending Limits & Open Mandates
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                Non-Agentic Human Authorization Interface • Google AP2 v0.2 Protocol
+                Non-Agentic Human Authorization Interface • AP2 v0.2 Protocol (FIDO Alliance)
               </div>
             </div>
           </div>
